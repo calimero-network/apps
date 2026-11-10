@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { OrgInvite } from "@calimero-network/mero-js";
 
 import { Home } from "./Home";
-import { BLOCKS, CHAT, CRM, ORG, fakeOrg, passkey, type FakeOrgOptions } from "./test/fakeOrg";
+import { BETA, BLOCKS, CHAT, CRM, ORG, fakeOrg, passkey, type FakeOrgOptions } from "./test/fakeOrg";
 
 afterEach(cleanup);
 
@@ -297,5 +297,107 @@ describe("Admin", () => {
     fireEvent.click(await screen.findByTestId("tab-admin"));
     fireEvent.change(await screen.findByTestId("add-app-package"), { target: { value: CRM } });
     expect(screen.getByTestId("add-app-closes").textContent).toContain("Chat will list its own people again");
+  });
+});
+
+describe("Moving apps and merging organizations", () => {
+  const beta = { orgId: BETA, name: "Beta", role: "owner" };
+
+  it("moves one app to another organization the admin holds, with its people", async () => {
+    const fake = open({ as: "owner", otherOrgs: [beta] });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    fireEvent.click(await screen.findByTestId("move-crm-1"));
+    const target = screen.getByTestId("move-target-crm-1") as HTMLSelectElement;
+    expect(Array.from(target.options).map((o) => o.value)).toEqual(["", BETA]);
+    expect((screen.getByTestId("move-go-crm-1") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(target, { target: { value: BETA } });
+    fireEvent.click(screen.getByTestId("move-go-crm-1"));
+    await waitFor(() =>
+      expect(fake.client.postConfirmed).toHaveBeenCalledWith(
+        "apps/crm-1/move",
+        { toOrg: BETA, bringMembers: true },
+        expect.anything(),
+      ),
+    );
+    expect((await screen.findByTestId("app-moved")).textContent).toContain("pipeline moved to Beta");
+  });
+
+  it("offers neither moving nor merging on a node without the route", async () => {
+    const fake = open({ as: "owner", otherOrgs: [beta], noMove: true });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    await screen.findByTestId(`admin-app-${CRM}`);
+    await waitFor(() => expect(fake.client.post).toHaveBeenCalled());
+    expect(screen.queryByTestId("move-crm-1")).toBeNull();
+    expect(screen.queryByTestId("merge-orgs")).toBeNull();
+  });
+
+  it("offers nothing to move to when the admin holds no other organization", async () => {
+    open({ as: "owner" });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    expect(await screen.findByTestId("merge-no-sources")).toBeTruthy();
+    expect(screen.queryByTestId("move-crm-1")).toBeNull();
+  });
+
+  it("merges: shows the source, moves each app with a passkey, reports each, and keeps a source not yet empty", async () => {
+    const fake = open({ as: "owner", otherOrgs: [beta, { orgId: "gamma", name: "Gamma", role: "member" }] });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    const source = (await screen.findByTestId("merge-source")) as HTMLSelectElement;
+    expect(Array.from(source.options).map((o) => o.value)).toEqual(["", BETA]);
+    fireEvent.change(source, { target: { value: BETA } });
+    expect((await screen.findByTestId("merge-apps")).textContent).toContain("Archive");
+    expect(screen.getByTestId("merge-people").textContent).toContain("Dan");
+    fireEvent.click(screen.getByTestId("merge-move"));
+    expect((await screen.findByTestId("merge-result-beta-notes")).textContent).toContain("moved, 1 joined Acme");
+    expect((await screen.findByTestId("merge-result-beta-big")).textContent).toContain("not moved");
+    expect(fake.client.postConfirmed).toHaveBeenCalledTimes(2);
+    for (const app of ["beta-notes", "beta-big"]) {
+      expect(fake.client.postConfirmed).toHaveBeenCalledWith(
+        `apps/${app}/move`,
+        { toOrg: ORG, bringMembers: true },
+        expect.anything(),
+      );
+    }
+    expect((await screen.findByTestId("merge-keep")).textContent).toContain("still holds 1 app");
+    expect(screen.queryByTestId("merge-delete")).toBeNull();
+  });
+
+  it("deletes the emptied source only after its name is typed", async () => {
+    const fake = open({ as: "owner", otherOrgs: [beta] });
+    const moved = new Set<string>();
+    fake.client.postConfirmed.mockImplementation(async (path: string, body: { toOrg: string }) => {
+      const app = path.split("/")[1]!;
+      moved.add(app);
+      return { appId: app, from: BETA, org: body.toOrg, access: { kind: "org" }, created: false, added: [], revokedInvites: 0 };
+    });
+    fake.client.appsReportAll.mockImplementation(async () => ({
+      apps: [
+        { app: "beta-notes", name: "Notes", package: null },
+        { app: "beta-big", name: "Archive", package: null },
+      ].filter((a) => !moved.has(a.app)),
+    }));
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    fireEvent.change(await screen.findByTestId("merge-source"), { target: { value: BETA } });
+    await screen.findByTestId("merge-apps");
+    fireEvent.click(screen.getByTestId("merge-move"));
+    const name = (await screen.findByTestId("merge-delete-name")) as HTMLInputElement;
+    const del = screen.getByTestId("merge-delete") as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    fireEvent.change(name, { target: { value: "beta" } });
+    expect(del.disabled).toBe(true);
+    fireEvent.change(name, { target: { value: "Beta" } });
+    expect(del.disabled).toBe(false);
+    fireEvent.click(del);
+    await waitFor(() => expect(fake.client.deleteOrg).toHaveBeenCalledWith(BETA, expect.anything()));
+    expect((await screen.findByTestId("merge-deleted")).textContent).toContain("Beta is deleted");
+  });
+
+  it("tells an admin who does not own the source that only its owner deletes it", async () => {
+    const fake = open({ as: "owner", otherOrgs: [{ ...beta, role: "admin" }], betaRole: "admin" });
+    fake.client.appsReportAll.mockResolvedValue({ apps: [] });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    fireEvent.change(await screen.findByTestId("merge-source"), { target: { value: BETA } });
+    expect((await screen.findByTestId("merge-empty")).textContent).toContain("Beta holds no apps");
+    expect(screen.getByTestId("merge-keep").textContent).toContain("Only Beta's owner can delete it");
+    expect(screen.queryByTestId("merge-delete")).toBeNull();
   });
 });

@@ -1,5 +1,12 @@
 import { vi } from "vitest";
-import { NotFound, type AppInfo, type AppTeam, type CalimeroClient, type OrgInvite } from "@calimero-network/mero-js";
+import {
+  CalimeroError,
+  NotFound,
+  type AppInfo,
+  type AppTeam,
+  type CalimeroClient,
+  type OrgInvite,
+} from "@calimero-network/mero-js";
 
 /**
  * A fake client over one organization, `acme`: Chat (closed, shared), Blocks
@@ -23,11 +30,20 @@ export interface FakeOrgOptions {
   invites?: OrgInvite[];
   /** Chat's "members may invite" switch. */
   chatInvite?: boolean;
+  /** The caller's other organizations (`me().orgs`), e.g. one to merge into `acme`. */
+  otherOrgs?: Array<{ orgId: string; name: string; role: string }>;
+  /** The node has no `/apps/{app}/move` (core before it): a bare 404. */
+  noMove?: boolean;
+  /** The caller's role in `beta` (default its owner). */
+  betaRole?: "owner" | "admin";
   /** The org's metadata (`getOrg`). */
   metadata?: Record<string, unknown>;
   /** Chat open to everyone in a shared org (an admin opened it on its own). */
   chatOpen?: boolean;
 }
+
+/** `beta`, an organization the owner of `acme` also owns, holding two apps: what a merge moves. */
+export const BETA = "beta";
 
 const ACCOUNT: Record<As, string> = {
   owner: "acct-ana",
@@ -80,11 +96,18 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     { appId: "crm-1", name: "pipeline", owner: "acct-ana", org: ORG, bundle: "b3", package: CRM, version: "1.0.0" },
   ];
   let invites: OrgInvite[] = opts.invites ?? [];
+  let betaApps = ["beta-notes", "beta-big"];
 
   const client = {
     session: { accountId: me, sessionToken: "s", refreshToken: "r", expiresAt: 9e12 },
-    me: vi.fn(async () => ({ accountId: me, orgs: [{ orgId: ORG, name: "Acme", role }] })),
-    getOrg: vi.fn(async () => ({
+    me: vi.fn(async () => ({ accountId: me, orgs: [{ orgId: ORG, name: "Acme", role }, ...(opts.otherOrgs ?? [])] })),
+    getOrg: vi.fn(async (org: string) => org === BETA ? {
+      name: "Beta",
+      mode: "legacy",
+      members: { "acct-ana": opts.betaRole ?? "owner", "acct-dan": "member" },
+      memberMetadata: { "acct-dan": { name: "Dan" } },
+      teams: {},
+    } : ({
       name: "Acme",
       mode,
       members,
@@ -150,6 +173,30 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
     setTeamMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
     updateTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    // Core's move route: the probe (an app no node holds) is `404 NOT_FOUND`
+    // where the route is, a bare 404 where it is not.
+    post: vi.fn(async (path: string) => {
+      if (opts.noMove) throw new CalimeroError(404, "ERROR", "");
+      if (path.endsWith("/move")) throw new NotFound("no such app");
+      return {};
+    }),
+    postConfirmed: vi.fn(async (path: string, body: { toOrg: string; bringMembers: boolean }) => {
+      const app = decodeURIComponent(path.split("/")[1] ?? "");
+      if (app === "beta-big") throw new CalimeroError(429, "QUOTA_EXCEEDED", "quota exceeded: file bytes");
+      betaApps = betaApps.filter((a) => a !== app);
+      return {
+        appId: app,
+        from: app.startsWith("beta") ? BETA : ORG,
+        org: body.toOrg,
+        access: { kind: "org" },
+        created: false,
+        added: body.bringMembers ? ["acct-dan"] : [],
+        revokedInvites: 0,
+      };
+    }),
+    appsReportAll: vi.fn(async (org: string) => ({
+      apps: org === BETA ? betaApps.map((app) => ({ app, name: app === "beta-big" ? "Archive" : "Notes", package: null })) : [],
+    })),
     removeTeamMember: vi.fn(async () => undefined),
     deleteTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
     setOrgMetadata: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),

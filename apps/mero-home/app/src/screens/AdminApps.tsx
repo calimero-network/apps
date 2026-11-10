@@ -10,6 +10,7 @@ import {
   packageTitle,
   setMembersMayInvite,
   type AppTeamInstance,
+  type MyOrg,
 } from "@calimero-apps/connect";
 
 import {
@@ -23,13 +24,18 @@ import {
   type OrgApp,
   type OrgView,
 } from "../home";
+import { moveApp, moveTargets } from "../move";
 
 export interface AdminAppsProps {
   client: Pick<
     CalimeroClient,
-    "packages" | "scopeApps" | "setTeamDefaultCapabilities" | "updateTeam" | "getTeam" | "deleteTeam"
+    "packages" | "scopeApps" | "setTeamDefaultCapabilities" | "updateTeam" | "getTeam" | "deleteTeam" | "postConfirmed"
   >;
   view: OrgView;
+  /** The caller's organizations, for "Move to another organization". */
+  orgs?: readonly MyOrg[];
+  /** Whether the node moves apps between organizations (core's `/apps/{app}/move`). */
+  canMove?: boolean;
   passkey: () => PasskeyProvider;
   after: () => void;
   /** After a change the node accepted: the org is read again. */
@@ -68,7 +74,7 @@ type Apart = { stage: "confirm"; on: boolean } | { stage: "running"; on: boolean
  * for a passkey (none when there is no instance to delete). A legacy app has
  * no team to delete, so it is not offered there.
  */
-export function AdminApps({ client, view, passkey, after, onChanged }: AdminAppsProps) {
+export function AdminApps({ client, view, orgs = [], canMove = false, passkey, after, onChanged }: AdminAppsProps) {
   const [packages, setPackages] = useState<Packages>({ kind: "loading" });
   const [pkg, setPkg] = useState("");
   const { closed, open, legacy } = teamsByJoin(view);
@@ -80,6 +86,10 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
   const [added, setAdded] = useState<{ package: string; teamId: string } | null>(null);
   const [removing, setRemoving] = useState<Removing | null>(null);
   const [removed, setRemoved] = useState<string | null>(null);
+  // "Move to another organization…": the instance it is open for, and its choices.
+  const [moving, setMoving] = useState<{ app: string; to: string; bring: boolean } | null>(null);
+  const [movedTo, setMovedTo] = useState<{ name: string; org: string } | null>(null);
+  const targets = canMove ? moveTargets(orgs, view.org) : [];
 
   useEffect(() => {
     let live = true;
@@ -118,6 +128,13 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
   const scopeLegacy = (app: OrgApp) =>
     run(`scope-${app.package}`, async () => {
       await createAppTeam(client, view.org, app.package, passkey(), { name: app.name, shared: apart });
+    });
+
+  const moveOne = (app: string, name: string, to: string, bring: boolean) =>
+    run(`move-${app}`, async () => {
+      await moveApp(client, app, to, bring, passkey());
+      setMoving(null);
+      setMovedTo({ name, org: orgs.find((o) => o.orgId === to)?.name || to });
     });
 
   const add = () =>
@@ -308,6 +325,61 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
                       : ""}
                   </p>
                 )}
+                {targets.length > 0 && a.instances.length > 0 && (
+                  <ul className="home-list" data-testid={`instances-${a.package}`}>
+                    {a.instances.map((i) => (
+                      <li key={i.appId}>
+                        <span>{i.name || i.appId}</span>{" "}
+                        {moving?.app === i.appId ? (
+                          <span className="home-row">
+                            <select
+                              value={moving.to}
+                              onChange={(e) => setMoving({ ...moving, to: e.target.value })}
+                              data-testid={`move-target-${i.appId}`}
+                              aria-label={`Organization to move ${i.name || i.appId} to`}
+                            >
+                              <option value="">Choose…</option>
+                              {targets.map((o) => (
+                                <option key={o.orgId} value={o.orgId}>
+                                  {o.name || o.orgId}
+                                </option>
+                              ))}
+                            </select>
+                            <label className="home-check">
+                              <input
+                                type="checkbox"
+                                checked={moving.bring}
+                                onChange={(e) => setMoving({ ...moving, bring: e.target.checked })}
+                                data-testid={`move-bring-${i.appId}`}
+                              />
+                              Bring the people who use it
+                            </label>
+                            <button
+                              className="glass-btn glass-btn--primary"
+                              disabled={!moving.to || busy !== null}
+                              onClick={() => void moveOne(i.appId, i.name || i.appId, moving.to, moving.bring)}
+                              data-testid={`move-go-${i.appId}`}
+                            >
+                              {busy === `move-${i.appId}` ? "Moving…" : "Move"}
+                            </button>
+                            <button className="glass-btn" disabled={busy !== null} onClick={() => setMoving(null)}>
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            className="glass-btn"
+                            disabled={busy !== null}
+                            onClick={() => setMoving({ app: i.appId, to: "", bring: true })}
+                            data-testid={`move-${i.appId}`}
+                          >
+                            Move to another organization…
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               {a.team && (
                 <button
@@ -452,6 +524,11 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
           {packageTitle(added.package)} is set up{apart ? ". You lead it." : " for everyone in the organization. You lead it."}{" "}
           <a href={openLink(added.package, view.org, added.teamId)}>Open {packageTitle(added.package)}</a> to start using
           it here.
+        </p>
+      )}
+      {movedTo && (
+        <p className="home-notice" role="status" data-testid="app-moved">
+          {movedTo.name} moved to {movedTo.org}, its data with it.
         </p>
       )}
       {error && (
