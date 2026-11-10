@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 import LandingPage from "./pages/landing/LandingPage";
 import DesignShell from "./components/shell/DesignShell";
 import TeamIndex from "./pages/TeamIndex";
@@ -11,7 +12,7 @@ import InvitationPage from "./components/InvitationPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import SignInModal from "./components/SignInModal";
 import type { SessionDeps } from "./session";
-import { SessionProvider, useAuth } from "./sessionContext";
+import { SessionProvider, useAuth, useSessionApi } from "./sessionContext";
 import { nodeBasename } from "./utils/servedByNode";
 import { deferInvite, inviteDeferred, invites, joinedAtSignUpPending } from "./utils/inviteLink";
 
@@ -62,6 +63,10 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  */
 function BoardRoute() {
   const { projectId } = useParams<{ projectId: string }>();
+  // A board is an app instance, served the frontend of the release it runs.
+  // The route names it, so the other release opens the same board.
+  const leaving = useInstanceRelease(useSessionApi().binding?.client, projectId);
+  if (leaving) return null;
   return <CanvasPage key={projectId} />;
 }
 

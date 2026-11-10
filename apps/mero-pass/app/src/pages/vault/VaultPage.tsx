@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 import { useCalimero } from '../../calimero';
 import { useMemberNames } from '../../lib/names';
 
@@ -100,6 +101,11 @@ const ROLE_TEXT: Record<string, string> = {
 export default function VaultPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const vaultName = useVaultName(vaultId ?? null);
+  // A vault is an app instance, served the frontend of the release it runs.
+  // The route names it, so the other release opens the same vault.
+  const { client, isAuthenticated } = useCalimero();
+  const leaving = useInstanceRelease(isAuthenticated ? client : null, vaultId);
+  if (leaving) return null;
   return (
     <AppShell back={{ label: 'Vaults', to: '/teams' }} crumb={vaultName}>
       <LockGate>

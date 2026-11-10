@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 
 import FeedPage from "./pages/FeedPage";
 import PostPage from "./pages/PostPage";
@@ -10,9 +11,10 @@ import ForumsPage from "./pages/ForumsPage";
 import InvitationHost from "./components/InvitationHost";
 import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
+import { getContextId } from "./lib/session";
 import { useStoredForum } from "./lib/storedForum";
 import type { SessionDeps } from "./session";
-import { SessionProvider, useSessionApi } from "./sessionContext";
+import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
 
 /** Signed in, signed out, or still connecting (restoring a stored session). */
 function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
@@ -39,8 +41,12 @@ function RequireForum({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   const forum = useStoredForum();
+  // A forum is an app instance, served the frontend of the release it runs.
+  // It is remembered (`setActiveForum`) before the pages open it, so the
+  // other release reopens it.
+  const leaving = useInstanceRelease(useMaybeSignedIn()?.client, forum === "open" ? getContextId() : null);
 
-  if (isLoading) return null;
+  if (isLoading || leaving) return null;
   if (!isAuthenticated) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }

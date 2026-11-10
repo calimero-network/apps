@@ -20,6 +20,20 @@ function hold(link: { token: string; forum?: string | null; org?: string; route?
 }
 import type { SessionDeps } from "./session";
 
+// `useInstanceRelease` as on a page a node serves from `release.href` (a
+// release's `/{version}/`), going nowhere but `release.navigate`. With no
+// `href` it reads this test's own location: development, where it never moves.
+const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+vi.mock("@calimero-apps/passkey", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-apps/passkey")>();
+  return {
+    ...actual,
+    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
+      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+const HOST = `https://${"a".repeat(52)}.apps.calimero.network`;
+
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock("./pages/landing/LandingPage", () => ({
   default: ({ onConnect }: { onConnect?: () => void }) => (
@@ -48,6 +62,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
+  release.href = null;
+  release.navigate.mockClear();
   window.history.replaceState(null, "", "/");
 });
 afterEach(cleanup);
@@ -293,5 +310,45 @@ describe("App", () => {
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith("forum-1", "vote", { postId: "p1", value: 0 }),
     );
+  });
+});
+
+describe("the release the open forum runs (useInstanceRelease)", () => {
+  /** The remembered forum's feed, while `forum-1` runs `version`. */
+  function openForum(version: string) {
+    remember(FORUM);
+    const client = Object.assign(fakeClient(), {
+      getApp: vi.fn(async () => ({ appId: "forum-1", org: "org-1" })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: "forum-1", package: { package: "com.calimero.forum", version } }] })),
+    });
+    window.history.replaceState(null, "", "/f");
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+
+  it("moves a served page to the frontend of the release the forum runs, and shows nothing of it meanwhile", async () => {
+    release.href = `${HOST}/1.2.0/f?sort=top`;
+    openForum("1.0.0");
+    await waitFor(() => expect(release.navigate).toHaveBeenCalledWith(`${HOST}/app/forum-1/f?sort=top`));
+    expect(release.navigate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText("Namespaces vs contexts")).toBeNull());
+  });
+
+  it("stays on a served page of the release the forum runs", async () => {
+    release.href = `${HOST}/1.2.0/f`;
+    const client = openForum("1.2.0");
+    await screen.findByText("Namespaces vs contexts");
+    await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledWith("org-1"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(release.navigate).not.toHaveBeenCalled();
+    expect(screen.getByText("Namespaces vs contexts")).toBeTruthy();
+  });
+
+  it("does nothing in development", async () => {
+    const client = openForum("1.0.0");
+    await screen.findByText("Namespaces vs contexts");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.getApp).not.toHaveBeenCalled();
+    expect(release.navigate).not.toHaveBeenCalled();
   });
 });

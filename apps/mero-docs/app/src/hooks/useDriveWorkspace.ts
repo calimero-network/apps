@@ -39,6 +39,7 @@ import {
 import { useLive, type GroupMember, type Namespace } from '@/calimero/react';
 import { targetKey } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { REGISTRY_APP_KEY, type OrgView } from '@/calimero/orgs';
 import { RegistryClient } from '@/lib/docsApi';
@@ -559,7 +560,12 @@ const DriveWorkspaceContext = createContext<DriveWorkspaceState | null>(null);
 
 export function DriveWorkspaceProvider({ children }: { children: ReactNode }) {
   const value = useDriveWorkspaceInternal();
-  return createElement(DriveWorkspaceContext.Provider, { value }, children);
+  // A workspace's registry is the app instance every member of it opens, so
+  // the workspace is served the frontend of the release its registry runs.
+  // The route names the workspace, so the other release reopens it. Nothing
+  // of the workspace renders while the page is leaving.
+  const leaving = useInstanceRelease(useLive()?.client, value.registryContextId);
+  return createElement(DriveWorkspaceContext.Provider, { value }, leaving ? null : children);
 }
 
 export function useDriveWorkspace(): DriveWorkspaceState {

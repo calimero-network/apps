@@ -9,6 +9,20 @@ import { APP } from './session';
 import { readActiveNs, writeActiveNs } from './hooks/workspacePersistence';
 import { invites } from './workspaces';
 
+// `useInstanceRelease` as on a page a node serves from `release.href` (a
+// release's `/{version}/`), going nowhere but `release.navigate`. With no
+// `href` it reads this test's own location: development, where it never moves.
+const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+vi.mock('@calimero-apps/passkey', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-apps/passkey')>();
+  return {
+    ...actual,
+    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
+      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+const HOST = `https://${'a'.repeat(52)}.apps.calimero.network`;
+
 /** Hold `token` as the pending invite, as a captured link would. */
 function holdInvite(token: string, target: { org?: string; route?: string } = {}) {
   invites.put({ token, org: target.org ?? null, team: null, doc: null, route: target.route ?? null, extra: {} });
@@ -98,6 +112,9 @@ function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
+  release.href = null;
+  release.navigate.mockClear();
   window.history.replaceState(null, '', '/');
   window.matchMedia ??= ((query: string) => ({
     matches: false,
@@ -394,5 +411,46 @@ describe('App', () => {
       expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
       expect(screen.queryByTestId('alias-gate')).toBeNull();
     });
+  });
+});
+
+describe('the release the open repo runs (useInstanceRelease)', () => {
+  /** Signed in, in the remembered workspace, whose first repo runs `version`. */
+  function openRepo(version: string) {
+    const client = Object.assign(fakeClient({ signedIn: true }), {
+      getApp: vi.fn(async () => ({ appId: 'app-1', org: 'org-1' })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: 'app-1', package: { package: 'com.calimero.issue-tracker', version } }] })),
+    });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+
+  it('moves a served page to the frontend of the release the repo runs, and shows nothing of it meanwhile', async () => {
+    release.href = `${HOST}/1.2.0/issue-tracker?assignee=me`;
+    openRepo('1.0.0');
+    await waitFor(() => expect(release.navigate).toHaveBeenCalledWith(`${HOST}/app/app-1/issue-tracker?assignee=me`), SLOW);
+    expect(release.navigate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('Login broken')).toBeNull(), SLOW);
+  });
+
+  it('stays on a served page of the release the repo runs', async () => {
+    release.href = `${HOST}/1.2.0/issue-tracker`;
+    const client = openRepo('1.2.0');
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledWith('org-1'), SLOW);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(release.navigate).not.toHaveBeenCalled();
+    expect(screen.getByText('Login broken')).toBeTruthy();
+  });
+
+  it('does nothing in development', async () => {
+    const client = openRepo('1.0.0');
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.getApp).not.toHaveBeenCalled();
+    expect(release.navigate).not.toHaveBeenCalled();
   });
 });

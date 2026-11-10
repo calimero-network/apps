@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 import { useSessionApi } from "./api/sessionContext";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/TeamsPage";
@@ -18,6 +19,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (api.session.status === "connecting") return null;
   if (api.session.status !== "signed-in") return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+/**
+ * A project is an app instance, served the frontend of the release it runs.
+ * The route names it, so the other release opens the same project; nothing of
+ * it renders while the page is leaving.
+ */
+function ProjectRoute() {
+  const { projectId } = useParams();
+  const { api } = useSessionApi();
+  const leaving = useInstanceRelease(api.session.status === "signed-in" ? api.session.client : null, projectId);
+  if (leaving) return null;
+  return <EditorPage />;
 }
 
 /**
@@ -60,7 +74,7 @@ export default function App() {
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
           <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
-          <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><EditorPage /></RequireAuth>} />
+          <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><ProjectRoute /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </InvitationHost>
