@@ -44,7 +44,6 @@ import type {
 } from "../groupApi";
 import {
   addToChat,
-  adoptChatTeam,
   appMembers,
   changeAppAccounts,
   chatMembers,
@@ -55,6 +54,8 @@ import {
   getAppRecord,
   getOrgRecord,
   inviteToken,
+  leaveChat,
+  leaveChatOrg,
   invalidate,
   isOrg,
   listChatApps,
@@ -65,7 +66,6 @@ import {
   pendingChannel,
   redeemInvite,
   removeFromChat,
-  removeOrgMember,
   run,
   setCapabilities,
   setMemberName,
@@ -119,25 +119,12 @@ export class GroupApiDataSource implements GroupApi {
         const problem = groupNameError(name);
         if (problem) return fail(400, problem);
       }
-      const groupId = await createOrg(name || "Workspace");
-      try {
-        // v1 gave members these on a new namespace; on 1.0 it is a passkey step-up.
-        await setCapabilities(groupId, DEFAULT_MEMBER_CAPABILITIES);
-      } catch (e) {
-        // Declined or refused: the workspace stays, and only its owner and
-        // admins create channels and invite until an admin allows members to.
-        console.warn("createGroup: member capabilities not set", e);
-      }
-      try {
-        // Chat's own app team (core#4890), open: everyone in the workspace has
-        // Chat, its invites name the team, and should the org later hold other
-        // apps, Calimero Home can keep Chat's people apart from theirs.
-        await adoptChatTeam(groupId);
-      } catch (e) {
-        // Declined, or a node without app teams: the workspace is a legacy
-        // one (organization access), as every workspace was before.
-        console.warn("createGroup: chat's app team not made", e);
-      }
+      // v1 gave members these capabilities on a new namespace; on 1.0 it is a
+      // passkey step-up. Declined, the workspace stays, and only its owner and
+      // admins create channels and invite until an admin allows members to.
+      // Chat's own app team comes with it, open; declined, or a node without
+      // app teams, the workspace is a legacy one, as every workspace was before.
+      const groupId = await createOrg(name || "Workspace", DEFAULT_MEMBER_CAPABILITIES);
       return ok({ groupId });
     } catch (error) {
       return catchError("createGroup", error);
@@ -252,9 +239,8 @@ export class GroupApiDataSource implements GroupApi {
     _request?: CreateInvitationRequest,
   ): ApiResponse<CreateInvitationResponse> {
     try {
-      const invitation = await inviteToken(groupId);
+      const { token: invitation, appOnly: chatOnly } = await inviteToken(groupId);
       const org = await getOrgRecord(groupId).catch(() => null);
-      const chatOnly = org?.mode === "shared" && chatTeamId(org) !== null;
       return ok({ invitation, groupAlias: org?.name, ...(chatOnly ? { chatOnly } : {}) });
     } catch (error) {
       return catchError("createInvitation", error);
@@ -357,12 +343,7 @@ export class GroupApiDataSource implements GroupApi {
   async removeMember(groupId: string, memberIdentity: string): ApiResponse<void> {
     try {
       if (await isOrg(groupId)) {
-        const org = await getOrgRecord(groupId);
-        if (org.mode === "shared" && chatTeamId(org)) {
-          await removeFromChat(groupId, memberIdentity);
-        } else {
-          await removeOrgMember(groupId, memberIdentity);
-        }
+        await removeFromChat(groupId, memberIdentity);
       } else {
         await changeAppAccounts(pendingChannel(groupId)?.appId ?? groupId, [], [memberIdentity]);
       }
@@ -435,10 +416,22 @@ export class GroupApiDataSource implements GroupApi {
   /** Leaves the workspace (removes the caller from the org; a passkey step-up). */
   async leaveNamespace(namespaceId: string): ApiResponse<LeaveNamespaceResponse> {
     try {
-      await removeOrgMember(namespaceId, getAccountId());
-      return ok({ namespaceId, memberPublicKey: getAccountId() });
+      // In a shared org, Chat only; when that was the person's last app
+      // there, `lastApp` lets the caller offer to leave the org too.
+      const { left, lastApp } = await leaveChat(namespaceId);
+      return ok({ namespaceId, memberPublicKey: getAccountId(), left, lastApp });
     } catch (error) {
       return catchError("leaveNamespace", error);
+    }
+  }
+
+  /** Leaves the organization altogether (offered after leaving Chat, the last app there). */
+  async leaveOrganization(namespaceId: string): ApiResponse<void> {
+    try {
+      await leaveChatOrg(namespaceId);
+      return ok(undefined);
+    } catch (error) {
+      return catchError("leaveOrganization", error);
     }
   }
 

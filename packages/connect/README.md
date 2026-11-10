@@ -236,3 +236,64 @@ await ensureAppTeam(client, org, PACKAGE, passkey); // admin: the app's team, ma
   every app team in one `ScopeApps` (owner or admin, one passkey), and core
   writes everyone inside each open team in as a row of their own, so nobody
   loses an app. There is no per-app close: core has none that keeps people.
+
+### The org-app module (`orgApp.ts`)
+
+Every org app (one that keeps its people in an organization) reaches the
+organization through this one module, and `scripts/check-org-app-module.py`
+fails CI when one calls `createOrg`, `scopeApps`/`createAppTeam`, `invite`,
+`removeMember` or `removeTeamMember` itself. Each call takes the app's
+`AppSource`; a raw bundle (`pnpm dev:local`) has no package, so it behaves
+as legacy throughout. Orgs stay **open** ("everyone gets every app") until an
+admin keeps their apps apart in Calimero Home: a team made here passes
+`shared: false`, or `shared: true` only in an org that is shared already.
+
+```ts
+import { appInvite, appPeople, createAppOrg, leaveApp, orgInstanceOptions, removeFromApp } from "@calimero-apps/connect";
+
+const { orgId } = await createAppOrg(client, "Acme", source, passkey, { capabilities: MEMBER_DEFAULTS });
+await client.createApp("Main", source, await orgInstanceOptions(client, orgId, source, passkey, "Mero CRM"));
+const { token, appOnly } = await appInvite(client, orgId, source, passkey); // appOnly: show appOnlyInviteNote()
+const people = appPeople(await client.getOrg(orgId), PACKAGE);
+await removeFromApp(client, orgId, source, account, passkey); // "app" in a shared org, else "org"
+const { left, lastApp } = await leaveApp(client, orgId, source, passkey); // lastApp: offer leaveOrg()
+```
+
+| Call | Does |
+|---|---|
+| `createAppOrg(client, name, source, passkey, { capabilities, mark })` | `createOrg`, marked for the app, member defaults (`capabilitiesError` when declined), and the app's open team. Without the team (declined, an older node) the org is legacy. |
+| `orgWideAccess` / `orgInstanceOptions(client, org, source, passkey, appName)` | The access of a new org-wide instance, which is also how the app is added to an existing org: its team; in an org whose apps have teams but none for this one, the team is made first in the org's mode (owners and admins; anyone else gets `AppTeamAdminError`); organization access in a legacy org (`orgInstanceOptions` then sends `{ org }` alone, as before). |
+| `adoptAppTeam(client, org, source, passkey)` | The app's team in the org's mode, `shared` always passed. |
+| `appInvite(client, org, source, passkey, { teams })` | `inviteToApp` with `appOnly` (a shared org); org-wide in a legacy org. |
+| `appPeople(view, pkg)`, `isAppOnly`, `appTeamIdIn`, `orgModeOf` | Who has the app, from `getOrg`: its team, else the org (no guest once it has app teams). |
+| `removeFromApp(client, org, source, account, passkey, { privateTeams })` | Shared org: off the app's team (and the private teams named), never out of the org. Elsewhere `removeMember`. |
+| `removeFromPrivateTeam(client, org, team, account, passkey)` | Off a private list's team (a folder, a vault); refuses an app team. |
+| `leaveApp(client, org, source, passkey)` / `leaveOrg(client, org, passkey)` | Shared org: leave the app's team, `lastApp` when it was the last one (offer `leaveOrg`). Elsewhere leave the org. |
+
+`@calimero-apps/connect/testing` exports `orgCluster()`, an in-memory cluster
+(orgs, teams, a mode derived as core derives it, instances, invites) that an
+app's tests hand to its data layer; it records every call (`callsOf(name)`)
+and needs no test runner.
+
+For an app's own org screens (what mero-chat does by hand), taking the app's
+`AppSource`, so a raw bundle (`pnpm dev:local`) has no package and behaves as
+legacy throughout:
+
+- `adoptAppTeam(client, org, source, passkey)` right after `createOrg`: the
+  app's team, open (standalone). `shared` is always passed (true only in an
+  org that is shared already), so another app's team is never closed. A caller
+  that catches its failure (declined, an older node) keeps a legacy org.
+- `orgWideAccess(client, org, source, passkey, appName)` is the `access` for a
+  new org-wide instance: `{ kind: "team" }` on the app team; in an org whose
+  apps have teams but none for this one, the team is made first (owners and
+  admins; anyone else gets `AppTeamAdminError`); `{ kind: "org" }` in a legacy
+  org.
+- `appInvite(client, org, source, passkey)` is `inviteToApp` with `appOnly`
+  (a shared org: the dialog shows `appOnlyInviteNote(appName)`).
+- `appPeople(orgView, pkg)` is who has the app: its team, else every member
+  (no guest once the org has app teams). `isAppOnly(orgView, pkg)`,
+  `appTeamIdIn(orgView, pkg)` and `orgModeOf(orgView)` read the same `getOrg`.
+- `removeFromApp(client, org, source, account, passkey, { privateTeams })`:
+  in a shared org, off the app team (and the private teams named that the
+  remover may change), never out of the org; elsewhere `removeMember`, as
+  before.

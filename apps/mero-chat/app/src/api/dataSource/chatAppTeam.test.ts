@@ -131,7 +131,7 @@ const h = vi.hoisted(() => {
             join: t.join,
             memberCount: Object.keys(t.members).length,
             defaultCapabilities: null,
-            member: true,
+            member: state.me in t.members || t.join === "everyone",
             manages: true,
           })),
       };
@@ -354,6 +354,39 @@ describe("removing someone", () => {
     await api.removeMember(org, "acct-bob");
     expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-bob", expect.anything());
     expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+  });
+});
+
+describe("leaving", () => {
+  it("shared: Chat's team only, never the org; lastApp when it was the person's last app there", async () => {
+    const { org } = await workspace({ "acct-ana": "owner" });
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.join = "invite";
+    team.members["acct-me"] = false;
+    h.state.orgs.get(org)!.members["acct-me"] = "member";
+    invalidate();
+
+    const res = await api.leaveNamespace(org);
+    expect(res.data).toMatchObject({ left: "app", lastApp: true });
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-me", expect.anything());
+    expect(h.client.removeMember).not.toHaveBeenCalled();
+
+    expect((await api.leaveOrganization(org)).error).toBeNull();
+    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
+  });
+
+  it("standalone: leaving is leaving the organization, as before", async () => {
+    const { org } = await workspace({ "acct-ana": "owner" });
+    const res = await api.leaveNamespace(org);
+    expect(res.data).toMatchObject({ left: "org", lastApp: false });
+    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
+    expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+  });
+
+  it("a legacy org: leaving is leaving the organization", async () => {
+    const org = otherOrg("legacy", "member");
+    expect((await api.leaveNamespace(org)).data).toMatchObject({ left: "org" });
+    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
   });
 });
 

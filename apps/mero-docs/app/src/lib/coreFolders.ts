@@ -8,7 +8,7 @@
 // invited to is not there at all; one they were invited to below a parent
 // they cannot see comes back `shared`, with no parent.
 
-import { DOCS_APP_KEY, type OrgAdmin, type OrgView, type TeamView } from '@/calimero/orgs';
+import { DOCS_APP_KEY, isAppTeam, type OrgAdmin, type OrgView, type TeamView } from '@/calimero/orgs';
 
 /** Where a folder's colour lives in its team's metadata. */
 export const FOLDER_COLOR_KEY = 'color';
@@ -48,7 +48,8 @@ export function foldersOf(org: OrgView): CoreFolder[] {
     }
     return false;
   };
-  return Object.values(teams).map((t) => {
+  // An app's own team (Docs' or another app's, core#4890) is not a folder.
+  return Object.values(teams).filter((t) => !isAppTeam(t)).map((t) => {
     const hiddenParent = !!t.parent && !teams[t.parent];
     return {
       id: t.teamId,

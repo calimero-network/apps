@@ -64,8 +64,12 @@ export interface UseWorkspaceReturn {
   /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
   createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
   createNamespaceError: Error | null;
-  /** Mints an invitation (a passkey step-up) and answers the link to share. */
-  invite: () => Promise<string>;
+  /**
+   * Mints an invitation (a passkey step-up) naming this app's team, and
+   * answers the link to share; `appOnly` when it gives this app only (an org
+   * that keeps its apps apart).
+   */
+  invite: () => Promise<{ link: string; appOnly: boolean }>;
 
   pipelines: PipelineEntry[];
   activePipeline: string | null;
@@ -78,7 +82,7 @@ export interface UseWorkspaceReturn {
 
   /** The signed-in ACCOUNT: what `createdBy` and `author` name. */
   selfIdentity: string;
-  /** Every account in the workspace, people only. */
+  /** Everyone who has this app in the workspace (its app team, else the org), people only. */
   members: string[];
   memberNames: Map<string, string>;
   roles: UseMemberRolesReturn;
@@ -177,14 +181,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await addPipelineTo(client, source, org.orgId, 'Pipeline', 'USD', after);
+        await addPipelineTo(client, source, org.orgId, 'Pipeline', 'USD', passkey, after);
       } finally {
         after();
       }
       await loadNamespaces();
       selectNamespace(org.orgId);
     },
-    [client, source, after, loadNamespaces, selectNamespace],
+    [client, source, passkey, after, loadNamespaces, selectNamespace],
   );
 
   // ── pipelines ─────────────────────────────────────────────────────────────────
@@ -242,7 +246,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       if (!activeNs) return null;
       setAddPipelineError(null);
       try {
-        const id = await addPipelineTo(client, source, activeNs, name, currency, after);
+        const id = await addPipelineTo(client, source, activeNs, name, currency, passkey, after);
         await loadPipelines();
         selectPipeline(id);
         return id;
@@ -253,7 +257,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, source, activeNs, loadPipelines, selectPipeline, after],
+    [client, source, passkey, activeNs, loadPipelines, selectPipeline, after],
   );
 
   // ── members ───────────────────────────────────────────────────────────────
@@ -266,7 +270,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (!activeNs) return;
     setMembersLoading(true);
     try {
-      const next = await readMembers(client, activeNs);
+      const next = await readMembers(client, activeNs, source);
       if (orgFor.current === activeNs) setOrg(next);
     } catch {
       /* the last answer stays; the next focus tries again */
@@ -275,7 +279,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       setMembersLoaded(true);
       after();
     }
-  }, [client, activeNs, after]);
+  }, [client, activeNs, source, after]);
 
   useEffect(() => {
     orgFor.current = activeNs;
@@ -284,7 +288,16 @@ export function useWorkspace(): UseWorkspaceReturn {
     void refetchMembers();
   }, [activeNs, refetchMembers]);
 
-  const roles = useMemberRoles({ client, org: activeNs, self: accountId, state: org, refetch: refetchMembers, passkey, after });
+  const roles = useMemberRoles({
+    client,
+    org: activeNs,
+    self: accountId,
+    state: org,
+    refetch: refetchMembers,
+    passkey,
+    after,
+    source,
+  });
 
   const setMemberName = useCallback(
     async (name: string) => {
@@ -302,11 +315,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   const invite = useCallback(async () => {
     if (!activeNs) throw new Error('No workspace is open.');
     try {
-      return inviteLink(await inviteToken(client, activeNs, passkey()), activeNs);
+      const { token, appOnly } = await inviteToken(client, activeNs, passkey(), source);
+      return { link: inviteLink(token, activeNs), appOnly };
     } finally {
       after();
     }
-  }, [client, activeNs, passkey, after]);
+  }, [client, activeNs, passkey, source, after]);
 
   // Org-level changes have no event stream: re-read on focus.
   useEffect(() => {
@@ -320,7 +334,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [loadNamespaces, loadPipelines, refetchMembers]);
 
   const members = useMemo(
-    () => Array.from(org?.roles.keys() ?? []).filter((a) => a !== accountId).sort(),
+    () => (org?.people ?? []).filter((a) => a !== accountId).sort(),
     [org, accountId],
   );
 

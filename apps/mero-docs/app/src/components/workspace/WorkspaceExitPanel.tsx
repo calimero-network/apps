@@ -2,7 +2,9 @@
 //
 //   - an Admin DELETES it (`deleteNamespace`, which cascades through every
 //     folder and document) and is never offered Leave;
-//   - anyone else LEAVES it (`leaveNamespace`) and is never offered Delete.
+//   - anyone else LEAVES it (`leaveNamespace`) and is never offered Delete;
+//     in an org that keeps its apps apart that is Docs only, and leaving the
+//     last app there offers leaving the organization too.
 //
 // Deleting a namespace is a node's own operation: mero-js's account admin
 // refuses it by name (NotForAccountError), so on a delegated (account) session
@@ -61,7 +63,20 @@ export function WorkspaceExitPanel() {
     try {
       if (!admin) throw new Error('Workspace not ready');
       if (action === 'delete') await admin.deleteNamespace(namespaceId);
-      else await admin.leaveNamespace(namespaceId);
+      else {
+        // In an org that keeps its apps apart this leaves Docs only; when it
+        // was the account's last app there, it is asked about the org too.
+        const left = await admin.leaveNamespace(namespaceId);
+        if (left?.left === 'app' && left.lastApp) {
+          const alsoOrg = await confirm({
+            title: 'Leave the organization too?',
+            body: 'Mero Docs was your last app in this organization. You can stay in it, or leave it as well.',
+            confirmLabel: 'Leave organization',
+            destructive: true,
+          });
+          if (alsoOrg) await admin.leaveOrganization(namespaceId);
+        }
+      }
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(

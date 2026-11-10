@@ -7,6 +7,7 @@
  */
 import { useCallback, useMemo } from 'react';
 import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import { removeFromApp, type AppSource } from '@calimero-apps/connect';
 
 import {
   ROLE_ADMIN,
@@ -38,7 +39,13 @@ export interface UseMemberRolesReturn {
   setRole: (account: string, role: WorkspaceRole) => Promise<void>;
   /** Write an explicit per-member capability override. */
   setCapabilities: (account: string, capabilities: number) => Promise<void>;
+  /**
+   * Out of the workspace: in an org that keeps its apps apart (`appOnly`),
+   * out of this app only (its team), never out of the org; else out of the org.
+   */
   removeMember: (account: string) => Promise<void>;
+  /** The org keeps its apps apart and this one has its team (Remove is this app's only). */
+  appOnly: boolean;
   /** Grant the app's baseline to every member without an override. */
   repairDefaultCapabilities: () => Promise<void>;
   loading: boolean;
@@ -53,14 +60,16 @@ export function useMemberRoles({
   refetch,
   passkey,
   after,
+  source = null,
 }: {
-  client: Pick<CalimeroClient, 'setMember' | 'removeMember' | 'setCapabilities'>;
+  client: Pick<CalimeroClient, 'setMember' | 'removeMember' | 'removeTeamMember' | 'getOrg' | 'setCapabilities'>;
   org: string | null;
   self: string;
   state: OrgMembers | null;
   refetch: () => Promise<void>;
   passkey: () => PasskeyProvider;
   after: () => void;
+  source?: AppSource | null;
 }): UseMemberRolesReturn {
   const orgRoles = useMemo(() => state?.roles ?? new Map<string, string>(), [state]);
   const roles = useMemo(
@@ -96,8 +105,8 @@ export function useMemberRoles({
     [client, passkey, write],
   );
   const removeMember = useCallback(
-    (account: string) => write((o) => client.removeMember(o, account, passkey())),
-    [client, passkey, write],
+    (account: string) => write((o) => removeFromApp(client, o, source, account, passkey)),
+    [client, passkey, write, source],
   );
   const repairDefaultCapabilities = useCallback(
     () => write((o) => client.setCapabilities(o, repairedDefault(defaultCapabilities), passkey())),
@@ -116,6 +125,7 @@ export function useMemberRoles({
     setRole,
     setCapabilities,
     removeMember,
+    appOnly: state?.appOnly ?? false,
     repairDefaultCapabilities,
     loading: state === null,
     refetch,

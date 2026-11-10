@@ -22,7 +22,7 @@ and to Calimero Cloud in production through mero-js's `CalimeroClient`
 | | Calimero 1.0 | v1 |
 |---|---|---|
 | a workspace | an **organization** | a namespace |
-| the workspace's registry (managers, tags, saved views) | an instance of this app in the org (org access), its id in the org's metadata (`registryApp`) | the `registry` service's context in the namespace's root group |
+| the workspace's registry (managers, tags, saved views) | an instance of this app in the org (team access on Docs' **app team**; org access in a legacy org), its id in the org's metadata (`registryApp`) | the `registry` service's context in the namespace's root group |
 | a folder | a **team** of the org; a subfolder a team under it | a subgroup |
 | Open / Restricted folder | a team anyone the parent reaches joins (`join: everyone`) / invite-only (`join: invite`) | subgroup visibility `open` / `restricted` |
 | a folder's documents | an instance of this app with `team` access, its id in the team's metadata (`docsApp`, beside `color`) | the `docs` service's context in the subgroup |
@@ -143,6 +143,8 @@ What a person sees differently:
 - **Sign-in** is a passkey (sign in, or sign up with a name). No node URL, Cloud tab or desktop SSO.
 - **Membership changes ask for the passkey**: roles and capabilities (twice when both change), adding and removing members, invites, member defaults, deleting or leaving a workspace.
 - **Invite links** are org invite tokens (`?invite=<token>&…`), kept through sign-up and redeemed after a confirmation; a folder invite names the folder's team. v1 links no longer work.
+- **Docs' app team** (core#4890): Docs reaches its organization only through `@calimero-apps/connect`'s org-app module (`scripts/check-org-app-module.py` fails CI otherwise). A new workspace gets Docs' team, **open** (everyone in the org has Docs); the registry uses team access on it, invites name it (a folder invite names it and the folder's team), and the workspace's member list is its people. App teams (Docs' and other apps') are never listed as folders. Once an admin keeps the org's apps apart in Calimero Home, an invite gives Docs only, **Remove** takes someone out of Docs (its team and their folder rows), and **Leave workspace** leaves Docs only, offering to leave the organization too when Docs was your last app there; in standalone and legacy orgs both are about the organization, as before. Adding Docs to an org whose apps have teams makes its team first (owners and admins only). An org from before app teams stays legacy; under `pnpm dev:local` (a raw bundle, no package) every workspace is legacy.
+- **Folders stay their own teams**, not teams under Docs' app team: core rc.14 lets only an app team's leads create teams below it, so a member could no longer make a folder. In an org that keeps its apps apart, an *Open* top-level folder is therefore open to everyone in the organization who reaches it, not only to Docs' people; make a folder Restricted to keep it to the people listed.
 - **No sync states**: "syncing from peers", "just joined", "not synced to your node" and their retries are gone; a joined workspace opens at once.
 - **Folders**: the workspace list shows the organizations that hold an instance of this app; a Restricted folder you cannot reach is not listed; a folder under a parent you cannot see shows as Shared; members who only inherit an Open folder show as Editor.
 - **Removed**: the dev rig panel, the document inspector, `?node=`. The dev server runs on `http://localhost:5173/`.
