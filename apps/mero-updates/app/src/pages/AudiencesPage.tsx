@@ -78,6 +78,7 @@ export default function AudiencesPage() {
     code: string;
     scope: string;
     hint: React.ReactNode;
+    appOnly?: boolean;
   } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -105,10 +106,10 @@ export default function AudiencesPage() {
       if (showSpinner) setListing(true);
       void canCreateIn(client, namespaceId).then(setMayCreate);
       try {
-        const info = await readCompany(client, namespaceId).catch(() => null);
+        const info = await readCompany(client, namespaceId, source).catch(() => null);
         setNsName((info?.name ?? "").trim() || `Company ${namespaceId.slice(0, 6)}`);
         setSpaceAdmin(isAdminRole(info?.roles.get(accountId)));
-        setMemberCount(info?.roles.size ?? 0);
+        setMemberCount(info?.people.length ?? 0);
         setAudiences(await listAudiences(client, source, namespaceId));
       } catch (e) {
         setError(describeError(e));
@@ -138,11 +139,11 @@ export default function AudiencesPage() {
     if (!audienceName) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the audience…");
-      const contextId = await createAudience(client, source, namespaceId, audienceName);
+      const contextId = await createAudience(client, source, namespaceId, audienceName, passkey);
       setName("");
       open(contextId, audienceName);
     });
-  }, [name, client, source, namespaceId, run, open]);
+  }, [name, client, source, passkey, namespaceId, run, open]);
 
   /** Enter an audience: every member of the company reaches every audience in it. */
   const enter = useCallback((audience: AudienceRow) => open(audience.contextId, audience.name), [open]);
@@ -151,8 +152,9 @@ export default function AudiencesPage() {
     (audience: AudienceRow) => {
       void run(`invite:${audience.contextId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
-        const token = await mintInvite(client, namespaceId, passkey());
+        const { token, appOnly } = await mintInvite(client, namespaceId, passkey(), source);
         setInvite({
+          appOnly,
           key: `audience:${audience.contextId}`,
           code: inviteLink(token, audience.contextId, namespaceId),
           scope: `Opens ${audience.name}`,
@@ -168,14 +170,15 @@ export default function AudiencesPage() {
         showToast(`Invite ready for “${audience.name}”.`);
       });
     },
-    [client, namespaceId, nsName, passkey, run, showToast],
+    [client, namespaceId, nsName, passkey, source, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
     void run("invite:namespace", async (onStatus) => {
       onStatus("Approve the invitation with your passkey…");
-      const token = await mintInvite(client, namespaceId, passkey());
+      const { token, appOnly } = await mintInvite(client, namespaceId, passkey(), source);
       setInvite({
+        appOnly,
         key: "namespace",
         code: inviteLink(token, null, namespaceId),
         scope: `Whole company · ${nsName}`,
@@ -189,7 +192,7 @@ export default function AudiencesPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [client, namespaceId, nsName, passkey, run, showToast]);
+  }, [client, namespaceId, nsName, passkey, source, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -480,6 +483,7 @@ export default function AudiencesPage() {
         open={!!invite}
         code={invite?.code ?? ""}
         scope={invite?.scope ?? ""}
+        appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
       />
     </div>

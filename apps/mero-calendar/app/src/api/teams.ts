@@ -1,6 +1,17 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  markOrgFor,
+  appInvite,
+  appPeople,
+  createAppOrg,
+  isAppOnly,
+  leaveApp,
+  leaveOrg,
+  orgInstanceOptions,
+  removeFromApp,
+  sourcePackage,
+  type AppInviteToken,
+  type AppOrgView,
+  type LeftApp,
   orgsWithApp,
   SPENT_INVITE_COPY,
   createInviteStore,
@@ -29,6 +40,15 @@ import { APP } from "./session";
  * | a namespace invitation (signed payload in a deflate+base58 link) | an **org invite** token in `?invite=` (`invite` is a passkey step-up; `redeemInvite` after sign-in) |
  * | `Admin` / `Member` + capability bits | org roles `owner`/`admin`/`member`/`guest` |
  * | join / leave a context, join sync | gone: an instance is on the cluster, nothing to join or sync |
+ *
+ * The org gets this app's own **app team** (core#4890), through
+ * `@calimero-apps/connect`'s org-app module: a new team's is open (everyone in
+ * the org has the app), calendars use team access on it, invites name it, and
+ * the member list is its people. Once an admin keeps the org's apps apart in
+ * Calimero Home (`shared`), an invite gives Mero Calendar only, and Remove and
+ * Leave take someone out of Mero Calendar, not out of the org (leaving the
+ * last app offers the org too). An org without one (made before app teams, a
+ * node without them, a raw dev bundle) is legacy, as before.
  */
 
 /** A team this account is in. */
@@ -81,23 +101,69 @@ export interface CreatedTeam {
 
 /** A new team: an org whose members may create calendars and invite (a passkey step-up). */
 export async function createTeam(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedTeam> {
-  const groupId = await client.createOrg(name);
-  // Listed as a team before it holds calendars.
-  if (source) await markOrgFor(client, groupId, source);
-  try {
-    await client.setCapabilities(groupId, MEMBER_DEFAULTS, passkey());
-    return { groupId, warning: null };
-  } catch {
-    return {
-      groupId,
-      warning: "The team was created, but people you invite will not be able to create calendars or invite others yet.",
-    };
-  }
+  // The org, marked so it is listed as a team before it holds calendars, its
+  // member defaults, and this app's own team (core#4890), open (declined, or
+  // an older node: a legacy org).
+  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  return {
+    groupId: made.orgId,
+    warning: made.capabilitiesError
+      ? "The team was created, but people you invite will not be able to create calendars or invite others yet."
+      : null,
+  };
+}
+
+/** The app's name where an owner or admin is told who may add it, and in invite notes. */
+export const PRODUCT_NAME = "Mero Calendar";
+
+/** Where no passkey was handed over: asked for only to add Mero Calendar's team to an org. */
+const noPasskey = (): PasskeyProvider => {
+  throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
+};
+
+/**
+ * Leaves the team (`leaveApp`, a passkey step-up). In an org that keeps its
+ * apps apart that is Mero Calendar only, with `lastApp` set when it was the
+ * caller's last app there (offer {@link leaveTeamOrg}); elsewhere the org.
+ */
+export function leaveTeam(
+  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "removeTeamMember" | "removeMember" | "session">,
+  org: string,
+  source: AppSource | null,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<LeftApp> {
+  return leaveApp(client, org, source, passkey, self ? { self } : {});
+}
+
+/** Leaves the organization altogether, every app in it. A passkey step-up. */
+export function leaveTeamOrg(
+  client: Pick<CalimeroClient, "removeMember" | "session">,
+  org: string,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<void> {
+  return leaveOrg(client, org, passkey, self);
+}
+
+/**
+ * Removes `account` from the team (`removeFromApp`, a passkey step-up): in an
+ * org that keeps its apps apart, out of Mero Calendar only, never out of the
+ * org; elsewhere out of the org, as before.
+ */
+export function removeTeamMember(
+  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  org: string,
+  source: AppSource | null,
+  account: string,
+  passkey: () => PasskeyProvider,
+): Promise<"app" | "org"> {
+  return removeFromApp(client, org, source, account, passkey);
 }
 
 /** Whether a role may delete the team (its owner) rather than leave it. */
@@ -122,14 +188,19 @@ export async function listCalendars(
 /** The calendar created in an org the account connects to this app ("Connect to an existing organization"). */
 export const CONNECTED_CALENDAR_NAME = "Calendar";
 
-/** A new calendar in `org`. Answers the instance id. */
-export function createCalendar(
-  client: Pick<CalimeroClient, "createApp">,
+/**
+ * A new calendar in `org`, on this app's team (`orgInstanceOptions`: made
+ * first, by an owner or admin, in an org whose other apps have teams;
+ * organization access in a legacy org). Answers the instance id.
+ */
+export async function createCalendar(
+  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
   source: AppSource,
   org: string,
   name: string,
+  passkey: () => PasskeyProvider = noPasskey,
 ): Promise<string> {
-  return client.createApp(name, source, { org });
+  return client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
 }
 
 // ── members ──────────────────────────────────────────────────────────────────
@@ -141,10 +212,19 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> its display name in the org, where one is set. */
   names: Map<string, string>;
+  /** Who has Mero Calendar in the org, in org order: its app team, else the org (no guest once it has app teams). */
+  people: string[];
+  /** The org keeps its apps apart and Mero Calendar has its team: invites, Remove and Leave are its only. */
+  appOnly: boolean;
 }
 
-export async function readOrg(client: Pick<CalimeroClient, "getOrg">, org: string): Promise<OrgMembers> {
+export async function readOrg(
+  client: Pick<CalimeroClient, "getOrg">,
+  org: string,
+  source: AppSource | null = null,
+): Promise<OrgMembers> {
   const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
   const names = new Map<string, string>();
@@ -156,6 +236,8 @@ export async function readOrg(client: Pick<CalimeroClient, "getOrg">, org: strin
     name: typeof o.name === "string" ? o.name : "",
     roles: new Map(Object.entries(members)),
     names,
+    people: appPeople(o as AppOrgView, pkg),
+    appOnly: isAppOnly(o as AppOrgView, pkg),
   };
 }
 
@@ -174,13 +256,18 @@ export function setMyTeamName(
 
 // ── invitations ──────────────────────────────────────────────────────────────
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
+/**
+ * An invitation into `org` as a member, approved with the inviter's passkey
+ * (412 step-up), naming this app's team (`appInvite`): `appOnly` when it gives
+ * Mero Calendar only (an org that keeps its apps apart). Org-wide in a legacy org.
+ */
 export function inviteToken(
-  client: Pick<CalimeroClient, "invite">,
+  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
   org: string,
   passkey: PasskeyProvider,
-): Promise<string> {
-  return client.invite(org, "member", passkey);
+  source: AppSource | null = null,
+): Promise<AppInviteToken> {
+  return appInvite(client, org, source, passkey);
 }
 
 /** The landing page's own paths: a link to one of them names no destination. */

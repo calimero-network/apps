@@ -95,7 +95,7 @@ export default function CallPage() {
   useEffect(() => {
     if (!conn || !namespaceId) return;
     let cancelled = false;
-    void streamInfo(conn.client, namespaceId)
+    void streamInfo(conn.client, namespaceId, conn.source)
       .then((info) => {
         if (!cancelled) setStreamNames(info.names);
       })

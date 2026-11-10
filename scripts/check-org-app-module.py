@@ -61,13 +61,12 @@ CONVERTED = {
     "mero-design",
     "mero-sheets",
     "mero-sign",
-}
-
-NOT_CONVERTED_YET = {
-    "mero-calendar",
     "mero-stream",
     "mero-updates",
+    "mero-calendar",
 }
+
+NOT_CONVERTED_YET: set[str] = set()
 
 NOT_ORG_APPS = {
     "mero-home": "Calimero Home is the portal that manages an org's app teams, invites and people itself",

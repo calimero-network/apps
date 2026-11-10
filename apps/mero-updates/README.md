@@ -159,6 +159,30 @@ write rule v1 kept in storage is a check in the method, against the caller:
   (`UpdatePublished { id }`, `Commented { postId, id }`…), and the screens re-read on each, so a
   guest learns nothing from one that a read would not show.
 
+
+## Mero Updates's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Updates reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Updates's team at once, **open**
+  (`standalone`: everyone in the org has the app). New audiences use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Updates only (the dialog says so) and only its people are shown.
+  **Leave** then leaves Mero Updates only, and offers to leave the
+  organization too when it was your last app there; in open and legacy orgs
+  Leave is leaving the org, as before. Updates has no member Remove.
+- Adding Mero Updates to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Roadmap
 
 In rough priority order:

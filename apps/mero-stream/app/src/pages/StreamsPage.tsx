@@ -10,7 +10,7 @@ import {
   createRoom,
   createStream,
   inviteLink,
-  inviteToken,
+  appInviteToken,
   listStreams,
   publishMyName,
   type StreamRow,
@@ -59,7 +59,7 @@ export default function StreamsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; link: string } | null>(
+  const [invite, setInvite] = useState<{ id: string; link: string; appOnly?: boolean } | null>(
     null,
   );
 
@@ -144,7 +144,7 @@ export default function StreamsPage() {
     async (org: OtherOrg) => {
       if (!conn) return;
       try {
-        await createRoom(conn.client, conn.source, org.orgId, CONNECTED_ROOM_NAME);
+        await createRoom(conn.client, conn.source, org.orgId, CONNECTED_ROOM_NAME, conn.passkey);
       } finally {
         conn.after();
       }
@@ -159,11 +159,12 @@ export default function StreamsPage() {
       if (!conn) return;
       void run(`invite:${row.orgId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
-        const token = await inviteToken(conn.client, row.orgId, conn.passkey());
+        const { token, appOnly } = await appInviteToken(conn.client, row.orgId, conn.passkey(), conn.source);
         conn.after();
         setInvite({
           id: row.orgId,
           link: inviteLink(token, { stream: row.orgId, name: row.name }),
+          appOnly,
         });
         showToast(`Invite ready for “${row.name}”.`);
       });
@@ -252,6 +253,7 @@ export default function StreamsPage() {
         <InviteModal
           open={!!invite}
           link={invite?.link ?? ""}
+          appOnly={invite?.appOnly === true}
           scope={`Whole stream · ${
             streams.find((n) => n.orgId === invite?.id)?.name ?? "stream"
           }`}

@@ -7,9 +7,16 @@ import {
 } from "@calimero-network/mero-js";
 import {
   SPENT_INVITE_COPY,
+  appInvite,
+  appPeople,
+  createAppOrg,
   createInviteStore,
-  markOrgFor,
+  isAppOnly,
+  orgInstanceOptions,
   orgsWithApp,
+  sourcePackage,
+  type AppInviteToken,
+  type AppOrgView,
   inviteLink as sharedInviteLink,
   isSpentInvite,
   type AppSource,
@@ -73,9 +80,17 @@ function orgsOf(me: Record<string, unknown>): MeOrg[] {
   );
 }
 
-function memberCount(info: Record<string, unknown>): number {
-  const members = info.members;
-  return members && typeof members === "object" ? Object.keys(members).length : 0;
+/** The app's name where an owner or admin is told who may add it, and in invite notes. */
+export const PRODUCT_NAME = "Mero Stream";
+
+/** Where no passkey was handed over: asked for only to add Mero Stream's team to an org. */
+const noPasskey = (): PasskeyProvider => {
+  throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
+};
+
+/** How many have Mero Stream in the org: its app team, else the org (no guest once it has app teams). */
+function memberCount(info: Record<string, unknown>, source: AppSource): number {
+  return appPeople(info as AppOrgView, sourcePackage(source)).length;
 }
 
 /**
@@ -98,7 +113,7 @@ export async function listStreams(
       roomCount: rooms.get(o.orgId) ?? 0,
       memberCount: await client
         .getOrg(o.orgId)
-        .then(memberCount)
+        .then((info) => memberCount(info as Record<string, unknown>, source))
         .catch(() => 0),
     })),
   );
@@ -123,24 +138,21 @@ export interface CreatedStream {
  * rooms (the org's default capabilities, a passkey step-up).
  */
 export async function createStream(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedStream> {
-  const orgId = await client.createOrg(name);
-  // Listed as a stream before it holds a room.
-  if (source) await markOrgFor(client, orgId, source);
-  try {
-    await client.setCapabilities(orgId, MEMBER_DEFAULTS, passkey());
-    return { orgId, warning: null };
-  } catch {
-    return {
-      orgId,
-      warning:
-        "The stream was created, but people you invite cannot create rooms yet. Turn on \u201cMembers can create rooms\u201d in the stream to let them.",
-    };
-  }
+  // The org, marked so it is listed as a stream before it holds a room, its
+  // member defaults, and Mero Stream's own team (core#4890), open (declined,
+  // or an older node: a legacy org).
+  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  return {
+    orgId: made.orgId,
+    warning: made.capabilitiesError
+      ? "The stream was created, but people you invite cannot create rooms yet. Turn on \u201cMembers can create rooms\u201d in the stream to let them."
+      : null,
+  };
 }
 
 /** Whether the org's default lets a plain member create rooms. */
@@ -169,7 +181,10 @@ export function setMembersCreateRooms(
 /** A stream's name, its members, and the display names they set for it. */
 export interface StreamInfo {
   name: string;
+  /** Who has Mero Stream in the org: its app team, else every member (no guest once it has app teams). */
   members: string[];
+  /** Set when the org keeps its apps apart and Mero Stream has its team: an invite gives Mero Stream only. */
+  appOnly?: true;
   names: Record<string, string>;
   /** Each member's role (`owner`, `admin`, `member`, `guest`). */
   roles: Record<string, string>;
@@ -180,9 +195,11 @@ export interface StreamInfo {
 export async function streamInfo(
   client: Pick<CalimeroClient, "getOrg">,
   org: string,
+  source: AppSource | null = null,
 ): Promise<StreamInfo> {
   const info = await client.getOrg(org);
-  const members = info.members && typeof info.members === "object" ? Object.keys(info.members) : [];
+  const pkg = sourcePackage(source);
+  const members = appPeople(info as AppOrgView, pkg);
   const names: Record<string, string> = {};
   const meta = info.memberMetadata;
   if (meta && typeof meta === "object") {
@@ -200,7 +217,14 @@ export async function streamInfo(
   const memberDefaults =
     typeof info.defaultCapabilities === "number" ? info.defaultCapabilities : DEFAULT_ORG_CAPABILITIES;
   const name = typeof info.name === "string" ? info.name.trim() : "";
-  return { name: name || `Stream ${org.slice(0, 6)}`, members, names, roles, memberDefaults };
+  return {
+    name: name || `Stream ${org.slice(0, 6)}`,
+    members,
+    ...(isAppOnly(info as AppOrgView, pkg) ? { appOnly: true as const } : {}),
+    names,
+    roles,
+    memberDefaults,
+  };
 }
 
 /**
@@ -230,25 +254,47 @@ export async function listRooms(client: Lister, source: AppSource, org: string):
 /** The room created in an org the account connects to Mero Stream ("Connect to an existing organization"). */
 export const CONNECTED_ROOM_NAME = "General";
 
-/** A new room in `org`: an app instance whose `init` names the stream. */
-export function createRoom(
-  client: Pick<CalimeroClient, "createApp">,
+/**
+ * A new room in `org`: an app instance whose `init` names the stream, on
+ * Mero Stream's team (`orgInstanceOptions`: made first, by an owner or admin,
+ * in an org whose other apps have teams; organization access in a legacy org).
+ */
+export async function createRoom(
+  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
   source: AppSource,
   org: string,
   name: string,
+  passkey: () => PasskeyProvider = noPasskey,
 ): Promise<string> {
-  return client.createApp(name, source, { org, initArgs: { name } });
+  const options = await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME);
+  return client.createApp(name, source, { ...options, initArgs: { name } });
 }
 
 // ── Invitations ──────────────────────────────────────────────────────────────
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: Pick<CalimeroClient, "invite">,
+/**
+ * An invitation into `org` as a member, approved with the inviter's passkey
+ * (412 step-up), naming Mero Stream's team (`appInvite`): `appOnly` when it
+ * gives Mero Stream only (an org that keeps its apps apart). Org-wide in a
+ * legacy org.
+ */
+export function appInviteToken(
+  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
   org: string,
   passkey: PasskeyProvider,
+  source: AppSource | null = null,
+): Promise<AppInviteToken> {
+  return appInvite(client, org, source, passkey);
+}
+
+/** {@link appInviteToken}'s token alone. */
+export async function inviteToken(
+  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  org: string,
+  passkey: PasskeyProvider,
+  source: AppSource | null = null,
 ): Promise<string> {
-  return client.invite(org, "member", passkey);
+  return (await appInviteToken(client, org, passkey, source)).token;
 }
 
 /**
