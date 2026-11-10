@@ -108,6 +108,16 @@ export function appLabel(pkg: string): string {
   return base32(sha256(new TextEncoder().encode(LABEL_DOMAIN + pkg)));
 }
 
+/**
+ * The DNS label of `pkg`'s origin on cluster `cluster` (merod's `--cluster`),
+ * exactly as core's `app_host::cluster_label`: the same site and origin as
+ * {@link appLabel}'s on that cluster, under a name Calimero Cloud's resolver
+ * routes to that cluster alone.
+ */
+export function appClusterLabel(cluster: string, pkg: string): string {
+  return base32(sha256(new TextEncoder().encode(`calimero.app-host.cluster.v1\0${cluster}\0${pkg}`)));
+}
+
 /** `https://{label}.{appsDomain}/`: where Calimero Cloud serves `pkg`'s frontend. */
 export function appUrl(pkg: string, appsDomain: string = APPS_DOMAIN): string {
   const domain = appsDomain.trim().replace(/^\.+|\.+$/g, "").toLowerCase();

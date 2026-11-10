@@ -1,6 +1,8 @@
+import { ManageInHomeLink } from "@calimero-apps/passkey";
+
 import { describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
-import { clearActiveForum } from "../lib/session";
+import { clearActiveForum, getActiveNamespaceId } from "../lib/session";
 import { AccountChip } from "./chrome";
 
 /**
@@ -25,6 +27,8 @@ export default function SessionMenu({ name }: { name?: string } = {}) {
       hostTestId="session-node"
       onLogout={signOut}
       logoutTestId="logout"
-    />
+    >
+      <ManageInHomeLink session={api.session} org={getActiveNamespaceId()} className="x-homeLink" />
+    </AccountChip>
   );
 }

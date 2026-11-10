@@ -104,3 +104,12 @@
   outline: none;
   box-shadow: var(--ring);
 }
+
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`). */
+.homeLink {
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--accent-ink, var(--text));
+  text-decoration: none;
+}
+.homeLink:hover { text-decoration: underline; }
