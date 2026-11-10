@@ -7,36 +7,37 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
-import { nodeBasename } from "@calimero-apps/node-served";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
+import { appSource, type InviteStore, type KeyValueStorage, type PendingInvite } from "@calimero-apps/connect";
+import { AppListing, JoinInvitation, PasskeySignIn, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { PACKAGE, messageOf } from "./chess";
+import { PACKAGE } from "./chess";
 import { Lobby } from "./Lobby";
 import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
   LISTING,
+  ONBOARDING,
   defaultDeps,
   describeTarget,
+  useInviteState,
   useSessionApi,
   type SessionApi,
   type SessionDeps,
 } from "./session";
 import { TablePage, type OpenTable } from "./TablePage";
 import {
-  SPENT_INVITE,
+  basename,
   deferInvite,
-  dropInvite,
   inviteDeferred,
-  inviteRefused,
-  pendingInvite,
+  invitedTable,
+  inviter,
+  invites as appInvites,
+  listTables,
   selectionKey,
+  tableIn,
 } from "./tables";
 import { shortAccount } from "./useSeatNames";
-
-const basename = () => nodeBasename(new URL(window.location.href), "/");
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -48,10 +49,11 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
  * passkey sign-in on `/play`, worded as the invitation, with no landing hero
  * in front of it. Its "Not now" comes back here, keeping the token.
  */
-function AppLandingPage({ storage }: { storage: KeyValueStorage }) {
+function AppLandingPage() {
   const { session } = useSessionApi();
+  const pending = usePendingInvite(useInviteState().invites);
   const navigate = useNavigate();
-  if (session.status === "signed-out" && !inviteDeferred() && pendingInvite(storage)) {
+  if (session.status === "signed-out" && !inviteDeferred() && pending) {
     return <Navigate to="/play" replace />;
   }
   return (
@@ -184,78 +186,83 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session
-  // exists, and the table it names is opened.
-  //
-  // ⚠️ Not by someone who already reaches that table: redeeming spends the
-  // link's single use, so the owner trying their own link used to leave the
-  // opponent it was meant for with "unknown invite". The table is opened and
-  // the token dropped unspent.
+  // An invitation is asked about, never redeemed on its own: "Join {inviter}'s
+  // game as {account}?", with Join and Not now. Joining opens the table the
+  // link named (else one in the org it joined). A sign-up from the invitation
+  // page joined with the invite already (`SessionProvider` sets `landing`), and
+  // its table opens straight away.
+  const { invites, landing, setLanding } = useInviteState();
+  const pending = usePendingInvite(invites);
+  // The invitation a signed-in account is asked about stays on screen until it
+  // closes: `JoinInvitation` drops the token before it says "already in" or
+  // "used up", and the store would take the question away with it.
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
+  // The token checked against the tables this account reaches already.
+  const [checked, setChecked] = useState<string | null>(null);
   useEffect(() => {
-    if (!client) return;
-    const invite = pendingInvite(storage);
-    if (!invite) return;
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
+  const invite = client ? (pending ?? asked) : null;
+
+  // ⚠️ Not asked of someone who already reaches the table the link names:
+  // redeeming spends the link's single use, so the owner trying their own link
+  // used to leave the opponent it was meant for with "unknown invite". The
+  // table opens and the token is dropped unspent.
+  const pendingToken = pending?.token ?? null;
+  const pendingTable = invitedTable(pending);
+  useEffect(() => {
+    if (!client || !pendingToken) return;
+    if (!pendingTable) {
+      setChecked(pendingToken);
+      return;
+    }
     let live = true;
-    const redeem = () =>
-      client
-        .redeemInvite(invite.token)
-        .then(async () => {
-          dropInvite(storage);
-          if (!live) return;
-          setLobbyKey((k) => k + 1);
-          const table = invite.table
-            ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.table)
-            : undefined;
-          if (!live) return;
-          if (table) {
-            open({ appId: table.appId, name: table.name, org: table.org });
-            setNotice(null);
-          } else {
-            setNotice("Invitation accepted: the table is in your list.");
-          }
-        })
-        .catch((e: unknown) => {
-          // A refusal (unknown, used, expired, revoked) can never succeed:
-          // drop it and say so plainly. Anything else (the cluster
-          // unreachable) is kept for the next load.
-          if (inviteRefused(e)) {
-            dropInvite(storage);
-            if (live) setNotice(SPENT_INVITE);
-          } else if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
-        });
-    const reached = invite.table
-      ? client.listApps({}).then(
-          (apps) => apps.find((a) => a.appId === invite.table) ?? null,
-          () => null,
-        )
-      : Promise.resolve(null);
-    // A sign-up from the invitation page joined with the invite already.
-    const joined = api.joinedInvite === invite.token;
-    void reached
+    void client
+      .listApps({})
+      .then(
+        (apps) => apps.find((a) => a.appId === pendingTable) ?? null,
+        () => null,
+      )
       .then((table) => {
-        if (!table && !joined) return redeem();
-        dropInvite(storage);
         if (!live) return;
-        setLobbyKey((k) => k + 1);
-        if (!table) {
-          setNotice("Invitation accepted: the table is in your list.");
-          return;
+        if (table) {
+          invites.drop();
+          setAsked(null);
+          open({ appId: table.appId, name: table.name, org: table.org });
+          setNotice(
+            "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
+          );
         }
-        open({ appId: table.appId, name: table.name, org: table.org });
-        setNotice(
-          joined
-            ? null
-            : "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
-        );
+        setChecked(pendingToken);
       })
       .finally(after);
     return () => {
       live = false;
     };
-    // `api.joinedInvite` is set before the session is signed in, so it is
-    // current when `client` changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, storage, after, open]);
+  }, [client, pendingToken, pendingTable, invites, open, after]);
+
+  // Where an invite landed: the table its link named, else one in the org it
+  // joined (or the account was already in), once there is a client to list
+  // them with.
+  useEffect(() => {
+    if (!client || !landing) return;
+    setLanding(null);
+    const { org, table: named } = landing;
+    void (async () => {
+      setLobbyKey((k) => k + 1);
+      const remembered = key ? readSelection(storage, key)?.appId : null;
+      const found = tableIn(await listTables(client, source).catch(() => []), org, named, remembered);
+      after();
+      if (found) {
+        open({ appId: found.appId, name: found.name, org: found.org });
+        setNotice(null);
+        return;
+      }
+      open(null);
+      setNotice("Invitation accepted: the table is in your list.");
+    })();
+  }, [client, landing, setLanding, source, key, storage, after, open]);
 
   if (session.status === "connecting") {
     return (
@@ -292,10 +299,43 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
       <ConnectCard
         api={api}
         where={describeTarget(session.target)}
-        invited={pendingInvite(storage) !== null}
+        invited={pending !== null}
         onNotNow={() => {
           deferInvite();
           navigate("/");
+        }}
+      />
+    );
+  }
+
+  if (invite) {
+    if (checked !== invite.token) {
+      return (
+        <div className="loading-state">
+          <span className="spinner" aria-hidden="true" />
+          <p className="empty">Reading the invitation…</p>
+        </div>
+      );
+    }
+    const from = inviter(invite);
+    return (
+      <JoinInvitation
+        {...ONBOARDING}
+        key={invite.token}
+        joining={from ? `${from}'s game` : "the game"}
+        account={shortAccount(session.accountId)}
+        client={session.client}
+        token={invite.token}
+        org={invite.org}
+        drop={invites.drop}
+        after={after}
+        onJoined={({ org }) => {
+          setAsked(null);
+          setLanding({ org, table: invitedTable(invite) });
+        }}
+        onClose={({ member }) => {
+          setAsked(null);
+          if (member) setLanding({ org: member, table: invitedTable(invite) });
         }}
       />
     );
@@ -368,9 +408,12 @@ function AppShell({ children }: { children: ReactNode }) {
 export function App({
   deps = defaultDeps,
   storage = globalThis.localStorage,
+  invites = appInvites,
 }: {
   deps?: SessionDeps;
   storage?: KeyValueStorage;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
 }) {
   // Memoised: a new object every render would reconnect every render.
   const sessionDeps = useMemo(
@@ -378,7 +421,7 @@ export function App({
     [deps, storage],
   );
   return (
-    <SessionProvider deps={sessionDeps}>
+    <SessionProvider deps={sessionDeps} invites={invites}>
       <BrowserRouter basename={basename()}>
         <Routes>
           {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
@@ -391,10 +434,10 @@ export function App({
               element={
                 path === "/" ? (
                   <RedirectIfAuthed>
-                    <AppLandingPage storage={storage} />
+                    <AppLandingPage />
                   </RedirectIfAuthed>
                 ) : (
-                  <AppLandingPage storage={storage} />
+                  <AppLandingPage />
                 )
               }
             />

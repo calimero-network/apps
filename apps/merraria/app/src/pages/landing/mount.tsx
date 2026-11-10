@@ -16,7 +16,7 @@ import { createRoot } from 'react-dom/client';
 
 import { nodeBasename } from '@calimero-apps/node-served';
 
-import { pendingInvite } from '../../net/worlds';
+import { invites } from '../../net/worlds';
 import LandingPage from './LandingPage';
 
 const SEEN = 'cal-lp-seen';
@@ -79,7 +79,7 @@ export function showLandingOnce(): Promise<boolean> {
   const url = new URL(window.location.href);
   // An invitation link goes straight to the launcher. main.ts takes `?invite=`
   // off the address bar first thing, so ask the stored capture as well.
-  if (url.searchParams.has('invite') || pendingInvite()) return Promise.resolve(false);
+  if (url.searchParams.has('invite') || invites.token()) return Promise.resolve(false);
   try {
     if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve(false);
   } catch {

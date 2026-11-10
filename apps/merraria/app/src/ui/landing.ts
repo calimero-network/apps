@@ -6,16 +6,23 @@
 //  2. signed in  → pick one of the worlds this account reaches (the world
 //                  last played renders first, one click to enter) or create
 //                  one; invite friends into the world last played.
-// An invitation link opened while signed out waits in storage and is redeemed
-// here once the person has signed in (net/worlds.ts).
+// An invitation link waits in the shared invite store (net/worlds.ts). Once
+// signed in, the person is asked "Join {inviter}'s game as {account}?" (Join or
+// Not now), and Join enters the invited world; nothing is redeemed before that.
 
 import type { SignUpPolicy } from "@calimero-network/mero-js";
 import {
   describeError,
+  describeInviteRefusal,
+  describeRedeemFailure,
+  inviteRefusal,
+  isSpentInvite,
   readSignUpPolicy,
   signUpAccess,
   signUpNotice,
   type AppSource,
+  type InviteStore,
+  type PendingInvite,
 } from "@calimero-apps/connect";
 import {
   describeSignUpNotFinished,
@@ -35,17 +42,17 @@ import {
 
 import {
   CURRENT_WORLD,
-  INVITE_REFUSED,
-  alreadyMember,
+  alreadyInInvitedWorld,
   createWorld,
-  dropInvite,
-  inviteLink,
-  inviteRefused,
+  invitedWorld,
+  inviter,
+  invites as gameInvites,
   inviteToken,
   listWorlds,
-  pendingInvite,
-  pendingInviteOrg,
   readCurrentWorld,
+  redeemPendingInvite,
+  worldIn,
+  worldInviteLink,
   writeCurrentWorld,
   type World,
 } from "../net/worlds";
@@ -203,6 +210,10 @@ const css = `
 .mtl-modal-close:hover { color: #fff; }
 .mtl-account { font-size: 12px; color: #8fe0a0; margin: -8px 0 4px; }
 .mtl-account code { color: #cdd9e5; }
+.mtl-ask { text-align: center; }
+.mtl-ask h3 { margin: 4px 0 6px; }
+.mtl-ask-actions { display: flex; gap: 8px; }
+.mtl-ask-actions .mtl-btn { flex: 1; }
 .mtl-warn { color: #ffd37a; font-size: 12px; margin-top: 10px; line-height: 1.5; }
 .mtl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
   flex-wrap: wrap; margin-top: 8px; }
@@ -267,13 +278,15 @@ const SOCIALS: { label: string; href: string; icon: string }[] = [
 export class Landing {
   private root: HTMLElement;
   private anim: WorldAnim | null = null;
-  /** A sign-up from this card carried the invite and joined its world. */
-  private joinedAtSignUp = false;
+  /** A sign-up from this card carried the invite and joined: the org it joined and the world its link named. */
+  private joinedAtSignUp: { org: string | null; world: string | null } | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly conn: Connection,
     private readonly source: AppSource,
+    /** The pending-invite store; the game's own unless a test passes one. */
+    private readonly invites: InviteStore = gameInvites,
   ) {
     const style = document.createElement("style");
     style.textContent = css;
@@ -290,6 +303,7 @@ export class Landing {
    * of that — repeating it would be two landing pages in a row.
    */
   show(defaults: Defaults, opts: LandingOptions = {}): Promise<LaunchChoice> {
+    this.sessionChanged();
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
@@ -298,6 +312,16 @@ export class Landing {
         resolve(choice);
       });
     });
+  }
+
+  /**
+   * The pending invite follows the session, as `usePasskeySession({ invites })`
+   * keeps it in the React apps: kept under this cluster's key, held for the
+   * account that signs in (and dropped when another one does).
+   */
+  private sessionChanged(): void {
+    this.invites.bind(this.conn.target);
+    if (this.conn.accountId) this.invites.signedIn(this.conn.accountId);
   }
 
   /** The world last played by this account on this target. */
@@ -396,7 +420,8 @@ export class Landing {
   // and a sign-up carries the invite, joining the world in that step.
   private renderSignIn(defaults: Defaults, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
-    const invited = pendingInvite() !== null;
+    // An invite the node refuses at sign-up is dropped: the card stops offering it.
+    let invited = this.invites.token() !== null;
     el.innerHTML = `
       <h3>${invited ? "You're invited" : "Play now"}</h3>
       ${
@@ -446,7 +471,7 @@ export class Landing {
     // invite-only cluster gets no "Create an account", and says why.
     let policy: SignUpPolicy | null | undefined;
     let failure: CeremonyFailure | null = null;
-    const access = () => signUpAccess(policy, pendingInvite() !== null);
+    const access = () => signUpAccess(policy, this.invites.token() !== null);
     // Which action leads: an invited player this browser knows no account for
     // (or whose sign-in just found none) creates one; a sign-in the cluster
     // has no account for turns any player to creating one, in place.
@@ -504,8 +529,26 @@ export class Landing {
       flow = signUp;
       try {
         await run();
+        this.sessionChanged();
         this.renderPlayCard(defaults, done);
       } catch (e) {
+        // A sign-up refused because of its invite (unknown, used up,
+        // expired, its org gone): the token is dropped and never sent again,
+        // and the card says why, offering the account without it where the
+        // cluster takes one.
+        const refused = during === "sign-up" && invited ? inviteRefusal(e) : null;
+        if (refused) {
+          invited = false;
+          this.invites.drop();
+          el.querySelector("[data-testid=invite-waiting]")?.remove();
+          el.querySelector("[data-testid=invite-not-now]")?.remove();
+          failure = null;
+          buttons.forEach((b) => (b.disabled = false));
+          layout();
+          const canSignUp = signUpNotice(access()) === null;
+          errEl.textContent = `${describeInviteRefusal(refused)}${canSignUp ? " You can still create your account without it." : ""}`;
+          return;
+        }
         // A dismissed prompt (or a cancel at Approve) is quiet. An invited
         // player whose sign-in found no account is told so by the switch.
         failure = { error: e, during };
@@ -525,11 +568,16 @@ export class Landing {
       void ceremony(
         "sign-up",
         async () => {
-          const made = await this.conn.signUp(this.readName(), { invite: pendingInvite(), policy }, signUp.passkey);
-          // Joined at sign-up: nothing is left to redeem.
+          const pending = this.invites.pending();
+          const made = await this.conn.signUp(
+            this.readName(),
+            { invite: invited ? (pending?.token ?? null) : null, policy },
+            signUp.passkey,
+          );
+          // Joined at sign-up: nothing is left to ask or redeem.
           if (made.joined) {
-            dropInvite();
-            this.joinedAtSignUp = true;
+            this.invites.drop();
+            this.joinedAtSignUp = { org: made.joined.org ?? pending?.org ?? null, world: invitedWorld(pending) };
           }
         },
         signUp,
@@ -560,6 +608,8 @@ export class Landing {
     const noticeEl = el.querySelector<HTMLElement>("[data-testid=notice]")!;
 
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
+      // The next person on this browser is not asked to join.
+      this.invites.signedOut();
       void this.conn.signOut().then(() => this.renderPlayCard(defaults, done));
     });
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
@@ -574,7 +624,10 @@ export class Landing {
         inviteBtn.disabled = true;
         inviteBtn.textContent = "Creating invite…";
         try {
-          const link = inviteLink(await inviteToken(this.conn.client, org, this.conn.approver()), window.location, org);
+          const token = await inviteToken(this.conn.client, org, this.conn.approver());
+          const name = this.readName();
+          const from = name === "Player" ? shortAccount(this.conn.accountId ?? "") : name;
+          const link = worldInviteLink(token, org, { world: current.appId, from });
           await navigator.clipboard.writeText(link);
           inviteBtn.textContent = "Single-use invite link copied!";
         } catch (e) {
@@ -590,48 +643,52 @@ export class Landing {
       });
     }
 
+    const enter = (w: World) => {
+      this.setCurrent(w);
+      done({ name: this.readName(), world: w });
+    };
+    const joined = this.joinedAtSignUp;
+    this.joinedAtSignUp = null;
+    // An invitation (or a join at sign-up) opens its world, so the world last
+    // played does not render first then.
+    const inviting = joined !== null || this.invites.pending() !== null;
+
     // the world last played renders synchronously — entering it must never
     // wait on the world-list fetch
-    if (current) listEl.appendChild(this.worldCard(current, true, -1, done));
+    if (current && !inviting) listEl.appendChild(this.worldCard(current, true, -1, done));
     const loading = document.createElement("div");
     loading.className = "mtl-note";
     loading.textContent = "Loading worlds…";
     listEl.appendChild(loading);
 
     void (async () => {
-      // An invitation opened before signing in is redeemed now: the invited
-      // world then shows up in the list below. A player already in the world's
-      // organization (the inviter opening their own link) is not made to
-      // redeem it: that would spend its single use, and the player it was
-      // meant for could no longer join.
-      const token = pendingInvite();
-      if (this.joinedAtSignUp) {
-        this.joinedAtSignUp = false;
+      // A sign-up that carried the invite joined in that step: enter the world
+      // its link named, else the one in the org it joined.
+      if (joined) {
+        const world = worldIn(await listWorlds(this.conn.client, this.source).catch(() => []), joined.org, joined.world);
+        this.conn.sync();
+        if (world) return enter(world);
         noticeEl.textContent = "Invitation accepted: the world is in your list.";
         noticeEl.hidden = false;
-      } else if (token) {
-        try {
-          if (await alreadyMember(this.conn.client, pendingInviteOrg())) {
-            dropInvite();
-            noticeEl.textContent = "You're already in this world: it is in your list.";
-          } else {
-            await this.conn.client.redeemInvite(token);
-            dropInvite();
-            noticeEl.textContent = "Invitation accepted: the world is in your list.";
+      }
+      // An invitation: asked, never redeemed on its own. A player already in
+      // the invited world (the inviter opening their own link) enters it, and
+      // the link stays unspent for the player it was meant for.
+      if (this.invites.pending()) {
+        const mine = await alreadyInInvitedWorld(this.conn.client, this.source, this.invites);
+        this.conn.sync();
+        if (mine) return enter(mine);
+        const pending = this.invites.pending();
+        if (pending) {
+          const answer = await this.askToJoin(listEl, pending);
+          if (answer.world) return enter(answer.world);
+          if (answer.note) {
+            noticeEl.textContent = answer.note;
+            noticeEl.hidden = false;
           }
-        } catch (e) {
-          // A refusal (unknown, used, expired, revoked) can never succeed:
-          // drop it. Anything else (the cluster unreachable) is tried on the
-          // next load.
-          if (inviteRefused(e)) {
-            dropInvite();
-            noticeEl.textContent = INVITE_REFUSED;
-          } else {
-            noticeEl.textContent = `The invitation could not be accepted: ${describeError(e)}`;
-          }
-        } finally {
-          noticeEl.hidden = false;
-          this.conn.sync();
+          listEl.innerHTML = "";
+          if (current) listEl.appendChild(this.worldCard(current, true, -1, done));
+          listEl.appendChild(loading);
         }
       }
       try {
@@ -649,6 +706,61 @@ export class Landing {
         this.conn.sync();
       }
     })();
+  }
+
+  /**
+   * "Join {inviter}'s game as {account}?" in place of the world list, until
+   * the player answers. Join redeems the invite: joined, it answers the world
+   * to enter (or a note when the org holds none yet); refused for good, the
+   * token is dropped and the note says so. A lapsed session, a rate limit or
+   * the network keeps the token and the question, to try again. Not now
+   * drops the token and joins nothing.
+   */
+  private askToJoin(listEl: HTMLElement, pending: PendingInvite): Promise<{ world: World | null; note: string }> {
+    const from = inviter(pending);
+    const joining = from ? `${from}'s game` : "the game";
+    listEl.innerHTML = `
+      <div class="mtl-ask" data-testid="invite-confirm">
+        <h3 data-testid="invite-question">Join ${escapeHtml(joining)} as ${escapeHtml(shortAccount(this.conn.accountId ?? ""))}?</h3>
+        <div class="mtl-note">Joining makes you a member of its world's organization: you can enter its worlds and build there.</div>
+        <div class="mtl-error" data-testid="invite-error" role="alert"></div>
+        <div class="mtl-ask-actions">
+          <button class="mtl-btn green" data-testid="invite-join">Join</button>
+          <button class="mtl-btn ghost" data-testid="invite-later">Not now</button>
+        </div>
+      </div>
+    `;
+    const joinBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-join]")!;
+    const laterBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-later]")!;
+    const errEl = listEl.querySelector<HTMLElement>("[data-testid=invite-error]")!;
+    joinBtn.focus();
+    return new Promise((resolve) => {
+      laterBtn.addEventListener("click", () => {
+        this.invites.drop();
+        resolve({ world: null, note: "" });
+      });
+      joinBtn.addEventListener("click", async () => {
+        errEl.textContent = "";
+        joinBtn.disabled = true;
+        laterBtn.disabled = true;
+        joinBtn.textContent = "Joining…";
+        try {
+          const world = await redeemPendingInvite(this.conn.client, this.source, this.invites);
+          resolve({ world, note: world ? "" : "Invitation accepted: the world is in your list." });
+        } catch (e) {
+          if (isSpentInvite(e)) {
+            resolve({ world: null, note: describeRedeemFailure(e) });
+            return;
+          }
+          errEl.textContent = describeRedeemFailure(e);
+          joinBtn.textContent = "Try again";
+          joinBtn.disabled = false;
+          laterBtn.disabled = false;
+        } finally {
+          this.conn.sync();
+        }
+      });
+    });
   }
 
   /** one Minecraft-style world card: blurred terrain thumb, name, Play/Enter, ⋯ menu */

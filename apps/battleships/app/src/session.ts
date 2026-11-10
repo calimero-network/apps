@@ -1,5 +1,8 @@
 import { createContext, useContext } from "react";
+import type { InviteStore, PendingInvite } from "@calimero-apps/connect";
 import {
+  type JoinedAtSignUp,
+  type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
   type ListingProps,
@@ -24,22 +27,64 @@ export const LISTING: ListingProps = {
   dev: import.meta.env.DEV,
 };
 
+/** The app's words and classes for the shared invitation question (`JoinInvitation`). */
+export const ONBOARDING: { appName: string; gives: string; classNames: OnboardingClassNames } = {
+  appName: "Battleships",
+  gives: "you reach its lobby, and can challenge its players.",
+  classNames: {
+    root: "naval-card fade-in",
+    inner: "naval-card-body invitation-body",
+    title: "naval-card-title",
+    text: "mono-sm",
+    error: "lobby-banner-error",
+    actions: "invitation-actions",
+    primary: "btn-deploy",
+    secondary: "btn-ghost",
+  },
+};
+
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token. With `joinAtSignUp`, a sign-up from a
- * page holding one joins its org in the same step; the app sees
- * `api.joinedInvite` and does not redeem it again.
+ * `invites` is the app's pending-invite store: a sign-up from a page holding
+ * one joins its org in the same step, `onJoined` is told which org (and the
+ * whole pending invite, with the lobby its link names), and the hook then
+ * drops it. The hook also binds the store to the cluster, holds the invite for
+ * the account that signs in and drops it on sign-out.
  */
 export function useSession(
   deps: SessionDeps = defaultDeps,
-  invite?: () => string | null,
-  joinAtSignUp = false,
+  invites?: InviteStore,
+  onJoined?: (joined: JoinedAtSignUp, pending: PendingInvite | null) => void,
 ): SessionApi {
   return usePasskeySession(APP, deps, {
     package: PACKAGE,
-    ...(invite ? { invite } : {}),
-    ...(joinAtSignUp ? { onJoinedAtSignUp: () => {} } : {}),
+    ...(invites ? { invites } : {}),
+    ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
   });
+}
+
+/** Where an invitation lands once it is redeemed: its org, and the lobby its link named. */
+export interface InviteLanding {
+  org: string | null;
+  lobby: string | null;
+  /** The account was in the org already: nothing was joined. */
+  member?: boolean;
+}
+
+/** The pending-invite store, and where a join lands, for every screen (`SessionProvider`). */
+export interface InviteState {
+  invites: InviteStore;
+  landing: InviteLanding | null;
+  setLanding: (landing: InviteLanding | null) => void;
+}
+
+export const InviteContext = createContext<InviteState | null>(null);
+
+/** The invite state the app was mounted with. */
+export function useInviteState(): InviteState {
+  const state = useContext(InviteContext);
+  if (!state) throw new Error("useInviteState() outside <SessionProvider>");
+  return state;
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */

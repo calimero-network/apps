@@ -5,7 +5,7 @@ import type { GameSummary, TableView } from "./chess";
 import { InviteCard } from "./InviteCard";
 import { GameCard, Moves, PastGames, PlayerBar, type TableActions } from "./TablePanel";
 import { useAnnounce, useChessTable, usePastGames, type TableConn } from "./useChess";
-import { useSeatNames } from "./useSeatNames";
+import { DEFAULT_NAME, shortAccount, useSeatNames } from "./useSeatNames";
 import { materialFromSquares, piecesFromFen, type PieceColor } from "./utils/board";
 
 /** The table a `TablePage` shows: the instance, its name, and its organization. */
@@ -59,7 +59,15 @@ export function TablePage({
       onDismissError={table.dismissError}
       onSwitchTable={onLeave}
       onMove={(uci) => void table.play(uci)}
-      invite={<InviteCard client={client} table={opened} passkey={passkey} after={after} />}
+      invite={
+        <InviteCard
+          client={client}
+          table={opened}
+          passkey={passkey}
+          after={after}
+          from={inviterLabel(name, client.session?.accountId)}
+        />
+      }
       busy={table.busy}
       name={name}
       onNameChange={names.changeName}
@@ -73,6 +81,13 @@ export function TablePage({
       onRematch={() => void table.rematch()}
     />
   );
+}
+
+/** How an invite names its sender: the name given at the table, else a short account id. */
+function inviterLabel(name: string, accountId: string | undefined): string | null {
+  const given = name.trim();
+  if (given && given !== DEFAULT_NAME) return given;
+  return accountId ? shortAccount(accountId) : null;
 }
 
 export interface TableScreenProps extends TableActions {

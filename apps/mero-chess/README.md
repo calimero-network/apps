@@ -45,7 +45,9 @@ pnpm dev:local mero-chess        # merod local + build + deploy + http://localho
 `pnpm dev:local` prints how to get it when it is missing. In the browser,
 **create an account** (a passkey), press **New table**, take a seat, and
 **Create invite link** for your opponent. A second browser profile with its own
-passkey that opens the link is the other player.
+passkey that opens the link is the other player: signed in, it is asked "Join
+{inviter}'s game as {account}?" and joins only on **Join** (a new account made
+from the invitation page joins in that one step).
 
 **On your own?** Take both chairs. The contract allows one account to hold White
 and Black on purpose: pass-and-play is how chess works when the other person is
@@ -174,8 +176,9 @@ Cloud cluster under `vite build`), signs in with a **passkey**, lists and
 creates **tables** (app instances: v1's contexts) in **organizations** (v1's
 namespaces: "New table" makes both, "Add table" puts another table in one you
 have), invites an opponent with an **org invite link** that also names the
-table (making it is approved with your passkey; opening it after signing in
-redeems it and opens the table), re-reads the table on the table's **event
+table, its org and the inviter (making it is approved with your passkey; the
+shared invite store in `@calimero-apps/connect` keeps the token; a signed-in
+player is asked before it is redeemed, then the table opens), re-reads the table on the table's **event
 stream** (and a 6-second poll for presence), and calls the contract by method
 name through `src/chess.ts`, whose method list a test checks against
 `logic/res/abi.json` and which converts the answers back to the shapes the

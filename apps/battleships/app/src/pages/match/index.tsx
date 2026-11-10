@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appSource, targetKey } from '@calimero-apps/connect';
-import { AppListing } from '@calimero-apps/passkey';
+import { AppListing, JoinInvitation, usePendingInvite } from '@calimero-apps/passkey';
+import type { PendingInvite } from '@calimero-apps/connect';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -24,8 +25,8 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
-import { INVITE_REFUSED, alreadyMember, dropInvite, inviteRefused, pendingInvite } from '../../lobbies';
-import { LISTING, describeTarget, useSessionApi } from '../../session';
+import { invitedLobby, inviter, listLobbies } from '../../lobbies';
+import { LISTING, ONBOARDING, describeTarget, useInviteState, useSessionApi } from '../../session';
 import { SHIP_TARGETS, validateFleetPayload } from './config';
 
 import NavBar from '../../components/NavBar';
@@ -35,7 +36,7 @@ import ConnectCard from '../../components/ConnectCard';
 import { useToast } from '../../contexts/ToastContext';
 import { forgetLastLobby, pickResumeLobby, readLastLobby, rememberLobby } from '../../utils/lastLobby';
 import LobbyView from '../../components/LobbyView';
-import { playerName } from '../../utils/playerName';
+import { formatKey, playerName } from '../../utils/playerName';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
 import PlacementGrid from '../../components/PlacementGrid';
@@ -177,57 +178,45 @@ export default function MatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render; only the fields listed matter
   }, [view, location.search, lobby.selectedLobby, lobby.lobbies, lobby.lobbyContextId]);
 
-  // An invitation link opened before signing in is redeemed once a session
-  // exists (it joins the lobby's organization), and the lobby it names opened.
-  // A player already in that organization (the inviter opening their own
-  // link) is not made to redeem it: that would spend its single use, and the
-  // player it was meant for could no longer join.
+  // An invitation is asked about, never redeemed on its own: "Join {inviter}'s
+  // game as {account}?", with Join and Not now (`JoinInvitation`, rendered
+  // below). A player already in the lobby's organization (the inviter opening
+  // their own link) is told so instead: redeeming would spend the link's
+  // single use. Joining opens the lobby the link named (else one in the org
+  // it joined); a sign-up from the invitation page joined with the invite
+  // already (`SessionProvider` sets `landing`), and its lobby opens.
+  const { invites, landing, setLanding } = useInviteState();
+  const pending = usePendingInvite(invites);
+  // The invitation a signed-in account is asked about stays on screen until it
+  // closes: `JoinInvitation` drops the token before it says "already in" or
+  // "used up", and the store would take the question away with it.
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
   useEffect(() => {
-    if (!client) return;
-    const invite = pendingInvite();
-    if (!invite) return;
-    let live = true;
-    // A sign-up from the invitation page joined with the invite already.
-    const joined = sessionApi.joinedInvite === invite.token;
-    (joined ? Promise.resolve(false) : alreadyMember(client, invite))
-      .then(async (member) => {
-        if (joined) return 'Invitation accepted';
-        if (!member) {
-          await client.redeemInvite(invite.token);
-          return 'Invitation accepted';
-        }
-        return "You're already in this lobby";
-      })
-      .then(async (title) => {
-        dropInvite();
-        if (!live) return;
-        await lobby.refetchLobbies();
-        if (!live) return;
-        show({ title, variant: 'success' });
-        if (invite.lobby) {
-          manualLobbySelect.current = false;
-          setView('lobby-select');
-          navigate(`/lobby?id=${encodeURIComponent(invite.lobby)}`, { replace: true });
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (unknown, used, expired, revoked) can never succeed: drop
-        // it. Anything else (the cluster unreachable) is kept for the next load.
-        const refused = inviteRefused(e);
-        if (refused) dropInvite();
-        if (live) {
-          show({
-            title: refused ? INVITE_REFUSED : `The invitation could not be accepted: ${messageOf(e)}`,
-            variant: 'error',
-          });
-        }
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per session
-  }, [client]);
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
+  const invite = client ? (pending ?? asked) : null;
+
+  useEffect(() => {
+    if (!client || !landing) return;
+    setLanding(null);
+    const { org, lobby: named } = landing;
+    const title = landing.member ? "You're already in this lobby" : 'Invitation accepted';
+    void (async () => {
+      const listed = await listLobbies(client, source).catch(() => []);
+      const found = (named ? listed.find((l) => l.appId === named) : undefined)
+        ?? (org ? listed.find((l) => l.org === org) : undefined);
+      await lobby.refetchLobbies();
+      after();
+      show({ title, variant: 'success' });
+      if (found) {
+        manualLobbySelect.current = false;
+        setView('lobby-select');
+        navigate(`/lobby?id=${encodeURIComponent(found.appId)}`, { replace: true });
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render
+  }, [client, landing, setLanding, source, after, show, navigate]);
 
   // A bare `/lobby` — a reload, or signing in — resumes the lobby you had
   // open last, if it is still listed (see `utils/lastLobby`). Decided once
@@ -240,7 +229,7 @@ export default function MatchPage() {
       location.pathname !== '/lobby'
       || view !== 'lobby-select'
       || manualLobbySelect.current
-      || pendingInvite()
+      || invite
       || new URLSearchParams(location.search).get('id')
     ) {
       resumeDecided.current = true;
@@ -259,7 +248,7 @@ export default function MatchPage() {
     } else {
       forgetLastLobby(scope);
     }
-  }, [view, location.pathname, location.search, lobby.lobbies, lobby.lobbiesAnswered, scope, navigate]);
+  }, [view, location.pathname, location.search, lobby.lobbies, lobby.lobbiesAnswered, scope, navigate, invite]);
 
   // Remember the lobby once you are in it — never on the picker, where a
   // selection is only a preselection.
@@ -807,6 +796,40 @@ export default function MatchPage() {
             {session.status === 'signed-out' && (
               <ConnectCard api={sessionApi} where={describeTarget(session.target)} />
             )}
+            <AppFooter />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- An invitation: asked before anything is joined ---
+  if (invite) {
+    const from = inviter(invite);
+    return (
+      <div className="app-bg">
+        <NavBar {...navProps} />
+        <div className="page-shell">
+          <div className="page-content">
+            <JoinInvitation
+              {...ONBOARDING}
+              key={invite.token}
+              joining={from ? `${from}'s game` : 'the game'}
+              account={formatKey(session.accountId)}
+              client={session.client}
+              token={invite.token}
+              org={invite.org}
+              drop={invites.drop}
+              after={after}
+              onJoined={({ org }) => {
+                setAsked(null);
+                setLanding({ org, lobby: invitedLobby(invite) });
+              }}
+              onClose={({ member }) => {
+                setAsked(null);
+                if (member) setLanding({ org: member, lobby: invitedLobby(invite), member: true });
+              }}
+            />
             <AppFooter />
           </div>
         </div>

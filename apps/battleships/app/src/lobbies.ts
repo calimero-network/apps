@@ -1,5 +1,13 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
-import { type AppSource, type KeyValueStorage } from '@calimero-apps/connect';
+import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import {
+  createInviteStore,
+  inviteLink,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from '@calimero-apps/connect';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP } from './session';
 
@@ -81,110 +89,89 @@ export function inviteToken(
 }
 
 /**
+ * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
+ * A version-pinned invite link's route is read relative to it.
+ */
+export const basename = (): string => nodeBasename(new URL(window.location.href), '/');
+
+/** The link parameter naming the lobby an invite opens. */
+const LOBBY_PARAM = 'lobby';
+/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
+const FROM_PARAM = 'from';
+
+/**
+ * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`),
+ * with the lobby its link names (`&lobby=`) and who sent it (`&from=`):
+ * captured in `index.tsx` before React mounts, then bound to the cluster, held
+ * for the account that signs in with it and dropped on sign-out by the passkey
+ * session (`usePasskeySession({ invites })`).
+ */
+export const invites: InviteStore = createInviteStore(APP, { keep: [LOBBY_PARAM, FROM_PARAM] });
+
+/** The lobby a pending invite's link names, opened once it is redeemed. */
+export function invitedLobby(invite: PendingInvite | null): string | null {
+  return invite?.extra[LOBBY_PARAM] ?? null;
+}
+
+/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
+export function inviter(invite: PendingInvite | null): string | null {
+  return invite?.extra[FROM_PARAM] ?? null;
+}
+
+/**
  * The link that opens this frontend with `token` to redeem and `lobby` to open
  * after. `org` names the organization the token admits to, so a player already
  * in it (the inviter opening their own link, say) is not made to spend the
- * token's single use.
+ * token's single use; `from` is the inviter's name, for the question the
+ * invitee is asked.
+ *
+ * Pinned to the router's basename (the served `/{version}/`) until every
+ * cluster keeps the query on its root redirect (core's served-redirect fix).
+ * `/` sends a signed-in player on to the lobby page.
  */
-export function inviteLink(
-  token: string,
-  lobby: string,
-  location: Pick<Location, 'origin' | 'pathname'> = window.location,
-  org?: string | null,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set('invite', token);
-  url.searchParams.set('lobby', lobby);
-  if (org) url.searchParams.set('org', org);
-  return url.toString();
+export function lobbyInviteLink(token: string, lobby: string, org: string, from?: string | null): string {
+  return inviteLink(token, { org, root: basename(), extra: { [LOBBY_PARAM]: lobby, [FROM_PARAM]: from } });
 }
 
-export interface PendingInvite {
-  token: string;
-  /** The lobby the link was made in: opened once the invitation is redeemed. */
-  lobby: string | null;
-  /** The organization the token admits to, when the link names it. */
-  org: string | null;
-}
-
-const PENDING = `${APP}:pending-invite`;
+/** The key this app kept its pending invite under before the shared store: `{ token, lobby, org }`. */
+const LEGACY_INVITE = `${APP}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&lobby=`) off the address bar into storage, before
- * anything renders: a person opening a link is usually not signed in yet, and
- * the token must survive the sign-up. Redeemed (and dropped) once a session
- * exists.
+ * Moves an invite stored by an older build of this app into `store`, unless
+ * the store holds one already (a link opened just now wins), and forgets the
+ * old key.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get('invite');
-  if (!token) return;
+export function migrateStoredInvite(
+  store: InviteStore,
+  storage: KeyValueStorage | undefined = globalThis.localStorage,
+): void {
+  if (!storage) return;
+  let raw: string | null;
   try {
-    storage.setItem(
-      PENDING,
-      JSON.stringify({ token, lobby: url.searchParams.get('lobby'), org: url.searchParams.get('org') }),
-    );
+    raw = storage.getItem(LEGACY_INVITE);
   } catch {
     return;
   }
-  url.searchParams.delete('invite');
-  url.searchParams.delete('lobby');
-  url.searchParams.delete('org');
-  window.history.replaceState(null, '', url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === 'string'
-      ? {
-          token: parsed.token,
-          lobby: typeof parsed.lobby === 'string' ? parsed.lobby : null,
-          org: typeof parsed.org === 'string' ? parsed.org : null,
-        }
-      : null;
-  } catch {
-    return null;
+  if (raw && !store.pending()) {
+    try {
+      const old = JSON.parse(raw) as { token?: unknown; lobby?: unknown; org?: unknown };
+      if (typeof old.token === 'string' && old.token) {
+        store.put({
+          token: old.token,
+          org: typeof old.org === 'string' && old.org ? old.org : null,
+          team: null,
+          doc: null,
+          route: null,
+          extra: typeof old.lobby === 'string' && old.lobby ? { [LOBBY_PARAM]: old.lobby } : {},
+        });
+      }
+    } catch {
+      /* not an invite */
+    }
   }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
   try {
-    storage.removeItem(PENDING);
+    storage.removeItem(LEGACY_INVITE);
   } catch {
     /* nothing stored */
-  }
-}
-
-/**
- * What to say when the node refused an invitation: it is unknown, already
- * used, expired or revoked. A 4xx can never succeed on retry, so the caller
- * drops the token; anything else (the cluster unreachable) is kept.
- */
-export const INVITE_REFUSED = 'This invite was already used or has expired. Ask the person who invited you for a new link.';
-
-/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
-export function inviteRefused(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
-}
-
-/**
- * Whether this account is already in the organization an invitation admits
- * to: `true` or `false` when the link names it, `null` when it cannot be told
- * (an older link). Redeeming as an existing member spends the token's single
- * use, which then leaves the player it was meant for unable to join.
- */
-export async function alreadyMember(
-  client: Pick<CalimeroClient, 'me'>,
-  invite: PendingInvite,
-): Promise<boolean | null> {
-  if (!invite.org) return null;
-  try {
-    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
-    return (me.orgs ?? []).some((o) => o.orgId === invite.org);
-  } catch {
-    return null;
   }
 }

@@ -1,8 +1,7 @@
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { PasskeySignIn, usePendingInvite } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 
-import type { SessionApi } from '../session';
-import { pendingInvite } from '../lobbies';
+import { useInviteState, type SessionApi } from '../session';
 
 /**
  * Passkey sign-in, or a new account with a new passkey. Replaces v1's node
@@ -24,7 +23,7 @@ export default function ConnectCard({
   where: string;
   onNotNow?: () => void;
 }) {
-  const invited = pendingInvite() !== null;
+  const invited = usePendingInvite(useInviteState().invites) !== null;
   return (
     <div className="naval-card fade-in" data-testid={invited ? 'invitation-card' : 'connect-card'}>
       <div className="naval-card-header">

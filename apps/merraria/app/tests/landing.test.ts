@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Connection } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
-import { SessionStore } from "@calimero-apps/connect";
+import { SessionStore, createInviteStore, type InviteStore, type PendingInvite } from "@calimero-apps/connect";
 import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
 import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from "@calimero-apps/passkey/ceremony";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
@@ -51,7 +51,7 @@ function launcher(
   );
   const parent = document.createElement("div");
   document.body.appendChild(parent);
-  const landing = new Landing(parent, conn, "bundle-hash");
+  const landing = new Landing(parent, conn, "bundle-hash", invites);
   const chosen = landing.show({ name: "Ada", seed: 1337 });
   const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     parent.querySelector<T>(`[data-testid="${id}"]`);
@@ -60,8 +60,16 @@ function launcher(
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
+/** The launcher's pending-invite store, on the page's storage as in the browser. */
+let invites: InviteStore;
+/** An invite link opened before the launcher: what `main.ts` leaves in the store. */
+function invited(token: string, more: Partial<PendingInvite> = {}) {
+  invites.put({ token, org: null, team: null, doc: null, route: null, extra: {}, ...more });
+}
+
 beforeEach(() => {
   localStorage.clear();
+  invites = createInviteStore("merraria", { storage: localStorage, keep: ["world", "from"] });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 });
 
@@ -189,18 +197,8 @@ describe("the launcher", () => {
     expect(JSON.parse(localStorage.getItem(conn.scopedKey("current-world")!)!)).toEqual(choice.world);
   });
 
-  it("redeems an invitation opened before signing in, and says so", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
-    const { client, $ } = launcher(true);
-    await settle();
-    await settle();
-    expect(client.redeemInvite).toHaveBeenCalledWith("tok-1");
-    expect(localStorage.getItem("merraria:pending-invite")).toBeNull();
-    expect($("notice")?.textContent).toContain("Invitation accepted");
-  });
-
   it("signed out with a pending invite, the launcher is the invitation, with Not now", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
+    invited("tok-1");
     const { $ } = launcher(false);
     expect($("invite-waiting")?.textContent).toContain(
       "You've been invited to join a world in Merraria. Sign in or create an account to accept.",
@@ -210,42 +208,122 @@ describe("the launcher", () => {
     expect($("invite-not-now")).not.toBeNull();
   });
 
-  it("signing in from the invitation redeems it and says so", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
-    const { client, $ } = launcher(false);
-    $("sign-in-btn")!.click();
-    await settle();
-    await settle();
-    await settle();
-    expect(client.redeemInvite).toHaveBeenCalledWith("tok-1");
-    expect($("notice")?.textContent).toContain("Invitation accepted");
-  });
+  describe("an invitation, once signed in", () => {
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+      expect(check()).toBe(true);
+    };
+    const THEIRS = { appId: "w-9", name: "their caves", org: "org-9", owner: "o", bundle: "b", package: null, version: null };
+    /** The account reaches org-9's worlds only once the invite is redeemed. */
+    const joinable = (c: ReturnType<typeof fakeClient>) => {
+      let joined = false;
+      const mine = c.listApps.getMockImplementation()!;
+      c.listApps.mockImplementation(async () => [...(await mine()), ...(joined ? [THEIRS] : [])]);
+      c.redeemInvite.mockImplementation(async () => {
+        joined = true;
+        return { org: "org-9" };
+      });
+    };
 
-  it("does not redeem an invitation into a world the player is already in", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
-    localStorage.setItem("merraria:pending-invite-org", "org-1");
-    const { client, $ } = launcher(true, (c) => {
-      (c as unknown as { me: () => Promise<unknown> }).me = vi.fn(async () => ({ orgs: [{ orgId: "org-1" }] }));
-    });
-    await settle();
-    await settle();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem("merraria:pending-invite")).toBeNull();
-    expect($("notice")?.textContent).toContain("You're already in this world");
-  });
+    it("asks which account joins whose game, redeems nothing until Join, then enters the invited world", async () => {
+      invited("tok-1", { extra: { from: "Bo" } });
+      // The world last played is NOT what an invitation opens (B11).
+      const { client, conn, chosen, $ } = launcher(true, joinable);
+      localStorage.setItem(conn.scopedKey("current-world")!, JSON.stringify({ appId: "w-1", name: "caves", org: "org-1" }));
+      await until(() => $("invite-confirm") !== null);
+      expect($("invite-question")?.textContent).toBe("Join Bo's game as acct-ada?");
+      await new Promise((r) => setTimeout(r, 30));
+      expect(client.redeemInvite).not.toHaveBeenCalled();
 
-  it("says plainly when the invite was already used or has expired", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
-    const { CalimeroError } = await import("@calimero-network/mero-js");
-    const { $ } = launcher(true, (c) => {
-      c.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+      $("invite-join")!.click();
+      const choice = await chosen;
+      expect(client.redeemInvite).toHaveBeenCalledWith("tok-1");
+      expect(choice.world).toEqual({ appId: "w-9", name: "their caves", org: "org-9" });
+      expect(invites.token()).toBeNull();
     });
-    await settle();
-    await settle();
-    expect($("notice")?.textContent).toBe(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
-    expect(localStorage.getItem("merraria:pending-invite")).toBeNull();
+
+    it("signing in from the invitation asks too", async () => {
+      invited("tok-1");
+      const { client, $ } = launcher(false);
+      $("sign-in-btn")!.click();
+      await until(() => $("invite-confirm") !== null);
+      expect($("invite-question")?.textContent).toBe("Join the game as acct-ada?");
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+    });
+
+    it("Not now joins nothing, forgets the invite and lists the player's worlds", async () => {
+      invited("tok-1");
+      const { client, $ } = launcher(true);
+      await until(() => $("invite-confirm") !== null);
+      $("invite-later")!.click();
+      await until(() => $("world-card-0") !== null);
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+      expect($("invite-confirm")).toBeNull();
+    });
+
+    it("enters the invited world without spending the link when the player is in it already", async () => {
+      invited("tok-1", { org: "org-1" });
+      const { client, chosen } = launcher(true);
+      expect((await chosen).world.appId).toBe("w-1");
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+    });
+
+    it("drops an invite the node refuses for good and says so", async () => {
+      invited("tok-1");
+      const { CalimeroError } = await import("@calimero-network/mero-js");
+      const { $ } = launcher(true, (c) => {
+        c.redeemInvite.mockRejectedValueOnce(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"));
+      });
+      await until(() => $("invite-confirm") !== null);
+      $("invite-join")!.click();
+      await until(() => $("world-card-0") !== null);
+      expect($("notice")?.textContent).toBe(
+        "This invite was already used or has expired. Ask the person who invited you for a new link.",
+      );
+      expect(invites.token()).toBeNull();
+    });
+
+    it.each([
+      [401, "UNAUTHORIZED", "session expired"],
+      [429, "RATE_LIMITED", "too many requests"],
+    ])("keeps the invite and the question when the redemption fails with %i", async (status, code, message) => {
+      invited("tok-1");
+      const { CalimeroError } = await import("@calimero-network/mero-js");
+      const { $ } = launcher(true, (c) => {
+        c.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message));
+      });
+      await until(() => $("invite-confirm") !== null);
+      $("invite-join")!.click();
+      await until(() => /invite is kept/i.test($("invite-error")?.textContent ?? ""));
+      expect(invites.token()).toBe("tok-1");
+      expect($("invite-join")?.textContent).toBe("Try again");
+    });
+
+    it("signing out drops the pending invite, so the next person is not asked to join", async () => {
+      const { $ } = launcher(true, (c) =>
+        c.signOut.mockImplementation(async () => {
+          c.session = null;
+        }),
+      );
+      await until(() => $("world-card-0") !== null);
+      invited("tok-1");
+      $("disconnect-btn")!.click();
+      await until(() => $("sign-in-btn") !== null);
+      expect(invites.token()).toBeNull();
+      expect($("invite-waiting")).toBeNull();
+    });
+
+    it("another account signing in on this browser drops an invite held for the first", async () => {
+      invited("tok-1");
+      invites.signedIn("acct-other");
+      const { client, $ } = launcher(true);
+      await until(() => $("world-card-0") !== null);
+      expect($("invite-confirm")).toBeNull();
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+    });
   });
 
   it("creates a world: an org, the instance, then createWorld with the seed", async () => {
@@ -273,7 +351,7 @@ describe("the launcher", () => {
     await settle();
     await settle();
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("?invite=tok-9"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("?invite=tok-9&org=org-1&world=w-1&from=Ada"));
   });
 });
 
@@ -331,7 +409,7 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
   });
 
   it("a sign-in the cluster has no account for switches to creating one, in place", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
+    invited("tok-1");
     localStorage.setItem(accountHintKey(target as never), "1");
     const { CalimeroError } = await import("@calimero-network/mero-js");
     const { parent, $ } = withPasskey((c) =>
@@ -347,7 +425,7 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
   });
 
   it("an invited person with no account here sees Create first; one who has signed in here sees Sign in first", () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
+    invited("tok-1");
     const fresh = withPasskey();
     expect(order(fresh.parent)).toEqual(["sign-up-btn", "sign-in-btn"]);
     document.body.innerHTML = "";
@@ -356,9 +434,9 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     expect(order(known.parent)).toEqual(["sign-in-btn", "sign-up-btn"]);
   });
 
-  it("a sign-up carries the invite on an open cluster and joins in that step", async () => {
-    localStorage.setItem("merraria:pending-invite", "tok-1");
-    const { client, $ } = withPasskey((c) =>
+  it("a sign-up carries the invite on an open cluster, joins in that step and enters the world", async () => {
+    invited("tok-1");
+    const { client, chosen, $ } = withPasskey((c) =>
       c.signUp.mockImplementation(async () => {
         c.session = { accountId: "acct-ada", sessionToken: "s", expiresAt: 1, refreshToken: "r" };
         return c.session;
@@ -366,10 +444,36 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     );
     await settle();
     $("sign-up-btn")!.click();
-    await until(() => $("account-badge") !== null);
+    // Joined at sign-up: straight into the world of the org it joined, nothing asked or redeemed.
+    const choice = await chosen;
+    expect(choice.world.appId).toBe("w-1");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada", { invite: "tok-1" });
-    expect(localStorage.getItem("merraria:pending-invite")).toBeNull();
+    expect(invites.token()).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    await until(() => ($("notice")?.textContent ?? "").includes("Invitation accepted"));
+  });
+
+  it("a sign-up the node refuses for its invite drops the token and offers the account without it", async () => {
+    invited("tok-dead");
+    const { SignUpRefused } = await import("@calimero-network/mero-js");
+    const { client, $ } = withPasskey((c) =>
+      c.signUp
+        .mockRejectedValueOnce(new SignUpRefused("sign-up refused: the invite has expired"))
+        .mockImplementation(async () => {
+          c.session = { accountId: "acct-ada", sessionToken: "s", expiresAt: 1, refreshToken: "r" };
+          return c.session;
+        }),
+    );
+    await settle();
+    $("sign-up-btn")!.click();
+    await until(() => ($("sign-in-error")?.textContent ?? "") !== "");
+    expect($("sign-in-error")?.textContent).toBe(
+      "That invite has expired or has no uses left: ask whoever sent it for a new one. You can still create your account without it.",
+    );
+    expect(invites.token()).toBeNull();
+    expect($("invite-waiting")).toBeNull();
+    // The next sign-up goes without it.
+    $("sign-up-btn")!.click();
+    await until(() => $("account-badge") !== null);
+    expect(client.signUp).toHaveBeenLastCalledWith(expect.anything(), "Ada");
   });
 });
