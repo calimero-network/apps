@@ -175,6 +175,13 @@ export interface PasskeySessionOptions {
    */
   onJoinedAtSignUp?: (joined: JoinedAtSignUp, pending: PendingInvite | null) => void;
   /**
+   * When a sign-up joins an organization through its invite, also show the
+   * name given at sign-up in that organization (`signUpHere`'s `nameInOrg`).
+   * For an app whose people lists read the org's names and that asks for the
+   * name once, at sign-up (Calimero Home). Off by default.
+   */
+  nameJoinedOrg?: boolean;
+  /**
    * Whether a sign-up goes through {@link signUpFlow}: its second prompt is
    * asked right away, and waits at `approve` for a click when that ask
    * failed or was refused. On by default; a caller with no button to
@@ -206,6 +213,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     invites,
     onInviteRefused,
     onJoinedAtSignUp,
+    nameJoinedOrg = false,
     approveWithClick = true,
     upgradePrompt = true,
     appName,
@@ -381,6 +389,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
               invite: inviteToken,
               policy,
               join,
+              nameInOrg: nameJoinedOrg,
               storage: hintStorage,
             });
           } catch (e) {

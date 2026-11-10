@@ -33,6 +33,7 @@ export const ONBOARDING: {
   joining: string;
   listing: ListingProps;
   classNames: OnboardingClassNames;
+  askName: boolean;
 } = {
   appName: "Calimero Home",
   joining: "the organization",
@@ -45,6 +46,9 @@ export const ONBOARDING: {
     actions: "home-row",
     secondary: "glass-btn",
   },
+  // A new account gives an optional name, so People and Invitations show a
+  // person rather than a key id.
+  askName: true,
 };
 
 /** The shared passkey session for Home, joining a pending invite at sign-up. */
@@ -55,6 +59,8 @@ export function useSession(
 ): SessionApi {
   return usePasskeySession(APP, deps, {
     package: PACKAGE,
+    // The name asked at sign-up is the one People and Invitations show.
+    nameJoinedOrg: true,
     ...(invites ? { invites } : {}),
     ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
   });

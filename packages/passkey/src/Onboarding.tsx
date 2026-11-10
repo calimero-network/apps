@@ -176,6 +176,8 @@ export interface InvitationSignInProps {
   onLater: () => void;
   classNames?: OnboardingClassNames;
   titleAs?: Heading;
+  /** Ask the new account for an optional name (shown to the org's admins). */
+  askName?: boolean;
 }
 
 /**
@@ -184,7 +186,16 @@ export interface InvitationSignInProps {
  * this browser has used here). "Not now" shows the usual page and keeps the
  * token, so signing in from there still joins.
  */
-export function InvitationSignIn({ api, appName, joining, listing, onLater, classNames = {}, titleAs }: InvitationSignInProps) {
+export function InvitationSignIn({
+  api,
+  appName,
+  joining,
+  listing,
+  onLater,
+  classNames = {},
+  titleAs,
+  askName,
+}: InvitationSignInProps) {
   return (
     <Frame classNames={classNames} testId="invitation-page">
       <SignInPanel
@@ -195,6 +206,7 @@ export function InvitationSignIn({ api, appName, joining, listing, onLater, clas
         listing={listing}
         titleAs={titleAs}
         classNames={classNames}
+        askName={askName}
       >
         <div className={classNames.actions}>
           <button

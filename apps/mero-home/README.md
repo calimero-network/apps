@@ -18,7 +18,7 @@ apps/mero-home/
     ├── src/home.ts        what Home reads and decides (no React): org view, apps, rosters, who may do what
     ├── src/Home.tsx       org picker, then the screens the person gets
     ├── src/screens/       Your apps, People, Invitations, Admin
-    └── e2e/               Playwright on merod local (waits for a core release, below)
+    └── e2e/               Playwright on merod local (CI: components.yml `browser`)
 ```
 
 ## The model
@@ -69,13 +69,13 @@ pnpm dev:local mero-home        # merod local + the dev server on :5173
 On a node without the app-team routes (core before #4890), Home still opens:
 every app reads as legacy and invites are org-wide, as apps send them today.
 
-## The e2e suite waits for a core release
+## The e2e suite
 
 `app/e2e/home.spec.ts` runs Home in Chromium (virtual authenticator) against
 `merod local`: an admin joins from an invite, gives a legacy KV Store its own
 access list, invites to it, lists and revokes pending invites, the invitee sees
 only that app, and the admin removes them from the org. It needs core#4890 and
-#4891 in a release; 1.0.0-rc.13 has neither, so it is not in CI and its global
-setup refuses an older merod with that reason. When the release lands, move
-`component-core-tag` to it and add this app to the browser e2e legs. Until
-then: `MEROD_BIN=/path/to/merod-from-master pnpm -F mero-home test:e2e`.
+#4891, first released in 1.0.0-rc.14 (the pinned `component-core-tag`); its
+global setup refuses an older merod with that reason. CI runs it in
+`components.yml`'s `browser` job. By hand: `MEROD_BIN=/path/to/merod-rc.14
+pnpm -F mero-home test:e2e`.

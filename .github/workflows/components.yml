@@ -14,6 +14,11 @@
 #   frontend  per app: lint, typecheck, test, build
 #   e2e       per app: the app's scenarios/*.json on `merod local` (core's release
 #             binary at component-core-tag), as real accounts through mero-js
+#   browser   per app with an `app/playwright.config.ts`: its Playwright suite in
+#             Chromium on the same `merod local`
+#
+# ci.yml's `browser` job runs only over v1 apps (scripts/app-packages.sh), and
+# none is left, so a component app's browser e2e runs here.
 
 name: Components
 
@@ -41,6 +46,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.set.outputs.apps }}
+      # `apps` narrowed to those that ship a Playwright suite.
+      browser_apps: ${{ steps.set.outputs.browser_apps }}
       tag: ${{ steps.set.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +102,12 @@ jobs:
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
           echo "::notice::component apps: $apps (core $tag)"
+
+          browser_apps=$(jq -r '.[]' <<<"$apps" | while read -r app; do
+            if [ -f "apps/$app/app/playwright.config.ts" ]; then echo "$app"; fi
+          done | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "browser_apps=$browser_apps" >> "$GITHUB_OUTPUT"
+          echo "::notice::browser e2e: $browser_apps"
 
   checks:
     name: Pins, tooling and shared packages
@@ -285,3 +298,80 @@ jobs:
           path: .merod-local/merod.log
           if-no-files-found: ignore
           retention-days: 7
+
+  browser:
+    name: Browser E2E on merod local (${{ matrix.app }})
+    needs: changes
+    if: needs.changes.outputs.browser_apps != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.browser_apps != '[]' && needs.changes.outputs.browser_apps || '["none"]') }}
+    env:
+      TAG: ${{ needs.changes.outputs.tag }}
+      # A suite's global setup may bundle a component it installs (Home's builds
+      # a dev-signed KV Store), so the job carries the wasm toolchain and the
+      # same target dir layout as `rust`.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          key: component-browser-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles('apps/*/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
+          restore-keys: component-browser-${{ matrix.app }}-${{ runner.os }}-
+
+      # Same binary and checksum check as `e2e`.
+      - name: Install merod ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/merod" && cd "$RUNNER_TEMP/merod"
+          base="https://github.com/calimero-network/core/releases/download/$TAG"
+          asset=merod_x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSL --retry 3 -o "$asset" "$base/$asset"
+          curl -fsSL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
+          grep -E "  $asset\$" SHA256SUMS | sha256sum -c -
+          tar -xzf "$asset" merod
+          ./merod --version
+          echo "MEROD_BIN=$RUNNER_TEMP/merod/merod" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: apps/${{ matrix.app }}/app
+
+      # The config's global setup starts `merod local --fresh` itself and the
+      # webServer runs vite against it (VITE_CALIMERO_TARGET=local).
+      - name: Run the browser e2e
+        working-directory: apps/${{ matrix.app }}/app
+        run: pnpm exec playwright test
+
+      - name: Upload the report and cluster log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-${{ matrix.app }}-${{ github.sha }}
+          path: |
+            apps/${{ matrix.app }}/app/playwright-report
+            apps/${{ matrix.app }}/app/test-results
+            .merod-local/*.log
+          # `.merod-local/` is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore

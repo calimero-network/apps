@@ -102,6 +102,28 @@ describe("the shared ceremony", () => {
     expect(client.me).not.toHaveBeenCalled();
   });
 
+  it("names a new account in the org its invite joined only when asked, and a refusal there fails nothing", async () => {
+    const client = {
+      signUp: vi.fn(async () => ({ accountId: "acct-new", org: "org-1" })),
+      me: vi.fn(),
+      setMemberMetadata: vi.fn(async () => {}),
+    };
+    const c = client as unknown as CalimeroClient;
+    const opts = { invite: "tok", policy: policy("open"), join: true, nameInOrg: true, storage: memory() };
+    // Not asked (the default): an app that names people per org itself keeps asking.
+    await signUpHere(c, TARGET, pk(), { ...opts, nameInOrg: false, name: "Eve" });
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
+    await signUpHere(c, TARGET, pk(), { ...opts, name: "  Eve " });
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-new", { name: "Eve" });
+    // No name, or no join: nothing to write.
+    await signUpHere(c, TARGET, pk(), { ...opts, name: " " });
+    await signUpHere(c, TARGET, pk(), { name: "Eve", storage: memory() });
+    expect(client.setMemberMetadata).toHaveBeenCalledTimes(1);
+    client.setMemberMetadata.mockRejectedValueOnce(new Error("refused"));
+    const made = await signUpHere(c, TARGET, pk(), { ...opts, name: "Eve" });
+    expect(made.joined).toEqual({ invite: "tok", org: "org-1" });
+  });
+
   it("an unknown passkey, or a prompt closed with none chosen, is no account here", () => {
     const unknown = new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "unknown passkey");
     const closed = Object.assign(new Error("closed"), { name: "NotAllowedError" });

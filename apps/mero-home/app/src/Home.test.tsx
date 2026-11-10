@@ -111,6 +111,19 @@ describe("People", () => {
     expect(within(await screen.findByTestId("person-acct-ana")).queryByTestId("remove-acct-ana")).toBeNull();
   });
 
+  it("opens on the org as it is now: someone who joined since the last read is listed", async () => {
+    const fake = open();
+    await screen.findByTestId("org-mode");
+    const before = await fake.client.getOrg.mock.results[0]!.value;
+    fake.client.getOrg.mockResolvedValue({
+      ...before,
+      members: { ...before.members, "acct-eve": "member" },
+      memberMetadata: { ...before.memberMetadata, "acct-eve": { name: "Eve" } },
+    });
+    fireEvent.click(screen.getByTestId("tab-people"));
+    expect((await screen.findByTestId("person-acct-eve")).textContent).toContain("Eve");
+  });
+
   it("a member sees the people core lets them see (decision 2)", async () => {
     open({ as: "member" });
     fireEvent.click(await screen.findByTestId("tab-people"));

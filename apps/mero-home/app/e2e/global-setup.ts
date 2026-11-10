@@ -3,8 +3,8 @@
  * holds one KV Store instance with organization access (a legacy app, as every
  * org held its apps before app teams), and an admin invite for the browser.
  *
- * Needs a merod with core's app-team routes (core#4890, #4891); an older one
- * is refused here with that reason, never half-run.
+ * Needs a merod with core's app-team routes (core#4890, #4891), first released
+ * in 1.0.0-rc.14; an older one is refused here with that reason, never half-run.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -28,7 +28,10 @@ export interface Seed {
   kvPackage: string;
 }
 
-/** A dev-signed KV Store `.mpk` (`mero-component bundle --dev`), built once. */
+/**
+ * A dev-signed KV Store `.mpk` (`mero-component bundle --dev`), built once into
+ * the root `dist/` (the bundler's own default is the crate's `logic/dist/`).
+ */
 function kvStoreMpk(): string {
   const dist = join(ROOT, "dist");
   const find = () => {
@@ -41,7 +44,19 @@ function kvStoreMpk(): string {
   if (!find()) {
     execFileSync(
       "cargo",
-      ["run", "--release", "--manifest-path", "tools/component-bundle/Cargo.toml", "--", "bundle", "apps/kv-store/logic", "--dev", "--no-frontend"],
+      [
+        "run",
+        "--release",
+        "--manifest-path",
+        "tools/component-bundle/Cargo.toml",
+        "--",
+        "bundle",
+        "apps/kv-store/logic",
+        "--dev",
+        "--no-frontend",
+        "--output",
+        join(dist, "com.calimero.kv-store-dev.mpk"),
+      ],
       { cwd: ROOT, stdio: "inherit" },
     );
   }
@@ -62,7 +77,7 @@ export default async function globalSetup(): Promise<() => void> {
     cluster?.stop();
     throw new Error(
       `this merod has no app-team routes (GET /orgs/{org}/app-teams answered ${String(e)}): ` +
-        "Calimero Home's e2e needs a core release with core#4890 and #4891 (1.0.0-rc.13 has neither)",
+        "Calimero Home's e2e needs core 1.0.0-rc.14 or later (core#4890 and #4891)",
     );
   }
 

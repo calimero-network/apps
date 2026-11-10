@@ -2,13 +2,10 @@
 // three nodes on 127.0.0.1:2501-2503, mock attestation, passkey ceremonies
 // trusted from http://localhost:5173).
 //
-// ⚠️ NOT RUN IN CI YET. Home's screens need core's app-team routes (core#4890,
-// #4891), which no core release has yet: 1.0.0-rc.13 does not. The suite is
-// written against them and checks for them first (e2e/global-setup.ts throws a
-// clear "needs a core release with app teams" on an older merod). Once the
-// release lands: move `component-core-tag` to it, and add this app to the
-// journey matrix (a `playwright.journey.config.ts`, or a components.yml leg).
-// Until then, run it by hand against a merod built from core's master:
+// Home's screens need core's app-team routes (core#4890, #4891), first released
+// in 1.0.0-rc.14, the `component-core-tag` this repo pins; e2e/global-setup.ts
+// refuses an older merod with that reason. CI runs it in components.yml's
+// `browser` job on merod local at that tag. By hand:
 //
 //   MEROD_BIN=/path/to/merod pnpm -F mero-home test:e2e
 //

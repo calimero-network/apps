@@ -3,7 +3,7 @@
  * an app team, invites someone to that app only, sees and revokes pending
  * invites, and removes a person from the org and so from every app.
  *
- * ⚠️ Waits for a core release with core#4890 and #4891 (see
+ * Needs core#4890 and #4891, first released in 1.0.0-rc.14 (see
  * playwright.config.ts): global-setup refuses an older merod with that reason.
  */
 import { readFileSync } from "node:fs";
@@ -32,11 +32,31 @@ async function withPasskey(context: BrowserContext, page: Page): Promise<void> {
 
 /** Signs up on the invitation page (the account and the join in one step). */
 async function signUpFromInvite(page: Page, name: string): Promise<void> {
+  // The first press asks for the (optional) name; the second creates the passkey.
+  const create = page.getByTestId("signup-passkey");
+  await create.click();
   await page.getByTestId("signup-name").fill(name);
-  await page.getByTestId("signup-passkey").click();
-  // Two prompts on some setups: the second approves the sign-up.
-  const approve = page.getByTestId("signup-approve");
-  if (await approve.isVisible({ timeout: 2_000 }).catch(() => false)) await approve.click();
+  await create.click();
+  // Two prompts: the page asks the second (the approval) at once, and only
+  // when that one fails does it wait on an enabled "Approve" (while a prompt
+  // is open the same test id is a disabled "waiting" button, and it leaves
+  // the page once the sign-up is done). Done is when neither control is left.
+  const approve = page.locator('[data-testid="signup-approve"]:enabled');
+  const pending = page.locator('[data-testid="signup-approve"], [data-testid="signup-passkey"]');
+  const failed = page.getByTestId("signin-error");
+  await expect
+    .poll(
+      async () => {
+        if (await failed.isVisible()) return `failed: ${await failed.innerText()}`;
+        if (await approve.isVisible()) {
+          await approve.click({ timeout: 5_000 }).catch(() => {});
+          return "approving";
+        }
+        return (await pending.count()) === 0 ? "done" : "waiting";
+      },
+      { timeout: 90_000, message: "the sign-up never finished" },
+    )
+    .toBe("done");
 }
 
 test.describe.configure({ mode: "serial" });
@@ -69,19 +89,24 @@ test("Admin: a legacy app gets its own access list, everyone keeps it", async ()
 test("Invitations: invite to the app, list it, revoke another", async () => {
   const { kvPackage } = seed();
   await admin.getByTestId("tab-invitations").click();
+  // Listed by app (the seed's spent admin invite may be listed too).
+  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
   // One to revoke…
   await admin.getByTestId(`invite-app-${kvPackage}`).check();
   await admin.getByTestId("invite-create").click();
   await expect(admin.getByTestId("invite-link")).toBeVisible();
+  await expect(pending).toHaveCount(1);
+  // Told apart by key: the list is newest first, and two invites made in the
+  // same second (createdAt is in seconds) can come in either order.
+  const toRevoke = (await pending.getAttribute("data-testid"))!.replace(/^pending-/, "");
   // …and one to send.
   await admin.getByTestId("invite-create").click();
+  await expect(pending).toHaveCount(2);
   memberLink = (await admin.getByTestId("invite-link").locator("pre").textContent()) ?? "";
   expect(memberLink).toContain("invite=");
-  // Both are listed by app (the seed's spent admin invite may be listed too).
-  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
-  await expect(pending).toHaveCount(2);
-  await pending.first().getByRole("button", { name: "Revoke" }).click();
+  await admin.getByTestId(`revoke-${toRevoke}`).click();
   await expect(pending).toHaveCount(1);
+  await expect(admin.getByTestId(`pending-${toRevoke}`)).toHaveCount(0);
 });
 
 test("the invited member gets that app only, and sees it in Your apps", async ({ browser }) => {
@@ -99,12 +124,16 @@ test("the invited member gets that app only, and sees it in Your apps", async ({
 
 test("People: removing someone from the org takes them out of every app", async () => {
   await admin.getByTestId("tab-people").click();
-  const eve = admin.locator("tr", { hasText: "Eve" });
+  // By her name in the row's header: a row's text also says "Yes (everyone)".
+  const eve = admin
+    .getByTestId("people-table")
+    .getByRole("row")
+    .filter({ has: admin.getByRole("rowheader", { name: "Eve", exact: true }) });
   await expect(eve).toBeVisible();
   await eve.getByRole("button", { name: "Remove from organization…" }).click();
   await expect(admin.getByTestId("remove-confirm")).toContainText("from every app in it");
   await admin.getByTestId("remove-confirm-yes").click();
   await expect(admin.getByTestId("people-notice")).toContainText("Eve was removed");
-  await expect(admin.locator("tr", { hasText: "Eve" })).toHaveCount(0);
+  await expect(eve).toHaveCount(0);
   await adminContext.close();
 });

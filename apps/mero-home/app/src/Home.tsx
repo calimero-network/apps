@@ -162,7 +162,12 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
                 aria-selected={shown === s}
                 className={shown === s ? "glass-btn glass-btn--primary" : "glass-btn"}
                 data-testid={`tab-${s}`}
-                onClick={() => setScreen(s)}
+                onClick={() => {
+                  setScreen(s);
+                  // Each screen opens on the org as it is now: someone may have
+                  // joined, or been removed, since it was last read.
+                  reload();
+                }}
               >
                 {SCREEN_LABEL[s]}
               </button>
