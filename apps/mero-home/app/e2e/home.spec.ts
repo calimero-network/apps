@@ -32,8 +32,11 @@ async function withPasskey(context: BrowserContext, page: Page): Promise<void> {
 
 /** Signs up on the invitation page (the account and the join in one step). */
 async function signUpFromInvite(page: Page, name: string): Promise<void> {
+  // The first press asks for the (optional) name; the second creates the passkey.
+  const create = page.getByTestId("signup-passkey");
+  await create.click();
   await page.getByTestId("signup-name").fill(name);
-  await page.getByTestId("signup-passkey").click();
+  await create.click();
   // Two prompts on some setups: the second approves the sign-up.
   const approve = page.getByTestId("signup-approve");
   if (await approve.isVisible({ timeout: 2_000 }).catch(() => false)) await approve.click();
