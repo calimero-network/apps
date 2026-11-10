@@ -156,7 +156,8 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   // Orgs are open by default: every app is everyone's. "Keep apps apart" closes
   // Chat's open team in one step, writing in everyone who has it (one passkey).
   await expect(page.getByTestId("apart-state")).toContainText("Everyone in the organization has every app");
-  await page.getByTestId("apart-switch").check();
+  // A controlled switch: the click opens the confirm, the state changes once it is applied.
+  await page.getByTestId("apart-switch").click();
   await expect(page.getByTestId("apart-keeps")).toContainText("Mero Chat");
   await page.getByTestId("apart-confirm-yes").click();
   await expect(page.getByTestId("apart-state")).toContainText("Each app lists who is in it");
