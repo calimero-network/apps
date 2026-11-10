@@ -156,6 +156,24 @@ describe("People: give all apps / remove from all apps", () => {
     expect(fake.client.removeMember).not.toHaveBeenCalled();
   });
 
+  it("waits for the rows after a change: a plan from stale rows could demote a new lead", async () => {
+    const { fake } = await open();
+    const held: Array<() => void> = [];
+    const read = fake.client.getTeam.getMockImplementation()!;
+    fake.client.getTeam.mockImplementation(async (...a: Parameters<typeof read>) => {
+      await new Promise<void>((r) => held.push(r));
+      return read(...a);
+    });
+    fireEvent.change(screen.getByTestId(`seat-${CHAT}-acct-cat`), { target: { value: "lead" } });
+    // The change is saved and the rows are being read again: still disabled.
+    await screen.findByTestId("people-notice");
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    const give = screen.getByTestId("give-all-acct-cat") as HTMLButtonElement;
+    expect(give.disabled).toBe(true);
+    held.forEach((r) => r());
+    await waitFor(() => expect(give.disabled).toBe(false));
+  });
+
   it("cancel changes nothing", async () => {
     const { fake } = await open();
     fireEvent.click(screen.getByTestId("give-all-acct-cat"));

@@ -93,7 +93,10 @@ export function People({ client, view, account, passkey, after, onChanged }: Peo
   const [cellError, setCellError] = useState<string | null>(null);
   const [rostersRead, setRostersRead] = useState(0);
   const [bulk, setBulk] = useState<BulkState | null>(null);
-  /** Whether the rows were read once: a bulk plan before that would skip every closed app. */
+  /**
+   * Whether the rows as they are now are read: a bulk plan made from rows
+   * being read again (after a change) could demote someone just made a lead.
+   */
   const [rostersReady, setRostersReady] = useState(false);
   const admin = isAdmin(view.role);
   const manager = managesAnyApp(view);
@@ -101,6 +104,7 @@ export function People({ client, view, account, passkey, after, onChanged }: Peo
 
   useEffect(() => {
     let live = true;
+    setRostersReady(false);
     loadRosters(client, view.org, view.apps)
       .then((r) => {
         if (!live) return;
