@@ -234,7 +234,7 @@ catalog:
 # manager blocked; 29.7.5 (mero-js#339) always uses the browser's own WebAuthn.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.7.7
+    "@calimero-network/mero-js": 29.8.1
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
