@@ -18,6 +18,8 @@ import {
   IconPlus,
 } from "./icons";
 import { useSignOut } from "../auth/signOut";
+import { useSessionApi } from "../sessionContext";
+import { ManageInHomeLink } from "@calimero-apps/passkey";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 /** The product name as people say it (the package slug is
@@ -79,6 +81,7 @@ export default function Sidebar({
 }: SidebarProps): React.ReactElement {
   const loc = useLocation();
   const signOut = useSignOut();
+  const { api } = useSessionApi();
   const sub = loc.pathname.startsWith(APP_ROUTE)
     ? loc.pathname.slice(APP_ROUTE.length)
     : "";
@@ -276,6 +279,7 @@ export default function Sidebar({
             <IconLogout />
           </button>
         </div>
+        <ManageInHomeLink session={api.session} org={activeNs} className="home-link" />
       </Footer>
     </Aside>
   );
@@ -537,6 +541,8 @@ const Item = styled(NavLink)<{ $active?: boolean }>`
   `}
 `;
 const Footer = styled.div`
+  .home-link { padding: 0 4px; font-size: 12px; font-weight: 600; color: ${t.color.accentText}; text-decoration: none; }
+  .home-link:hover { text-decoration: underline; }
   flex: 0 0 auto;
   margin: 0 12px;
   border-top: 1px solid ${t.color.border};

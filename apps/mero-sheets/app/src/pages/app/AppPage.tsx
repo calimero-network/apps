@@ -24,8 +24,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { targetKey, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg } from '@calimero-apps/passkey';
-import { useSignedIn } from '../../sessionContext';
+import { ConnectExistingOrg, ManageInHomeLink } from '@calimero-apps/passkey';
+import { useSessionApi, useSignedIn } from '../../sessionContext';
 import { describeTarget } from '../../session';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
@@ -87,6 +87,7 @@ import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 export default function AppPage() {
   const { client, signOut: endSession, passkey, after, target, accountId, source } = useSignedIn();
   const ws = useWorkspace();
+  const { api: sessionApi } = useSessionApi();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
     contextId: ws.contextId,
@@ -1293,9 +1294,10 @@ export default function AppPage() {
   // ════════════════════════════════════════════════════════════════
 
   // The account controls every screen carries in its top bar: the light/dark
-  // switch and Log out.
+  // switch, "Manage people in Calimero Home" (where it applies) and Log out.
   const accountControls = (
     <>
+      <HomeLink session={sessionApi.session} org={ws.namespaceId} />
       <ThemeToggle />
       <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out" data-testid="action-logout">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -2325,6 +2327,15 @@ const PrimaryAction = styled.button`
   padding: 0 16px;
   svg { flex-shrink: 0; }
   @media (max-width: 640px) { width: 38px; padding: 0; span { display: none; } }
+`;
+
+// "Manage people in Calimero Home →" (`ManageInHomeLink`), beside the account controls.
+const HomeLink = styled(ManageInHomeLink)`
+  font-size: 13px;
+  color: var(--glass-accent-solid, var(--glass-ink-2));
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover { text-decoration: underline; }
 `;
 
 const LogoutBtn = styled.button`

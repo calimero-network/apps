@@ -6,11 +6,13 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { ManageInHomeLink } from '@calimero-apps/passkey';
 import { useCalimero } from '../calimero';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
 
 import { useSignOut } from '../auth/signOut';
+import { readLastVisit } from '../lib/lastVisit';
 import { useAutoLockMinutes, useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { NARROW_QUERY, useMediaQuery } from '../hooks/useMediaQuery';
 import { ShellNavContext, useShellNav } from '../hooks/useShellNav';
@@ -169,10 +171,22 @@ export default function AppShell({
 function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { where } = useCalimero();
+  const { where, status, client, target, accountId } = useCalimero();
   const unlocked = useDeviceUnlocked();
   const [minutes] = useAutoLockMinutes();
   const signOut = useSignOut();
+  // For "Manage people in Calimero Home": the session, and the team (org)
+  // open now: the team screen's, or on a vault the team it was opened from.
+  const session = useMemo(
+    () =>
+      status === 'signed-in' && client && target && accountId
+        ? ({ status: 'signed-in', client, target, accountId } as const)
+        : null,
+    [status, client, target, accountId],
+  );
+  const org =
+    matchPath('/teams/:teamId', pathname)?.params.teamId ??
+    (pathname.startsWith('/vault/') ? readLastVisit(where).team ?? null : null);
 
   // Where this session is: merod local, or the Cloud cluster.
   const host = where;
@@ -279,6 +293,7 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
             <span>Log out</span>
           </button>
         </div>
+        <ManageInHomeLink session={session} org={org} className={frame.homeLink} />
       </div>
     </div>
   );

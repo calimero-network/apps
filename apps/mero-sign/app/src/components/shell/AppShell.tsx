@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ManageInHomeLink } from '@calimero-apps/passkey';
 import { describeTarget } from '../../session';
 import { useSessionApi } from '../../sessionContext';
 import {
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { useSignOut } from '../../auth/signOut';
+import { useActiveWorkspace } from '../../lib/activeWorkspace';
 import ThemeToggle from './ThemeToggle';
 import styles from './AppShell.module.css';
 
@@ -112,6 +114,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 function Identity() {
   const host = useNodeHost();
   const signOut = useSignOut();
+  const { api } = useSessionApi();
+  const workspace = useActiveWorkspace();
   return (
     <div className={styles.identity}>
       <div className={styles.identityRow}>
@@ -125,6 +129,7 @@ function Identity() {
           </span>
         </span>
       </div>
+      <ManageInHomeLink session={api.session} org={workspace} className={styles.homeLink} />
       <button
         type="button"
         className={styles.logout}

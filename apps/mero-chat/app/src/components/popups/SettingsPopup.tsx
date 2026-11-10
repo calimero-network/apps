@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { useNavigate } from "react-router-dom";
+import { ManageInHomeLink } from "@calimero-apps/passkey";
 import BaseModal from "../common/popups/BaseModal";
 import { useCalimero as useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "../../api/calimero";
 import {
@@ -401,6 +402,17 @@ const LogoutSection = styled.div`
   justify-content: flex-end;
 `;
 
+// "Manage people in Calimero Home →" (`ManageInHomeLink`), left of the session actions.
+const HomeLink = styled(ManageInHomeLink)`
+  margin-right: auto;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--glass-accent-solid, var(--glass-ink));
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+`;
+
 const SessionActions = styled.div`
   display: flex;
   align-items: center;
@@ -458,7 +470,7 @@ export default function SettingsPopup({
   setIsOpen,
   toggle,
 }: SettingsPopupProps) {
-  const { logout } = useMero();
+  const { logout, session } = useMero();
   const navigate = useNavigate();
   const { addToast } = useToast();
   const { theme, setTheme } = useTheme();
@@ -951,6 +963,7 @@ export default function SettingsPopup({
       )}
 
       <LogoutSection>
+        <HomeLink session={session} org={groupId} />
         <SessionActions>
           <ChangeWorkspaceButton onClick={handleChangeWorkspace}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
