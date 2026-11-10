@@ -72,9 +72,13 @@ const VIEWS: Record<string, unknown> = {
   getMembers: [{ id: ME, nickname: 'Alice', joined_at: '1', updated_at: '1', account: ME, role: 'owner' }],
 };
 
-function fakeClient(orgs: Array<{ orgId: string; name: string; role: string }> = [{ orgId: 'org-1', name: 'Team', role: 'owner' }]) {
+function fakeClient(
+  orgs: Array<{ orgId: string; name: string; role: string }> = [{ orgId: 'org-1', name: 'Team', role: 'owner' }],
+  opts: { foreign?: AppInfo[]; sheets?: AppInfo[] } = {},
+) {
   let session: CalimeroSession | undefined;
-  let apps: AppInfo[] = orgs.length ? [BUDGET] : [];
+  let apps: AppInfo[] = opts.sheets ?? (orgs.length ? [BUDGET] : []);
+  const foreign = opts.foreign ?? [];
   return {
     get session() {
       return session;
@@ -95,7 +99,9 @@ function fakeClient(orgs: Array<{ orgId: string; name: string; role: string }> =
     }),
     me: vi.fn(async () => ({ orgs })),
     getOrg: vi.fn(async () => ({ name: 'Team', members: { [ME]: 'owner' }, memberMetadata: { [ME]: { name: 'Alice' } } })),
-    listApps: vi.fn(async () => apps),
+    listApps: vi.fn(async (filter?: { bundle?: string }) =>
+      [...apps, ...foreign].filter((a) => !filter?.bundle || a.bundle === filter.bundle),
+    ),
     createOrg: vi.fn(async (name: string) => {
       orgs = [{ orgId: 'org-new', name, role: 'owner' }];
       return 'org-new';
@@ -163,6 +169,60 @@ describe('App', () => {
     expect(client.createOrg).toHaveBeenCalled();
     expect(client.setCapabilities).toHaveBeenCalled();
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('sheet-new', 'initProject', { name: 'Forecast' }));
+  });
+
+  describe('an org made for another app', () => {
+    // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+    const OVERWORLD = [{ orgId: 'ow', name: 'overworld', role: 'owner' }];
+    const BLOCKS: AppInfo = {
+      appId: 'blocks-1',
+      name: 'overworld',
+      owner: ME,
+      org: 'ow',
+      bundle: 'blocks-bundle',
+      package: 'com.calimero.mero-blocks',
+      version: null,
+    };
+
+    it('is not the workspace: none is shown and creating makes a new org', async () => {
+      remember();
+      const client = fakeClient(OVERWORLD, { foreign: [BLOCKS], sheets: [] });
+      render(<App deps={deps(client)} />);
+      const name = await screen.findByTestId('field-name');
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Mero Sheets');
+      expect(screen.queryByTestId('connect-org-ow')).toBeNull();
+      fireEvent.change(name, { target: { value: 'Forecast' } });
+      await waitFor(() => expect((screen.getByTestId('action-init_project') as HTMLButtonElement).disabled).toBe(false));
+      fireEvent.click(screen.getByTestId('action-init_project'));
+      await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Forecast', 'bundle-hash', { org: 'org-new' }));
+      expect(client.createApp).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), { org: 'ow' });
+    });
+
+    it('is offered under "Connect to an existing organization", and a spreadsheet is created there on choice', async () => {
+      remember();
+      const client = fakeClient(OVERWORLD, { foreign: [BLOCKS], sheets: [] });
+      client.getOrg.mockResolvedValue({ name: 'overworld', members: { [ME]: 'owner' }, memberMetadata: { [ME]: { name: 'Alice' } } });
+      render(<App deps={deps(client)} />);
+      fireEvent.click(await screen.findByTestId('connect-existing-org'));
+      const choice = await screen.findByTestId('connect-org-ow');
+      expect(choice.textContent).toContain('Mero Blocks: overworld');
+      fireEvent.click(choice);
+      await waitFor(() =>
+        expect(client.createApp).toHaveBeenCalledWith('Untitled Spreadsheet', 'bundle-hash', { org: 'ow' }),
+      );
+      expect(client.createOrg).not.toHaveBeenCalled();
+    });
+
+    it('leaves an org that holds spreadsheets listed and resumable', async () => {
+      remember();
+      const client = fakeClient([...OVERWORLD, { orgId: 'org-1', name: 'Team', role: 'owner' }], {
+        foreign: [BLOCKS],
+        sheets: [BUDGET],
+      });
+      render(<App deps={deps(client)} />);
+      await screen.findByText('Q3 Budget');
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Team');
+    });
   });
 
   it('asks before redeeming an invitation, then opens the spreadsheet the link names', async () => {

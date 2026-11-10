@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   resolveCurrentMemberIdentity: vi.fn(),
   createGroup: vi.fn(),
   createChannel: vi.fn(),
+  listOtherOrgs: vi.fn(),
   sessionKey: "account:me" as string | null,
 }));
 
@@ -62,6 +63,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     listGroups = h.listGroups;
     resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
     createGroup = h.createGroup;
+    listOtherOrgs = h.listOtherOrgs;
     setDefaultCapabilities = () => Promise.resolve({ data: null, error: null });
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
@@ -83,6 +85,16 @@ beforeEach(() => {
   h.createGroup
     .mockReset()
     .mockResolvedValue({ data: { groupId: "ns-new" }, error: null });
+  h.listOtherOrgs.mockReset().mockResolvedValue([
+    {
+      orgId: "ow",
+      name: "overworld",
+      role: "owner",
+      holds: [{ appId: "b1", name: "overworld", package: "com.calimero.mero-blocks" }],
+      label: "Mero Blocks: overworld",
+      canCreate: true,
+    },
+  ]);
   h.createChannel
     .mockReset()
     .mockResolvedValue({ contextId: "ctx-general", memberKey: "key" });
@@ -152,5 +164,41 @@ describe("NamespaceEntryPopup", () => {
     await waitFor(() =>
       expect(h.createChannel).toHaveBeenCalledWith("ns-new", "general", true),
     );
+  });
+
+  // An account in an org made for another app (a Mero Blocks world) has no
+  // chat workspace: creating one is the primary action, and that org is only
+  // offered behind "Connect to an existing organization".
+  describe("an org made for another app", () => {
+    it("is neither listed nor preselected: create is primary", async () => {
+      h.listGroups.mockResolvedValue({ data: [], error: null });
+      open();
+      expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+      expect(screen.queryByText("Select workspace")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("button")[0]).toHaveTextContent("Create workspace");
+      expect(screen.queryByTestId("connect-org-ow")).not.toBeInTheDocument();
+      expect(h.listOtherOrgs).not.toHaveBeenCalled();
+      expect(h.resolveCurrentMemberIdentity).not.toHaveBeenCalled();
+    });
+
+    it("is offered on request, with what it holds, and chat is added to it on choice", async () => {
+      h.listGroups.mockResolvedValue({ data: [], error: null });
+      open();
+      fireEvent.click(await screen.findByTestId("connect-existing-org"));
+      const choice = await screen.findByTestId("connect-org-ow");
+      expect(choice).toHaveTextContent("overworld");
+      expect(choice).toHaveTextContent("Mero Blocks: overworld");
+      fireEvent.click(choice);
+      await waitFor(() => expect(h.createChannel).toHaveBeenCalledWith("ow", "general", true));
+      expect(await screen.findByText("Join overworld")).toBeInTheDocument();
+      expect(h.createGroup).not.toHaveBeenCalled();
+    });
+
+    it("is also offered, secondary, next to the workspaces that hold chat", async () => {
+      open();
+      expect(await screen.findByText("Select workspace")).toBeInTheDocument();
+      expect(screen.getByRole("combobox")).toHaveValue("ns0");
+      expect(screen.getByTestId("connect-existing-org")).toBeInTheDocument();
+    });
   });
 });

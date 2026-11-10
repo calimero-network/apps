@@ -267,3 +267,84 @@
   line-height: 1.45;
   color: var(--_ink);
 }
+
+/*
+ * "Connect to an existing organization" (`<ConnectExistingOrg>`): the
+ * secondary way to put an app into an organization the account already has.
+ * Same tokens as the sign-in control.
+ */
+.cp-connect {
+  --_ink: var(--passkey-ink, var(--glass-ink, #0e1222));
+  --_muted: var(--passkey-muted, var(--glass-muted, #6f7589));
+  --_line: var(--passkey-line, var(--glass-line-strong, rgba(14, 18, 34, 0.14)));
+  --_secondary-bg: var(--passkey-secondary-bg, var(--glass-surface-solid, #ffffff));
+  --_secondary-ink: var(--passkey-secondary-ink, var(--glass-ink, #0e1222));
+  --_focus: var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  --_radius: var(--passkey-radius, 999px);
+  --_field-radius: var(--passkey-field-radius, var(--glass-radius-sm, 10px));
+  --_bad-bg: var(--passkey-error-bg, var(--glass-bad-bg, #ffe4ea));
+  --_bad-ink: var(--passkey-error-ink, var(--glass-bad-ink, #a2194b));
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  color: var(--_ink);
+  font-family: var(--passkey-font, inherit);
+  text-align: left;
+}
+.cp-connect__toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--_secondary-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.cp-connect__note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--_muted);
+}
+.cp-connect__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cp-connect__org {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--_line);
+  border-radius: var(--_field-radius);
+  background: var(--_secondary-bg);
+  color: var(--_secondary-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cp-connect__org:disabled { cursor: progress; opacity: 0.7; }
+.cp-connect__toggle:focus-visible,
+.cp-connect__org:focus-visible { outline: 2px solid var(--_focus); outline-offset: 2px; }
+.cp-connect__name { font-size: 14px; font-weight: 600; }
+.cp-connect__holds { font-size: 12px; color: var(--_muted); }
+.cp-connect__error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--_field-radius);
+  background: var(--_bad-bg);
+  color: var(--_bad-ink);
+  font-size: 13px;
+}

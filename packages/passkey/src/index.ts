@@ -68,3 +68,4 @@ export {
 } from "./signUpFlow";
 export { AppListing, type AppListingProps } from "./AppListing";
 export { listingCopy, renderListing, type ListingCopy, type ListingProps } from "./listing";
+export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";
