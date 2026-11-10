@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { giveAllPlan, loadOrg, mayChangeSeat, removeAllPlan, runEach, seatsFor, type OrgApp, type Person } from "../home";
+import { appsOf, giveAllPlan, loadOrg, mayChangeSeat, removeAllPlan, runEach, seatsFor, type OrgApp, type Person } from "../home";
 import { BLOCKS, CHAT, ORG, fakeOrg, passkey, type FakeOrgOptions } from "../test/fakeOrg";
 import { People } from "./People";
 
@@ -286,5 +286,40 @@ describe("mayChangeSeat / seatsFor", () => {
   it("offers lead to everyone but a guest", () => {
     expect(seatsFor({ role: "guest" })).not.toContain("lead");
     expect(seatsFor({ role: "member" })).toContain("lead");
+  });
+});
+
+describe("People: an app reopened to everyone keeps out who was taken out", () => {
+  // Chat was closed, Cat was taken out of it, then an admin reopened it
+  // (join "everyone"). Core keeps Cat in the team's `removed`: she is still
+  // out, and the matrix must not say she has it.
+  async function reopened() {
+    const fake = fakeOrg({ chatOpen: true });
+    const org = await fake.client.getOrg();
+    fake.client.getOrg.mockResolvedValue({
+      ...org,
+      teams: { "t-chat": { parent: null, members: { "acct-ana": true }, join: "everyone", removed: ["acct-cat"] } },
+    } as never);
+    const view = await loadOrg(fake.asClient, ORG, fake.me);
+    render(<People client={fake.asClient} view={view} account={fake.me} passkey={passkey} after={() => {}} onChanged={vi.fn()} />);
+    await screen.findByTestId("person-acct-bob");
+    return { fake, view };
+  }
+
+  it("shows Removed for someone in the team's removed list, Yes (everyone) for the rest", async () => {
+    const { view } = await reopened();
+    const column = view.apps.findIndex((a) => a.package === CHAT);
+    // The row's cells: its role, then one per app in the view's order.
+    const chatCell = (account: string) => within(screen.getByTestId(`person-${account}`)).getAllByRole("cell")[1 + column]!;
+    await waitFor(() => expect(chatCell("acct-cat").textContent).toBe("Removed"));
+    expect(chatCell("acct-bob").textContent).toBe("Yes (everyone)");
+  });
+
+  it("does not count the reopened app among a removed person's apps", async () => {
+    const { view } = await reopened();
+    const cat = view.people.find((p) => p.account === "acct-cat")!;
+    const rosters = new Map();
+    expect(appsOf(view, rosters, cat).map((a) => a.package)).not.toContain(CHAT);
+    expect(removeAllPlan(view, rosters, cat).skipped.map((s) => s.app.package)).not.toContain(CHAT);
   });
 });
