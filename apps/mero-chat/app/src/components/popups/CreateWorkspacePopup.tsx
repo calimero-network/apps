@@ -7,6 +7,7 @@ import {
   getApplicationId,
   setGroupId,
   setGroupMemberIdentity,
+  setStoredGroupAlias,
 } from "../../constants/config";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
@@ -158,7 +159,16 @@ export default function CreateWorkspacePopup({
       throw new Error(groupResult.error?.message || "Failed to create group");
     }
     const { groupId, haError } = groupResult.data;
-    setGroupId(groupId);
+    // Your name in it first, as the workspace picker does: whatever happens
+    // after (a passkey prompt declined, a node refusing #general), the
+    // workspace is never left without it. The workspace becomes the current
+    // one only at the end, so a create that fails part-way does not leave
+    // the app pointing at it.
+    setMessengerDisplayName(trimmedDisplayName, groupId);
+    // The workspace's own name, as the picker writes it: the name passed to
+    // `createGroup` does not reach its metadata record.
+    setStoredGroupAlias(groupId, trimmedWorkspaceName);
+    await groupApi.setGroupMetadata(groupId, trimmedWorkspaceName).catch(() => undefined);
     // An account's founding also asked the cloud to host the workspace; a
     // refusal means it exists but nobody can be invited until the cause is
     // fixed. Surface it here, not as a failed Invite later.
@@ -175,7 +185,6 @@ export default function CreateWorkspacePopup({
 
     const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
     const memberIdentity = identityResult.data?.memberIdentity;
-    setMessengerDisplayName(trimmedDisplayName, groupId);
     if (memberIdentity) {
       setGroupMemberIdentity(groupId, memberIdentity);
       // Awaited: `onSuccess` reloads the page, which would abort the request.
@@ -208,6 +217,7 @@ export default function CreateWorkspacePopup({
       });
     }
 
+    setGroupId(groupId);
     onSuccess(groupId);
   }, [trimmedWorkspaceName, trimmedDisplayName, onSuccess, addToast]);
 

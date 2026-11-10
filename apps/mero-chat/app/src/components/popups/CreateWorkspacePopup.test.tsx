@@ -18,7 +18,11 @@ const {
   mockGetRegistryVersions,
   mockInstallApplication,
   mockCreateChannel,
+  mockSetGroupMetadata,
+  mockSetStoredGroupAlias,
 } = vi.hoisted(() => ({
+  mockSetGroupMetadata: vi.fn(),
+  mockSetStoredGroupAlias: vi.fn(),
   // What `MeroJsBridge` records about the session; flipped per test.
   session: { isDelegated: false, applicationId: null as string | null },
   mockAddToast: vi.fn(),
@@ -85,6 +89,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     resolveCurrentMemberIdentity = mockResolveCurrentMemberIdentity;
     setDefaultCapabilities = mockSetDefaultCapabilities;
     setMemberMetadata = mockSetMemberMetadata;
+    setGroupMetadata = mockSetGroupMetadata;
     createInvitation = mockCreateInvitation;
   },
 }));
@@ -100,6 +105,7 @@ vi.mock("../../constants/config", () => ({
   getGroupId: () => "",
   setGroupId: mockSetGroupId,
   setGroupMemberIdentity: mockSetGroupMemberIdentity,
+  setStoredGroupAlias: mockSetStoredGroupAlias,
 }));
 
 vi.mock("../../utils/invitation", () => ({
@@ -151,6 +157,8 @@ describe("CreateWorkspacePopup", () => {
     mockInstallApplication.mockReset();
     mockCreateChannel.mockReset();
     mockCreateChannel.mockResolvedValue({ contextId: "ctx-general", memberKey: "key-1" });
+    mockSetGroupMetadata.mockReset().mockResolvedValue({ data: undefined, error: null });
+    mockSetStoredGroupAlias.mockReset();
 
     mockListApplications.mockResolvedValue({ apps: [{ id: "app-1" }] });
     mockCreateGroup.mockResolvedValue({
@@ -340,6 +348,50 @@ describe("CreateWorkspacePopup", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledWith("group-1");
     });
+  });
+
+  // The sidebar's create used to make the new workspace the current one before
+  // your name was saved: a step failing or declined after that left the app in
+  // a workspace with no name for you. It now saves the name first and switches
+  // last, as the workspace picker does.
+  it("keeps your name, and does not switch to the workspace, when a later step fails", async () => {
+    mockResolveCurrentMemberIdentity.mockRejectedValue(new Error("node unreachable"));
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /your display name/i }), {
+      target: { value: "Bruno" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    expect(await screen.findByText(/node unreachable/i)).toBeInTheDocument();
+    expect(localStorage.getItem("chat-username:group-1")).toBe("Bruno");
+    expect(mockSetGroupId).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("names the workspace as the picker does, and switches to it last", async () => {
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("group-1"));
+    expect(mockSetStoredGroupAlias).toHaveBeenCalledWith("group-1", "Team Space");
+    expect(mockSetGroupMetadata).toHaveBeenCalledWith("group-1", "Team Space");
+    // Switched only once the name, the member record and #general are done.
+    expect(mockSetGroupId.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockCreateChannel.mock.invocationCallOrder[0],
+    );
+    expect(mockSetGroupId.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockSetMemberMetadata.mock.invocationCallOrder[0],
+    );
   });
 
   it("on an account, says so when the cloud refused to host the new workspace", async () => {
