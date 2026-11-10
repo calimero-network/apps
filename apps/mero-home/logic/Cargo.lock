@@ -94,18 +94,18 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "eyre",
  "serde_json",
  "sha2 0.11.1",
- "wasmparser 0.262.0",
+ "wasmparser 0.263.0",
 ]
 
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "async-trait",
  "bytes",
@@ -114,12 +114,13 @@ dependencies = [
  "calimero-app-wit",
  "eyre",
  "hex",
+ "libc",
  "ring",
  "sha2 0.11.1",
  "subtle",
  "thiserror",
  "tokio",
- "wasmparser 0.262.0",
+ "wasmparser 0.263.0",
  "wasmtime",
  "wasmtime-wasi",
 ]
@@ -127,7 +128,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -142,12 +143,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -169,7 +170,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1663,6 +1664,18 @@ name = "wasmparser"
 version = "0.262.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "974d643b125b272607e2fff8012ea14a8328acd7621e4bafa7afb32500052b1b"
+dependencies = [
+ "bitflags",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "semver",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.263.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f5fa0a054ae153606df820eb0a84213e28cda41bbe04ba2628e71b6ba100fcb"
 dependencies = [
  "bitflags",
  "hashbrown 0.17.1",
