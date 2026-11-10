@@ -50,6 +50,7 @@ import {
   type SignUpStage,
 } from "@calimero-apps/passkey";
 import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
+import { finishNativeSignIn, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { dropInvite, pendingInvite } from "../utils/invitation";
 import { markJoinedAwaitingName } from "../utils/enterWorkspace";
 import { setMessengerDisplayName } from "../utils/messengerName";
@@ -219,7 +220,8 @@ export function startCalimero(): Promise<void> {
       sessions = new SessionStore(APP, target);
       loadSignUpPolicy(client);
       set({ knownAccount: knownAccountHere(target) });
-      if (sessions.restore(client) && client.session) {
+      // A native sign-in starts fresh: the app gets a session of its own.
+      if (!pendingNativeSignIn() && sessions.restore(client) && client.session) {
         set({ status: "signed-in", accountId: client.session.accountId, message: null });
       } else {
         set({ status: "signed-out", message: null });
@@ -232,6 +234,25 @@ export function startCalimero(): Promise<void> {
 }
 
 const NOT_CONNECTED = "Not connected yet. Please retry in a moment.";
+
+/** Where the native apps receive their session. */
+export const NATIVE_CALLBACK = "mero-chat://signed-in";
+
+/**
+ * Hands the session to the native app that opened this page and forgets it
+ * here (no sign-out: that would end the app's session too).
+ */
+export function finishNative(): Promise<boolean> {
+  if (!client) return Promise.resolve(false);
+  return finishNativeSignIn({
+    client,
+    callback: NATIVE_CALLBACK,
+    forgetHere: () => {
+      sessions?.clear();
+      set({ status: "signed-out", accountId: null });
+    },
+  });
+}
 
 /** The client; throws before `startCalimero` has connected. */
 export function getClient(): CalimeroClient {

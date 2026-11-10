@@ -80,6 +80,23 @@ final class SessionModel: ObservableObject {
         rebuild()
     }
 
+    /// Sign in on Calimero Cloud through Mero Chat's served page, where the
+    /// person signs in or creates an account with their passkey. `cluster`:
+    /// a cluster's name, or empty for Mero Chat's primary cluster.
+    func signInWithServedPage(cluster: String) async {
+        let name = cluster.trimmingCharacters(in: .whitespacesAndNewlines)
+        var target: String?
+        if !name.isEmpty {
+            guard case .name(let parsed)? = ClusterTarget.parse(name) else {
+                client.errorMessage = "Enter the cluster's name, or leave it empty."
+                return
+            }
+            target = parsed
+        }
+        _ = await client.signInWithServedPage(cluster: target, callback: AppConfig.signInCallback)
+        rebuild()
+    }
+
     /// Sign in with the device's passkey (a development node: the soft one kept for it).
     func signIn() async {
         _ = await client.signIn()

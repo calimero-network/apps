@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./ceremony": "./src/ceremony.ts",
     "./listing": "./src/listing.ts",
+    "./native": "./src/native.ts",
     "./signUpFlow": "./src/signUpFlow.ts",
     "./upgrade": "./src/upgrade.ts",
     "./passkey.css": "./src/passkey.css"

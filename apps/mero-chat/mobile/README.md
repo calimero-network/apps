@@ -5,7 +5,7 @@ contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.6.0`, by SPM version in `ios/project.yml` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at a commit, by SPM revision in `ios/project.yml` |
 | Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
 Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
@@ -16,8 +16,8 @@ To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (t
 Both apps sign in to a Calimero 1.0 cluster with a passkey and talk to it over the SDKs' sealed
 channel. They call the component contract the web port (#730) ships in `../logic/res/abi.json`.
 
-- **Sign in:** **Calimero Cloud** takes the cluster's name (its nodes from the node directory) or a
-  node's URL, then the device's passkey or a new account. **Development node** takes a
+- **Sign in:** **Calimero Cloud** opens Mero Chat's sign-in page in the system sheet (optionally
+  on a named cluster), where the person signs in or creates an account with their passkey. **Development node** takes a
   `merod local` URL and trusts its mock attestation, with a software passkey kept per node.
 - **Contract:** `ComponentChatContract` (both platforms) is the one place that maps v1's method
   names and shapes to the ABI's: camelCase names and fields, `u64`s as decimal strings, as the
@@ -50,14 +50,10 @@ README lists them with the reason.
 
 ## Open points
 
-- **Passkeys on Calimero Cloud** (relying party `calimero.network`):
-  - **iOS** names `webcredentials:calimero.network` (`ios/Sources/MeroChat.entitlements`). Still
-    needed: the Apple Team ID in `DEVELOPMENT_TEAM` (`ios/Config/Signing.xcconfig`), the AASA file
-    on calimero.network listing `<TeamID>.network.calimero.chat`
-    ([landing#215](https://github.com/calimero-network/landing/pull/215)), and clusters accepting
-    the origin `https://calimero.network` (mdma).
-  - **Android** is not set up: the node must accept `android:apk-key-hash:` origins (a core
-    change), and calimero.network must serve Digital Asset Links for the app.
+- **Sign-in on Calimero Cloud** runs on Mero Chat's served page in the system sign-in sheet
+  (`#native-sign-in`), which returns an app-bound session to `mero-chat://signed-in`.
+  - **iOS:** `MeroClient.signInWithServedPage` (swift-sdk, pinned to a commit until released).
+  - **Android:** not wired yet (kotlin-sdk, Custom Tabs).
   - Development nodes use software passkeys and need none of this.
 - **Blobs** (attachments, avatars) need a node past core `1.0.0-rc.7` (#730).
 - **Links across clients:** the web app shares `?invite=` links to its own origin and does not

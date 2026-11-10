@@ -12,6 +12,7 @@ import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
 import { log } from "./utils/logger.ts";
 import { captureInvite } from "./utils/invitation.ts";
+import { captureNativeSignIn } from "@calimero-apps/passkey/native";
 import { purgeLegacyIdentityDisplayNames } from "./utils/messengerName.ts";
 import { applyTheme, readStoredTheme } from "./theme/theme.ts";
 
@@ -30,6 +31,9 @@ import "react-photo-view/dist/react-photo-view.css";
 // signed in yet, and the token has to survive the passkey sign-up. React
 // Router's <Navigate> would replace the URL before any component could read it.
 captureInvite();
+
+// Opened by the iOS or Android app to sign in (`#native-sign-in&state=…&key=…`).
+captureNativeSignIn();
 
 // One connection, on the target this build names: `merod local` under `vite`,
 // the Calimero Cloud cluster in a production build (`@calimero-apps/connect`).

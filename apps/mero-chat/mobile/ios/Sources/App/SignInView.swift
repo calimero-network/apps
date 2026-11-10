@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The landing page at phone width: a nav bar with the Mero Chat mark, the
 /// hero, a glimpse of a channel, what the app does, and sign-in pinned at the
-/// bottom: a Calimero Cloud cluster (its name, or a node's URL) and the device's passkey (or a
-/// new account), or a development node (`merod local`) with mock attestation
+/// bottom: Calimero Cloud through Mero Chat's sign-in page (optionally on a
+/// named cluster), or a development node (`merod local`) with mock attestation
 /// and a software passkey kept for it.
 struct SignInView: View {
     @ObservedObject var session: SessionModel
@@ -14,7 +14,7 @@ struct SignInView: View {
     @State private var name = ""
     @State private var mode: Mode = .signIn
 
-    enum Mode { case signIn, create, development }
+    enum Mode { case signIn, development }
 
     var body: some View {
         ZStack {
@@ -57,7 +57,7 @@ struct SignInView: View {
                     .background(Capsule().fill(Color(light: 0xE3E9FF, dark: 0x1C2650)))
             }
             .buttonStyle(.plain)
-            .disabled(client.isLoading || clusterURL.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(client.isLoading)
             .accessibilityIdentifier("signInHeaderButton")
         }
         .padding(.horizontal, 20)
@@ -219,14 +219,9 @@ struct SignInView: View {
                 .accessibilityIdentifier("signInError")
         }
         switch mode {
-        case .signIn, .create:
-            urlField("Cluster name or node URL", text: $clusterURL)
+        case .signIn:
+            urlField("Cluster name (optional)", text: $clusterURL)
                 .accessibilityIdentifier("signInClusterURL")
-            if mode == .create {
-                TextField("Your name", text: $name)
-                    .textFieldStyle(ChatFieldStyle())
-                    .textInputAutocapitalization(.words)
-            }
         case .development:
             urlField("http://localhost:2501", text: $devNodeURL)
                 .accessibilityIdentifier("signInDevNodeURL")
@@ -246,8 +241,7 @@ struct SignInView: View {
         .accessibilityIdentifier("signInButton")
         HStack {
             switch mode {
-            case .signIn: Button("Create an account") { mode = .create }
-            case .create: Button("I have an account") { mode = .signIn }
+            case .signIn: EmptyView()
             case .development: Button("Use Calimero Cloud") { mode = .signIn }
             }
             Spacer()
@@ -264,7 +258,7 @@ struct SignInView: View {
             Text(
                 mode == .development
                     ? "Mock attestation is allowed for this node; a passkey is kept on this device for it."
-                    : "Sign in with this device's passkey. The node's attestation is verified first.")
+                    : "Opens Mero Chat's sign-in page, where you sign in or create an account with your passkey.")
         }
         .font(Theme.font(12))
         .foregroundStyle(Theme.muted)
@@ -280,8 +274,7 @@ struct SignInView: View {
 
     private var primaryTitle: String {
         switch mode {
-        case .signIn: return "Sign in with passkey"
-        case .create: return "Create account"
+        case .signIn: return "Sign in"
         case .development: return "Connect"
         }
     }
@@ -290,8 +283,7 @@ struct SignInView: View {
 
     private var canSubmit: Bool {
         switch mode {
-        case .signIn: return !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
-        case .create: return !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty && !trimmedName.isEmpty
+        case .signIn: return true
         case .development: return !devNodeURL.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
@@ -301,12 +293,7 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                guard await session.connectCloud(clusterURL) else { return }
-                await session.signIn()
-            case .create:
-                guard await session.connectCloud(clusterURL) else { return }
-                await session.signUp(name: trimmedName)
-                if session.displayName.isEmpty { session.displayName = trimmedName }
+                await session.signInWithServedPage(cluster: clusterURL)
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 await session.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)

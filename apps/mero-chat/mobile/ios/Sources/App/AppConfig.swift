@@ -22,6 +22,9 @@ enum AppConfig {
         return .scheme(callbackScheme, path: "consent")
     }
 
+    /// Where Mero Chat's sign-in page sends the session back (`mero-chat://signed-in#…`).
+    static var signInCallback: CloudCallback { .scheme(callbackScheme, path: "signed-in") }
+
     /// The Calimero Cloud cluster: a node URL from the console. Signing in
     /// verifies the node's attestation (`CloudPolicy.production`).
     static var clusterURL: String? { string("CalimeroClusterURL") }
