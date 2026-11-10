@@ -149,7 +149,7 @@ describe("creating a workspace", () => {
     const made = await createAppOrg(c, "Acme", SOURCE, () => passkey, { capabilities: 7 });
     expect(made).toEqual({ orgId: "org", teamId: "team-new", capabilitiesError: null });
     expect(c.setOrgMetadata).toHaveBeenCalledWith("org", { createdFor: PKG });
-    expect(c.setCapabilities).toHaveBeenCalledWith("org", 7, passkey, {});
+    expect(c.setCapabilities).toHaveBeenCalledWith("org", 7, passkey);
     expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: false });
     expect(c.view.teams["team-new"]!.join).toBe("everyone");
   });

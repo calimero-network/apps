@@ -412,14 +412,13 @@ export async function createChatApp(
  * Not marked: a workspace is listed once it holds #general.
  */
 export async function createOrg(name: string, capabilities?: number): Promise<string> {
-  const made = await run((c) =>
-    createAppOrg(c, name, chatSource(), passkey, {
-      mark: false,
-      ...(capabilities === undefined ? {} : { capabilities }),
-    }),
-  );
-  if (made.capabilitiesError) console.warn("createOrg: member capabilities not set", made.capabilitiesError);
+  const made = await run((c) => createAppOrg(c, name, chatSource(), passkey, { mark: false }));
   invalidate();
+  if (capabilities !== undefined) {
+    await setCapabilities(made.orgId, capabilities).catch((e: unknown) => {
+      console.warn("createOrg: member capabilities not set", e);
+    });
+  }
   return made.orgId;
 }
 
