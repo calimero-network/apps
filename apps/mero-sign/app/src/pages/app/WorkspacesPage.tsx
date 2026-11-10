@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { otherOrgs, type OtherOrg } from '@calimero-apps/connect';
+import { appOnlyInviteNote, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { ConnectExistingOrg } from '@calimero-apps/passkey';
 import {
   ArrowRight,
@@ -26,12 +26,13 @@ import {
 } from '../../lib/activeWorkspace';
 import {
   CONNECTED_AGREEMENT_NAME,
+  PRODUCT_NAME,
   createAgreement,
   createWorkspace,
   listWorkspaces,
   type WorkspaceRow,
 } from '../../lib/agreements';
-import { inviteLink as linkFor, inviteToken } from '../../lib/invites';
+import { appInviteToken, inviteLink as linkFor } from '../../lib/invites';
 import { hueOf, initials } from '../../lib/monogram';
 import { errorMessage } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
@@ -97,6 +98,7 @@ export default function WorkspacesPage({
 
   const [inviteFor, setInviteFor] = useState<WorkspaceRow | null>(null);
   const [inviteLink, setInviteLink] = useState('');
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [minting, setMinting] = useState(false);
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -222,7 +224,13 @@ export default function WorkspacesPage({
       try {
         await createAgreement(
           app.client,
-          { source: app.source, org: org.orgId, name: CONNECTED_AGREEMENT_NAME, accountId: app.accountId },
+          {
+            source: app.source,
+            org: org.orgId,
+            name: CONNECTED_AGREEMENT_NAME,
+            accountId: app.accountId,
+            passkey: app.passkey,
+          },
           setStatus,
           app.after,
         );
@@ -245,8 +253,9 @@ export default function WorkspacesPage({
       try {
         // An org invite: a passkey step-up for the inviter. The link carries
         // the token; the recipient redeems it after signing in.
-        const token = await inviteToken(app.client, row.namespaceId, app.passkey());
+        const { token, appOnly } = await appInviteToken(app.client, row.namespaceId, app.passkey(), app.source);
         setInviteLink(linkFor(token, null, window.location, row.namespaceId));
+        setInviteAppOnly(appOnly);
       } catch (error) {
         setInviteFor(null);
         setBanner({ kind: 'error', text: errorMessage(error) });
@@ -476,6 +485,11 @@ export default function WorkspacesPage({
               with this link. Make a new one for each person you invite.
               Creating it asks for your passkey.
             </p>
+            {inviteLink && inviteAppOnly && (
+              <p className={styles.modalDesc} data-testid="invite-app-only">
+                {appOnlyInviteNote(PRODUCT_NAME)}
+              </p>
+            )}
             {minting ? (
               <p className={styles.empty}>
                 <span className={styles.spinner} /> Minting…

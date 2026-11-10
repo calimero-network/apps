@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createTeamInvitation } from "../api/rpc";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME, createTeamInvitation } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { inviteLink } from "../utils/inviteLink";
@@ -31,6 +32,7 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
   const invitationLink = (token: string) => inviteLink(token, window.location, undefined, teamId);
   const { showToast } = useToast();
   const [invitation, setInvitation] = useState("");
+  const [appOnly, setAppOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -41,8 +43,9 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
     setInvitation("");
     setLoading(true);
     try {
-      const token = await createTeamInvitation(teamId);
-      if (token) setInvitation(token);
+      const made = await createTeamInvitation(teamId);
+      if (made.token) setInvitation(made.token);
+      setAppOnly(made.appOnly);
     } catch (err) {
       setError(extractErrorMessage(err, "Failed to create the invitation."));
     } finally {
@@ -117,6 +120,11 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
         {invitation && (
           <p className={styles.note} data-testid="invite-single-use">
             Single use: one person can join with this link. Generate another for each person you invite.
+          </p>
+        )}
+        {invitation && appOnly && (
+          <p className={styles.note} data-testid="invite-app-only">
+            {appOnlyInviteNote(PRODUCT_NAME)}
           </p>
         )}
 

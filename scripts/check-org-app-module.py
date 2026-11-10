@@ -58,13 +58,13 @@ CONVERTED = {
     "mero-forum",
     "mero-pass",
     "mero-pixart",
+    "mero-design",
+    "mero-sheets",
+    "mero-sign",
 }
 
 NOT_CONVERTED_YET = {
     "mero-calendar",
-    "mero-design",
-    "mero-sheets",
-    "mero-sign",
     "mero-stream",
     "mero-updates",
 }
