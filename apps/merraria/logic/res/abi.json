@@ -13,13 +13,13 @@
   "events": {
     "Initialized": {},
     "PlayerJoined": {
-      "0": "string"
+      "account": "string"
     },
     "PlayerLeft": {
-      "0": "string"
+      "account": "string"
     },
     "TilesChanged": {
-      "0": "string"
+      "account": "string"
     }
   },
   "methods": {

@@ -311,7 +311,7 @@ impl MeroStream {
     // ── Membership ──────────────────────────────────────────────────────────
 
     /// Join the stream, or change your display name. Idempotent: `joinedAt`
-    /// stays the first join's. Emits `MemberJoined(account)` every time.
+    /// stays the first join's. Emits `MemberJoined { account }` every time.
     pub fn join(&mut self, username: String, now: u64) -> app::Result<Member> {
         let id = caller_account()?;
         let joined_at = self
@@ -324,7 +324,12 @@ impl MeroStream {
             updated_at: now,
         };
         let _previous = self.members.insert(&id, &row)?;
-        env::emit(Event::MemberJoined(id.clone()), Audience::All)?;
+        env::emit(
+            Event::MemberJoined {
+                account: id.clone(),
+            },
+            Audience::All,
+        )?;
         Ok(member(id, row))
     }
 
@@ -341,7 +346,7 @@ impl MeroStream {
 
     /// Encode one raw luma frame in the component, split it into fragments of
     /// at most [`MAX_CHUNK_BYTES`], store them, prune the caller's frames
-    /// older than [`FRAME_WINDOW`], and emit `FramePosted(seq)`. Returns the
+    /// older than [`FRAME_WINDOW`], and emit `FramePosted { seq }`. Returns the
     /// frame's seq.
     ///
     /// `raw` is `width * height` luma bytes (base64url on the wire). `now` is
@@ -404,7 +409,7 @@ impl MeroStream {
         }
 
         self.prune_own_frames(&from, seq.saturating_sub(FRAME_WINDOW))?;
-        env::emit(Event::FramePosted(seq), Audience::All)?;
+        env::emit(Event::FramePosted { seq }, Audience::All)?;
         Ok(seq)
     }
 
@@ -501,7 +506,7 @@ impl MeroStream {
     /// Store one WebCodecs chunk (`dataB64`, standard base64) as the caller's
     /// next seq, reap the caller's chunks older than [`LIVE_WINDOW_MS`] (never
     /// their newest keyframe), and, for the stream's owner, sweep senders
-    /// silent for [`STALE_SENDER_MS`]. Emits `ChunkPosted(seq)`; returns the
+    /// silent for [`STALE_SENDER_MS`]. Emits `ChunkPosted { seq }`; returns the
     /// seq. `now` is unix milliseconds.
     ///
     /// `NotJoined`, `BadBase64`, `EmptyChunk`, `ChunkTooLarge`,
@@ -562,7 +567,7 @@ impl MeroStream {
 
         self.prune_own_chunks(&from, now)?;
         self.sweep_stale_senders(&from, now)?;
-        env::emit(Event::ChunkPosted(seq), Audience::All)?;
+        env::emit(Event::ChunkPosted { seq }, Audience::All)?;
         Ok(seq)
     }
 
@@ -858,7 +863,7 @@ impl MeroStream {
             .frames_pruned
             .saturating_add(pruned_seqs.len() as u64);
         let _previous = self.chunk_cursors.insert(&key, &cursor)?;
-        env::emit(Event::FramesPruned(before_seq), Audience::All)?;
+        env::emit(Event::FramesPruned { before_seq }, Audience::All)?;
         Ok(())
     }
 }
@@ -889,20 +894,20 @@ pub enum Error {
     NotOwner,
 }
 
-/// Nudges: each means "read again". Tuple variants as in v1; their data is
-/// `{"0": ...}` on the wire (u64s as decimal strings).
+/// Nudges: each means "read again". Every field is named (D63), so the data is
+/// `{"account": ...}` / `{"seq": ...}` on the wire (u64s as decimal strings).
 #[app::event]
 pub enum Event {
     /// The stream was created.
     Initialized,
     /// An account joined (or renamed itself).
-    MemberJoined(String),
+    MemberJoined { account: String },
     /// A frame was stored; its seq.
-    FramePosted(u64),
+    FramePosted { seq: u64 },
     /// Frames below this seq were pruned.
-    FramesPruned(u64),
+    FramesPruned { before_seq: u64 },
     /// An approach-2 chunk was stored; its seq.
-    ChunkPosted(u64),
+    ChunkPosted { seq: u64 },
 }
 
 // ── free helpers ────────────────────────────────────────────────────────────

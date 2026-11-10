@@ -1,7 +1,7 @@
 // The app's events, as `client.events(app, from)` yields them: `{ id, kind,
-// data }`. The contract's events are tuple variants, so `data` is `{ "0":
-// <account> }` (`TilesChanged`, `PlayerJoined`, `PlayerLeft`) or nothing
-// (`Initialized`). An event is a nudge to re-read state, never the state.
+// data }`. Every field of an app event is named (core D63), so `data` is
+// `{ "account": <account> }` (`TilesChanged`, `PlayerJoined`, `PlayerLeft`) or
+// nothing (`Initialized`). An event is a nudge to re-read state, never the state.
 
 export interface GameEvent {
   kind: string;
@@ -11,11 +11,9 @@ export interface GameEvent {
 
 export function toGameEvent(event: { kind: string; data: unknown }): GameEvent {
   const data = event.data;
-  const named =
-    data !== null && typeof data === "object" && typeof (data as Record<string, unknown>)["0"] === "string"
-      ? ((data as Record<string, unknown>)["0"] as string)
-      : null;
-  return { kind: event.kind, value: named };
+  const account =
+    data !== null && typeof data === "object" ? (data as Record<string, unknown>).account : undefined;
+  return { kind: event.kind, value: typeof account === "string" ? account : null };
 }
 
 /**

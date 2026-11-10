@@ -23,17 +23,17 @@
   },
   "events": {
     "ChunkPosted": {
-      "0": "u64"
+      "seq": "u64"
     },
     "FramePosted": {
-      "0": "u64"
+      "seq": "u64"
     },
     "FramesPruned": {
-      "0": "u64"
+      "beforeSeq": "u64"
     },
     "Initialized": {},
     "MemberJoined": {
-      "0": "string"
+      "account": "string"
     }
   },
   "methods": {
