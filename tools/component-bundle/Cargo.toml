@@ -19,9 +19,9 @@ path = "src/main.rs"
 # with core's own manifest types and signer: the node verifies what this writes
 # with the same `calimero-bundle`.
 [dependencies]
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
-calimero-bundle    = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
-mero-sign          = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.15" }
+calimero-bundle    = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.15" }
+mero-sign          = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.15" }
 
 base64     = "0.22"
 clap       = { version = "4", features = ["derive", "env"] }
