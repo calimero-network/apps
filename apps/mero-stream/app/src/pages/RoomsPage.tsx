@@ -9,6 +9,8 @@ import {
   inviteLink,
   inviteToken,
   listRooms,
+  membersCreateRooms,
+  setMembersCreateRooms,
   streamInfo,
   type RoomRow,
 } from "../lib/streams";
@@ -61,6 +63,9 @@ export default function RoomsPage() {
    * the create row is shown and the node decides.
    */
   const [mayCreate, setMayCreate] = useState<boolean | null>(null);
+  /** The caller's role here, and the org's member defaults, for the owner's setting. */
+  const [myRole, setMyRole] = useState<string | null>(null);
+  const [memberDefaults, setMemberDefaults] = useState<number | null>(null);
 
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -103,6 +108,8 @@ export default function RoomsPage() {
           canCreateIn(conn.client, orgId),
         ]);
         setMayCreate(may);
+        setMyRole(conn.accountId ? (info.roles[conn.accountId] ?? null) : null);
+        setMemberDefaults(info.memberDefaults);
         setNsName(info.name);
         setNames(info.names);
         setRooms(list);
@@ -158,6 +165,22 @@ export default function RoomsPage() {
       navigate("/live");
     });
   }, [name, conn, orgId, run, navigate]);
+
+  /** "Members can create rooms": `CREATE_APP` in the org's default (owner or admin, a passkey approval). */
+  const toggleMembersCreate = useCallback(
+    (on: boolean) => {
+      if (!conn || memberDefaults === null) return;
+      void run("members-create", async (onStatus) => {
+        onStatus("Approve the change with your passkey…");
+        await setMembersCreateRooms(conn.client, orgId, memberDefaults, on, conn.passkey());
+        conn.after();
+        await load(false);
+        showToast(on ? "Members can now create rooms." : "Only owners and admins can create rooms now.");
+      });
+    },
+    [conn, memberDefaults, orgId, run, load, showToast],
+  );
+  const managesStream = myRole === "owner" || myRole === "admin";
 
   /** Open a room's call. */
   const enter = useCallback(
@@ -334,6 +357,19 @@ export default function RoomsPage() {
               Create room
             </ActionButton>
           </div>
+        )}
+
+        {managesStream && memberDefaults !== null && (
+          <label className={styles.setting} title="Owners and admins can always create rooms">
+            <input
+              type="checkbox"
+              checked={membersCreateRooms(memberDefaults)}
+              disabled={pending === "members-create"}
+              onChange={(e) => toggleMembersCreate(e.target.checked)}
+              data-testid="members-create-rooms"
+            />
+            Members can create rooms
+          </label>
         )}
 
         {status && (
