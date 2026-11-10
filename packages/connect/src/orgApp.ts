@@ -162,7 +162,7 @@ export async function createAppOrg(
   let capabilitiesError: unknown = null;
   if (options.capabilities !== undefined) {
     try {
-      await client.setCapabilities(orgId, options.capabilities, provider(passkey), {});
+      await client.setCapabilities(orgId, options.capabilities, provider(passkey));
     } catch (e) {
       capabilitiesError = e ?? new Error("member defaults not set");
     }
