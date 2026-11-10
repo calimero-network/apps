@@ -4,9 +4,11 @@ import { describeError, myOrgs, type KeyValueStorage, type MyOrg } from "@calime
 
 import { AdminApps } from "./screens/AdminApps";
 import { Invitations } from "./screens/Invitations";
+import { MergeOrgs } from "./screens/MergeOrgs";
 import { People } from "./screens/People";
 import { YourApps } from "./screens/YourApps";
 import { loadOrg, modeLabel, roleLabel, screensFor, type OrgView, type Screen } from "./home";
+import { movesSupported } from "./move";
 
 const SCREEN_LABEL: Record<Screen, string> = {
   apps: "Your apps",
@@ -44,6 +46,24 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
   const [screen, setScreen] = useState<Screen>("apps");
   const [reloads, setReloads] = useState(0);
   const reload = useCallback(() => setReloads((n) => n + 1), []);
+  const [orgReads, setOrgReads] = useState(0);
+  // A move or a merge changes the orgs too (one may be deleted): both are read again.
+  const reloadAll = useCallback(() => {
+    setOrgReads((n) => n + 1);
+    setReloads((n) => n + 1);
+  }, []);
+  // Whether the node moves apps between organizations (core's `/apps/{app}/move`):
+  // on a node from before, "Move to another organization" and "Merge
+  // organizations" are not offered.
+  const [canMove, setCanMove] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    movesSupported(client).then((yes) => live && setCanMove(yes));
+    return () => {
+      live = false;
+    };
+  }, [client]);
 
   useEffect(() => {
     let live = true;
@@ -60,14 +80,15 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
         const pick =
           [initialOrg, remembered].find((o) => o && list.some((x) => x.orgId === o)) ??
           (list.length === 1 ? list[0]!.orgId : null);
-        setOrg(pick ?? null);
+        // Read again after a change: the org open stays open while it exists.
+        setOrg((current) => (current && list.some((x) => x.orgId === current) ? current : (pick ?? null)));
       })
       .catch((e) => live && setOrgs({ kind: "failed", error: describeError(e) }))
       .finally(after);
     return () => {
       live = false;
     };
-  }, [client, account, initialOrg, storage, after]);
+  }, [client, account, initialOrg, storage, after, orgReads]);
 
   useEffect(() => {
     if (!org) {
@@ -188,7 +209,28 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
             <Invitations client={client} view={view.view} account={account} passkey={passkey} after={after} />
           )}
           {shown === "admin" && (
-            <AdminApps client={client} view={view.view} passkey={passkey} after={after} onChanged={reload} />
+            <>
+              <AdminApps
+                client={client}
+                view={view.view}
+                orgs={orgs.kind === "ready" ? orgs.orgs : []}
+                canMove={canMove}
+                passkey={passkey}
+                after={after}
+                onChanged={reloadAll}
+              />
+              {canMove && (
+                <MergeOrgs
+                  client={client}
+                  view={view.view}
+                  orgs={orgs.kind === "ready" ? orgs.orgs : []}
+                  account={account}
+                  passkey={passkey}
+                  after={after}
+                  onChanged={reloadAll}
+                />
+              )}
+            </>
           )}
         </>
       )}

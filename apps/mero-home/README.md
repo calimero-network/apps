@@ -17,7 +17,8 @@ apps/mero-home/
 └── app/
     ├── src/home.ts        what Home reads and decides (no React): org view, apps, rosters, who may do what
     ├── src/Home.tsx       org picker, then the screens the person gets
-    ├── src/screens/       Your apps, People, Invitations, Admin
+    ├── src/move.ts        moving an app to another org, and merging orgs (no React)
+    ├── src/screens/       Your apps, People, Invitations, Admin, Merge
     └── e2e/               Playwright on merod local (CI: components.yml `browser`)
 ```
 
@@ -56,6 +57,30 @@ every app to use.
 5. Home is one Calimero app on every cluster.
 6. Admins can remove someone from the organization, and so from all its apps
    (core#4891), behind a confirm that names those apps.
+
+## Moving apps and merging organizations
+
+On a node with core's `POST /apps/{app}/move` (core `feat/move-app-to-org`),
+the Admin screen offers two more things to an admin. Home probes the route
+once (`movesSupported`: it asks to move an app no node holds; `404 NOT_FOUND`
+means the route is there, a bare `404` that it is not) and offers neither on
+an older node.
+
+- **Move to another organization…**, per app instance: to another
+  organization the admin administers, optionally bringing the people who use
+  it. One passkey prompt.
+- **Merge another organization into this one**: pick an organization you
+  administer, see its apps, people and pending invitations, then move every
+  app here (one passkey prompt each: the node takes consent per app), bringing
+  the people who use them. Each app's result is listed; a refusal (the
+  target's quota, an owner who is not in the target, an app on a team below
+  its app team) leaves that app where it was and the rest go on. Once the
+  source holds no app, its owner may delete it, typing its name to confirm.
+
+The rules are core's (`docs/.../protocol/organizations.mdx#moving-an-app`):
+the data stays put, the payer and access go to the target, people come in as
+members at most. `src/move.ts` holds the logic, `src/screens/MergeOrgs.tsx`
+the merge screen.
 
 ## Run it
 
