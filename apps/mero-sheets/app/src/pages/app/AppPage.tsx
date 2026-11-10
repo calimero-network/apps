@@ -23,7 +23,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { targetKey } from '@calimero-apps/connect';
+import { targetKey, type OtherOrg } from '@calimero-apps/connect';
+import { ConnectExistingOrg } from '@calimero-apps/passkey';
 import { useSignedIn } from '../../sessionContext';
 import { describeTarget } from '../../session';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
@@ -1404,6 +1405,14 @@ export default function AppPage() {
 
               {ws.status && <StatusLine>{ws.status}</StatusLine>}
               {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
+
+              {/* Secondary and explicit: an org the account has for another
+                  app is never the default, only offered here. */}
+              <ConnectExistingOrg
+                appName={APP_DISPLAY_NAME}
+                load={ws.loadOtherOrgs}
+                onConnect={(o: OtherOrg) => ws.connectWorkspace(o, projectName.trim())}
+              />
             </Card>
           </PickerGrid>
         </PickerMain>

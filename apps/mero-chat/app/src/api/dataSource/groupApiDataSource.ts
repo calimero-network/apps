@@ -5,7 +5,7 @@
 import { uploadBlob, type BlobUploadResult } from "../blobs";
 export type { BlobUploadResult };
 import { getAccountId } from "../calimero";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, type OtherOrg } from "@calimero-apps/connect";
 import type { ApiResponse } from "../types";
 import { groupNameError } from "../../utils/groupName";
 import type {
@@ -56,7 +56,8 @@ import {
   listChatApps,
   memberName,
   memberRole,
-  myOrgs,
+  chatOrgs,
+  otherChatOrgs,
   pendingChannel,
   redeemInvite,
   removeOrgMember,
@@ -182,10 +183,13 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** The workspaces (orgs) this account is in. */
+  /**
+   * The workspaces: the orgs this account is in that hold chat. An org made
+   * for another app is left out (see {@link listOtherOrgs}).
+   */
   async listGroups(): ApiResponse<GroupSummary[]> {
     try {
-      const orgs = await myOrgs();
+      const orgs = await chatOrgs();
       return ok(
         orgs.map((o) => ({
           groupId: o.orgId,
@@ -199,6 +203,14 @@ export class GroupApiDataSource implements GroupApi {
     } catch (error) {
       return catchError("listGroups", error);
     }
+  }
+
+  /**
+   * The account's other orgs, where chat may be added: what "Connect to an
+   * existing organization" lists. Throws when they cannot be read.
+   */
+  listOtherOrgs(): Promise<OtherOrg[]> {
+    return otherChatOrgs();
   }
 
   /** Deletes a channel (its instance), or the workspace (its org, a passkey step-up). */
