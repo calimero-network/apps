@@ -33,7 +33,7 @@ import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
-import { removeFromWorkspace } from '../../lib/workspaces';
+import { leaveWorkspace, leaveWorkspaceOrg, removeFromWorkspace } from '../../lib/workspaces';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
@@ -2088,6 +2088,28 @@ export default function AppPage() {
             }
             await refetchGroup();
           }}
+          appOnly={org.appOnly}
+          onLeave={ws.orgRole && ws.orgRole !== 'owner' ? async () => {
+            const nsId = ws.namespaceId;
+            if (!nsId) return;
+            try {
+              // In an org that keeps its apps apart: Mero Sheets only, and the
+              // organization is offered when it was their last app there.
+              const left = await leaveWorkspace(client, nsId, source, passkey);
+              if (
+                left.left === 'app' &&
+                left.lastApp &&
+                window.confirm(`${APP_DISPLAY_NAME} was your last app in this organization. Leave the organization too?`)
+              ) {
+                await leaveWorkspaceOrg(client, nsId, passkey);
+              }
+            } finally {
+              after();
+            }
+            setShowPeople(false);
+            ws.leaveWorkspace();
+            await ws.refresh();
+          } : undefined}
           onClose={() => setShowPeople(false)}
         />
       )}

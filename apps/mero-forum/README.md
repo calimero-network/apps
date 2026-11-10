@@ -45,7 +45,9 @@ through `@calimero-apps/connect`'s org-app module
   invite gives Mero Forum only (the dialog says so) and only its people are shown.
   **Leave** then leaves Mero Forum only, and offers to leave the organization
   too when it was your last app there; in open and legacy orgs Leave is
-  leaving the org, as before. Forum has no member Remove.
+  leaving the org, as before. The space's owners and admins **Remove** people
+  from the People card: Mero Forum only in such an org, out of the org in open
+  and legacy ones.
 - Adding Mero Forum to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.

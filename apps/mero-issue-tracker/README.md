@@ -61,8 +61,10 @@ only through `@calimero-apps/connect`'s org-app module
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
   invite gives Mero Issue Tracker only (the dialog says so), the member list shows its
   people, and **Remove** takes someone out of Mero Issue Tracker (its team), never out of
-  the organization. In standalone and legacy orgs Remove is out of the org,
-  as before.
+  the organization. **Leave workspace** (Members page, anyone but the owner)
+  leaves Mero Issue Tracker only, and offers to leave the organization too when it was
+  your last app there. In standalone and legacy orgs Remove and Leave are out
+  of the org, as before.
 - Adding Mero Issue Tracker to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.

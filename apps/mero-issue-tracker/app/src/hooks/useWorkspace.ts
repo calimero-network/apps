@@ -23,6 +23,8 @@ import {
   createWorkspace,
   inviteLink,
   inviteToken,
+  leaveWorkspace,
+  leaveWorkspaceOrg,
   listRepos,
   listWorkspaces,
   readMembers,
@@ -71,6 +73,14 @@ export interface UseWorkspaceReturn {
    * that keeps its apps apart).
    */
   invite: () => Promise<{ link: string; appOnly: boolean }>;
+  /**
+   * The signed-in account leaves the open workspace (a passkey step-up): in
+   * an org that keeps its apps apart, Mero Issue Tracker only; when that was
+   * their last app there and `alsoOrg()` agrees, the organization too.
+   * Elsewhere the organization. The workspace is closed afterwards. Throws
+   * on failure.
+   */
+  leaveWorkspace: (alsoOrg: () => boolean) => Promise<{ left: 'app' | 'org'; lastApp: boolean }>;
 
   repos: RepoEntry[];
   activeRepo: string | null;
@@ -353,6 +363,26 @@ export function useWorkspace(): UseWorkspaceReturn {
     [board],
   );
 
+  const leave = useCallback(
+    async (alsoOrg: () => boolean) => {
+      if (!activeNs) throw new Error('No workspace is open.');
+      const org = activeNs;
+      try {
+        const left = await leaveWorkspace(client, org, source, passkey, accountId);
+        if (left.left === 'app' && left.lastApp && alsoOrg()) {
+          await leaveWorkspaceOrg(client, org, passkey, accountId);
+        }
+        writeActiveNs(null);
+        setActiveNs(null);
+        await loadNamespaces();
+        return left;
+      } finally {
+        after();
+      }
+    },
+    [client, activeNs, source, passkey, accountId, loadNamespaces, after],
+  );
+
   // Org-level changes have no event stream: re-read on focus.
   useEffect(() => {
     const onFocus = () => {
@@ -381,6 +411,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     createNamespace,
     createNamespaceError,
     invite,
+    leaveWorkspace: leave,
     repos,
     activeRepo,
     leaving,

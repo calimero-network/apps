@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PeoplePanel, { peopleRows, rowName } from './PeoplePanel';
 import type { Member } from '../hooks/useSpreadsheet';
@@ -59,5 +59,38 @@ describe('PeoplePanel', () => {
   it('lets an admin remove a member, but never the org owner', () => {
     panel('acc-carl');
     expect(screen.getAllByTestId('action-remove-member')).toHaveLength(1);
+  });
+
+  const leaving = (props: { onLeave?: () => Promise<void>; appOnly?: boolean }) =>
+    render(
+      createElement(PeoplePanel, {
+        members: [member('acc-ann', 'acc-ann')],
+        group: [{ identity: 'acc-ann', role: 'member' }, { identity: 'acc-own', role: 'owner' }],
+        selfId: 'acc-ann',
+        workspaceName: 'Team',
+        nameOf: (id: string) => id,
+        canManageRoles: false,
+        isGroupAdmin: false,
+        onSetRole: vi.fn(),
+        onSetGroupRole: vi.fn(),
+        onRemove: vi.fn(),
+        onClose: vi.fn(),
+        ...props,
+      }),
+    );
+
+  it('lets a member leave, only after confirming, and says the org stays when apps are kept apart', async () => {
+    const onLeave = vi.fn(async () => {});
+    leaving({ onLeave, appOnly: true });
+    fireEvent.click(screen.getByTestId('action-leave-workspace'));
+    expect(onLeave).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog').textContent).toMatch(/stay in the organization and its other apps/);
+    fireEvent.click(screen.getByTestId('action-confirm-leave'));
+    await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers no Leave without a handler (the owner)', () => {
+    leaving({});
+    expect(screen.queryByTestId('action-leave-workspace')).toBeNull();
   });
 });

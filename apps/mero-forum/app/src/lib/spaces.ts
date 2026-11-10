@@ -8,6 +8,7 @@ import {
   leaveApp,
   leaveOrg,
   orgInstanceOptions,
+  removeFromApp,
   orgsWithApp,
   sourcePackage,
   type AppInviteToken,
@@ -185,6 +186,22 @@ export function leaveSpaceOrg(
   return leaveOrg(client, org, passkey);
 }
 
+/**
+ * Takes `account` out of the space (`removeFromApp`, a passkey step-up; the
+ * space's owners and admins). In an org that keeps its apps apart that is
+ * Mero Forum only (its team), never the organization; elsewhere the org, as
+ * before. Answers which it was.
+ */
+export function removeFromSpace(
+  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  org: string,
+  source: AppSource | null,
+  account: string,
+  passkey: () => PasskeyProvider,
+): Promise<"app" | "org"> {
+  return removeFromApp(client, org, source, account, passkey);
+}
+
 /** The forum created in an org the account connects to forums ("Connect to an existing organization"). */
 export const CONNECTED_FORUM_NAME = "General";
 
@@ -219,7 +236,7 @@ export interface OrgMembers {
   names: Map<string, string>;
   /** Who has Mero Forum in the org, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and this one has its team: invites and Leave are Mero Forum's only. */
+  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Mero Forum's only. */
   appOnly: boolean;
 }
 

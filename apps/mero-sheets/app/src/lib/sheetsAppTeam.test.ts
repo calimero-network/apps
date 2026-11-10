@@ -2,17 +2,24 @@
 /**
  * Mero Sheets' own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
- * pins Chat's. Sheets has no Leave (only Remove), so what is pinned: a new
- * workspace gets an open app team and spreadsheets go on it; invites name it;
- * the people are its people; Remove in an org that keeps its apps apart keeps
- * the person in the org; adding Sheets to an org whose apps have teams; a
- * legacy org as before.
+ * pins Chat's: a new workspace gets an open app team and spreadsheets go on
+ * it; invites name it; the people are its people; Remove and Leave in an org
+ * that keeps its apps apart keep the person in the org; adding Sheets to an
+ * org whose apps have teams; a legacy org as before.
  */
 import { describe, expect, it } from 'vitest';
 import type { PasskeyProvider } from '@calimero-network/mero-js';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
-import { createSpreadsheet, ensureWorkspace, mintInvite, readMembers, removeFromWorkspace } from './workspaces';
+import {
+  createSpreadsheet,
+  ensureWorkspace,
+  leaveWorkspace,
+  leaveWorkspaceOrg,
+  mintInvite,
+  readMembers,
+  removeFromWorkspace,
+} from './workspaces';
 
 const PKG = 'com.calimero.mero-sheets';
 const SOURCE = { package: PKG };
@@ -112,5 +119,37 @@ describe('adding Mero Sheets to an organization whose apps have teams', () => {
       /owners and admins can add/,
     );
     expect(cluster.callsOf('createApp')).toEqual([]);
+  });
+});
+
+describe('Leave', () => {
+  it("apps kept apart: off Mero Sheets' team only; the organization is offered when it was the last app", async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member', members: { 'acct-own': 'owner' } });
+    const left = await leaveWorkspace(cluster.client, org, SOURCE, passkey);
+    expect(left).toEqual({ left: 'app', lastApp: true });
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-me']);
+    expect(cluster.callsOf('removeMember')).toEqual([]);
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+
+    await leaveWorkspaceOrg(cluster.client, org, passkey);
+    expect(cluster.org(org).members['acct-me']).toBeUndefined();
+  });
+
+  it('apps kept apart, another app still theirs: not the last app', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member' });
+    cluster.org(org).teams[cluster.teamOf(org, 'com.calimero.other')!]!.members['acct-me'] = false;
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: false });
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('standalone and legacy: out of the organization, as before', async () => {
+    for (const mode of ['standalone', 'legacy'] as const) {
+      const cluster = orgCluster();
+      const org = cluster.addOrg({ mode, app: PKG, role: 'member' });
+      expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
+      expect(cluster.org(org).members['acct-me']).toBeUndefined();
+    }
   });
 });

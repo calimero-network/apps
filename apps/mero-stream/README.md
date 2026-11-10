@@ -164,7 +164,9 @@ through `@calimero-apps/connect`'s org-app module
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
   invite gives Mero Stream only (the dialog says so) and only its people are shown.
-  Stream has no organization-level Remove or Leave.
+  Stream has no organization-level Remove or Leave: a room's roster is the
+  contract's `join` list, which has no removal, so taking someone off the
+  app team would leave them listed in every room they joined.
 - Adding Mero Stream to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.

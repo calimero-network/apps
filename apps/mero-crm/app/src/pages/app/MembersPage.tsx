@@ -62,6 +62,7 @@ export default function MembersPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
+  const [leavingWs, setLeavingWs] = useState(false);
 
   // Accounts only. `selfAccount` is included explicitly because the roster can
   // lag a fresh join by a refetch, and a person missing from their own member
@@ -126,6 +127,25 @@ export default function MembersPage(): React.ReactElement {
     groupDefault: roles.defaultCapabilities,
   });
 
+  // The owner keeps the workspace (core refuses the owner's own removal);
+  // anyone else may leave it. In an org that keeps its apps apart that is
+  // Mero CRM only, and the organization is offered once it was their last app.
+  const canLeave = !!selfAccount && !!ws.activeNs && roles.orgRoles.get(selfAccount) !== 'owner';
+  const leave = () => {
+    const prompt = roles.appOnly
+      ? `Leave ${PRODUCT_NAME} in this workspace? You stay in the organization and its other apps.`
+      : 'Leave this workspace? You will need a new invitation to come back.';
+    if (!window.confirm(prompt)) return;
+    setLeavingWs(true);
+    setError(null);
+    void ws
+      .leaveWorkspace(() =>
+        window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`),
+      )
+      .catch((err) => setError(describeError(err)))
+      .finally(() => setLeavingWs(false));
+  };
+
   // Only offered once the default has actually been READ (null means we could
   // not read it, and offering to repair an unknown is how you overwrite a
   // deliberate setting).
@@ -153,6 +173,16 @@ export default function MembersPage(): React.ReactElement {
           >
             Invite
           </button>
+          {canLeave && (
+            <button
+              className="secondary"
+              data-testid="leave-workspace-btn"
+              disabled={leavingWs}
+              onClick={leave}
+            >
+              {leavingWs ? 'Leaving…' : 'Leave workspace'}
+            </button>
+          )}
         </div>
       </Head>
 

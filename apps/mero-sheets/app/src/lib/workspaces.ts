@@ -18,6 +18,8 @@ import {
   createAppOrg,
   createInviteStore,
   isAppOnly,
+  leaveApp,
+  leaveOrg,
   orgInstanceOptions,
   removeFromApp,
   sourcePackage,
@@ -27,6 +29,7 @@ import {
   type AppSource,
   type InviteStore,
   type KeyValueStorage,
+  type LeftApp,
   type PendingInvite as SharedPendingInvite,
 } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
@@ -162,6 +165,32 @@ export function removeFromWorkspace(
   passkey: () => PasskeyProvider,
 ): Promise<'app' | 'org'> {
   return removeFromApp(client, org, source, account, passkey);
+}
+
+/**
+ * The signed-in account leaves the workspace (`leaveApp`, a passkey step-up):
+ * in an org that keeps its apps apart, Mero Sheets only, with `lastApp` set
+ * when it was their last app there (offer {@link leaveWorkspaceOrg});
+ * elsewhere the organization, as before.
+ */
+export function leaveWorkspace(
+  client: Pick<CalimeroClient, 'getOrg' | 'listAppTeams' | 'removeTeamMember' | 'removeMember' | 'session'>,
+  org: string,
+  source: AppSource | null,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<LeftApp> {
+  return leaveApp(client, org, source, passkey, self ? { self } : {});
+}
+
+/** The signed-in account leaves the organization altogether, every app in it. A passkey step-up. */
+export function leaveWorkspaceOrg(
+  client: Pick<CalimeroClient, 'removeMember' | 'session'>,
+  org: string,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<void> {
+  return leaveOrg(client, org, passkey, self);
 }
 
 // ── members ──────────────────────────────────────────────────────────────────

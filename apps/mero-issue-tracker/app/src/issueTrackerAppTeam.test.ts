@@ -13,7 +13,14 @@ import type { PasskeyProvider } from '@calimero-network/mero-js';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
 import { useMemberRoles } from './hooks/useMemberRoles';
-import { addRepo, createWorkspace, inviteToken, readMembers } from './workspaces';
+import {
+  addRepo,
+  createWorkspace,
+  inviteToken,
+  leaveWorkspace,
+  leaveWorkspaceOrg,
+  readMembers,
+} from './workspaces';
 
 const PKG = 'com.calimero.mero-issue-tracker';
 const SOURCE = { package: PKG };
@@ -181,5 +188,37 @@ describe('adding Mero Issue Tracker to an organization whose apps have teams', (
     await addRepo(cluster.client, SOURCE, org, 'Main', '', passkey);
     expect(cluster.callsOf('scopeApps')).toEqual([]);
     expect(cluster.callsOf('createApp')[0]![2]).toEqual({ org });
+  });
+});
+
+describe('Leave', () => {
+  it('apps kept apart: off Mero Issue Tracker\'s team only; the organization is offered when it was the last app', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member', members: { 'acct-own': 'owner' } });
+    const left = await leaveWorkspace(cluster.client, org, SOURCE, passkey);
+    expect(left).toEqual({ left: 'app', lastApp: true });
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-me']);
+    expect(cluster.callsOf('removeMember')).toEqual([]);
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+
+    await leaveWorkspaceOrg(cluster.client, org, passkey);
+    expect(cluster.org(org).members['acct-me']).toBeUndefined();
+  });
+
+  it('apps kept apart, another app still theirs: not the last app', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member' });
+    cluster.org(org).teams[cluster.teamOf(org, 'com.calimero.other')!]!.members['acct-me'] = false;
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: false });
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('standalone and legacy: out of the organization, as before', async () => {
+    for (const mode of ['standalone', 'legacy'] as const) {
+      const cluster = orgCluster();
+      const org = cluster.addOrg({ mode, app: PKG, role: 'member' });
+      expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
+      expect(cluster.org(org).members['acct-me']).toBeUndefined();
+    }
   });
 });
