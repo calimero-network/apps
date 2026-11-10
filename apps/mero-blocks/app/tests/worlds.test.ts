@@ -1,22 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo } from "@calimero-network/mero-js";
-import type { KeyValueStorage, Target } from "@calimero-apps/connect";
+import { createInviteStore, type InviteStore, type KeyValueStorage, type Target } from "@calimero-apps/connect";
 
 import { CalimeroError } from "@calimero-network/mero-js";
 import {
-  SPENT_INVITE,
   alreadyInInvitedWorld,
-  captureInvite,
-  inviteFailure,
-  pendingInviteOrg,
   createWorld,
   forgetWorld,
-  inviteLink,
+  invitedWorld,
+  inviter,
   lastWorld,
   listWorlds,
-  pendingInvite,
+  migrateStoredInvite,
   redeemPendingInvite,
   rememberWorld,
+  worldInviteLink,
   worldSource,
 } from "../src/net/worlds";
 
@@ -79,65 +77,94 @@ describe("worlds are app instances", () => {
 });
 
 describe("invitations are org invites", () => {
-  it("travel as ?invite= on this frontend and are captured before sign-in", () => {
-    const link = inviteLink("tok 1", { origin: "http://localhost:5173", pathname: "/" });
-    expect(link).toBe("http://localhost:5173/?invite=tok+1");
-    window.history.replaceState(null, "", "/?invite=tok1&x=1");
-    const storage = memory();
-    captureInvite(storage);
-    expect(pendingInvite(storage)).toBe("tok1");
+  function store(storage = memory()): InviteStore {
+    return createInviteStore("mero-blocks", { storage, keep: ["world", "from"] });
+  }
+  function holding(token: string, org: string | null = null, extra: Record<string, string> = {}): InviteStore {
+    const s = store();
+    s.put({ token, org, team: null, doc: null, route: null, extra });
+    return s;
+  }
+
+  it("travel as ?invite= with the org, the world and the inviter, and are captured before sign-in", () => {
+    expect(worldInviteLink("tok 1", "org-2", { world: "app-2", from: "Alex", root: "/" })).toBe(
+      `${window.location.origin}/?invite=tok+1&org=org-2&world=app-2&from=Alex`,
+    );
+    window.history.replaceState(null, "", "/?invite=tok1&org=org-2&world=app-2&from=Alex&x=1");
+    const s = store();
+    s.capture(window.location);
+    expect(s.pending()).toMatchObject({ token: "tok1", org: "org-2" });
+    expect(invitedWorld(s.pending())).toBe("app-2");
+    expect(inviter(s.pending())).toBe("Alex");
     expect(window.location.search).toBe("?x=1");
   });
 
-  it("are redeemed after sign-in, opening the world in the joined org", async () => {
-    const storage = memory();
-    storage.setItem("mero-blocks:pending-invite", "tok1");
+  it("are redeemed on Join, opening the world the link named, else the one in the joined org", async () => {
     const client = {
       redeemInvite: vi.fn(async () => ({ org: "org-2" })),
-      listApps: vi.fn(async () => [app("1", "a", "org-1"), app("2", "b", "org-2")]),
+      listApps: vi.fn(async () => [app("1", "a", "org-1"), app("2", "b", "org-2"), app("3", "c", "org-2")]),
     };
-    const world = await redeemPendingInvite(client, "abc", storage);
+    const s = holding("tok1");
+    expect((await redeemPendingInvite(client, "abc", s))?.appId).toBe("2");
     expect(client.redeemInvite).toHaveBeenCalledWith("tok1");
-    expect(world?.appId).toBe("2");
-    expect(pendingInvite(storage)).toBeNull();
-  });
+    expect(s.token()).toBeNull();
 
-  it("name the world's org, captured with the token and dropped with it", () => {
-    expect(inviteLink("tok1", { origin: "http://localhost:5173", pathname: "/" }, "org-2")).toBe(
-      "http://localhost:5173/?invite=tok1&org=org-2",
-    );
-    window.history.replaceState(null, "", "/?invite=tok1&org=org-2");
-    const storage = memory();
-    captureInvite(storage);
-    expect(pendingInviteOrg(storage)).toBe("org-2");
-    expect(window.location.search).toBe("");
+    const named = holding("tok2", "org-2", { world: "3" });
+    expect((await redeemPendingInvite(client, "abc", named))?.appId).toBe("3");
   });
 
   it("are not spent by a player already in the world they name", async () => {
-    const storage = memory();
-    storage.setItem("mero-blocks:pending-invite", "tok1");
-    storage.setItem("mero-blocks:pending-invite-org", "org-1");
     const listApps = vi.fn(async () => [app("1", "a", "org-1")]);
-    expect((await alreadyInInvitedWorld({ listApps }, "abc", storage))?.appId).toBe("1");
-    expect(pendingInvite(storage)).toBeNull();
-    storage.setItem("mero-blocks:pending-invite", "tok2");
-    storage.setItem("mero-blocks:pending-invite-org", "org-9");
-    expect(await alreadyInInvitedWorld({ listApps }, "abc", storage)).toBeNull();
-    expect(pendingInvite(storage)).toBe("tok2");
+    const mine = holding("tok1", "org-1");
+    expect((await alreadyInInvitedWorld({ listApps }, "abc", mine))?.appId).toBe("1");
+    expect(mine.token()).toBeNull();
+    const theirs = holding("tok2", "org-9");
+    expect(await alreadyInInvitedWorld({ listApps }, "abc", theirs)).toBeNull();
+    expect(theirs.token()).toBe("tok2");
   });
 
-  it("say plainly when the node refused the token for good", () => {
-    expect(inviteFailure(new CalimeroError(404, "NOT_FOUND", "unknown invite"))).toBe(SPENT_INVITE);
-    expect(inviteFailure(new CalimeroError(503, "UNAVAILABLE", "later"))).toMatch(/Could not accept/);
+  it("drop a token only when the node refuses it for good", async () => {
+    const refusing = (e: unknown) => ({ redeemInvite: vi.fn(async () => Promise.reject(e)), listApps: vi.fn(async () => []) });
+    const spent = holding("tok1");
+    await expect(
+      redeemPendingInvite(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed")), "abc", spent),
+    ).rejects.toThrow();
+    expect(spent.token()).toBeNull();
+
+    // A lapsed session, a rate limit, the cluster or the network down: kept (B6).
+    for (const e of [
+      new CalimeroError(401, "UNAUTHORIZED", "session expired"),
+      new CalimeroError(429, "RATE_LIMITED", "slow down"),
+      new CalimeroError(503, "UNAVAILABLE", "later"),
+      new TypeError("Failed to fetch"),
+    ]) {
+      const kept = holding("tok1");
+      await expect(redeemPendingInvite(refusing(e), "abc", kept)).rejects.toBe(e);
+      expect(kept.token()).toBe("tok1");
+    }
   });
 
-  it("drop a token the node refused, and do nothing without one", async () => {
-    const storage = memory();
-    const client = { redeemInvite: vi.fn(async () => { throw new Error("expired"); }), listApps: vi.fn(async () => []) };
-    expect(await redeemPendingInvite(client, "abc", storage)).toBeNull();
+  it("do nothing without one", async () => {
+    const client = { redeemInvite: vi.fn(), listApps: vi.fn(async () => []) };
+    expect(await redeemPendingInvite(client, "abc", store())).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    storage.setItem("mero-blocks:pending-invite", "tok1");
-    await expect(redeemPendingInvite(client, "abc", storage)).rejects.toThrow("expired");
-    expect(pendingInvite(storage)).toBeNull();
+  });
+
+  it("stored by an older build move into the shared store", () => {
+    const storage = memory();
+    storage.setItem("mero-blocks:pending-invite", "tok-old");
+    storage.setItem("mero-blocks:pending-invite-org", "org-2");
+    const s = store(storage);
+    migrateStoredInvite(s, storage);
+    expect(s.pending()).toMatchObject({ token: "tok-old", org: "org-2" });
+    expect(storage.getItem("mero-blocks:pending-invite")).toBeNull();
+    expect(storage.getItem("mero-blocks:pending-invite-org")).toBeNull();
+
+    // A link opened just now wins over the old one.
+    const fresh = holding("tok-new");
+    const old = memory();
+    old.setItem("mero-blocks:pending-invite", "tok-old");
+    migrateStoredInvite(fresh, old);
+    expect(fresh.token()).toBe("tok-new");
   });
 });

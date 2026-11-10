@@ -1,19 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { messageOf } from "../api/pixart";
 import { useSessionApi } from "../api/sessionContext";
-import {
-  SPENT_INVITE,
-  dropInvite,
-  isSpentInvite,
-  joinedOrg,
-  listTeams,
-  pendingInvite,
-  pendingInviteOrg,
-  pendingInviteRoute,
-} from "../api/teams";
-import { SignInPanel } from "@calimero-apps/passkey";
+import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from "@calimero-apps/connect";
+import { inviteRoute, invites, takeJoinedAtSignUp } from "../api/teams";
+import { SignInPanel, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING } from "../api/session";
 
@@ -43,7 +34,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const signedIn = api.session.status === "signed-in" ? api.session : null;
-  const [token, setToken] = useState<string | null>(() => pendingInvite());
+  const pending = usePendingInvite(invites);
   const [deferred, setDeferred] = useState(false);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,47 +45,52 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
    * stays until the router is there: dropping it first would show the route
    * the visitor is still on, and the front door's own redirect would win.
    */
-  const [leavingFor, setLeavingFor] = useState<{ to: string; from: string } | null>(null);
+  const [leavingFor, setLeavingFor] = useState<{ to: string; from: string; token: string | null } | null>(null);
+  // The joined invite stays on screen until the router has moved (`leavingFor`).
+  const token = leavingFor ? leavingFor.token : (pending?.token ?? null);
 
   useEffect(() => {
     // Arrived, or the destination redirected on (a guard): either way the router moved.
     if (leavingFor && (pathname === leavingFor.to || pathname !== leavingFor.from)) {
       setLeavingFor(null);
       setOutcome(null);
-      setToken(null);
     }
   }, [leavingFor, pathname]);
 
+  const client = signedIn?.client ?? null;
+  // Signed up from a page holding the invite: already joined; open what it named.
   useEffect(() => {
-    if (!signedIn) return;
-    const current = pendingInvite();
-    setToken(current);
-    const org = pendingInviteOrg();
-    if (!current || !org) return;
+    const joined = client ? takeJoinedAtSignUp() : null;
+    if (joined) navigate(inviteRoute(joined.invite, joined.org));
+  }, [client, navigate]);
+
+  const pendingToken = pending?.token ?? null;
+  useEffect(() => {
+    const current = invites.pending();
+    const org = current?.org;
+    if (!client || !current || !org) return;
     let live = true;
     setChecking(true);
-    listTeams(signedIn.client)
-      .then((teams) => {
-        if (!live || !teams.some((t) => t.groupId === org)) return;
-        const route = pendingInviteRoute(org);
-        dropInvite();
-        setToken(null);
-        setOutcome({ kind: "member", org, route });
+    // Unknown membership (`null`): ask, as for a link that names no team.
+    void memberOf(client, org)
+      .then((member) => {
+        if (!live || !member) return;
+        invites.drop();
+        setOutcome({ kind: "member", org, route: inviteRoute(current, org) });
       })
-      // Unknown membership: ask, as for a link that names no team.
-      .catch(() => {})
       .finally(() => {
         if (live) setChecking(false);
       });
     return () => {
       live = false;
+      setChecking(false);
     };
-  }, [signedIn]);
+  }, [client, pendingToken]);
 
   if (outcome) {
     const done = () => {
       if (outcome.kind === "member") {
-        setLeavingFor({ to: outcome.route, from: pathname });
+        setLeavingFor({ to: outcome.route, from: pathname, token: null });
         navigate(outcome.route);
       } else {
         setOutcome(null);
@@ -109,7 +105,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
           <p className="sub">
             {outcome.kind === "member"
               ? "The invitation was for a team you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for."
-              : SPENT_INVITE}
+              : SPENT_INVITE_COPY}
           </p>
           <div className="mp-invite-actions">
             <button className="mp-btn mp-btn--primary" data-testid="invitation-continue" onClick={done}>
@@ -145,33 +141,31 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
     );
   }
 
-  const { client } = signedIn;
+  const { client: signedInClient } = signedIn;
 
-  const dismiss = () => {
-    dropInvite();
-    setToken(null);
-  };
+  const dismiss = () => invites.drop();
 
   const join = async () => {
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await client.redeemInvite(token));
-      const route = pendingInviteRoute(org);
-      dropInvite();
-      setLeavingFor({ to: route, from: pathname });
+      const org = joinedOrg(await signedInClient.redeemInvite(token)) ?? pending?.org ?? null;
+      const route = inviteRoute(pending, org);
+      invites.drop();
+      setLeavingFor({ to: route, from: pathname, token });
       navigate(route);
     } catch (e) {
+      // Only the node's word that the invite is done drops it: a lapsed
+      // session, a rate limit or the cluster unreachable keeps it to try again.
       if (isSpentInvite(e)) {
-        dropInvite();
-        setToken(null);
+        invites.drop();
         setOutcome({ kind: "spent" });
       } else {
-        setError(`The invitation could not be accepted: ${messageOf(e)}`);
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);
-      api.store?.sync(client);
+      api.store?.sync(signedInClient);
     }
   };
 
@@ -184,7 +178,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
           open and edit their images.
         </p>
         {error && (
-          <p className="sub" role="alert">
+          <p className="sub" role="alert" data-testid="invitation-error">
             {error}
           </p>
         )}

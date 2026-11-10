@@ -6,6 +6,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import App from './App';
 import { APP, type SessionDeps } from './session';
+import { invites, migrateLegacyInvite } from './lib/workspaces';
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem(`${APP}:pending-invite`, legacy);
+  migrateLegacyInvite();
+}
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock('./pages/landing/LandingPage', () => ({
@@ -38,6 +45,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear();
+  invites.drop();
   window.history.replaceState(null, '', '/');
 });
 afterEach(cleanup);
@@ -159,17 +167,17 @@ describe('App', () => {
 
   it('asks before redeeming an invitation, then opens the spreadsheet the link names', async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('invitation-join'));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: null }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
     render(<App deps={deps(fakeClient())} />);
     const page = await screen.findByTestId('invitation-page');
     expect(page.textContent).toContain("You're invited");
@@ -179,7 +187,7 @@ describe('App', () => {
   });
 
   it('signing in on the invitation page goes straight to the join prompt, then into the workspace', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-page');
@@ -191,7 +199,7 @@ describe('App', () => {
   });
 
   it('an invited newcomer creates the account and joins in one click, and lands in the spreadsheet', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: 'sheet-1', org: 'org-1' }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1', org: 'org-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     const create = await screen.findByTestId('signup-passkey');
@@ -203,39 +211,39 @@ describe('App', () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId('invitation-dialog')).toBeNull();
     expect(screen.queryByTestId('invitation-page')).toBeNull();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: null }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
     render(<App deps={deps(fakeClient())} />);
     fireEvent.click(await screen.findByTestId('invitation-not-now'));
     await screen.findByText('Connect');
     expect(screen.queryByTestId('invitation-page')).toBeNull();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).not.toBeNull();
+    expect(invites.token()).not.toBeNull();
   });
 
   it('does not redeem an invite into a workspace the account is already in', async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: null, org: 'org-1' }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: null, org: 'org-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-member');
     expect(screen.getByRole('heading', { name: /already in this workspace/ })).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('says plainly when the invite was already used or has expired', async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: null }));
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('invitation-join'));
     const error = await screen.findByTestId('invitation-error');
     expect(error.textContent).toBe('This invite was already used or has expired. Ask the person who invited you for a new link.');
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('takes an invitation link off the address bar before the first render', async () => {
@@ -244,5 +252,20 @@ describe('App', () => {
     captureInvite();
     expect(pendingInvite()).toEqual({ token: 'tok-2', sheet: 'sheet-9', org: null });
     expect(window.location.search).toBe('');
+  });
+
+  it.each([
+    [429, 'RATE_LIMITED', /Too many tries/],
+    [401, 'UNAUTHENTICATED', /sign in again/],
+  ])('keeps the invite when redeeming answers %i, and says to try again (B6)', async (status, code, says) => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    expect((await screen.findByTestId('invitation-error')).textContent).toMatch(says);
+    expect(invites.token()).toBe('tok-1');
+    expect(screen.getByTestId('invitation-join')).toBeTruthy();
   });
 });

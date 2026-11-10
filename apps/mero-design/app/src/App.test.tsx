@@ -5,6 +5,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import App from "./App";
 import { APP } from "./session";
+import { invites } from "./utils/inviteLink";
+
+/** Hold an invite as a captured link would. */
+function hold(link: { token: string; org?: string; returnTo?: string }) {
+  invites.put({ token: link.token, org: link.org ?? null, team: null, doc: null, route: link.returnTo ?? null, extra: {} });
+}
 import type { SessionDeps } from "./session";
 
 // The landing page is generated and tested on its own; here it is the door.
@@ -128,20 +134,18 @@ describe("App", () => {
 
   it("asks before redeeming an invitation, then opens the team", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1" }));
+    hold({ token: "tok-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
   describe("an invitation link opened while signed out", () => {
-    const PENDING = `${APP}:pending-invite`;
-
     it("shows the invitation as the page, not the landing hero", async () => {
-      localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1" }));
+      hold({ token: "tok-1" });
       render(<App deps={deps(fakeClient())} />);
       expect(await screen.findByTestId("invitation-page")).toBeTruthy();
       expect(screen.getByText("You're invited")).toBeTruthy();
@@ -155,7 +159,7 @@ describe("App", () => {
     });
 
     it("signing in goes straight to the join prompt, then into the team", async () => {
-      localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1" }));
+      hold({ token: "tok-1" });
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId("signin-passkey"));
@@ -163,25 +167,42 @@ describe("App", () => {
       fireEvent.click(await screen.findByTestId("invitation-join"));
       await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
       await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
-      expect(localStorage.getItem(PENDING)).toBeNull();
+      expect(invites.token()).toBeNull();
     });
 
     it("after joining, goes on to the route the link was opened on", async () => {
-      localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", returnTo: "/boards/board-1" }));
+      hold({ token: "tok-1", returnTo: "/boards/board-1" });
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId("signin-passkey"));
+      // The team list's own redirect into the team lands first (it is async):
+      // joining is asked over it.
+      await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
       fireEvent.click(await screen.findByTestId("invitation-join"));
       await waitFor(() => expect(window.location.pathname).toBe("/boards/board-1"));
     });
 
+    it("creating the account joins in that step and opens the route the link names (B10)", async () => {
+      window.history.replaceState(null, "", "/?invite=tok-1&org=org-1&to=%2Fteams%2Forg-1%2Fprojects%2Fboard-1");
+      invites.capture(window.location);
+      const client = fakeClient();
+      render(<App deps={deps(client)} />);
+      fireEvent.click(await screen.findByTestId("signup-passkey"));
+      await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects/board-1"));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(window.location.pathname).toBe("/teams/org-1/projects/board-1");
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+    });
+
     it("Not now shows the landing page and keeps the token", async () => {
-      localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1" }));
+      hold({ token: "tok-1" });
       render(<App deps={deps(fakeClient())} />);
       fireEvent.click(await screen.findByTestId("invitation-not-now"));
       expect(await screen.findByText("Connect")).toBeTruthy();
       expect(screen.queryByTestId("invitation-page")).toBeNull();
-      expect(localStorage.getItem(PENDING)).not.toBeNull();
+      expect(invites.token()).not.toBeNull();
       // Signing in from the landing page still offers it.
       fireEvent.click(screen.getByText("Connect"));
       expect((await screen.findByTestId("signin-desc")).textContent).toContain("You've been invited");
@@ -190,18 +211,18 @@ describe("App", () => {
 
   it("does not offer Join to someone already in the team, and keeps the link unspent", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", org: "org-1" }));
+    hold({ token: "tok-1", org: "org-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect(await screen.findByText("You're already in this team")).toBeTruthy();
     expect(screen.queryByTestId("invitation-join")).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1" }));
+    hold({ token: "tok-1" });
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     render(<App deps={deps(client)} />);
@@ -209,6 +230,39 @@ describe("App", () => {
     expect((await screen.findByTestId("invitation-error")).textContent).toBe(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+    remember();
+    hold({ token: "tok-1" });
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    expect(invites.token()).toBe("tok-1");
+    expect(screen.getByTestId("invitation-join")).toBeTruthy();
+  });
+
+  it("tells a member who may not add a board to ask an owner, instead of offering Create (B8)", async () => {
+    remember();
+    const client = fakeClient();
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-1", name: "Design team", role: "member" }] });
+    // A member with the node's default capabilities: no CREATE_APP.
+    client.getOrg.mockResolvedValue({
+      name: "Design team",
+      members: { [ME]: "member", "acct-bob": "owner" },
+      memberMetadata: { [ME]: { name: "Alice" } },
+    });
+    client.listApps.mockResolvedValue([]);
+    window.history.replaceState(null, "", "/teams/org-1/projects");
+    render(<App deps={deps(client)} />);
+    expect((await screen.findByTestId("create-board-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-project-btn")).toBeNull();
+    expect(screen.queryByTestId("new-board-btn")).toBeNull();
   });
 });

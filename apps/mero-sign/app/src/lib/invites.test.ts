@@ -7,11 +7,13 @@ import {
   inviteLink,
   inviteToken,
   joinedOrg,
+  migrateLegacyInvite,
   pendingInvite,
 } from './invites';
 
 beforeEach(() => {
   localStorage.clear();
+  dropInvite();
   window.history.replaceState(null, '', '/');
 });
 
@@ -23,16 +25,24 @@ describe('invitations', () => {
     expect(invite).toHaveBeenCalledWith('org-1', 'member', passkey);
   });
 
-  it('travel as this frontend’s own URL, naming the agreement when there is one', () => {
-    const loc = { origin: 'http://localhost:5173', pathname: '/agreements/a1' };
-    expect(inviteLink('tok', 'a1', loc)).toBe(
-      'http://localhost:5173/agreements/a1?invite=tok&agreement=a1',
-    );
-    expect(inviteLink('tok', null, loc)).toBe('http://localhost:5173/agreements/a1?invite=tok');
+  it('travel as this frontend’s own URL at its root, naming the agreement when there is one', () => {
+    const loc = { href: 'http://localhost:5173/agreements/a1' };
+    expect(inviteLink('tok', 'a1', loc)).toBe('http://localhost:5173/?invite=tok&agreement=a1');
+    expect(inviteLink('tok', null, loc)).toBe('http://localhost:5173/?invite=tok');
     // Naming the workspace lets a member who opens it be told so, not spend it.
-    expect(inviteLink('tok', null, loc, 'org-1')).toBe(
-      'http://localhost:5173/agreements/a1?invite=tok&org=org-1',
+    expect(inviteLink('tok', null, loc, 'org-1')).toBe('http://localhost:5173/?invite=tok&org=org-1');
+    // Where a node serves the app, under its `/{version}/` root.
+    const served = `https://${'a'.repeat(52)}.apps.calimero.network`;
+    expect(inviteLink('tok', 'a1', { href: `${served}/1.0.0/agreements/a1` })).toBe(
+      `${served}/1.0.0/?invite=tok&agreement=a1`,
     );
+  });
+
+  it('move an invite an earlier build stored under its own key into the shared store', () => {
+    localStorage.setItem('mero-sign:pending-invite', JSON.stringify({ token: 'old', agreement: 'a1', org: 'o1' }));
+    migrateLegacyInvite();
+    expect(pendingInvite()).toEqual({ token: 'old', agreement: 'a1', org: 'o1' });
+    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
   });
 
   it('are taken off the address bar before anything renders, and survive until dropped', () => {

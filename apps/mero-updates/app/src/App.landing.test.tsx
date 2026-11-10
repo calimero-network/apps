@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { dropInvite, migrateLegacyInvite, pendingInvite } from "./lib/companies";
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem("mero-updates:pending-invite", legacy);
+  migrateLegacyInvite();
+}
 
 // Where a visitor lands: the landing page signed out; signed in, the audience
 // this browser remembers, but only once the account's instances of this app
@@ -73,6 +80,7 @@ async function remember(appId: string) {
 
 beforeEach(() => {
   localStorage.clear();
+  dropInvite();
   h.state.status = "signed-in";
   h.state.apps = [];
   h.state.pending = null;
@@ -105,7 +113,7 @@ describe("landing", () => {
 
   it("shows an invitation link to a signed-out visitor as the invitation page, not the landing page", async () => {
     h.state.status = "signed-out";
-    localStorage.setItem("mero-updates:pending-invite", JSON.stringify({ token: "t", audience: null }));
+    hold(JSON.stringify({ token: "t", audience: null }));
     await boot("/a");
     expect(await screen.findByTestId("invitation-page")).toBeInTheDocument();
     expect(screen.queryByText("landing")).toBeNull();
@@ -114,11 +122,11 @@ describe("landing", () => {
 
   it("\"Not now\" on the invitation page shows the landing page and keeps the token", async () => {
     h.state.status = "signed-out";
-    localStorage.setItem("mero-updates:pending-invite", JSON.stringify({ token: "t", audience: null }));
+    hold(JSON.stringify({ token: "t", audience: null }));
     await boot();
     fireEvent.click(await screen.findByTestId("invitation-not-now"));
     expect(await screen.findByText("landing")).toBeInTheDocument();
-    expect(localStorage.getItem("mero-updates:pending-invite")).not.toBeNull();
+    expect(pendingInvite()).not.toBeNull();
   });
 });
 

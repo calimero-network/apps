@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
+import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
 import { createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
@@ -53,6 +54,13 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   // The team whose project list last came back from the cluster, empty or not.
   const [listedFor, setListedFor] = useState<string | null>(null);
+  /**
+   * Whether this account may add a project in the team (core's `CREATE_APP`):
+   * an owner or admin, or a member allowed to (the team's defaults, set by a
+   * best-effort step-up when it was made). `null` while unknown, when the
+   * create is offered and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -83,6 +91,7 @@ export default function ProjectsPage() {
 
   const loadProjects = useCallback(async () => {
     if (!teamId) return;
+    void canCreateIn(client, teamId).then(setMayCreate);
     try {
       const entries = await listProjects(client, source, teamId);
       // Best-effort: read each document so the card can show its real
@@ -300,8 +309,13 @@ export default function ProjectsPage() {
           <div>
             <h1 className={styles.title}>{teamTitle}</h1>
             <p className={styles.subtitle}>Image projects in this team.</p>
+            {mayCreate === false && (
+              <p className={styles.subtitle} data-testid="create-project-ask">
+                {askAnOwnerCopy("a project")}
+              </p>
+            )}
           </div>
-          {tab === "projects" && (
+          {tab === "projects" && mayCreate !== false && (
             <button
               className="mp-btn mp-btn--primary"
               onClick={() => { setShowCreate(true); setNewName(""); setPresetIdx(DEFAULT_PRESET); }}
@@ -331,12 +345,14 @@ export default function ProjectsPage() {
               <div className={styles.emptyState} data-testid="empty-projects">
                 <div className={`${styles.emptyThumb} mp-checkerboard`} />
                 <p className={styles.empty}>No projects yet.</p>
-                <button
-                  className="mp-btn mp-btn--primary"
-                  onClick={() => { setShowCreate(true); setNewName(""); setPresetIdx(DEFAULT_PRESET); }}
-                >
-                  Create your first project
-                </button>
+                {mayCreate !== false && (
+                  <button
+                    className="mp-btn mp-btn--primary"
+                    onClick={() => { setShowCreate(true); setNewName(""); setPresetIdx(DEFAULT_PRESET); }}
+                  >
+                    Create your first project
+                  </button>
+                )}
               </div>
             ) : (
               <div className={styles.grid}>

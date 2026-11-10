@@ -1,6 +1,7 @@
 import {
   passkeyDeps,
   usePasskeySession,
+  type PasskeySessionOptions,
   type ListingProps,
   type SessionApi,
   type SessionDeps,
@@ -25,19 +26,13 @@ export const LISTING: ListingProps = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token: on an invite-only cluster it is what
- * lets a new person create an account.
+ * `invites` is the pending invite (`createInviteStore`): on an invite-only
+ * cluster its token is what lets a new person create an account, and the hook
+ * drops it on sign-out, on a refusal and once a sign-up joined with it.
  */
 export function useSession(
   deps: SessionDeps = defaultDeps,
-  invite?: () => string | null,
-  onJoined?: () => void,
+  options: Pick<PasskeySessionOptions, "invites" | "onJoinedAtSignUp"> = {},
 ): SessionApi {
-  return usePasskeySession(APP, deps, {
-    package: PACKAGE,
-    ...(invite ? { invite } : {}),
-    // A sign-up from a page holding the invite joined its org in that step:
-    // `onJoined` drops it, so nothing is redeemed twice.
-    ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
-  });
+  return usePasskeySession(APP, deps, { package: PACKAGE, ...options });
 }

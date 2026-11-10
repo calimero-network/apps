@@ -6,7 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type { SessionDeps } from './session';
 import { APP } from './session';
-import { writeActiveNs } from './hooks/workspacePersistence';
+import { readActiveNs, writeActiveNs } from './hooks/workspacePersistence';
+import { invites } from './workspaces';
+
+/** Hold `token` as the pending invite, as a captured link would. */
+function holdInvite(token: string, target: { org?: string; route?: string } = {}) {
+  invites.put({ token, org: target.org ?? null, team: null, doc: null, route: target.route ?? null, extra: {} });
+}
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -141,13 +147,13 @@ describe('App', () => {
   it('asks before redeeming an invitation, then opens that workspace', async () => {
     const client = fakeClient({ signedIn: true });
     storeSession();
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    holdInvite('tok-xyz');
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client)} />);
 
     fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
   });
 
@@ -160,7 +166,7 @@ describe('App', () => {
   });
 
   it('shows an invitation page, not the landing page, to a signed-out visitor with an invite', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    holdInvite('tok-xyz');
     render(<App deps={deps(fakeClient())} />);
 
     expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
@@ -172,18 +178,17 @@ describe('App', () => {
   });
 
   it('"Not now" shows the landing page and keeps the invitation', async () => {
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    holdInvite('tok-xyz');
     render(<App deps={deps(fakeClient())} />);
 
     fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
     await waitFor(() => expect(document.querySelector('.cal-lp-root')).not.toBeNull(), SLOW);
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe('tok-xyz');
+    expect(invites.token()).toBe('tok-xyz');
   });
 
   it('asks to join right after signing in from the invitation page, then opens the linked route', async () => {
     const client = fakeClient();
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
-    localStorage.setItem(`${APP}:pending-invite-route`, '/issue-tracker/board');
+    holdInvite('tok-xyz', { route: '/issue-tracker/board' });
     window.history.replaceState(null, '', '/issue-tracker/board');
     render(<App deps={deps(client)} />);
 
@@ -193,20 +198,19 @@ describe('App', () => {
     fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
     await waitFor(() => expect(window.location.pathname).toBe('/issue-tracker/board'), SLOW);
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('tells a member of the invited workspace they are already in it, without spending the invite', async () => {
     const client = fakeClient({ signedIn: true });
     storeSession();
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
-    localStorage.setItem(`${APP}:pending-invite-org`, 'org-1');
+    holdInvite('tok-xyz', { org: 'org-1' });
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client)} />);
 
     expect(await screen.findByText("You're already in this workspace", {}, SLOW)).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
     fireEvent.click(screen.getByTestId('invitation-continue'));
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
   });
@@ -215,7 +219,7 @@ describe('App', () => {
     const client = fakeClient({ signedIn: true });
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
     storeSession();
-    localStorage.setItem(`${APP}:pending-invite`, 'tok-used');
+    holdInvite('tok-used');
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client)} />);
 
@@ -227,6 +231,43 @@ describe('App', () => {
         SLOW,
       ),
     ).toBeTruthy();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
+  });
+
+  it('an invited newcomer who signs up from the landing page lands on the page the link named (B10)', async () => {
+    const client = fakeClient();
+    window.history.replaceState(null, '', '/issue-tracker/board?invite=tok-xyz&org=org-1');
+    invites.capture(window.location);
+    render(<App deps={deps(client)} />);
+
+    // "Not now", then create the account from the landing page: the sign-up joins.
+    fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    fireEvent.click(await screen.findByTestId('signup-passkey', {}, SLOW));
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-xyz' }), SLOW);
+    await waitFor(() => expect(window.location.pathname).toBe('/issue-tracker/board'), SLOW);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(window.location.pathname).toBe('/issue-tracker/board');
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(invites.token()).toBeNull();
+    expect(readActiveNs()).toBe('org-1');
+  });
+
+  it.each([
+    [429, 'RATE_LIMITED', /Too many tries/],
+    [401, 'UNAUTHENTICATED', /sign in again/],
+  ])('keeps the invite when redeeming answers %i, and says to try again (B6)', async (status, code, says) => {
+    const client = fakeClient({ signedIn: true });
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
+    storeSession();
+    holdInvite('tok-xyz');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    expect(await screen.findByText(says, {}, SLOW)).toBeTruthy();
+    expect(invites.token()).toBe('tok-xyz');
+    expect(screen.getByTestId('invitation-join').textContent).toBe('Try again');
   });
 });

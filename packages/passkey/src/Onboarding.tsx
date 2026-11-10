@@ -233,6 +233,12 @@ export interface JoinInvitationProps {
   appName: string;
   /** What the invite joins, as a noun phrase: "the team". */
   joining: string;
+  /**
+   * The account that joins, as the app shows it (a short id, a name): the
+   * question becomes "Join {joining} as {account}?", so a person signed in
+   * with another account than they meant sees it before anything happens.
+   */
+  account?: string;
   /** One more sentence on what joining gives, after "Joining makes you a member of its organization". */
   gives?: string;
   /** Forget the pending invite. */
@@ -268,6 +274,7 @@ export function JoinInvitation({
   org,
   appName,
   joining,
+  account,
   gives,
   drop,
   isSpent = isSpentInvite,
@@ -350,7 +357,7 @@ export function JoinInvitation({
   return (
     <Frame classNames={classNames} testId="invitation-prompt">
       <Title as={titleAs} className={classNames.title}>
-        Join {joining}?
+        {account ? `Join ${joining} as ${account}?` : `Join ${joining}?`}
       </Title>
       <p className={classNames.text}>
         You were invited to {joining} in {appName}. Joining makes you a member of its organization

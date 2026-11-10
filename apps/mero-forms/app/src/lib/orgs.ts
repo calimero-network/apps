@@ -1,5 +1,13 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
+import { type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  createInviteStore,
+  inviteLink as sharedInviteLink,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -119,29 +127,53 @@ export function inviteToken(
  * until it is redeemed, and redeeming spends it, so the link carries the org
  * for the app to tell an existing member "you are already in" without
  * spending a use.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
   workspace: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
+  location: Pick<Location, "href"> = window.location,
   org?: string,
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  url.searchParams.set("workspace", workspace);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
+  const url = new URL(location.href);
+  return sharedInviteLink(token, { org, extra: { workspace }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
-export interface PendingInvite {
-  token: string;
-  /** The workspace the link lands in, when it names one. */
-  workspace: string | null;
-  /** The org the link names, for the membership check before redeeming. */
-  org: string | null;
+/** This app's pending invite (`@calimero-apps/connect`), with the workspace its link lands in. */
+export const invites = createInviteStore("mero-forms", { keep: ["workspace"] });
+
+/** The workspace (app instance) a pending invite's link lands in, when it names one. */
+export function inviteWorkspace(invite: PendingInvite | null): string | null {
+  return invite?.extra.workspace ?? null;
 }
 
-const PENDING = "mero-forms:pending-invite";
+const LEGACY_PENDING = "mero-forms:pending-invite";
+
+/**
+ * Moves an invite an earlier build stored under its own key into the shared
+ * store, so a link opened before the upgrade still joins after it.
+ */
+export function migrateLegacyInvite(store: KeyValueStorage | null = storage(), into: InviteStore = invites): void {
+  try {
+    const raw = store?.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    store?.removeItem(LEGACY_PENDING);
+    const old = JSON.parse(raw) as { token?: unknown; workspace?: unknown; org?: unknown };
+    if (typeof old.token !== "string" || !old.token) return;
+    into.put({
+      token: old.token,
+      org: typeof old.org === "string" && old.org ? old.org : null,
+      team: null,
+      doc: null,
+      route: null,
+      extra: typeof old.workspace === "string" && old.workspace ? { workspace: old.workspace } : {},
+    });
+  } catch {
+    /* unreadable: nothing to move */
+  }
+}
 
 function storage(): KeyValueStorage | null {
   try {
@@ -149,76 +181,4 @@ function storage(): KeyValueStorage | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Takes `?invite=` (and `&workspace=`) off the address bar into storage,
- * before anything renders: a person opening a link is usually not signed in
- * yet, and the token must survive the sign-up.
- */
-export function captureInvite(store: KeyValueStorage | null = storage(), loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token || !store) return;
-  const pending: PendingInvite = {
-    token,
-    workspace: url.searchParams.get("workspace"),
-    org: url.searchParams.get("org"),
-  };
-  try {
-    store.setItem(PENDING, JSON.stringify(pending));
-  } catch {
-    return;
-  }
-  url.searchParams.delete("invite");
-  url.searchParams.delete("workspace");
-  url.searchParams.delete("org");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(store: KeyValueStorage | null = storage()): PendingInvite | null {
-  try {
-    const raw = store?.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === "string" && parsed.token
-      ? {
-          token: parsed.token,
-          workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
-          org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
-        }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-export function dropInvite(store: KeyValueStorage | null = storage()): void {
-  try {
-    store?.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
-}
-
-/**
- * Whether a redemption failed because the invitation itself is spent: used,
- * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
- * network failure is worth retrying with the same token.
- */
-export function isSpentInvite(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
-}
-
-/** What the invitation screen says about a spent invitation. */
-export const SPENT_INVITE =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const k of ["org", "orgId"]) {
-    const v = redeemed[k];
-    if (typeof v === "string" && v) return v;
-  }
-  return null;
 }

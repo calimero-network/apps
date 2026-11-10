@@ -3,7 +3,7 @@ import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js"
 
 import { messageOf } from "./chess";
 import type { OpenTable } from "./TablePage";
-import { inviteLink, inviteToken } from "./tables";
+import { inviteToken, tableInviteLink } from "./tables";
 
 /**
  * Mint a shareable invitation to this table.
@@ -20,9 +20,12 @@ export function InviteCard({
   table,
   passkey,
   after,
+  from,
 }: {
   client: Pick<CalimeroClient, "invite">;
   table: OpenTable;
+  /** The inviter as the invitee is told: "Join {from}'s game as ...?". */
+  from?: string | null;
   passkey: () => PasskeyProvider;
   after: () => void;
 }) {
@@ -36,7 +39,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), table.appId));
+      setLink(tableInviteLink(await inviteToken(client, org, passkey()), table.appId, org, from));
     } catch (e) {
       setFailed(messageOf(e));
     } finally {

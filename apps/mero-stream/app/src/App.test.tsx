@@ -1,12 +1,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import {
+  CalimeroError,
+  DEFAULT_ORG_CAPABILITIES,
+  ORG_CAPABILITIES,
+  type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
-import { inviteLink } from "./lib/streams";
+import { MEMBER_DEFAULTS, dropInvite, inviteLink, migrateLegacyInvite, pendingInvite } from "./lib/streams";
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem("mero-stream:pending-invite", legacy);
+  migrateLegacyInvite();
+}
 import { APP, type SessionDeps } from "./session";
 
 class Memory implements KeyValueStorage {
@@ -44,6 +54,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  dropInvite();
 });
 
 const SESSION: CalimeroSession = {
@@ -57,6 +68,8 @@ function fakeClient() {
   let session: CalimeroSession | undefined;
   const apps: AppInfo[] = [];
   const orgs: { orgId: string; name: string; role: string }[] = [];
+  /** The org's member defaults as the node keeps them (`setCapabilities` without `at`). */
+  const defaults = new Map<string, number>();
   const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null });
   return {
     apps,
@@ -84,7 +97,11 @@ function fakeClient() {
       name: orgs.find((o) => o.orgId === org)?.name ?? "Stream",
       members: { "acct-alice": "owner" },
       memberMetadata: {},
+      defaultCapabilities: defaults.get(org) ?? DEFAULT_ORG_CAPABILITIES,
     })),
+    setCapabilities: vi.fn(async (org: string, caps: number, _pk: unknown, at?: { account?: string }) => {
+      if (!at?.account) defaults.set(org, caps);
+    }),
     listApps: vi.fn(async () => apps),
     getApp: vi.fn(async (app: string) => ({ appId: app })),
     createOrg: vi.fn(async (name: string) => {
@@ -156,6 +173,10 @@ describe("App", () => {
     fireEvent.change(screen.getByTestId("stream-name-input"), { target: { value: "Team" } });
     fireEvent.click(screen.getByTestId("create-stream"));
     await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Team"));
+    // Its members may create rooms: the org's default, with the owner's passkey.
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenCalledWith("org-1", MEMBER_DEFAULTS, expect.anything()),
+    );
     await screen.findByText("No rooms in this stream");
 
     fireEvent.change(screen.getByTestId("room-name-input"), { target: { value: "Standup" } });
@@ -187,14 +208,11 @@ describe("App", () => {
     const link = await screen.findByTestId("invite-link");
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
     expect(link.textContent).toContain("invite=tok-123");
-    expect(link.textContent).toContain("stream=org-1");
+    expect(link.textContent).toContain("org=org-1");
   });
 
   it("signed out with a pending invite, shows the invitation page instead of the landing page", async () => {
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(fakeClient(), "/streams/org-1");
     await screen.findByText("You're invited");
     expect(screen.getByTestId("signup-passkey")).toBeTruthy();
@@ -203,43 +221,48 @@ describe("App", () => {
   });
 
   it("\"Not now\" on the invitation page shows the landing page and keeps the token", async () => {
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(fakeClient(), "/");
     fireEvent.click(await screen.findByTestId("invitation-not-now"));
     await waitFor(() => expect(document.querySelector(".cal-lp-root")).not.toBeNull());
-    expect(localStorage.getItem("mero-stream:pending-invite")).not.toBeNull();
+    expect(pendingInvite()).not.toBeNull();
   });
 
   it("does not redeem an invite into a stream the account is already in", async () => {
     const client = fakeClient();
     client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(client, "/streams", true);
     await screen.findByTestId("invitation-member");
     expect(screen.getByText("You're already in this stream")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(client, "/streams", true);
     fireEvent.click(await screen.findByTestId("invitation-join"));
     expect((await screen.findByTestId("invitation-error")).textContent).toBe(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
+    renderApp(client, "/streams", true);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    expect(pendingInvite()?.token).toBe("tok-9");
+    expect(screen.getByTestId("invitation-join")).toBeTruthy();
   });
 
   it("redeems an opened room invitation after sign-in and opens that room", async () => {
@@ -250,10 +273,7 @@ describe("App", () => {
       client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
       return {};
     });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/");
 
     await screen.findByText("You're invited");
@@ -263,7 +283,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.anything()),
     );
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("an invited newcomer creates the account and joins in one click, and lands in the room", async () => {
@@ -276,10 +296,7 @@ describe("App", () => {
       }
       return SESSION;
     });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/");
 
     const create = await screen.findByTestId("signup-passkey");
@@ -292,12 +309,83 @@ describe("App", () => {
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId("invitation-prompt")).toBeNull();
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  /** Alice as a plain member of org-1, whose org's member defaults are `defaultCapabilities` (core's own unless set). */
+  function asMember(defaultCapabilities = DEFAULT_ORG_CAPABILITIES) {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+    client.getOrg.mockImplementation(async () => ({
+      name: "Team",
+      members: { "acct-alice": "member", "acct-bob": "owner" },
+      memberMetadata: {},
+      defaultCapabilities,
+    }));
+    return client;
+  }
+
+  it("offers Create room to a member of a stream made here (members may create rooms)", async () => {
+    const client = asMember(MEMBER_DEFAULTS);
+    renderApp(client, "/streams/org-1", true);
+    expect(await screen.findByTestId("create-room")).toBeTruthy();
+    expect(screen.queryByTestId("create-room-ask")).toBeNull();
+    // Only an owner or admin changes the stream's setting.
+    expect(screen.queryByTestId("members-create-rooms")).toBeNull();
+  });
+
+  it("tells a member of a stream with the default off to ask an owner", async () => {
+    const client = asMember(DEFAULT_ORG_CAPABILITIES & ~ORG_CAPABILITIES.CREATE_APP);
+    renderApp(client, "/streams/org-1", true);
+    expect((await screen.findByTestId("create-room-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-room")).toBeNull();
+  });
+
+  it("lets the owner turn \"Members can create rooms\" off and on, with a passkey approval", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    await client.setCapabilities("org-1", MEMBER_DEFAULTS, null);
+    client.setCapabilities.mockClear();
+    renderApp(client, "/streams/org-1", true);
+
+    const toggle = (await screen.findByTestId("members-create-rooms")) as HTMLInputElement;
+    await waitFor(() => expect(toggle.checked).toBe(true));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenCalledWith(
+        "org-1",
+        MEMBER_DEFAULTS & ~ORG_CAPABILITIES.CREATE_APP,
+        expect.anything(),
+      ),
+    );
+    await waitFor(() => expect(toggle.checked).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenLastCalledWith("org-1", MEMBER_DEFAULTS, expect.anything()),
+    );
+    await waitFor(() => expect(toggle.checked).toBe(true));
+  });
+
+  it("tells a member who may not add a room to ask an owner, instead of offering Create room (B8)", async () => {
+    // A stream made before member defaults: a plain member has no CREATE_APP.
+    const client = asMember();
+    renderApp(client, "/streams/org-1", true);
+    expect((await screen.findByTestId("create-room-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-room")).toBeNull();
+    expect(screen.queryByText(/Create one above/)).toBeNull();
+  });
+
+  it("still offers Create room to the stream's owner", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    renderApp(client, "/streams/org-1", true);
+    expect(await screen.findByTestId("create-room")).toBeTruthy();
+    expect(screen.queryByTestId("create-room-ask")).toBeNull();
   });
 
   it("builds invitation links on this frontend's own origin", () => {
     expect(
-      inviteLink("t", { stream: "o" }, { origin: "https://x.apps.calimero.network", pathname: "/" }),
-    ).toBe("https://x.apps.calimero.network/?invite=t&stream=o");
+      inviteLink("t", { stream: "o" }, { href: "https://x.apps.calimero.network/streams" }),
+    ).toBe("https://x.apps.calimero.network/?invite=t&org=o");
   });
 });

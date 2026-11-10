@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { nodeBasename } from '@calimero-apps/node-served';
+import type { InviteStore } from '@calimero-apps/connect';
+import { usePendingInvite } from '@calimero-apps/passkey';
 import { ToastProvider } from './contexts/ToastContext';
 
 import MatchPage from './pages/match';
@@ -8,10 +9,10 @@ import HomePage from './pages/home';
 import LandingPage from './pages/landing/LandingPage';
 import AppFooter from './components/AppFooter';
 import ConnectCard from './components/ConnectCard';
-import { pendingInvite } from './lobbies';
+import { basename, invites as appInvites } from './lobbies';
 import PlayPage from './pages/play';
 import { SessionProvider } from './SessionProvider';
-import { defaultDeps, describeTarget, useSessionApi, type SessionDeps } from './session';
+import { defaultDeps, describeTarget, useInviteState, useSessionApi, type SessionDeps } from './session';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -52,14 +53,15 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * page, in place of whatever route the link named: the lobby's own sign-in
  * card saying what they were invited to, with no landing hero behind it and
  * no extra click. Nothing navigates, so the address is still the deep link
- * once they are signed in; the lobby page then redeems the invitation and
- * opens the lobby it names. "Not now" falls through to the routes and keeps
+ * once they are signed in; the lobby page then asks before joining and opens
+ * the lobby the link names. "Not now" falls through to the routes and keeps
  * the token.
  */
 function InvitationGate({ children }: { children: ReactNode }) {
   const api = useSessionApi();
+  const pending = usePendingInvite(useInviteState().invites);
   const [notNow, setNotNow] = useState(false);
-  if (api.session.status === 'signed-out' && !notNow && pendingInvite()) {
+  if (api.session.status === 'signed-out' && !notNow && pending) {
     return (
       <div className="app-bg" data-testid="invitation-page">
         <div className="page-shell">
@@ -74,11 +76,18 @@ function InvitationGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export default function App({ deps = defaultDeps }: { deps?: SessionDeps }) {
+export default function App({
+  deps = defaultDeps,
+  invites = appInvites,
+}: {
+  deps?: SessionDeps;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
+}) {
   return (
-    <SessionProvider deps={deps}>
+    <SessionProvider deps={deps} invites={invites}>
       <ToastProvider>
-        <BrowserRouter basename={nodeBasename(new URL(window.location.href), '/')}>
+        <BrowserRouter basename={basename()}>
           <InvitationGate>
             <Routes>
               {/* The landing page is three pages: `/`, `/docs` and `/preview`,

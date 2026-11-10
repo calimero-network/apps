@@ -3,13 +3,9 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readTeam, redeemInvitation } from "../api/rpc";
 import { useAuth } from "../sessionContext";
-import {
-  dropInvite,
-  inviteFailure,
-  inviteRefused,
-  pendingInvite,
-  type PendingInvite,
-} from "../utils/inviteLink";
+import { isSpentInvite } from "@calimero-apps/connect";
+import { usePendingInvite } from "@calimero-apps/passkey";
+import { inviteDestination, inviteFailure, invites, takeJoinedAtSignUp } from "../utils/inviteLink";
 import styles from "./InviteModal.module.css";
 
 /**
@@ -34,16 +30,22 @@ import styles from "./InviteModal.module.css";
 export default function InvitationPrompt() {
   const { isAuthenticated: signedIn, accountId } = useAuth();
   const navigate = useNavigate();
-  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const pending = usePendingInvite(invites);
+  // An invite this screen is done with (already in, or spent) stays shown
+  // until closed, though the store has dropped it.
+  const [held, setHeld] = useState<typeof pending>(null);
+  const invite = held ?? pending;
   const [member, setMember] = useState<"checking" | "yes" | "no">("checking");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spent, setSpent] = useState(false);
 
-  // Signing in (or out) is when a pending invitation becomes this account's.
+  // Signed up from a page holding the invite: already joined; open what it named.
   useEffect(() => {
-    if (signedIn) setInvite(pendingInvite());
-  }, [signedIn]);
+    if (!signedIn) return;
+    const to = takeJoinedAtSignUp();
+    if (to) navigate(to, { replace: true });
+  }, [signedIn, navigate]);
 
   useEffect(() => {
     if (!signedIn || !invite) return;
@@ -57,7 +59,8 @@ export default function InvitationPrompt() {
       .then((team) => {
         if (!live) return;
         if (team.roles.has(accountId)) {
-          dropInvite();
+          setHeld(invite);
+          invites.drop();
           setMember("yes");
         } else setMember("no");
       })
@@ -69,18 +72,18 @@ export default function InvitationPrompt() {
   }, [signedIn, invite, accountId]);
 
   const close = useCallback(() => {
-    setInvite(null);
+    setHeld(null);
     setError(null);
     setSpent(false);
   }, []);
 
   const dismiss = useCallback(() => {
-    dropInvite();
+    invites.drop();
     close();
   }, [close]);
 
   const open = useCallback(() => {
-    const target = invite?.returnTo ?? (invite?.org ? `/teams/${invite.org}/projects` : "/teams");
+    const target = inviteDestination(invite, invite?.org ?? null);
     close();
     navigate(target);
   }, [invite, close, navigate]);
@@ -91,14 +94,15 @@ export default function InvitationPrompt() {
     setError(null);
     try {
       const org = (await redeemInvitation(invite.token)) ?? invite.org ?? null;
-      dropInvite();
-      setInvite(null);
-      navigate(invite.returnTo ?? (org ? `/teams/${org}/projects` : "/teams"));
+      invites.drop();
+      navigate(inviteDestination(invite, org));
     } catch (e) {
       // A refusal (unknown, used, expired, revoked) can never succeed: drop
-      // it. Anything else (the cluster unreachable) is kept for another try.
-      if (inviteRefused(e)) {
-        dropInvite();
+      // it. Anything else (a lapsed session, a rate limit, the cluster
+      // unreachable) is kept for another try.
+      if (isSpentInvite(e)) {
+        setHeld(invite);
+        invites.drop();
         setSpent(true);
       }
       setError(inviteFailure(e));

@@ -6,7 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
-import { pendingInvite } from "./companies";
+import { invites, noteJoinedAtSignUp } from "./companies";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -29,11 +29,13 @@ export const LISTING: ListingProps = {
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP_NAME, deps, {
     package: APP_PACKAGE,
-    invite: () => pendingInvite()?.token ?? null,
+    // The hook binds the pending invite to the cluster, and drops it on
+    // sign-out, on a refusal and once a sign-up joined with it.
+    invites,
     // A sign-up from a page holding the invite joins its org in that step:
     // nothing is left to redeem (a second redeem would spend another use).
-    // `InvitationPrompt` sees `api.joinedInvite`, drops the invite and opens
-    // what the link named.
-    onJoinedAtSignUp: () => {},
+    // `InvitationPrompt` reads the invite kept here, sees `api.joinedInvite`
+    // and opens what the link named.
+    onJoinedAtSignUp: noteJoinedAtSignUp,
   });
 }

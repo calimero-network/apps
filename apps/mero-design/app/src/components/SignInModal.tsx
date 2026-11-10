@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSessionApi } from "../sessionContext";
-import { pendingInvite } from "../utils/inviteLink";
+import { invites } from "../utils/inviteLink";
 import SignInPanel from "./SignInPanel";
 import styles from "./InviteModal.module.css";
 
@@ -13,7 +13,7 @@ import styles from "./InviteModal.module.css";
  */
 export default function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
-  const invited = pendingInvite() !== null;
+  const invited = invites.token() !== null;
 
   useEffect(() => {
     if (open && api.session.status === "signed-in") onClose();

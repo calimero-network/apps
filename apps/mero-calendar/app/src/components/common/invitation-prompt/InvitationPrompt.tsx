@@ -1,116 +1,95 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { PendingInvite } from "@calimero-apps/connect";
+import { JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
 
 import { useSessionApi } from "../../../api/sessionContext";
-import {
-  dropInvite,
-  inviteFailure,
-  inviteRefused,
-  joinedOrg,
-  pendingInvite,
-  pendingInviteOrg,
-  pendingInviteRoute,
-  readOrg,
-} from "../../../api/teams";
+import { dropInvite, inviteRoute, invites, takeJoinedAtSignUp } from "../../../api/teams";
 import { useToast } from "../../../contexts/ToastContext";
 import styles from "../modals/username-modal/username-modal.module.scss";
 
-type Outcome =
-  | { kind: "joining" }
-  | { kind: "member"; org: string; route: string | null }
-  | { kind: "failed"; message: string };
+const CLASS_NAMES = {
+  root: styles.modal,
+  title: styles.title,
+  text: styles.sub,
+  error: styles.sub,
+  actions: styles.actions,
+  primary: "mc-btn mc-btn--primary",
+  secondary: "mc-btn mc-btn--ghost",
+};
 
 /**
- * Redeems an invitation link once there is a session.
+ * "Join the team?" for an invitation link, once there is a session.
  *
- * A link is `?invite=<token>[&org=<team>]` (an org invite; `api/teams`).
- * `index.tsx` moves it into storage before anything renders, so it survives
- * the passkey sign-up a new person goes through first (on the invitation
- * page, `InvitationPage`); here it is redeemed and dropped, and the team it
- * opened is shown, or the route the link was opened on.
+ * A link is `?invite=<token>[&org=<team>][&to=<route>]` (an org invite;
+ * `api/teams`). `index.tsx` moves it into the invite store before anything
+ * renders, so it survives the passkey sign-up a new person goes through first
+ * (on the invitation page, `InvitationPage`). A sign-up there joins in that
+ * step and opens the team; anyone who signed in instead is ASKED before the
+ * invite is redeemed (the shared `JoinInvitation`), as every other org app
+ * asks: joining makes you a member of someone's organization, and a forwarded
+ * link or the next account on this browser should not join silently.
  *
- * ⚠️ Someone already in the team is not joined again. Redeeming spends the
- * link's single use, so the owner trying their own link used to leave the
- * person it was meant for with "unknown invite". When the link names its team
- * and the team lists this account, the token is dropped unspent and the
- * person is told so; when it cannot tell, it joins as before.
+ * Someone already in the team is not joined again: redeeming spends the
+ * link's single use. `JoinInvitation` checks the team the link names first and
+ * says so instead. It drops the token before it shows "already in" or "used
+ * up", so the invitation asked about stays on screen here until it closes.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { api } = useSessionApi();
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const tried = useRef<string | null>(null);
   const signedIn = api.session.status === "signed-in" ? api.session : null;
+  const pending = usePendingInvite(invites);
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
+  // The invitation this screen is done with (joined, "Not now", closed). An
+  // effect that held `pending` may still run once with the copy from before
+  // the drop, so closing is by token, not by clearing `asked`.
+  const [closed, setClosed] = useState<string | null>(null);
+  const client = signedIn?.client ?? null;
 
   useEffect(() => {
-    if (!signedIn) return;
-    const token = pendingInvite();
-    if (!token || tried.current === token) return;
-    tried.current = token;
-    const named = pendingInviteOrg();
-    const route = pendingInviteRoute();
-    setOutcome({ kind: "joining" });
-    (async () => {
-      if (named) {
-        const team = await readOrg(signedIn.client, named).catch(() => null);
-        if (team?.roles.has(signedIn.accountId)) {
-          dropInvite();
-          setOutcome({ kind: "member", org: named, route });
-          return;
-        }
-      }
-      try {
-        const redeemed = await signedIn.client.redeemInvite(token);
-        api.store?.sync(signedIn.client);
-        dropInvite();
-        const org = joinedOrg(redeemed) ?? named;
-        setOutcome(null);
-        showToast("You joined the team.", "success");
-        navigate(route ?? (org ? `/teams/${org}` : "/teams"));
-      } catch (err) {
-        // A refusal (unknown, used, expired, revoked) can never succeed: drop
-        // it. Anything else (the cluster unreachable) is kept for a reload.
-        if (inviteRefused(err)) dropInvite();
-        setOutcome({ kind: "failed", message: inviteFailure(err) });
-      }
-    })();
-  }, [signedIn, api.store, navigate, showToast]);
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
 
-  if (!outcome) return null;
-  if (outcome.kind === "joining") {
-    return (
-      <div className="mc-overlay" data-testid="invitation-redeeming">
-        <p className="mc-card">Joining the team…</p>
-      </div>
-    );
-  }
+  // Signed up from a page holding the invite: already joined; open what it named.
+  useEffect(() => {
+    if (!client) return;
+    const to = takeJoinedAtSignUp();
+    if (to) navigate(to, { replace: true });
+  }, [client, navigate]);
 
-  const member = outcome.kind === "member";
+  const held = client ? (pending ?? asked) : null;
+  const asking = held && held.token !== closed ? held : null;
+  if (!signedIn || !asking) return null;
+
+  const open = (org: string | null) => navigate(inviteRoute(asking) ?? (org ? `/teams/${org}` : "/teams"));
+
   return (
-    <div className="mc-overlay" data-testid="invitation-outcome">
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="invitation-outcome-title">
-        <h2 id="invitation-outcome-title" className={styles.title}>
-          {member ? "You're already in this team" : "Couldn't join the team"}
-        </h2>
-        <p className={styles.sub} role={member ? undefined : "alert"} data-testid="invitation-message">
-          {member
-            ? "This account is already a member, so there is nothing to accept. The link is left unused for the person it was meant for."
-            : outcome.message}
-        </p>
-        <div className={styles.actions}>
-          <button
-            className="mc-btn"
-            data-testid="invitation-close"
-            onClick={() => {
-              setOutcome(null);
-              if (member) navigate(outcome.route ?? `/teams/${outcome.org}`);
-            }}
-          >
-            {member ? "Open the team" : "Close"}
-          </button>
-        </div>
-      </div>
+    <div className="mc-overlay">
+      <JoinInvitation
+        key={asking.token}
+        client={signedIn.client}
+        token={asking.token}
+        org={asking.org}
+        appName="Mero Calendar"
+        joining="the team"
+        gives="you will see its calendars and can add events to them."
+        drop={dropInvite}
+        after={() => api.store?.sync(signedIn.client)}
+        onJoined={({ org }) => {
+          setClosed(asking.token);
+          showToast("You joined the team.", "success");
+          open(org);
+        }}
+        onClose={({ member }) => {
+          setClosed(asking.token);
+          if (member) open(member);
+        }}
+        classNames={CLASS_NAMES}
+        titleAs="h2"
+      />
     </div>
   );
 }

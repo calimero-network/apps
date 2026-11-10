@@ -1,23 +1,14 @@
 import React, { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { describeError } from '@calimero-apps/connect';
+import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from '@calimero-apps/connect';
 
 import { PRODUCT_NAME } from '../config';
 import { useSessionApi } from '../sessionContext';
 import { announceJoined } from '../hooks/workspacePersistence';
-import {
-  SPENT_INVITE,
-  dropInvite,
-  isSpentInvite,
-  joinedOrg,
-  listWorkspaces,
-  pendingInvite,
-  pendingInviteOrg,
-  pendingInviteRoute,
-} from '../workspaces';
-import { SignInPanel } from '@calimero-apps/passkey';
+import { inviteRoute, invites } from '../workspaces';
+import { SignInPanel, usePendingInvite } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
-import { ONBOARDING } from '../session';
+import { ONBOARDING, takeJoinedLanding } from '../session';
 import { Page, Card, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin, TextLink } from './modalKit';
 
 /** What the screen says once the invitation can no longer be accepted. */
@@ -45,38 +36,42 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
   const { api } = useSessionApi();
   const navigate = useNavigate();
   const signedIn = api.session.status === 'signed-in' ? api.session : null;
-  const [token, setToken] = useState<string | null>(() => pendingInvite());
+  const pending = usePendingInvite(invites);
+  const token = pending?.token ?? null;
+  const pendingOrg = pending?.org ?? null;
   const [deferred, setDeferred] = useState(false);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  // A sign-up that joined with the invite: open the page its link pointed at.
   useEffect(() => {
     if (!signedIn) return;
-    const current = pendingInvite();
-    setToken(current);
-    const org = pendingInviteOrg();
-    if (!current || !org) return;
+    const route = takeJoinedLanding();
+    if (route) navigate(route);
+  }, [signedIn, navigate]);
+
+  useEffect(() => {
+    if (!signedIn || !token || !pendingOrg) return;
     let live = true;
     setChecking(true);
-    listWorkspaces(signedIn.client)
-      .then((workspaces) => {
-        if (!live || !workspaces.some((w) => w.namespaceId === org)) return;
-        const route = pendingInviteRoute();
-        dropInvite();
-        setToken(null);
-        setOutcome({ kind: 'member', org, route });
+    void memberOf(signedIn.client, pendingOrg)
+      .then((member) => {
+        // Unknown membership (`null`): ask, as for a link that names no org.
+        if (!live || !member) return;
+        const route = inviteRoute(invites.pending());
+        invites.drop();
+        setOutcome({ kind: 'member', org: pendingOrg, route });
       })
-      // Unknown membership: ask, as for a link that names no org.
-      .catch(() => {})
       .finally(() => {
         if (live) setChecking(false);
       });
     return () => {
       live = false;
+      setChecking(false);
     };
-  }, [signedIn]);
+  }, [signedIn, token, pendingOrg]);
 
   if (outcome) {
     const done = () => {
@@ -95,7 +90,7 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
           <p className="sub">
             {outcome.kind === 'member'
               ? 'The invitation was for a workspace you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for.'
-              : SPENT_INVITE}
+              : SPENT_INVITE_COPY}
           </p>
           <Actions>
             <PrimaryBtn data-testid="invitation-continue" onClick={done}>
@@ -126,28 +121,25 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
 
   const { client } = signedIn;
 
-  const dismiss = () => {
-    dropInvite();
-    setToken(null);
-  };
+  const dismiss = () => invites.drop();
 
   const join = async () => {
     setBusy(true);
     setError(null);
-    const route = pendingInviteRoute();
+    const route = inviteRoute(pending);
     try {
-      const org = joinedOrg(await client.redeemInvite(token));
-      dropInvite();
-      setToken(null);
+      const org = joinedOrg(await client.redeemInvite(token)) ?? pendingOrg;
+      invites.drop();
       if (org) announceJoined(org);
       navigate(route);
     } catch (e) {
+      // Only the node's word that the invite is done drops it: a lapsed
+      // session, a rate limit or a network failure keeps it to try again.
       if (isSpentInvite(e)) {
-        dropInvite();
-        setToken(null);
+        invites.drop();
         setOutcome({ kind: 'spent' });
       } else {
-        setError(`The invitation could not be accepted: ${describeError(e)}`);
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);

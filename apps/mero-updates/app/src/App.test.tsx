@@ -197,6 +197,31 @@ describe("the company pages", () => {
     expect(getActiveNamespaceId()).toBe("org-1");
   });
 
+  it("tells a member who may not add an audience to ask an owner, instead of offering Create (B8)", async () => {
+    const { default: AudiencesPage } = await import("./pages/AudiencesPage");
+    const { ToastProvider } = await import("./contexts/ToastContext");
+    // A member whose company defaults were never set (the step-up refused): no CREATE_APP.
+    const owner = h.client.getOrg.getMockImplementation();
+    h.client.getOrg.mockResolvedValue({ name: "Acme", members: { ana: "member", ben: "owner" }, memberMetadata: {} });
+    Object.assign(h.client, { session: { accountId: "ana" } });
+    try {
+      render(
+        <ToastProvider>
+          <MemoryRouter initialEntries={["/companies/org-1"]}>
+            <Routes>
+              <Route path="/companies/:namespaceId" element={<AudiencesPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>,
+      );
+      expect((await screen.findByTestId("create-audience-ask")).textContent).toMatch(/Only an owner or admin/);
+      expect(screen.queryByTestId("create-audience")).toBeNull();
+    } finally {
+      delete (h.client as { session?: unknown }).session;
+      if (owner) h.client.getOrg.mockImplementation(owner);
+    }
+  });
+
   it("mints an audience invite: an org invite whose link lands in that audience", async () => {
     const { default: AudiencesPage } = await import("./pages/AudiencesPage");
     const { ToastProvider } = await import("./contexts/ToastContext");

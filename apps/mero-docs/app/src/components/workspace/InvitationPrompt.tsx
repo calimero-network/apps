@@ -28,13 +28,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useMero } from '@/calimero/react';
-import { describeError } from '@calimero-apps/connect';
+import { SPENT_INVITE_COPY, describeError, isSpentInvite } from '@calimero-apps/connect';
 import {
-  SPENT_INVITE,
   dropInvite,
-  inviteRefused,
   inviteScope,
   pendingInvite,
+  takeJoinedAtSignUp,
   type PendingInvite,
 } from '@/hooks/useNamespaceInvitation';
 import { rememberNamespaceName } from '@/hooks/namespaceNames';
@@ -44,10 +43,14 @@ interface Props {
   onJoined: (workspaceId: string | null, folderId: string | null) => void;
 }
 
-/** The node's words for an invite it will never take: copy the person can act on. */
+/**
+ * The node's words for an invite it will never take: copy the person can act
+ * on. Anything else (a lapsed session, a rate limit, the cluster unreachable)
+ * keeps the token for another try.
+ */
 function failureCopy(cause: unknown, noun: string): string {
-  if (inviteRefused(cause)) return SPENT_INVITE;
-  return `Couldn't join the ${noun}: ${describeError(cause)}`;
+  if (isSpentInvite(cause)) return SPENT_INVITE_COPY;
+  return `Couldn't join the ${noun}: ${describeError(cause)}. Your invite is kept: try again.`;
 }
 
 export function InvitationPrompt({ onJoined }: Props) {
@@ -61,6 +64,11 @@ export function InvitationPrompt({ onJoined }: Props) {
 
   useEffect(() => {
     setInvite(isAuthenticated ? pendingInvite() : null);
+    // Signed up from a page holding the invite: already joined; open what it named.
+    const joined = isAuthenticated ? takeJoinedAtSignUp() : null;
+    if (joined) onJoined(joined.workspace, joined.folder);
+    // `onJoined` is the router's; only the sign-in matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -111,8 +119,9 @@ export function InvitationPrompt({ onJoined }: Props) {
     } catch (e) {
       console.warn('[InvitationPrompt] redeem failed', e);
       // A refusal (unknown, used, expired, revoked) can never succeed: drop
-      // it. Anything else (the cluster unreachable) is kept for another try.
-      if (inviteRefused(e)) {
+      // it. Anything else (a lapsed session, a rate limit, the cluster
+      // unreachable) is kept for another try.
+      if (isSpentInvite(e)) {
         dropInvite();
         setSpent(true);
       }

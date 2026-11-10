@@ -27,7 +27,7 @@ import {
   type SignUpStage,
 } from '@calimero-apps/passkey';
 
-import { dropInvite, pendingInvite } from './lib/inviteLink';
+import { invites, noteJoinedAtSignUp } from './lib/inviteLink';
 import { PACKAGE } from './lib/meroPass';
 
 /** The app's name in stored keys. */
@@ -141,10 +141,12 @@ export function CalimeroProvider({
 }) {
   const api = usePasskeySession(APP, deps, {
     package: PACKAGE,
-    invite: () => pendingInvite(deps.storage),
+    // The pending invite: the hook binds it to the cluster, and drops it on
+    // sign-out, on a refusal and once a sign-up joined with it.
+    invites,
     // Joined at sign-up: nothing is left to redeem (a second redeem would
-    // spend another use of the link).
-    onJoinedAtSignUp: () => dropInvite(deps.storage),
+    // spend another use of the link); the invitation prompt opens the team.
+    onJoinedAtSignUp: noteJoinedAtSignUp,
   });
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);

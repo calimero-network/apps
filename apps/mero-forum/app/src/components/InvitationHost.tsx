@@ -1,18 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, type PendingInvite } from "@calimero-apps/connect";
+import { usePendingInvite } from "@calimero-apps/passkey";
 
 import { useMaybeSignedIn, useSessionApi } from "../sessionContext";
-import {
-  SPENT_INVITE,
-  dropInvite,
-  isSpentInvite,
-  joinedOrg,
-  pendingInvite,
-  roleIn,
-  type PendingInvite,
-} from "../lib/spaces";
+import { inviteForum, invites, roleIn } from "../lib/spaces";
 import { setActiveForum } from "../lib/session";
+import { takeJoinedAtSignUp } from "../session";
 import SignInPanel from "./SignInPanel";
 import styles from "./InviteModal.module.css";
 
@@ -47,7 +41,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
   const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const pending = usePendingInvite(invites);
   const [deferred, setDeferred] = useState(false);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,31 +52,56 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
    * stays until the router is there: dropping it first would show the route
    * the visitor is still on, and the landing page's own redirect would win.
    */
-  const [leavingFor, setLeavingFor] = useState<{ to: string; from: string } | null>(null);
+  const [leavingFor, setLeavingFor] = useState<{ to: string; from: string; invite: PendingInvite | null } | null>(
+    null,
+  );
+  // The joined invite stays on screen until the router has moved (`leavingFor`).
+  const invite = leavingFor ? leavingFor.invite : pending;
 
   useEffect(() => {
     // Arrived, or the destination redirected on (a guard): either way the router moved.
     if (leavingFor && (pathname === leavingFor.to || pathname !== leavingFor.from)) {
       setLeavingFor(null);
       setOutcome(null);
-      setInvite(null);
     }
   }, [leavingFor, pathname]);
 
+  const go = (route: string, held: PendingInvite | null = null) => {
+    setLeavingFor({ to: route, from: pathname, invite: held });
+    navigate(route);
+  };
+
+  /** Into what `link` pointed at, now that the account is in `org`: its forum (and post), else the space. */
+  const land = (link: PendingInvite | null, org: string | null, held: PendingInvite | null = null) => {
+    const forum = inviteForum(link);
+    if (forum) {
+      setActiveForum(forum, org);
+      go(inForum(link?.route ?? null) ? (link?.route as string) : "/f", held);
+    } else {
+      go(org ? `/spaces/${org}` : "/spaces", held);
+    }
+  };
+
   const client = signedIn?.client ?? null;
+  // Signed up from a page holding the invite: already joined; open what it named.
   useEffect(() => {
-    if (!client) return;
-    const current = pendingInvite();
-    setInvite(current);
+    const joined = client ? takeJoinedAtSignUp() : null;
+    if (joined) land(joined.invite, joined.org);
+    // `land` is this render's; it only reads the router and setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
+
+  const token = pending?.token ?? null;
+  useEffect(() => {
+    const current = invites.pending();
     const org = current?.org;
-    if (!current || !org) return;
+    if (!client || !current || !org) return;
     let live = true;
     setChecking(true);
     roleIn(client, org)
       .then((role) => {
         if (!live || !role) return;
-        dropInvite();
-        setInvite(null);
+        invites.drop();
         setOutcome({ kind: "member", org });
       })
       // Unknown membership: ask, as for a link that names no space.
@@ -92,13 +111,9 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
       });
     return () => {
       live = false;
+      setChecking(false);
     };
-  }, [client]);
-
-  const go = (route: string) => {
-    setLeavingFor({ to: route, from: pathname });
-    navigate(route);
-  };
+  }, [client, token]);
 
   if (outcome) {
     const member = outcome.kind === "member";
@@ -118,7 +133,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
             <p className={styles.hint}>
               {member
                 ? "The invitation was for a space you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for."
-                : SPENT_INVITE}
+                : SPENT_INVITE_COPY}
             </p>
             <button
               type="button"
@@ -164,8 +179,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
   }
 
   const dismiss = () => {
-    dropInvite();
-    setInvite(null);
+    invites.drop();
     setError(null);
   };
 
@@ -173,22 +187,17 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
-      dropInvite();
-      if (invite.forum) {
-        setActiveForum(invite.forum, org);
-        go(inForum(invite.route) ? invite.route : "/f");
-      } else {
-        go(org ? `/spaces/${org}` : "/spaces");
-      }
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token)) ?? invite.org;
+      invites.drop();
+      land(invite, org, invite);
     } catch (e) {
+      // Only the node's word that the invite is done drops it: a lapsed
+      // session, a rate limit or the cluster unreachable keeps it to try again.
       if (isSpentInvite(e)) {
-        dropInvite();
-        setInvite(null);
+        invites.drop();
         setOutcome({ kind: "spent" });
       } else {
-        // The cluster unreachable: the token is kept for another try.
-        setError(`The invitation could not be accepted: ${describeError(e)}`);
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);
@@ -210,7 +219,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
             </h2>
           </header>
           <p className={styles.hint}>
-            {invite.forum
+            {inviteForum(invite)
               ? "You were invited to Mero Forum. Joining gives you access to the space and takes you straight into the forum you were invited to."
               : "You were invited to Mero Forum. Joining gives you access to the space and every forum in it."}
           </p>

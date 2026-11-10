@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 
 import { useToast } from "../contexts/ToastContext";
 import { useSignedIn } from "../sessionContext";
@@ -62,6 +62,13 @@ export default function ForumsPage() {
 
   const [forums, setForums] = useState<ForumRow[]>([]);
   const [spaceAdmin, setSpaceAdmin] = useState(false);
+  /**
+   * Whether this account may add a forum in the space (core's `CREATE_APP`):
+   * an owner or admin, or a member allowed to (the space's defaults, set by a
+   * best-effort step-up when it was made). `null` while unknown, when the
+   * create is offered and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
@@ -117,6 +124,7 @@ export default function ForumsPage() {
         void roleIn(client, namespaceId)
           .then((role) => setSpaceAdmin(isSpaceAdmin(role ?? undefined)))
           .catch(() => setSpaceAdmin(false));
+        void canCreateIn(client, namespaceId).then(setMayCreate);
         setForums(await listForums(client, source, namespaceId));
         setListedForNs(namespaceId);
         if (listFailed.current) setError(null);
@@ -251,17 +259,19 @@ export default function ForumsPage() {
           </>
         }
         cta={
-          <button
-            type="button"
-            className="ui-btn ui-btn-primary x-ctaBtn"
-            onClick={focusCreate}
-            aria-label="New forum"
-          >
-            <span className="x-ctaIcon">
-              <PlusIcon size={22} />
-            </span>
-            <span className="x-ctaLabel">New forum</span>
-          </button>
+          mayCreate === false ? undefined : (
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary x-ctaBtn"
+              onClick={focusCreate}
+              aria-label="New forum"
+            >
+              <span className="x-ctaIcon">
+                <PlusIcon size={22} />
+              </span>
+              <span className="x-ctaLabel">New forum</span>
+            </button>
+          )
         }
         account={<SessionMenu />}
         header={
@@ -327,35 +337,41 @@ export default function ForumsPage() {
           </>
         }
       >
-        <div className={styles.createRow}>
-          <Avatar
-            label="+"
-            seed="forum-x"
-            square
-            icon={<PlusIcon size={20} />}
-          />
-          <input
-            id="forum-name"
-            className={styles.createInput}
-            placeholder="Name a new forum…"
-            aria-label="New forum name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            data-testid="forum-name-input"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) create();
-            }}
-          />
-          <button
-            className="ui-btn ui-btn-primary"
-            onClick={create}
-            disabled={pending === "create" || !name.trim()}
-            data-testid="create-forum"
-          >
-            {pending === "create" && <span className="ui-spinner" />}
-            {pending === "create" ? "Creating…" : "Create"}
-          </button>
-        </div>
+        {mayCreate === false ? (
+          <p className={styles.note} role="status" data-testid="create-forum-ask">
+            {askAnOwnerCopy("a forum")}
+          </p>
+        ) : (
+          <div className={styles.createRow}>
+            <Avatar
+              label="+"
+              seed="forum-x"
+              square
+              icon={<PlusIcon size={20} />}
+            />
+            <input
+              id="forum-name"
+              className={styles.createInput}
+              placeholder="Name a new forum…"
+              aria-label="New forum name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="forum-name-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) create();
+              }}
+            />
+            <button
+              className="ui-btn ui-btn-primary"
+              onClick={create}
+              disabled={pending === "create" || !name.trim()}
+              data-testid="create-forum"
+            >
+              {pending === "create" && <span className="ui-spinner" />}
+              {pending === "create" ? "Creating…" : "Create"}
+            </button>
+          </div>
+        )}
 
         {status && (
           <p className={styles.note} role="status">
@@ -404,16 +420,22 @@ export default function ForumsPage() {
               icon={<HashIcon size={26} />}
             />
             <span className={styles.emptyTitle}>No forums yet</span>
-            Create one above to start the first board in this space.
-            <button
-              type="button"
-              className="ui-btn ui-btn-primary"
-              style={{ marginTop: 14 }}
-              onClick={focusCreate}
-            >
-              <PlusIcon size={16} />
-              New forum
-            </button>
+            {mayCreate === false ? (
+              "An owner or admin of this space can add the first one."
+            ) : (
+              <>
+                Create one above to start the first board in this space.
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-primary"
+                  style={{ marginTop: 14 }}
+                  onClick={focusCreate}
+                >
+                  <PlusIcon size={16} />
+                  New forum
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className={styles.list}>

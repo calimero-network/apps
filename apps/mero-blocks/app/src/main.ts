@@ -20,7 +20,7 @@ import { GameClient } from "./net/client";
 import { followInstanceRelease } from "@calimero-apps/connect";
 import { connect, defaultDeps, deviceLabel, type SignedIn } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
-import { captureInvite, forgetWorld, inviteLink, inviteToken } from "./net/worlds";
+import { basename, forgetWorld, invites, inviteToken, migrateStoredInvite, worldInviteLink } from "./net/worlds";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
@@ -32,8 +32,10 @@ import { PauseMenu, WorldMap } from "./ui/overlays";
 //
 // Taken off the address bar before anything renders: a person opening a link
 // is usually not signed in yet, and the token must survive the passkey
-// sign-up. The launcher redeems it once a session exists (net/worlds.ts).
-captureInvite();
+// sign-up. Once signed in, the launcher asks before redeeming it (ui/landing.ts).
+// An invite an older build stored under its own keys moves over.
+invites.capture(window.location, { basename: basename() });
+migrateStoredInvite(invites);
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
@@ -209,7 +211,7 @@ async function boot(): Promise<void> {
           onInvite: async () => {
             const token = await inviteToken(session.client, choice.world.org as string, defaultDeps.passkey());
             session.sessions.sync(session.client);
-            return inviteLink(token, window.location, choice.world.org);
+            return worldInviteLink(token, choice.world.org as string, { world: worldId, from: choice.name });
           },
         }
       : {}),

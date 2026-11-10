@@ -19,7 +19,7 @@ import {
   type SessionApi as PasskeySessionApi,
 } from '@calimero-apps/passkey';
 import { PACKAGE_NAME } from '@/constants/config';
-import { dropInvite } from '@/hooks/useNamespaceInvitation';
+import { invites, noteJoinedAtSignUp } from '@/hooks/useNamespaceInvitation';
 
 /** The app's name in stored keys. */
 export const APP = 'mero-docs';
@@ -65,13 +65,16 @@ export interface SessionApi extends PasskeySessionApi {
 
 const SessionContext = createContext<SessionApi | null>(null);
 
-function useSessionState(deps: SessionDeps, invite?: () => string | null): SessionApi {
+function useSessionState(deps: SessionDeps): SessionApi {
   const api = usePasskeySession(APP, deps, {
     package: PACKAGE_NAME,
-    invite,
+    // The pending invite: the hook binds it to the cluster, and drops it on
+    // sign-out, on a refusal and once a sign-up joined with it.
+    invites,
     // A sign-up from a page holding the invite joined its organization in that
-    // step: nothing is left to redeem (a second redeem would spend another use).
-    onJoinedAtSignUp: () => dropInvite(),
+    // step: nothing is left to redeem (a second redeem would spend another
+    // use). InvitationPrompt opens the workspace or folder it named.
+    onJoinedAtSignUp: noteJoinedAtSignUp,
   });
   const { session, store } = api;
   const client = session.status === 'signed-in' ? session.client : null;
@@ -83,17 +86,8 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
 }
 
 /** Connects once and shares the session with every screen. */
-export function SessionProvider({
-  deps = defaultDeps,
-  invite,
-  children,
-}: {
-  deps?: SessionDeps;
-  /** The pending invite's token: it goes with a sign-up, which then joins its organization. */
-  invite?: () => string | null;
-  children: ReactNode;
-}) {
-  const api = useSessionState(deps, invite);
+export function SessionProvider({ deps = defaultDeps, children }: { deps?: SessionDeps; children: ReactNode }) {
+  const api = useSessionState(deps);
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;
 }
 

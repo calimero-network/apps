@@ -33,7 +33,7 @@ import { nodeBasename } from '@/lib/servedByNode';
 import { InvitationPage } from '@/components/workspace/InvitationPage';
 import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
 import { SignInDialog } from '@/components/workspace/SignInDialog';
-import { deferInvite, inviteDeferred, pendingInvite } from '@/hooks/useNamespaceInvitation';
+import { deferInvite, inviteDeferred, joinedAtSignUpPending, pendingInvite } from '@/hooks/useNamespaceInvitation';
 
 import LandingPage from './pages/landing/LandingPage';
 import WorkspacePage from './pages/workspace';
@@ -51,7 +51,13 @@ const TOAST_BOTTOM_OFFSET = 64;
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, nodeUrl } = useMero();
+  // Joined at sign-up: InvitationPrompt is opening what the link named. Held
+  // until this page unmounts: the router's move comes in a transition, after
+  // the render that took the destination.
+  const joining = useRef(false);
+  if (joinedAtSignUpPending()) joining.current = true;
   if (isLoading) return null; // the auth probe is still in flight
+  if (isAuthenticated && joining.current) return null;
   if (isAuthenticated)
     return <Navigate to={readReturnTo(nodeUrl ?? null) ?? '/app'} replace />;
   return <>{children}</>;
@@ -196,13 +202,10 @@ function AppRoutes() {
   );
 }
 
-/** The invite link's token, while it waits to be redeemed. */
-const pendingInviteToken = () => pendingInvite()?.token ?? null;
-
 export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
     <ThemeProvider>
-      <SessionProvider deps={deps} invite={pendingInviteToken}>
+      <SessionProvider deps={deps}>
         <CalimeroProvider>
           <AppToaster />
           <TooltipProvider>

@@ -2,7 +2,7 @@ import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 
 import { LISTING, useCalimero } from '../calimero';
-import { pendingInvite } from '../lib/inviteLink';
+import { invites } from '../lib/inviteLink';
 import shell from '../styles/shell.module.css';
 
 /**
@@ -14,7 +14,7 @@ import shell from '../styles/shell.module.css';
  */
 export default function SignInPanel() {
   const api = useCalimero();
-  const invited = pendingInvite() !== null;
+  const invited = invites.token() !== null;
 
   if (api.status === 'listing') return <AppListing {...LISTING} />;
   if (api.status === 'unconfigured') {

@@ -6,12 +6,15 @@ import { nodeBasename } from "@calimero-apps/node-served";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
-import { captureInvite } from "./api/teams";
+import { invites, migrateLegacyInvite } from "./api/teams";
 import "./index.css";
 
 // Before React mounts: a person opening an invitation link (`?invite=`) is
 // usually not signed in yet, and the token has to survive the passkey sign-up.
-captureInvite();
+// An invite an earlier build stored under its own keys moves over first, so a
+// fresh link wins.
+migrateLegacyInvite();
+invites.capture(window.location, { basename: nodeBasename(new URL(window.location.href), "/") });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

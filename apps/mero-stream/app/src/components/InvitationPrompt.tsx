@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { describeRedeemFailure } from "@calimero-apps/connect";
 import { useConn } from "../hooks/useConn";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { useSessionApi } from "../session";
@@ -126,14 +126,14 @@ export default function InvitationPrompt() {
       setInvite(null);
       go(invite);
     } catch (e) {
-      // A refusal can never succeed: drop it. Anything else (the cluster
-      // unreachable) is kept for another try.
+      // A refusal can never succeed: drop it. Anything else (a lapsed
+      // session, a rate limit, the cluster unreachable) is kept for another try.
       if (inviteRefused(e)) {
         dropInvite();
         setRefused(true);
         setError(INVITE_REFUSED);
       } else {
-        setError(describeError(e));
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);
