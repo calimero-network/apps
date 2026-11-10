@@ -74,8 +74,21 @@ import {
 } from "../../utils/permalink";
 import type { MessageLink } from "../../utils/permalink";
 import { nodeBasename } from "../../utils/servedByNode";
+import ChatAccessGate from "./ChatAccessGate";
 
+/**
+ * The selected workspace, behind {@link ChatAccessGate}: someone who no
+ * longer has Chat there is told so instead of getting an empty shell.
+ */
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
+  return (
+    <ChatAccessGate>
+      <Workspace isConfigSet={isConfigSet} />
+    </ChatAccessGate>
+  );
+}
+
+function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   const { mero: app, isOnline } = useCalimero();
   const currentGroupId = getGroupId();
 
