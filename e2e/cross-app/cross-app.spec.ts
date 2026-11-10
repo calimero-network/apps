@@ -150,13 +150,20 @@ test("2. Home shows the org Chat made, with Chat for everyone in it", async () =
   await expect(page.getByTestId(`open-${CHAT}`)).toBeVisible();
 });
 
-test("3. Alice adds KV Store from Home's Admin screen, for the people she adds", async () => {
+test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, for the people she adds", async () => {
   const page = aliceBrowser.page;
   await page.getByTestId("tab-admin").click();
+  // Orgs are open by default: every app is everyone's. "Keep apps apart" closes
+  // Chat's open team in one step, writing in everyone who has it (one passkey).
+  await expect(page.getByTestId("apart-state")).toContainText("Everyone in the organization has every app");
+  await page.getByTestId("apart-switch").check();
+  await expect(page.getByTestId("apart-keeps")).toContainText("Mero Chat");
+  await page.getByTestId("apart-confirm-yes").click();
+  await expect(page.getByTestId("apart-state")).toContainText("Each app lists who is in it");
+  await expect(page.getByTestId("org-mode")).toContainText("Shared");
+  // An app added now lists its own people: only Alice at first.
   await page.getByTestId("add-app-package").selectOption(KV);
-  // Each app lists its own people: Chat's open team closes too, keeping who has it.
-  await page.getByTestId("add-app-shared").check();
-  await expect(page.getByTestId("add-app-closes")).toContainText("Mero Chat will become invite-only");
+  await expect(page.getByTestId("add-app-who")).toContainText("Only you have it at first");
   await page.getByTestId("add-app").click();
   await expect(page.getByTestId("app-added")).toContainText("KV Store is set up");
   await expect(page.getByTestId("org-mode")).toContainText("Shared");
