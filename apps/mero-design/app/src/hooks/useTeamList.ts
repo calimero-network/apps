@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTeam as createOrg, deleteTeam as deleteOrg, leaveTeam as leaveOrg, listTeams } from "../api/rpc";
+import type { LeftApp } from "@calimero-apps/connect";
+import {
+  createTeam as createOrg,
+  deleteTeam as deleteOrg,
+  leaveTeam as leaveOrg,
+  leaveTeamOrg,
+  listTeams,
+} from "../api/rpc";
 import { getApi } from "../api/client";
 import { publishMyName } from "../api/names";
 import { setStoredTeamName } from "../utils/teamName";
@@ -26,7 +33,13 @@ export interface TeamList {
   /** Its owner only (a passkey step-up). Rejects with the node's reason; the team stays listed then. */
   deleteTeam: (teamId: string) => Promise<void>;
   /** What a member who is not an admin does instead. The team stays listed when refused. */
-  leaveTeam: (teamId: string) => Promise<void>;
+  /**
+   * Leaves the team: in an org that keeps its apps apart, Mero Design only
+   * (`lastApp` when it was the last app there: offer {@link leaveOrganization}).
+   */
+  leaveTeam: (teamId: string) => Promise<LeftApp>;
+  /** Leaves the organization altogether, every app in it. */
+  leaveOrganization: (teamId: string) => Promise<void>;
 }
 
 /**
@@ -85,12 +98,17 @@ export function useTeamList(): TeamList {
   }, []);
 
   const leaveTeam = useCallback(async (teamId: string) => {
-    await leaveOrg(teamId);
+    const left = await leaveOrg(teamId);
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
+    return left;
+  }, []);
+
+  const leaveOrganization = useCallback(async (teamId: string) => {
+    await leaveTeamOrg(teamId);
   }, []);
 
   return useMemo(
-    () => ({ teams, listed, error, reload, createTeam, deleteTeam, leaveTeam }),
-    [teams, listed, error, reload, createTeam, deleteTeam, leaveTeam],
+    () => ({ teams, listed, error, reload, createTeam, deleteTeam, leaveTeam, leaveOrganization }),
+    [teams, listed, error, reload, createTeam, deleteTeam, leaveTeam, leaveOrganization],
   );
 }

@@ -11,7 +11,10 @@
 import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
 import {
   SPENT_INVITE_COPY,
+  appInvite,
   createInviteStore,
+  type AppInviteToken,
+  type AppSource,
   inviteLink as sharedInviteLink,
   isSpentInvite,
   type InviteStore,
@@ -30,13 +33,28 @@ export interface PendingInvite {
 
 const LEGACY_PENDING = 'mero-sign:pending-invite';
 
-/** An invitation into `org` as a member, approved with the inviter's passkey. */
-export function inviteToken(
-  client: Pick<CalimeroClient, 'invite'>,
+/**
+ * An invitation into `org` as a member, approved with the inviter's passkey,
+ * naming Mero Sign's team (`appInvite`): `appOnly` when it gives Mero Sign only
+ * (an org that keeps its apps apart). Org-wide in a legacy org.
+ */
+export function appInviteToken(
+  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
   org: string,
   passkey: PasskeyProvider,
+  source: AppSource | null = null,
+): Promise<AppInviteToken> {
+  return appInvite(client, org, source, passkey);
+}
+
+/** {@link appInviteToken}'s token alone. */
+export async function inviteToken(
+  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  org: string,
+  passkey: PasskeyProvider,
+  source: AppSource | null = null,
 ): Promise<string> {
-  return client.invite(org, 'member', passkey);
+  return (await appInviteToken(client, org, passkey, source)).token;
 }
 
 /**

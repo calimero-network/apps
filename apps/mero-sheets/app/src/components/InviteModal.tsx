@@ -1,3 +1,5 @@
+import { appOnlyInviteNote } from '@calimero-apps/connect';
+import { APP_DISPLAY_NAME } from '../config';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { renderSVG } from 'uqr';
@@ -28,6 +30,7 @@ export default function InviteModal({
   scope,
   loading,
   error,
+  appOnly = false,
   onClose,
 }: {
   /** The minted invitation link, or '' while it is still being minted. */
@@ -36,6 +39,8 @@ export default function InviteModal({
   scope: string;
   loading: boolean;
   error: string | null;
+  /** The link gives Mero Sheets only (an org that keeps its apps apart). */
+  appOnly?: boolean;
   onClose: () => void;
 }) {
   // Set when the clipboard is unreachable: the link is shown whole, so it can
@@ -125,6 +130,7 @@ export default function InviteModal({
               spreadsheet in it. Make a new link for each person you invite. They pick a name for
               themselves when they join.
             </Hint>
+            {appOnly && <Hint data-testid="invite-app-only">{appOnlyInviteNote(APP_DISPLAY_NAME)}</Hint>}
           </>
         )}
 

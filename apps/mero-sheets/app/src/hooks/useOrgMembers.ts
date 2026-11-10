@@ -31,10 +31,10 @@ export interface UseOrgMembers {
   refetch: () => Promise<void>;
 }
 
-const EMPTY: OrgMembers = { roles: new Map(), names: new Map() };
+const EMPTY: OrgMembers = { roles: new Map(), names: new Map(), people: [], appOnly: false };
 
 export function useOrgMembers(org: string | null): UseOrgMembers {
-  const { client, accountId, after } = useSignedIn();
+  const { client, accountId, source, after } = useSignedIn();
   const [members, setMembers] = useState<OrgMembers>(EMPTY);
   const [loaded, setLoaded] = useState(false);
 
@@ -45,14 +45,14 @@ export function useOrgMembers(org: string | null): UseOrgMembers {
       return;
     }
     try {
-      setMembers(await readMembers(client, org));
+      setMembers(await readMembers(client, org, source));
     } catch {
       // Unreachable for now: keep what we had; the next open re-reads.
     } finally {
       setLoaded(true);
       after();
     }
-  }, [client, org, after]);
+  }, [client, org, source, after]);
 
   useEffect(() => {
     void refetch();
@@ -81,7 +81,8 @@ export function useOrgMembers(org: string | null): UseOrgMembers {
   );
 
   return {
-    people: [...members.roles].map(([identity, role]) => ({ identity, role })),
+    // Who has Mero Sheets in the workspace (its app team, else the org), with their org role.
+    people: members.people.map((identity) => ({ identity, role: members.roles.get(identity) ?? 'member' })),
     nameOf,
     displayName,
     myName: members.names.get(accountId) ?? '',

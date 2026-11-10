@@ -33,6 +33,7 @@ import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { removeFromWorkspace } from '../../lib/workspaces';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
@@ -84,7 +85,7 @@ import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
 export default function AppPage() {
-  const { client, signOut: endSession, passkey, after, target, accountId } = useSignedIn();
+  const { client, signOut: endSession, passkey, after, target, accountId, source } = useSignedIn();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -142,16 +143,18 @@ export default function AppPage() {
   // its result — keeping them together made the dialog either mint on every open
   // or show a stale invitation from a previous one.
   const [inviteCode, setInviteCode] = useState('');
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   const openInvite = useCallback(async () => {
     setShowInvite(true);
     setInviteCode('');
+    setInviteAppOnly(false);
     setInviteError(null);
     try {
-      setInviteCode(
-        await ws.invite({ contextId: ws.contextId }),
-      );
+      const made = await ws.invite({ contextId: ws.contextId });
+      setInviteCode(made.link);
+      setInviteAppOnly(made.appOnly);
     } catch (err) {
       setInviteError(describeError(err));
     }
@@ -1826,6 +1829,7 @@ export default function AppPage() {
           // UI says that rather than implying a narrower scope than it gives.
           scope={`${ws.namespaceName} · all ${ws.workspaces.length} spreadsheet${ws.workspaces.length === 1 ? '' : 's'}, opening “${activeWorkspaceName}”`}
           loading={ws.inviteLoading && !inviteCode}
+          appOnly={inviteAppOnly}
           error={inviteError}
           onClose={() => setShowInvite(false)}
         />
@@ -2075,7 +2079,8 @@ export default function AppPage() {
           onRemove={async (account) => {
             if (!ws.namespaceId) return;
             try {
-              await client.removeMember(ws.namespaceId, account, passkey());
+              // In an org that keeps its apps apart: out of Mero Sheets only.
+              await removeFromWorkspace(client, ws.namespaceId, source, account, passkey);
             } finally {
               after();
             }

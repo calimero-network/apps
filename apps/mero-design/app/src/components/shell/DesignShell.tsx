@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../sessionContext";
-import { getNodeIdentity } from "../../api/rpc";
+import { PRODUCT_NAME, getNodeIdentity } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";
 import { useIsGroupAdmin } from "../../hooks/useIsGroupAdmin";
@@ -184,7 +184,16 @@ export default function DesignShell() {
     setLeavingTeam(false);
     if (!teamId) return;
     try {
-      await teams.leaveTeam(teamId);
+      // In an org that keeps its apps apart this leaves Mero Design only;
+      // when it was the last app there, the organization is offered too.
+      const left = await teams.leaveTeam(teamId);
+      if (
+        left.left === "app" &&
+        left.lastApp &&
+        window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`)
+      ) {
+        await teams.leaveOrganization(teamId);
+      }
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not leave team."));
       return;

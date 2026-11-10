@@ -81,7 +81,8 @@ export interface UseWorkspaceReturn {
   clearPendingInit: () => void;
   leaveWorkspace: () => void;
   /** Mint a shareable invitation link for this workspace (a passkey step-up). */
-  invite: (opts?: { contextId?: string | null }) => Promise<string>;
+  /** Mints an invitation link naming Mero Sheets' team; `appOnly` when it gives Mero Sheets only. */
+  invite: (opts?: { contextId?: string | null }) => Promise<{ link: string; appOnly: boolean }>;
   inviteLoading: boolean;
   /** Land a join the invitation prompt completed: re-read and open what the link named. */
   landJoined: (landed: AcceptedInvite) => Promise<void>;
@@ -181,10 +182,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       try {
         const { orgId, warning } = await ensureWorkspace(
           client,
-          { existing: namespaceId, name: APP_DISPLAY_NAME, passkey },
+          { existing: namespaceId, name: APP_DISPLAY_NAME, passkey, source },
           setStatus,
         );
-        const appId = await createSpreadsheet(client, source, orgId, name, setStatus);
+        const appId = await createSpreadsheet(client, source, orgId, name, passkey, setStatus);
         if (warning) setError(new Error(warning));
         setJoinedNsId(orgId);
         setContextId(appId);
@@ -218,7 +219,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       setError(null);
       const title = name?.trim() || CONNECTED_SPREADSHEET_NAME;
       try {
-        const appId = await createSpreadsheet(client, source, target.orgId, title, setStatus);
+        const appId = await createSpreadsheet(client, source, target.orgId, title, passkey, setStatus);
         setJoinedNsId(target.orgId);
         setContextId(appId);
         setPendingInitName(title);
@@ -230,7 +231,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, source, after, refresh],
+    [client, source, passkey, after, refresh],
   );
 
   const activeName = useMemo(() => {
@@ -246,14 +247,14 @@ export function useWorkspace(): UseWorkspaceReturn {
       if (!namespaceId) throw new Error('No workspace yet — create a spreadsheet first.');
       setInviteLoading(true);
       try {
-        return await mintInvite(client, { org: namespaceId, sheet: opts?.contextId ?? null, passkey }, setStatus);
+        return await mintInvite(client, { org: namespaceId, sheet: opts?.contextId ?? null, passkey, source }, setStatus);
       } finally {
         setInviteLoading(false);
         setStatus(null);
         after();
       }
     },
-    [client, namespaceId, passkey, after],
+    [client, namespaceId, passkey, source, after],
   );
 
   const landJoined = useCallback(

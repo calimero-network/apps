@@ -148,6 +148,7 @@ export default function AgreementsPage() {
           org: workspaceId,
           name,
           accountId: app.accountId,
+          passkey: app.passkey,
         },
         undefined,
         app.after,

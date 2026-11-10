@@ -13,7 +13,15 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
   SPENT_INVITE_COPY,
+  appInvite,
+  appPeople,
+  createAppOrg,
   createInviteStore,
+  isAppOnly,
+  orgInstanceOptions,
+  removeFromApp,
+  sourcePackage,
+  type AppOrgView,
   inviteLink as sharedInviteLink,
   isSpentInvite,
   type AppSource,
@@ -24,7 +32,7 @@ import {
 import { setOrgName } from '@calimero-apps/names';
 import { nodeBasename } from '@calimero-apps/node-served';
 
-import { APP_NAME } from '../config';
+import { APP_DISPLAY_NAME, APP_NAME } from '../config';
 
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
@@ -104,35 +112,56 @@ export const MEMBER_DEFAULTS =
  * create and invite) and `warning` says so.
  */
 export async function ensureWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities'>,
-  opts: { existing: string | null; name: string; passkey: () => PasskeyProvider },
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
+  opts: { existing: string | null; name: string; passkey: () => PasskeyProvider; source?: AppSource | null },
   onStatus: StatusFn = noop,
 ): Promise<{ orgId: string; warning: string | null }> {
   if (opts.existing) return { orgId: opts.existing, warning: null };
   onStatus('Creating your workspace…');
-  const orgId = await client.createOrg(opts.name);
-  onStatus('Letting members create spreadsheets and invite…');
-  try {
-    await client.setCapabilities(orgId, MEMBER_DEFAULTS, opts.passkey());
-    return { orgId, warning: null };
-  } catch {
-    return {
-      orgId,
-      warning: 'The workspace was created, but people you invite will not be able to create spreadsheets or invite others.',
-    };
-  }
+  // The org, its member defaults, and Mero Sheets' own team, open (declined,
+  // or an older node: a legacy org).
+  const made = await createAppOrg(client, opts.name, opts.source, opts.passkey, {
+    capabilities: MEMBER_DEFAULTS,
+    mark: false,
+  });
+  return {
+    orgId: made.orgId,
+    warning: made.capabilitiesError
+      ? 'The workspace was created, but people you invite will not be able to create spreadsheets or invite others.'
+      : null,
+  };
 }
 
-/** A new spreadsheet in `org`: an app instance, named. Answers its id. */
+/**
+ * A new spreadsheet in `org`: an app instance, named, on Mero Sheets' team
+ * (`orgInstanceOptions`: made first, by an owner or admin, in an org whose
+ * other apps have teams; organization access in a legacy org). Answers its id.
+ */
 export async function createSpreadsheet(
-  client: Pick<CalimeroClient, 'createApp'>,
+  client: Pick<CalimeroClient, 'createApp' | 'getOrg' | 'scopeApps' | 'session'>,
   source: AppSource,
   org: string,
   name: string,
+  passkey: () => PasskeyProvider,
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus('Creating the spreadsheet…');
-  return client.createApp(name, source, { org });
+  return client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, APP_DISPLAY_NAME));
+}
+
+/**
+ * Takes `account` out of the workspace (`removeFromApp`, a passkey step-up):
+ * in an org that keeps its apps apart, out of Mero Sheets only, never out of
+ * the org; elsewhere out of the org, as before.
+ */
+export function removeFromWorkspace(
+  client: Pick<CalimeroClient, 'getOrg' | 'removeTeamMember' | 'removeMember'>,
+  org: string,
+  source: AppSource | null,
+  account: string,
+  passkey: () => PasskeyProvider,
+): Promise<'app' | 'org'> {
+  return removeFromApp(client, org, source, account, passkey);
 }
 
 // ── members ──────────────────────────────────────────────────────────────────
@@ -143,10 +172,19 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the workspace, where one is set. */
   names: Map<string, string>;
+  /** Who has Mero Sheets in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
+  people: string[];
+  /** The org keeps its apps apart and Mero Sheets has its team: invites and Remove are its only. */
+  appOnly: boolean;
 }
 
-export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: string): Promise<OrgMembers> {
+export async function readMembers(
+  client: Pick<CalimeroClient, 'getOrg'>,
+  org: string,
+  source: AppSource | null = null,
+): Promise<OrgMembers> {
   const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
   const names = new Map<string, string>();
@@ -154,7 +192,12 @@ export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: s
     const name = (value as { name?: unknown } | null)?.name;
     if (typeof name === 'string' && name.trim()) names.set(account, name.trim());
   }
-  return { roles: new Map(Object.entries(members)), names };
+  return {
+    roles: new Map(Object.entries(members)),
+    names,
+    people: appPeople(o as AppOrgView, pkg),
+    appOnly: isAppOnly(o as AppOrgView, pkg),
+  };
 }
 
 /**
@@ -193,15 +236,19 @@ export function inviteLink(
   return sharedInviteLink(token, { org, extra: { sheet }, root: nodeBasename(url, '/'), origin: url.origin });
 }
 
-/** A workspace invitation as a link: an org invite, approved with the inviter's passkey (412 step-up). */
+/**
+ * A workspace invitation as a link: an org invite naming Mero Sheets' team
+ * (`appInvite`), approved with the inviter's passkey (412 step-up). `appOnly`
+ * when it gives Mero Sheets only (an org that keeps its apps apart).
+ */
 export async function mintInvite(
-  client: Pick<CalimeroClient, 'invite'>,
-  opts: { org: string; sheet: string | null; passkey: () => PasskeyProvider },
+  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  opts: { org: string; sheet: string | null; passkey: () => PasskeyProvider; source?: AppSource | null },
   onStatus: StatusFn = noop,
-): Promise<string> {
+): Promise<{ link: string; appOnly: boolean }> {
   onStatus('Approve the invitation with your passkey…');
-  const token = await client.invite(opts.org, 'member', opts.passkey());
-  return inviteLink(token, opts.sheet, window.location, opts.org);
+  const { token, appOnly } = await appInvite(client, opts.org, opts.source, opts.passkey);
+  return { link: inviteLink(token, opts.sheet, window.location, opts.org), appOnly };
 }
 
 export interface PendingInvite {
