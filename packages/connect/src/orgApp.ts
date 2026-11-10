@@ -256,20 +256,28 @@ export async function appInvite(
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
-  options: { teams?: string[] } = {},
+  options: { teams?: string[]; ttlSecs?: number; uses?: number } = {},
 ): Promise<AppInviteToken> {
   const pkg = sourcePackage(source);
+  const extra: { ttlSecs?: number; uses?: number } = {};
+  if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
+  if (options.uses !== undefined) extra.uses = options.uses;
+  const hasExtra = Object.keys(extra).length > 0;
   if (!pkg) {
-    const teams = options.teams ?? [];
-    const token =
-      teams.length > 0
-        ? await client.invite(org, "member", provider(passkey), teams)
-        : await client.invite(org, "member", provider(passkey));
+    // Only the arguments there are, as the org-wide invite was always sent.
+    const teams = options.teams?.length ? options.teams : undefined;
+    const p = provider(passkey);
+    const token = hasExtra
+      ? await client.invite(org, "member", p, teams, extra)
+      : teams
+        ? await client.invite(org, "member", p, teams)
+        : await client.invite(org, "member", p);
     return { token, appOnly: false };
   }
   const made = await inviteToApp(client, org, pkg, {
     passkey: provider(passkey),
     ...(options.teams?.length ? { teams: options.teams } : {}),
+    ...extra,
   });
   return { token: made.token, appOnly: made.mode === "shared" && made.teams.length > 0 };
 }
