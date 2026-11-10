@@ -37,9 +37,26 @@ async function signUpFromInvite(page: Page, name: string): Promise<void> {
   await create.click();
   await page.getByTestId("signup-name").fill(name);
   await create.click();
-  // Two prompts on some setups: the second approves the sign-up.
-  const approve = page.getByTestId("signup-approve");
-  if (await approve.isVisible({ timeout: 2_000 }).catch(() => false)) await approve.click();
+  // Two prompts: the page asks the second (the approval) at once, and only
+  // when that one fails does it wait on an enabled "Approve" (while a prompt
+  // is open the same test id is a disabled "waiting" button, and it leaves
+  // the page once the sign-up is done). Done is when neither control is left.
+  const approve = page.locator('[data-testid="signup-approve"]:enabled');
+  const pending = page.locator('[data-testid="signup-approve"], [data-testid="signup-passkey"]');
+  const failed = page.getByTestId("signin-error");
+  await expect
+    .poll(
+      async () => {
+        if (await failed.isVisible()) return `failed: ${await failed.innerText()}`;
+        if (await approve.isVisible()) {
+          await approve.click({ timeout: 5_000 }).catch(() => {});
+          return "approving";
+        }
+        return (await pending.count()) === 0 ? "done" : "waiting";
+      },
+      { timeout: 90_000, message: "the sign-up never finished" },
+    )
+    .toBe("done");
 }
 
 test.describe.configure({ mode: "serial" });
