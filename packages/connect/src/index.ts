@@ -93,6 +93,7 @@ export {
 export {
   NoAppTeamError,
   appAccess,
+  appTeamMembers,
   appTeamOf,
   appTeams,
   createAppTeam,

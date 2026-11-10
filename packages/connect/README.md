@@ -215,6 +215,10 @@ await ensureAppTeam(client, org, PACKAGE, passkey); // admin: the app's team, ma
   names the app teams. In a legacy org, or on an older node, it is the
   org-wide invite apps send today; in an org with app teams a package without
   one throws `NoAppTeamError` instead of widening to the whole org.
+- `appTeamMembers(orgView, teamId, mode)` is who is in an app team, from
+  `getOrg` alone, as core decides it: its rows, and for an open team every org
+  member not taken out of it who joins open teams (not a guest once the org
+  has app teams). An app's member list reads it instead of the org's roster.
 - `appAccess(client, org, pkg)` is what an app's invite button and member
   menu decide on: `manages` (owner, admin, the team's lead) and `mayInvite`
   (a manager, or someone in the app whose own row, or the org's caps with the

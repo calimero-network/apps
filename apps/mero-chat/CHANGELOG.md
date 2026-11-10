@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Chat has its own **app team** in each workspace (core#4890). A new
+  workspace gets one, open, so everyone in it has Chat as before; its open
+  channels use the team's access, and an invite names the team. When the
+  organization also holds other apps and an admin keeps their people apart
+  (Calimero Home), a Chat invite gives Chat only, and says so; the workspace's
+  member list, the people a channel reaches, and the people a private channel
+  or DM can be started with are Chat's, not the whole organization's. Removing
+  someone there takes them out of Chat (its team, and the private channels
+  that list them), not out of the organization. An existing workspace stays as
+  it is (organization access) until an admin gives Chat its own access list in
+  Calimero Home; adding Chat to an organization whose apps have teams makes
+  Chat's team first (owners and admins only).
+
 ### Fixed
 
 - Signing in no longer offers, preselects or enters an organization made for

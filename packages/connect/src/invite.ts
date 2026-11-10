@@ -462,6 +462,10 @@ export interface OrgTeamView {
   parent?: string | null;
   members?: Record<string, boolean>;
   capabilities?: Record<string, number>;
+  /** `everyone` (open: the people of its parent, the org at the top, are in it) or `invite` (closed). */
+  join?: "everyone" | "invite" | string;
+  /** Who was taken out of an open team (they stay out until a row puts them back). */
+  removed?: string[];
 }
 
 const AT_LEAST_MEMBER = new Set(["member", "admin", "owner"]);

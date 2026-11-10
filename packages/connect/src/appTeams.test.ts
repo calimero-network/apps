@@ -4,6 +4,7 @@ import { NotFound, ORG_CAPABILITIES, type AppTeam, type CalimeroSession, type Pa
 import {
   NoAppTeamError,
   appAccess,
+  appTeamMembers,
   appTeamOf,
   appTeams,
   createAppTeam,
@@ -244,5 +245,42 @@ describe("members may invite: the per-app switch", () => {
     expect(c.setTeamDefaultCapabilities).toHaveBeenLastCalledWith("org", "t", 1 | INVITE, passkey);
     expect(await setMembersMayInvite(c, "org", { teamId: "t", defaultCapabilities: 1 | INVITE }, false, passkey)).toBe(1);
     expect(await setMembersMayInvite(c, "org", { teamId: "t", defaultCapabilities: null }, false, passkey)).toBe(0);
+  });
+});
+
+describe("appTeamMembers: who is in an app team", () => {
+  const JOIN = ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+  const org = (join: "everyone" | "invite", over: Record<string, unknown> = {}) => ({
+    members: { ana: "owner", bob: "member", cy: "member", gus: "guest", dee: "admin" },
+    defaultCapabilities: JOIN,
+    capabilities: {} as Record<string, number>,
+    teams: { chat: { members: { ana: true, gus: false } as Record<string, boolean>, join, removed: [] as string[], ...over } },
+  });
+
+  it("a closed team: its rows only, in org order", () => {
+    expect(appTeamMembers(org("invite"), "chat", "shared")).toEqual(["ana", "gus"]);
+  });
+
+  it("an open team: everyone in the org who joins open teams, and its rows", () => {
+    // gus is a guest of an org with app teams, but has a row.
+    expect(appTeamMembers(org("everyone"), "chat", "standalone")).toEqual(["ana", "bob", "cy", "gus", "dee"]);
+  });
+
+  it("an open team leaves out who was taken out of it and who may not join open teams", () => {
+    const view = org("everyone", { removed: ["bob"] });
+    view.capabilities = { cy: 0 };
+    // gus has a row, so he is in; dee is an admin and holds every capability.
+    expect(appTeamMembers(view, "chat", "standalone")).toEqual(["ana", "gus", "dee"]);
+  });
+
+  it("a guest without a row is in an open team only in a legacy org; a row for someone gone does not count", () => {
+    const view = org("everyone");
+    view.teams.chat.members = { ana: true, zed: false };
+    expect(appTeamMembers(view, "chat", "legacy")).toEqual(["ana", "bob", "cy", "gus", "dee"]);
+    expect(appTeamMembers(view, "chat", "standalone")).toEqual(["ana", "bob", "cy", "dee"]);
+  });
+
+  it("a team the caller does not see: nobody", () => {
+    expect(appTeamMembers(org("invite"), "blocks", "shared")).toEqual([]);
   });
 });
