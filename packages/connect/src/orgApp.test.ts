@@ -327,6 +327,15 @@ describe("leave", () => {
     }
   });
 
+  it("the account can be named, for a client without a session", async () => {
+    const c = cluster(shared(), "bob");
+    (c as { session?: unknown }).session = undefined;
+    expect(await leaveApp(c, "org", SOURCE, passkey, { self: "bob" })).toEqual({ left: "app", lastApp: true });
+    await leaveOrg(c, "org", passkey, "bob");
+    expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
+    await expect(leaveOrg(c, "org", passkey)).rejects.toThrow(/Sign in/);
+  });
+
   it("leaveOrg takes the account out of the organization", async () => {
     const c = cluster(shared(), "bob");
     await leaveOrg(c, "org", passkey);

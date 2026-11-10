@@ -369,11 +369,13 @@ export async function leaveApp(
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
-  options: RemoveFromAppOptions = {},
+  options: RemoveFromAppOptions & { self?: string } = {},
 ): Promise<LeftApp> {
-  const self = client.session?.accountId;
+  const self = options.self ?? client.session?.accountId;
   if (!self) throw new Error("Sign in to leave.");
-  const left = await removeFromApp(client, org, source, self, passkey, options);
+  const left = await removeFromApp(client, org, source, self, passkey, {
+    ...(options.privateTeams ? { privateTeams: options.privateTeams } : {}),
+  });
   if (left === "org") return { left, lastApp: false };
   const after = await appTeams(client, org).catch(() => null);
   return { left, lastApp: !!after && !after.appTeams.some((t) => t.member) };
@@ -384,8 +386,8 @@ export async function leaveOrg(
   client: Pick<CalimeroClient, "removeMember" | "session">,
   org: string,
   passkey: PasskeyLike,
+  self: string | undefined = client.session?.accountId,
 ): Promise<void> {
-  const self = client.session?.accountId;
   if (!self) throw new Error("Sign in to leave.");
   await client.removeMember(org, self, provider(passkey));
 }
