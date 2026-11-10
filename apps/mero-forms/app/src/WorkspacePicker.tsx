@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { useCallback, useEffect, useState } from "react";
+import { askAnOwnerCopy, canCreateIn, describeError, orgsWithApp, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { FormsClient } from "./formsApi";
 import { createWorkspace, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
@@ -14,15 +15,19 @@ function shortId(id: string) {
  * contexts and namespaces; on Calimero 1.0 a workspace is an instance of this
  * app in an organization, and the account reaches every instance in every org
  * it is in. Starting a workspace makes an org of the same name and the
- * instance in it, or adds an instance to an org you are already in.
+ * instance in it, or adds an instance to an org that already holds one. An
+ * org made for another app is never offered there: only under "Connect to an
+ * existing organization", on the person's explicit choice.
  */
 export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => void }) {
   const { client, source, after } = useSignedIn();
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
+  /** The orgs holding a workspace of this app: the only ones the start form offers. */
+  const [withApp, setWithApp] = useState<OrgRow[] | null>(null);
   /**
-   * The orgs this account may add a workspace in (core's `CREATE_APP`): an
-   * owner or admin, or a member allowed to. The others are not offered, since
-   * a create there fails; `null` until known.
+   * Of those, the orgs this account may add a workspace in (core's
+   * `CREATE_APP`): an owner or admin, or a member allowed to. The others are
+   * not offered, since a create there fails; `null` until known.
    */
   const [creatable, setCreatable] = useState<OrgRow[] | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[] | null>(null);
@@ -34,15 +39,16 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
 
   useEffect(() => {
     let live = true;
-    Promise.all([listOrgs(client), listWorkspaces(client, source)])
-      .then(async ([o, w]) => {
+    Promise.all([listOrgs(client), listWorkspaces(client, source), orgsWithApp(client, source)])
+      .then(async ([o, w, held]) => {
         if (!live) return;
         setOrgs(o);
         setWorkspaces(w);
+        setWithApp(held);
         setError(null);
         // `null` (cannot tell) keeps the org on offer: the node decides then.
-        const may = await Promise.all(o.map((row) => canCreateIn(client, row.orgId)));
-        if (live) setCreatable(o.filter((_, i) => may[i] !== false));
+        const may = await Promise.all(held.map((row) => canCreateIn(client, row.orgId)));
+        if (live) setCreatable(held.filter((_, i) => may[i] !== false));
       })
       .catch((e: unknown) => live && setError(describeError(e)))
       .finally(after);
@@ -66,6 +72,26 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
       setTick((t) => t + 1);
     } finally {
       setBusy(false);
+      after();
+    }
+  }
+
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+
+  /** "Connect to an existing organization": a workspace in that org, named after it. */
+  async function connect(target: OtherOrg) {
+    const title = name.trim() || target.name || "Workspace";
+    try {
+      const made = await createWorkspace(client, source, title, target.orgId);
+      await new FormsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
+      onOpen(made);
+    } finally {
       after();
     }
   }
@@ -129,12 +155,13 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
             {busy ? "Creating…" : "Start a new workspace"}
           </button>
         </div>
-        {orgs && creatable && creatable.length < orgs.length && (
+        {withApp && creatable && creatable.length < withApp.length && (
           <p className="empty" data-testid="workspace-ask-owner">
             Not every organization you are in is listed. {askAnOwnerCopy("a workspace")}
           </p>
         )}
         {error && <pre className="err">{error}</pre>}
+        <ConnectExistingOrg appName="Mero Forms" load={loadOtherOrgs} onConnect={connect} />
       </form>
     </>
   );

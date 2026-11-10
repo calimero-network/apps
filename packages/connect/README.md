@@ -162,5 +162,11 @@ await client.createApp(name, source, { org: others[0].orgId }); // only on the p
   instances it holds that the account reaches) and `label`, what it holds in
   words: "Mero Blocks: overworld". `<ConnectExistingOrg>` in
   `@calimero-apps/passkey` is the list every React app shows for it.
+- **Organizations that start empty**: an app that creates its org first and
+  its instances later (a forum space, a password team) records it with
+  `markOrgFor(client, org, source)` (`{ createdFor: <package> }` merged into
+  the org's metadata) and lists with `orgsWithApp(client, source, { marked:
+  true })`, so a space made there stays listed before it holds anything.
+  `otherOrgs` leaves those out.
 - `myOrgs(client)` is `/me`'s organizations, sorted; `appFilter(source)` the
   `listApps` filter for a source; `packageTitle` and `holdingsLabel` the words.

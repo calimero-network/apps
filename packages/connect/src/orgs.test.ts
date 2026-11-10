@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AppInfo } from "@calimero-network/mero-js";
 
-import { holdingsLabel, myOrgs, orgsWithApp, otherOrgs, packageTitle } from "./orgs";
+import { holdingsLabel, markOrgFor, myOrgs, orgsWithApp, otherOrgs, packageTitle } from "./orgs";
 
 const CHAT = { package: "com.calimero.chat" } as const;
 
@@ -105,5 +105,38 @@ describe("labels", () => {
       { orgId: "a", name: "A", role: "owner" },
       { orgId: "b", name: "B", role: "member" },
     ]);
+  });
+});
+
+describe("organizations made for an app before it holds an instance", () => {
+  function client() {
+    const metadata: Record<string, unknown> = { empty: { theme: "dark" } };
+    const base = fakeClient() as unknown as Record<string, unknown>;
+    return {
+      ...base,
+      getOrg: async (org: string) => ({
+        ...(await (base.getOrg as (o: string) => Promise<Record<string, unknown>>)(org)),
+        metadata: metadata[org] ?? null,
+      }),
+      setOrgMetadata: async (org: string, m: unknown) => {
+        metadata[org] = m;
+      },
+      metadata,
+    };
+  }
+
+  it("markOrgFor merges the mark into the metadata, and the org is listed with `marked`", async () => {
+    const c = client();
+    expect(await markOrgFor(c as never, "empty", CHAT)).toBe(true);
+    expect(c.metadata.empty).toEqual({ theme: "dark", createdFor: "com.calimero.chat" });
+    expect((await orgsWithApp(c as never, CHAT)).map((o) => o.orgId)).toEqual(["team"]);
+    expect((await orgsWithApp(c as never, CHAT, { marked: true })).map((o) => o.orgId)).toEqual(["empty", "team"]);
+    expect((await otherOrgs(c as never, CHAT)).map((o) => o.orgId)).toEqual(["overworld"]);
+  });
+
+  it("a mark for another app does not list it", async () => {
+    const c = client();
+    await markOrgFor(c as never, "empty", { package: "com.calimero.mero-forum" });
+    expect((await orgsWithApp(c as never, CHAT, { marked: true })).map((o) => o.orgId)).toEqual(["team"]);
   });
 });

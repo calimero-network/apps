@@ -66,7 +66,7 @@ reconstructs the frame in the component on any read.
 
 ```
  sender                                           peer(s)
- getUserMedia → canvas → raw luma                 event FramePosted(seq)
+ getUserMedia → canvas → raw luma                 event FramePosted{seq}
    → encodeFrame(raw,w,h,track,now)  ══log══▶       → getFrame(afterSeq) [view, decode in the component]
    [CALL, the component encodes]     only the         → luma → canvas
    store (from, seq, chunk)          compressed
@@ -134,9 +134,9 @@ Errors (`422 APP_ERROR`, `{ code, fields }`): `NotJoined`, `ZeroDimension`,
 `DimensionTooLarge {max}`, `RawTooLarge {max}`, `RawLengthMismatch {expected, got}`,
 `BadBase64`, `EmptyChunk`, `ChunkTooLarge {max}`, `CodecRequired`, `NotOwner`.
 
-Events (to everyone the room reaches): `Initialized`, `MemberJoined(account)`,
-`FramePosted(seq)`, `FramesPruned(beforeSeq)`, `ChunkPosted(seq)`; a tuple
-variant's data is `{"0": …}`.
+Events (to everyone the room reaches): `Initialized`, `MemberJoined { account }`,
+`FramePosted { seq }`, `FramesPruned { beforeSeq }`, `ChunkPosted { seq }`; every
+field is named (core D63), so the data is `{"seq": "5"}`, never `{"0": …}`.
 
 **Timestamp units.** `join`'s `now` is unix seconds; `encodeFrame`'s and
 `postChunk`'s are milliseconds (end-to-end media latency is meaningless at
@@ -195,7 +195,7 @@ differences a client sees:
 | `join` | refused a device another account had registered | no such case | accounts, not device keys |
 | reads | any method (every one ran through `execute`) | `getMembers`, `getFrame`, `frameChecksum`, `getStats`, `getChunks`, `keyframeCursors`, `getLiveStats`, `isMemberAdmin` are views; a write called as a view is `NotAView` | a view is answered without touching the log |
 | refusals | `app::bail!` strings ("join the stream before this operation", …) | typed codes, listed above | `#[app::error]`'s wire shape |
-| events | tuple payloads, bare values (`FramePosted: 5`) | same names, data `{"0": "5"}`; `Initialized` has no data | the component event shape |
+| events | tuple payloads, bare values (`FramePosted: 5`) | same names, named fields: data `{"seq": "5"}` (`{"account": …}` for `MemberJoined`, `{"beforeSeq": …}` for `FramesPruned`); `Initialized` has no data | the component event shape |
 | owner / admin | `Ownable` stream name and an `AccessControl` admin role, both the creator's account | the app instance's owner (its creator) | `env::app_owner()` replaces the owner stamps |
 | who sweeps a departed sender | moderators of `chunks` (the creator) | the room's owner | same person |
 | write rules | owner stamps on every row (`Authored`, `Moderated`), readers re-checking who wrote each fragment and chunk | every key embeds the caller's account; nothing to re-check | one log, and no method takes a sender id |

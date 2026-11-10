@@ -195,7 +195,7 @@ fn join_heartbeat_roster_lifecycle() {
     );
     assert_eq!(
         t.events_for("bob")[1],
-        ("PlayerJoined".to_owned(), json!({ "0": "alice" }))
+        ("PlayerJoined".to_owned(), json!({ "account": "alice" }))
     );
 }
 
@@ -414,8 +414,8 @@ fn edits_by_two_players_both_land() {
     assert_eq!(
         t.events_for("owner")[1..],
         [
-            ("TilesChanged".to_owned(), json!({ "0": "alice" })),
-            ("TilesChanged".to_owned(), json!({ "0": "bob" })),
+            ("TilesChanged".to_owned(), json!({ "account": "alice" })),
+            ("TilesChanged".to_owned(), json!({ "account": "bob" })),
         ]
     );
 }

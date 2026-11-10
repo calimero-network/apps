@@ -35,7 +35,7 @@ describe("GameClient", () => {
   it("streams from just after the last read, and resumes after a drop from the last event seen", async () => {
     vi.useFakeTimers();
     try {
-      const { client, froms } = scripted([[{ id: "12:0", kind: "TilesChanged", data: { "0": "bob" } }]]);
+      const { client, froms } = scripted([[{ id: "12:0", kind: "TilesChanged", data: { account: "bob" } }]]);
       const gc = new GameClient(client, "w", "acct");
       expect(await gc.fetchWorldMeta()).toEqual({ name: "w", seed: 1, createdAt: 2 });
 

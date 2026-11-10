@@ -132,6 +132,34 @@ describe('teams and vaults on orgs and app instances', () => {
     });
   });
 
+  it('leaves out an org made for another app, and keeps a team made here before it holds a vault', async () => {
+    const meta: Record<string, unknown> = {};
+    const base = fakeClient();
+    const client = fakeClient({
+      me: vi.fn(async () => ({
+        orgs: [
+          { orgId: 'org1', name: 'Acme', role: 'owner' },
+          { orgId: 'ow', name: 'overworld', role: 'owner' },
+          { orgId: 'org9', name: 'Fresh', role: 'owner' },
+        ],
+      })),
+      listApps: vi.fn(async (f?: { bundle?: string }) => {
+        const all = [
+          ...(await base.listApps()),
+          { appId: 'w1', name: 'overworld', owner: 'me', org: 'ow', bundle: 'blocks', package: 'com.calimero.mero-blocks', version: null },
+        ];
+        return all.filter((a) => !f?.bundle || a.bundle === f.bundle);
+      }),
+      getOrg: vi.fn(async (org: string) => ({ ...(await base.getOrg(org)), metadata: meta[org] ?? null })),
+      setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
+        meta[org] = m;
+      }),
+    } as never);
+    expect((await listTeams({ client, source: 'b' })).map((t) => t.namespaceId)).toEqual(['org1']);
+    await createTeam({ client, source: 'b', passkey }, 'Fresh');
+    expect((await listTeams({ client, source: 'b' })).map((t) => t.namespaceId)).toEqual(['org1', 'org9']);
+  });
+
   it('lists an org’s vaults, the invite-only one with its team', async () => {
     const vaults = await listVaults(
       { client: fakeClient(), source: 'b' },

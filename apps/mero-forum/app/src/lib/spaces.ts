@@ -1,6 +1,8 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
   createInviteStore,
+  markOrgFor,
+  orgsWithApp,
   inviteLink as sharedInviteLink,
   type AppSource,
   type InviteStore,
@@ -61,14 +63,16 @@ function byName<T extends { name: string }>(key: (row: T) => string) {
   return (a: T, b: T) => a.name.localeCompare(b.name) || key(a).localeCompare(key(b));
 }
 
-/** Every space this account is in, with its forum and member counts. */
+/** The spaces this account is in (orgs holding forums, or made for them), with their forum and member counts. */
 export async function listSpaces(
   client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
   source: AppSource,
 ): Promise<NamespaceRow[]> {
-  const [me, apps] = await Promise.all([client.me() as Promise<MeOrgs>, listInstances(client, source)]);
+  // Only the spaces made for forums or holding one: an org made for another
+  // app is offered under "Connect to an existing organization" instead.
+  const [orgs, apps] = await Promise.all([orgsWithApp(client, source, { marked: true }), listInstances(client, source)]);
   const rows = await Promise.all(
-    (me.orgs ?? []).map(async (o) => {
+    orgs.map(async (o) => {
       const members = await readMembers(client, o.orgId).catch(() => null);
       return {
         namespaceId: o.orgId,
@@ -108,13 +112,16 @@ export const MEMBER_DEFAULTS =
  * admins can then create forums and invite).
  */
 export async function createSpace(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
   name: string,
   passkey: () => PasskeyProvider,
   onStatus: (m: string) => void = () => {},
+  source?: AppSource,
 ): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus("Creating the space…");
   const namespaceId = await client.createOrg(name);
+  // Listed as a space before it holds a forum.
+  if (source) await markOrgFor(client, namespaceId, source);
   onStatus("Letting members create forums and invite…");
   try {
     await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
@@ -145,6 +152,9 @@ export async function leaveSpace(
 ): Promise<void> {
   await client.removeMember(org, self, passkey());
 }
+
+/** The forum created in an org the account connects to forums ("Connect to an existing organization"). */
+export const CONNECTED_FORUM_NAME = "General";
 
 /** A new forum in `org`. Answers its instance id. */
 export function createForum(
