@@ -51,6 +51,9 @@ targets:
         MeroChatCallbackScheme: mero-chat
         MeroChatCallbackHost: ""
         MeroChatCallbackPath: /consent
+        # A Calimero Cloud cluster to sign in on. Empty: Mero Chat's own
+        # address, which routes to its cluster.
+        MeroChatCluster: ""
         # The Calimero Cloud cluster to sign in to: a node URL from the
         # console. Empty: the sign-in screen asks for one. See README.md.
         CalimeroClusterURL: ""

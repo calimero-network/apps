@@ -16,8 +16,8 @@ To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (t
 Both apps sign in to a Calimero 1.0 cluster with a passkey and talk to it over the SDKs' sealed
 channel. They call the component contract the web port (#730) ships in `../logic/res/abi.json`.
 
-- **Sign in:** **Calimero Cloud** opens Mero Chat's sign-in page in the system sheet (optionally
-  on a named cluster), where the person signs in or creates an account with their passkey. **Development node** takes a
+- **Sign in:** **Calimero Cloud** opens Mero Chat's sign-in page in the system sheet (the web
+  app's own sign-in), where the person signs in or creates an account with their passkey. **Development node** takes a
   `merod local` URL and trusts its mock attestation, with a software passkey kept per node.
 - **Contract:** `ComponentChatContract` (both platforms) is the one place that maps v1's method
   names and shapes to the ABI's: camelCase names and fields, `u64`s as decimal strings, as the

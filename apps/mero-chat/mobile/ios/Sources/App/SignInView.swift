@@ -3,13 +3,12 @@ import SwiftUI
 
 /// The landing page at phone width: a nav bar with the Mero Chat mark, the
 /// hero, a glimpse of a channel, what the app does, and sign-in pinned at the
-/// bottom: Calimero Cloud through Mero Chat's sign-in page (optionally on a
-/// named cluster), or a development node (`merod local`) with mock attestation
-/// and a software passkey kept for it.
+/// bottom: Calimero Cloud through Mero Chat's sign-in page (the same sign-in
+/// as on the web: a passkey, or a new one), or a development node (`merod
+/// local`) with mock attestation and a software passkey kept for it.
 struct SignInView: View {
     @ObservedObject var session: SessionModel
     @ObservedObject var client: MeroClient
-    @AppStorage("signin.clusterURL") private var clusterURL = AppConfig.clusterURL ?? ""
     @AppStorage("signin.devNodeURL") private var devNodeURL = AppConfig.devNodeURL
     @State private var name = ""
     @State private var mode: Mode = .signIn
@@ -220,8 +219,7 @@ struct SignInView: View {
         }
         switch mode {
         case .signIn:
-            urlField("Cluster name (optional)", text: $clusterURL)
-                .accessibilityIdentifier("signInClusterURL")
+            EmptyView()
         case .development:
             urlField("http://localhost:2501", text: $devNodeURL)
                 .accessibilityIdentifier("signInDevNodeURL")
@@ -231,7 +229,11 @@ struct SignInView: View {
         }
         Button(action: submit) {
             HStack(spacing: 8) {
-                if client.isLoading { ProgressView().tint(Theme.onInk) }
+                if client.isLoading {
+                    ProgressView().tint(Theme.onInk)
+                } else if mode == .signIn {
+                    Image(systemName: "person.badge.key.fill")
+                }
                 Text(primaryTitle)
             }
             .frame(minHeight: 50)
@@ -258,7 +260,7 @@ struct SignInView: View {
             Text(
                 mode == .development
                     ? "Mock attestation is allowed for this node; a passkey is kept on this device for it."
-                    : "Opens Mero Chat's sign-in page, where you sign in or create an account with your passkey.")
+                    : "Sign in with your passkey, or create a new one.")
         }
         .font(Theme.font(12))
         .foregroundStyle(Theme.muted)
@@ -274,7 +276,7 @@ struct SignInView: View {
 
     private var primaryTitle: String {
         switch mode {
-        case .signIn: return "Sign in"
+        case .signIn: return "Sign in with Calimero"
         case .development: return "Connect"
         }
     }
@@ -293,7 +295,7 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                await session.signInWithServedPage(cluster: clusterURL)
+                await session.signInWithServedPage()
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 await session.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
