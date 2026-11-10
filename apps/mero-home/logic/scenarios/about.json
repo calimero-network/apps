@@ -1,0 +1,20 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "about",
+  "args": {},
+  "expect": {
+   "ok": "Calimero Home 0.0.1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "about",
+  "args": {},
+  "expect": {
+   "ok": "Calimero Home 0.0.1"
+  }
+ }
+]

@@ -1,0 +1,15 @@
+{
+  "// note": "Unit and component tests (vitest, jsdom). Node types on purpose, so a test may read files off disk; browser code is checked without them in tsconfig.app.json.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "src"
+  ]
+}

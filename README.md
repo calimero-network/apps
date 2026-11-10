@@ -69,6 +69,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
+| [mero-home](apps/mero-home) | — | Calimero Home: one organization's apps, who is in each, invitations to one app or several, and removing someone from every app at once. Frontend over core's org and app-team routes; served by every cluster. | `com.calimero.mero-home` |
 | [mero-design](apps/mero-design) | [↗](https://design.hyperfeed.me/) | A component app (Calimero 1.0): a Figma-style infinite canvas — shapes, text, images, board roles, live multi-member editing — in an app instance its team's members share, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-design` |
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | A component app (Calimero 1.0): a Photoshop-style image editor with layers, folders, masks, adjustments and free transform, edited together; pixels are blobs of the document. | `com.calimero.mero-pixart` |
 | [mero-models](apps/mero-models) | — | Blender-style 3D modeller — primitives, meshes, edit mode with extrude, materials and lights, a transform gizmo, undo, OBJ/STL/glTF in and out; co-edited live with presence, editors enforced by the contract. A component app (Calimero 1.0) on `calimero-sdk`: meshes and textures are the scene's own blobs (core #4815, at most 47.25 MiB each); frontend on mero-js `CalimeroClient`. | `com.calimero.mero-models` |

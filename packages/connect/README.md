@@ -129,7 +129,14 @@ await client.createApp(name, source, { org: others[0].orgId }); // only on the p
   apps (`CREATE_APP`, as `canCreateIn` decides it; `{ includeNotAllowed: true }`
   keeps the others with `canCreate: false`). Each carries `holds` (the
   instances it holds that the account reaches) and `label`, what it holds in
-  words: "Mero Blocks: overworld". `<ConnectExistingOrg>` in
+  words. On a node with app teams (core#4890) the label is the org's apps by
+  name from `listAppTeams` ("Mero Blocks, Mero Chat (not yours)"), so an org
+  whose apps are closed to the account no longer reads "No apps yet"; `apps`
+  and `mode` carry the teams. A node without the route (404), or a legacy org
+  with no app teams, keeps the instance label: "Mero Blocks: overworld". In
+  an org that has app teams, only its owners and admins may add an app that
+  has no team there (core#4890), so `canCreate` is `false` for anyone else.
+  `<ConnectExistingOrg>` in
   `@calimero-apps/passkey` is the list every React app shows for it.
 - **Organizations that start empty**: an app that creates its org first and
   its instances later (a forum space, a password team) records it with
@@ -138,4 +145,48 @@ await client.createApp(name, source, { org: others[0].orgId }); // only on the p
   true })`, so a space made there stays listed before it holds anything.
   `otherOrgs` leaves those out.
 - `myOrgs(client)` is `/me`'s organizations, sorted; `appFilter(source)` the
-  `listApps` filter for a source; `packageTitle` and `holdingsLabel` the words.
+  `listApps` filter for a source; `packageTitle`, `holdingsLabel` and
+  `appTeamsLabel` the words.
+
+## App teams
+
+One organization, many apps, separate access (`appTeams.ts`; core#4890,
+#4891). Each app installed in an org has its own **app team** (a top-level
+team marked with its package), its instances use team access on it, and an
+in-app invite names it, so the person gets that app and no other. The node
+derives the org's mode: `legacy` (no app teams: organization access, as
+before), `standalone` (open app teams: the org is one app's, members may
+invite) or `shared` (closed app teams: each app lists who is in it; leads and
+admins invite unless "members may invite" is on for that app). Calimero Home
+(`apps/mero-home`) is where a shared org's people, invites and apps are managed.
+
+```ts
+import { appAccess, ensureAppTeam, inviteToApp } from "@calimero-apps/connect";
+
+const access = await appAccess(client, org, PACKAGE); // { mode, team, member, manages, mayInvite }
+if (access.mayInvite) {
+  const { token } = await inviteToApp(client, org, PACKAGE, { role: "member", passkey });
+  inviteLink(token, { org });
+}
+await ensureAppTeam(client, org, PACKAGE, passkey); // admin: the app's team, made if missing
+```
+
+- `appTeams(client, org)` is `listAppTeams`, or `null` when the node cannot
+  say (404: a node before core#4890, or an account outside the org).
+  `appTeamOf(client, org, pkg)` picks one package's team out of it.
+- `createAppTeam(client, org, pkg, passkey, { name, instances, shared })` is
+  core's `ScopeApps` for one package (owner or admin, one passkey): the team is
+  found or made, everyone who reaches the package's org-access instances keeps
+  them, and they move onto the team. `instances: []` for a fresh install;
+  `shared: true` closes every app team. `ensureAppTeam` reads first and only
+  creates when there is none.
+- `inviteToApp(client, org, pkg | pkgs, { role, passkey, teams, ttlSecs, uses })`
+  names the app teams. In a legacy org, or on an older node, it is the
+  org-wide invite apps send today; in an org with app teams a package without
+  one throws `NoAppTeamError` instead of widening to the whole org.
+- `appAccess(client, org, pkg)` is what an app's invite button and member
+  menu decide on: `manages` (owner, admin, the team's lead) and `mayInvite`
+  (a manager, or someone in the app whose own row, or the org's caps with the
+  team's default, hold `INVITE_MEMBERS`). `membersMayInvite(team)` reads the
+  per-app switch and `setMembersMayInvite(client, org, team, on, passkey)`
+  flips it (`setTeamDefaultCapabilities`, other bits kept).

@@ -1,0 +1,11 @@
+{
+  "// note": "Browser code. Tests are a separate project (tsconfig.test.json) because they read the ABI off disk and so need node types, which browser code must not have.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/app",
+    "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
+}
