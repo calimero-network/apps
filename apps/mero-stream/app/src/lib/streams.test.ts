@@ -55,9 +55,18 @@ describe("streams are organizations, rooms are app instances", () => {
     };
     const rows = await listStreams(client as never, "bundle-hash");
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
-    expect(rows).toEqual([
-      { orgId: "o1", name: "Alpha", role: "owner", roomCount: 2, memberCount: 2 },
-      { orgId: "o2", name: "Zeta", role: "member", roomCount: 0, memberCount: 0 },
+    // Zeta holds no room and was not made for Mero Stream: another app's org.
+    expect(rows).toEqual([{ orgId: "o1", name: "Alpha", role: "owner", roomCount: 2, memberCount: 2 }]);
+  });
+
+  it("lists a stream made here before it holds a room", async () => {
+    const client = {
+      me: vi.fn(async () => ({ orgs: [{ orgId: "o2", name: "Zeta", role: "Owner" }] })),
+      listApps: vi.fn(async () => []),
+      getOrg: vi.fn(async () => ({ members: { acct: "owner" }, metadata: { createdFor: "bundle-hash" } })),
+    };
+    expect(await listStreams(client as never, "bundle-hash")).toEqual([
+      { orgId: "o2", name: "Zeta", role: "owner", roomCount: 0, memberCount: 1 },
     ]);
   });
 

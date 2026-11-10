@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import {
+  CONNECTED_ROOM_NAME,
+  createRoom,
   createStream,
   inviteLink,
   inviteToken,
@@ -31,7 +34,8 @@ import styles from "./Manage.module.css";
  *   Organization ("stream")    ← you invite people HERE
  *     └── App instance ("room")   ← one video call   → /streams/:id
  *
- * This page lists the organizations the account belongs to (`client.me()`),
+ * This page lists the organizations the account belongs to that hold a room
+ * or were made here (`orgsWithApp`),
  * creates them, and invites to them. Rooms live on RoomsPage. An invitation
  * reaches the app as an opened link and is redeemed at the app level after
  * sign-in (InvitationPrompt).
@@ -106,7 +110,7 @@ export default function StreamsPage() {
     if (!streamName || !conn) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the stream, then approve with your passkey so members can create rooms…");
-      const { orgId, warning } = await createStream(conn.client, streamName, conn.passkey);
+      const { orgId, warning } = await createStream(conn.client, streamName, conn.passkey, conn.source);
       conn.after();
       setName("");
       if (warning) showToast(warning);
@@ -115,6 +119,30 @@ export default function StreamsPage() {
       navigate(`/streams/${orgId}`);
     });
   }, [name, conn, run, load, navigate, showToast]);
+
+  // "Connect to an existing organization": a room goes into an org the
+  // account has for another app only on this explicit choice.
+  const loadOtherOrgs = useCallback(async () => {
+    if (!conn) return [];
+    try {
+      return await otherOrgs(conn.client, conn.source);
+    } finally {
+      conn.after();
+    }
+  }, [conn]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      if (!conn) return;
+      try {
+        await createRoom(conn.client, conn.source, org.orgId, CONNECTED_ROOM_NAME);
+      } finally {
+        conn.after();
+      }
+      await load(false);
+      navigate(`/streams/${org.orgId}`);
+    },
+    [conn, load, navigate],
+  );
 
   const mintInvite = useCallback(
     (row: StreamRow) => {
@@ -187,6 +215,7 @@ export default function StreamsPage() {
             Create stream
           </ActionButton>
         </div>
+        <ConnectExistingOrg appName="Mero Stream" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {status && (
           <StatusNote tone="pending" testId="streams-status">

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { useToast } from "../contexts/ToastContext";
 import {
+  CONNECTED_AUDIENCE_NAME,
+  createAudience,
   createCompany,
   inviteLink,
   listCompanies,
@@ -107,13 +110,34 @@ export default function CompaniesPage() {
     if (!companyName) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the company — approve with your passkey…");
-      const created = await createCompany(client, companyName, passkey);
+      const created = await createCompany(client, companyName, passkey, source);
       setName("");
       if (created.warning) showToast(created.warning, "error");
       // Straight into it: it has no audiences yet, and making one is the next step.
       navigate(`/companies/${created.namespaceId}`);
     });
-  }, [name, client, passkey, run, navigate, showToast]);
+  }, [name, client, passkey, source, run, navigate, showToast]);
+
+  // "Connect to an existing organization": an audience goes into an org the
+  // account has for another app only on this explicit choice.
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      try {
+        await createAudience(client, source, org.orgId, CONNECTED_AUDIENCE_NAME);
+      } finally {
+        after();
+      }
+      navigate(`/companies/${org.orgId}`);
+    },
+    [client, source, after, navigate],
+  );
 
   const inviteTo = useCallback(
     (ns: NamespaceRow) => {
@@ -215,6 +239,7 @@ export default function CompaniesPage() {
               {pending === "create" ? "Creating…" : "Create"}
             </button>
           </div>
+          <ConnectExistingOrg appName="Mero Updates" load={loadOtherOrgs} onConnect={connectOrg} />
         </section>
 
         {status && (

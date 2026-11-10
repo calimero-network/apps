@@ -70,6 +70,7 @@ function fakeClient() {
   const orgs: { orgId: string; name: string; role: string }[] = [];
   /** The org's member defaults as the node keeps them (`setCapabilities` without `at`). */
   const defaults = new Map<string, number>();
+  const metadata = new Map<string, unknown>();
   const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null });
   return {
     apps,
@@ -93,16 +94,20 @@ function fakeClient() {
       session = undefined;
     }),
     me: vi.fn(async () => ({ accountId: "acct-alice", orgs })),
-    getOrg: vi.fn(async (org: string) => ({
+    getOrg: vi.fn(async (org: string): Promise<Record<string, unknown>> => ({
       name: orgs.find((o) => o.orgId === org)?.name ?? "Stream",
       members: { "acct-alice": "owner" },
       memberMetadata: {},
       defaultCapabilities: defaults.get(org) ?? DEFAULT_ORG_CAPABILITIES,
+      metadata: metadata.get(org) ?? null,
     })),
+    setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
+      metadata.set(org, m);
+    }),
     setCapabilities: vi.fn(async (org: string, caps: number, _pk: unknown, at?: { account?: string }) => {
       if (!at?.account) defaults.set(org, caps);
     }),
-    listApps: vi.fn(async () => apps),
+    listApps: vi.fn(async (f?: { bundle?: string }) => apps.filter((a) => !f?.bundle || a.bundle === f.bundle)),
     getApp: vi.fn(async (app: string) => ({ appId: app })),
     createOrg: vi.fn(async (name: string) => {
       orgs.push({ orgId: "org-1", name, role: "Owner" });
@@ -195,6 +200,23 @@ describe("App", () => {
         expect.objectContaining({ username: "guest" }),
       ),
     );
+  });
+
+  it("does not list an org made for another app; connects it on request by creating a room there", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "ow", name: "overworld", role: "Owner" });
+    client.apps.push({ appId: "w1", name: "overworld", owner: "acct-alice", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null });
+    renderApp(client, "/streams", true);
+    await screen.findByTestId("streams-empty");
+    expect(screen.queryByTestId("connect-org-ow")).toBeNull();
+    fireEvent.click(screen.getByTestId("connect-existing-org"));
+    const choice = await screen.findByTestId("connect-org-ow");
+    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    fireEvent.click(choice);
+    await waitFor(() =>
+      expect(client.createApp).toHaveBeenCalledWith("General", "b", { org: "ow", initArgs: { name: "General" } }),
+    );
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 
   it("invites to a stream with a passkey approval and shows the link", async () => {

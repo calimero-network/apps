@@ -8,6 +8,8 @@ import {
 import {
   SPENT_INVITE_COPY,
   createInviteStore,
+  markOrgFor,
+  orgsWithApp,
   inviteLink as sharedInviteLink,
   isSpentInvite,
   type AppSource,
@@ -75,16 +77,20 @@ function memberCount(info: Record<string, unknown>): number {
   return members && typeof members === "object" ? Object.keys(members).length : 0;
 }
 
-/** The streams (organizations) the account belongs to, with their room and member counts. */
+/**
+ * The streams: the organizations the account belongs to that hold a room or
+ * were made for Mero Stream, with their room and member counts. An org made
+ * for another app is offered under "Connect to an existing organization".
+ */
 export async function listStreams(
   client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
   source: AppSource,
 ): Promise<StreamRow[]> {
-  const [me, apps] = await Promise.all([client.me(), listAllRooms(client, source)]);
+  const [orgs, apps] = await Promise.all([orgsWithApp(client, source, { marked: true }), listAllRooms(client, source)]);
   const rooms = new Map<string, number>();
   for (const a of apps) if (a.org) rooms.set(a.org, (rooms.get(a.org) ?? 0) + 1);
   const rows = await Promise.all(
-    orgsOf(me).map(async (o) => ({
+    orgs.map(async (o) => ({
       orgId: o.orgId,
       name: (o.name ?? "").trim() || `Stream ${o.orgId.slice(0, 6)}`,
       role: String(o.role ?? "member").toLowerCase(),
@@ -116,11 +122,14 @@ export interface CreatedStream {
  * rooms (the org's default capabilities, a passkey step-up).
  */
 export async function createStream(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
   name: string,
   passkey: () => PasskeyProvider,
+  source?: AppSource,
 ): Promise<CreatedStream> {
   const orgId = await client.createOrg(name);
+  // Listed as a stream before it holds a room.
+  if (source) await markOrgFor(client, orgId, source);
   try {
     await client.setCapabilities(orgId, MEMBER_DEFAULTS, passkey());
     return { orgId, warning: null };
@@ -214,6 +223,9 @@ export async function listRooms(client: Lister, source: AppSource, org: string):
     .map((a) => ({ appId: a.appId, name: a.name, org: a.org }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
+
+/** The room created in an org the account connects to Mero Stream ("Connect to an existing organization"). */
+export const CONNECTED_ROOM_NAME = "General";
 
 /** A new room in `org`: an app instance whose `init` names the stream. */
 export function createRoom(

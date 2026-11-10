@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
+import { createSpace, inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
 import { decideStoredForum } from "./storedForum";
 
 function memoryStorage() {
@@ -116,5 +116,35 @@ describe("the remembered forum", () => {
     expect(decideStoredForum("f1", null)).toBe("checking");
     expect(decideStoredForum("f1", ["f1", "f2"])).toBe("open");
     expect(decideStoredForum("gone", ["f1"])).toBe("none");
+  });
+});
+
+describe("an org made for another app", () => {
+  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  function client(metadata: Record<string, unknown> = {}) {
+    const blocks = { appId: "w1", name: "overworld", owner: "ana", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null };
+    return {
+      me: vi.fn().mockResolvedValue({
+        orgs: [
+          { orgId: "ow", name: "overworld", role: "owner" },
+          { orgId: "o1", name: "Alpha", role: "owner" },
+          { orgId: "new", name: "Fresh", role: "owner" },
+        ],
+      }),
+      listApps: vi.fn(async (f?: { bundle?: string }) => [...APPS, blocks].filter((a) => !f?.bundle || a.bundle === f.bundle)),
+      getOrg: vi.fn(async (org: string) => ({ name: org, members: { ana: "owner" }, metadata: metadata[org] ?? null })),
+      createOrg: vi.fn(async () => "new"),
+      setCapabilities: vi.fn(async () => {}),
+      setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
+        metadata[org] = m;
+      }),
+    };
+  }
+
+  it("is not a space; a space made here is, before it holds a forum", async () => {
+    const c = client();
+    expect((await listSpaces(c as never, "b")).map((r) => r.namespaceId)).toEqual(["o1"]);
+    await createSpace(c as never, "Fresh", () => ({}) as never, () => {}, "b");
+    expect((await listSpaces(c as never, "b")).map((r) => r.namespaceId)).toEqual(["o1", "new"]);
   });
 });

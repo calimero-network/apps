@@ -1,5 +1,7 @@
 import React from "react";
 import styled from "styled-components";
+import type { OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import type { Workspace as Namespace } from "../workspaces";
 import { tokens as t } from "../theme";
 import { PRODUCT_NAME } from "../config";
@@ -15,6 +17,9 @@ interface Props {
   /** The workspace list failed: offer a retry, not a create that may duplicate. */
   failed?: boolean;
   onRetry?: () => void;
+  /** "Connect to an existing organization": the account's other orgs, and adding this app to one. */
+  loadOtherOrgs?: () => Promise<OtherOrg[]>;
+  onConnect?: (org: OtherOrg) => Promise<void>;
 }
 
 /** Full-pane onboarding shown whenever no namespace is active: the app mark,
@@ -28,6 +33,8 @@ export default function NsEmptyState({
   onCreate,
   failed = false,
   onRetry,
+  loadOtherOrgs,
+  onConnect,
 }: Props): React.ReactElement {
   const hasNamespaces = namespaces.length > 0;
   const signOut = useSignOut();
@@ -101,6 +108,11 @@ export default function NsEmptyState({
             </button>
           )}
         </div>
+        {loadOtherOrgs && onConnect && !failed && (
+          <div className="connect">
+            <ConnectExistingOrg appName={PRODUCT_NAME} load={loadOtherOrgs} onConnect={onConnect} />
+          </div>
+        )}
       </Panel>
     </Wrap>
   );
@@ -206,6 +218,9 @@ const Panel = styled.div`
     min-height: 42px;
     padding: 0 20px;
     cursor: pointer;
+  }
+  .connect {
+    margin-top: 18px;
   }
   .primary {
     background: ${t.color.accent};

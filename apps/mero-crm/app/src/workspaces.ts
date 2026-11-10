@@ -1,6 +1,8 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
   createInviteStore,
+  markOrgFor,
+  orgsWithApp,
   inviteLink as sharedInviteLink,
   type AppSource,
   type InviteStore,
@@ -40,14 +42,16 @@ export interface PipelineEntry {
   name: string;
 }
 
-/** What `/me` answers about orgs. */
-interface MeOrgs {
-  orgs?: Array<{ orgId: string; name: string; role: string }>;
-}
-
-export async function listWorkspaces(client: Pick<CalimeroClient, 'me'>): Promise<Workspace[]> {
-  const me = (await client.me()) as MeOrgs;
-  return (me.orgs ?? [])
+/**
+ * The workspaces: the orgs this account is in that hold pipelines or were made
+ * for this app. An org made for another app (a Mero Blocks world) is offered
+ * only under "Connect to an existing organization" (`otherOrgs`).
+ */
+export async function listWorkspaces(
+  client: Pick<CalimeroClient, 'me' | 'listApps' | 'getOrg'>,
+  source: AppSource,
+): Promise<Workspace[]> {
+  return (await orgsWithApp(client, source, { marked: true }))
     .map((o) => ({ namespaceId: o.orgId, name: o.name, role: o.role }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.namespaceId.localeCompare(b.namespaceId));
 }
@@ -85,11 +89,14 @@ export interface CreatedWorkspace {
  * is a passkey step-up; refused, the org stays and the Members page offers it again).
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities'>,
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata'>,
   name: string,
   passkey: () => PasskeyProvider,
+  source?: AppSource,
 ): Promise<CreatedWorkspace> {
   const namespaceId = await client.createOrg(name);
+  // Listed as a workspace before it holds pipelines.
+  if (source) await markOrgFor(client, namespaceId, source);
   try {
     await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
     return { namespaceId, warning: null };

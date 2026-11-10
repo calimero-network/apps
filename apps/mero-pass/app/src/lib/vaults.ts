@@ -19,7 +19,7 @@ import {
   type CalimeroClient,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
+import { markOrgFor, orgsWithApp, type AppSource } from '@calimero-apps/connect';
 import {
   VaultSession,
   type DeviceKeyPair,
@@ -134,16 +134,18 @@ export async function listInstances(
   return conn.client.listApps(filter);
 }
 
-/** Every org this account is in, with its vault and member counts. */
+/**
+ * The teams: the orgs this account is in that hold a vault or were made for
+ * Mero Pass, with their vault and member counts. An org made for another app
+ * is offered under "Connect to an existing organization" instead.
+ */
 export async function listTeams(
   conn: Pick<Conn, 'client' | 'source'>,
 ): Promise<TeamRow[]> {
-  const me = (await conn.client.me()) as {
-    orgs?: Array<{ orgId: string; name: string; role: string }>;
-  };
+  const orgs = await orgsWithApp(conn.client, conn.source, { marked: true });
   const apps = await listInstances(conn);
   const rows = await Promise.all(
-    (me.orgs ?? []).map(async (o) => {
+    orgs.map(async (o) => {
       const view = await readOrg(conn.client, o.orgId).catch(() => null);
       return {
         namespaceId: o.orgId,
@@ -184,6 +186,8 @@ export async function createTeam(
 ): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus('Creating the team…');
   const namespaceId = await conn.client.createOrg(name);
+  // Listed as a team before it holds a vault.
+  await markOrgFor(conn.client, namespaceId, conn.source);
   await publishOwnName(conn.client, namespaceId);
   try {
     onStatus('Letting members add vaults and invite people…');
@@ -308,6 +312,9 @@ export async function createVault(
     conn.after?.();
   }
 }
+
+/** The vault created in an org the account connects to Mero Pass ("Connect to an existing organization"). */
+export const CONNECTED_VAULT_NAME = 'Shared';
 
 /** Your private vault: an org only you are in, marked personal, with one vault. */
 export async function createPersonalVault(
