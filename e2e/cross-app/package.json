@@ -1,0 +1,17 @@
+{
+  "name": "@calimero-apps/cross-app-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Apps on their own and with Calimero Home over one organization, in Chromium on merod local: Chat, Home and KV Store share the org core keeps, and nothing else.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@calimero-network/mero-js": "catalog:component",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

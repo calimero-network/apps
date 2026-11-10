@@ -81,13 +81,20 @@ export function appTeamIdIn(view: AppOrgView, pkg: string | null): string | null
 
 /**
  * Who has `pkg` in this org, in org order: its app team
- * ({@link appTeamMembers}); without one, every org member, except a guest
- * once the org has app teams. What an app's member list shows.
+ * ({@link appTeamMembers}). In an org with app teams where the caller sees
+ * no team of the package's, nobody (the caller included): core shows a closed
+ * team only to its members and the org's admins, so the team is closed to
+ * them (someone Calimero Home took out of the app), or the app has none there
+ * yet; reading every org member there kept that person in an app they had
+ * lost (#819). Without app teams (legacy, an older node, no package), every
+ * org member, except a guest once the org has app teams. What an app's member
+ * list shows.
  */
 export function appPeople(view: AppOrgView, pkg: string | null): string[] {
   const mode = orgModeOf(view);
   const team = appTeamIdIn(view, pkg);
   if (team) return appTeamMembers(view, team, mode);
+  if (pkg && moded(mode)) return [];
   return Object.entries(view.members ?? {})
     .filter(([, role]) => !(role === "guest" && moded(mode)))
     .map(([account]) => account);
