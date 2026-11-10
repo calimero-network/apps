@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import type { OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CONNECTED_BOARD_NAME, createBoard, listOtherTeams } from "../api/rpc";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../sessionContext";
 import { EmptyTeamsArt } from "../components/Artwork";
@@ -23,6 +26,16 @@ export default function TeamIndex() {
   const { showToast } = useToast();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  // "Connect to an existing organization": boards go into an org the account
+  // has for another app only on this explicit choice.
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      await createBoard(org.orgId, CONNECTED_BOARD_NAME);
+      await teams.reload();
+      navigate(`/teams/${org.orgId}/projects`);
+    },
+    [teams, navigate],
+  );
 
   if (!teams.listed) {
     return (
@@ -91,6 +104,7 @@ export default function TeamIndex() {
                 {busy ? "Creating…" : "Create"}
               </button>
             </div>
+            <ConnectExistingOrg appName="Mero Design" load={listOtherTeams} onConnect={connectOrg} />
           </div>
         </section>
       </div>

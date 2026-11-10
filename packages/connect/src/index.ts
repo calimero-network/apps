@@ -62,14 +62,19 @@ export {
   type PendingInvite,
 } from "./invite";
 export {
+  CREATED_FOR,
   appFilter,
+  appKey,
   holdingsLabel,
+  isMarkedFor,
+  markOrgFor,
   myOrgs,
   orgsWithApp,
   otherOrgs,
   packageTitle,
   type MyOrg,
   type OrgHolding,
+  type OrgsWithAppOptions,
   type OtherOrg,
   type OtherOrgsOptions,
 } from "./orgs";

@@ -56,17 +56,22 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   for (const fn of Object.values(client)) if (typeof fn === "function") fn.mockReset();
+  client.listApps.mockResolvedValue([]);
   localStorage.clear();
 });
 
 describe("TeamsPage", () => {
-  it("lists the account's orgs as teams, and offers Delete to the owner and Leave to others", async () => {
+  it("lists the account's orgs holding calendars as teams, and offers Delete to the owner and Leave to others", async () => {
     client.me.mockResolvedValue({
       orgs: [
         { orgId: "org-b", name: "Beta", role: "member" },
         { orgId: "org-a", name: "Alpha", role: "owner" },
       ],
     });
+    client.listApps.mockResolvedValue([
+      { appId: "c1", name: "A", owner: ME, org: "org-a", bundle: "bundle-hash" },
+      { appId: "c2", name: "B", owner: ME, org: "org-b", bundle: "bundle-hash" },
+    ]);
     renderAt("/teams");
     expect(await screen.findByText("Alpha")).toBeTruthy();
     expect(screen.getByText("Beta")).toBeTruthy();
@@ -95,8 +100,30 @@ describe("TeamsPage", () => {
     expect(client.setCapabilities).toHaveBeenCalledWith("org-new", expect.any(Number), expect.anything());
   });
 
+  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  it("does not list an org made for another app; connects it on request with a calendar", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] });
+    client.listApps.mockImplementation(async (f?: { bundle?: string }) =>
+      [{ appId: "w1", name: "overworld", owner: ME, org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks" }].filter(
+        (a) => !f?.bundle || a.bundle === f.bundle,
+      ),
+    );
+    client.getOrg.mockResolvedValue({ members: { [ME]: "owner" }, metadata: null });
+    client.createApp.mockResolvedValue("cal-new");
+    renderAt("/teams");
+    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
+    expect(screen.queryByTestId("connect-org-ow")).toBeNull();
+    fireEvent.click(screen.getByTestId("connect-existing-org"));
+    const choice = await screen.findByTestId("connect-org-ow");
+    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    fireEvent.click(choice);
+    await waitFor(() => expect(client.createApp).toHaveBeenCalledWith("Calendar", "bundle-hash", { org: "ow" }));
+    expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
   it("makes an invitation link carrying an org invite", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
+    client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", bundle: "bundle-hash" }]);
     client.invite.mockResolvedValue("tok-123");
     renderAt("/teams");
     fireEvent.click(await screen.findByTestId("team-menu-org-a"));

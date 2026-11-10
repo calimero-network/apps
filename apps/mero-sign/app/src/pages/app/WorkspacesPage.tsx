@@ -7,6 +7,8 @@ import {
   type CSSProperties,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { otherOrgs, type OtherOrg } from '@calimero-apps/connect';
+import { ConnectExistingOrg } from '@calimero-apps/passkey';
 import {
   ArrowRight,
   Copy,
@@ -23,6 +25,8 @@ import {
   setActiveWorkspace,
 } from '../../lib/activeWorkspace';
 import {
+  CONNECTED_AGREEMENT_NAME,
+  createAgreement,
   createWorkspace,
   listWorkspaces,
   type WorkspaceRow,
@@ -177,6 +181,7 @@ export default function WorkspacesPage({
         name,
         app.passkey,
         setStatus,
+        app.source,
       );
       setNewName('');
       setStatus('');
@@ -200,6 +205,36 @@ export default function WorkspacesPage({
       setCreating(false);
     }
   }, [app, load, navigate, newName]);
+
+  // "Connect to an existing organization": agreements go into an org the
+  // account has for another app only on this explicit choice.
+  const loadOtherOrgs = useCallback(async () => {
+    if (!app) return [];
+    try {
+      return await otherOrgs(app.client, app.source);
+    } finally {
+      app.after();
+    }
+  }, [app]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      if (!app) return;
+      try {
+        await createAgreement(
+          app.client,
+          { source: app.source, org: org.orgId, name: CONNECTED_AGREEMENT_NAME, accountId: app.accountId },
+          setStatus,
+          app.after,
+        );
+      } finally {
+        setStatus('');
+        app.after();
+      }
+      setActiveWorkspace(org.orgId);
+      navigate(`/workspaces/${org.orgId}`);
+    },
+    [app, navigate],
+  );
 
   const invite = useCallback(
     async (row: WorkspaceRow) => {
@@ -395,6 +430,7 @@ export default function WorkspacesPage({
             </button>
           </div>
           {creating && status && <p className={styles.hint}>{status}</p>}
+          <ConnectExistingOrg appName="Mero Sign" load={loadOtherOrgs} onConnect={connectOrg} />
         </section>
 
         <section className={styles.section}>

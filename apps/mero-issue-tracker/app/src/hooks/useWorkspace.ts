@@ -12,7 +12,7 @@
  * regains focus.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { describeError } from '@calimero-apps/connect';
+import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 
 import { useSignedIn } from '../sessionContext';
 import { tracker } from '../tracker';
@@ -47,6 +47,10 @@ export interface CreateWorkspaceResult {
 }
 
 export interface UseWorkspaceReturn {
+  /** The account's other orgs, where this app may be added ("Connect to an existing organization"). */
+  loadOtherOrgs: () => Promise<OtherOrg[]>;
+  /** Adds this app (a first instance) to `org` and selects it. Throws on failure. */
+  connectOrg: (org: OtherOrg) => Promise<void>;
   /** The workspace list has not answered yet: an empty list is not "no workspaces". */
   namespacesPending: boolean;
   /** The workspace list failed: an empty list is not "no workspaces" either. */
@@ -100,7 +104,7 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const loadNamespaces = useCallback(async (): Promise<Workspace[] | null> => {
     try {
-      const list = await listWorkspaces(client);
+      const list = await listWorkspaces(client, source);
       setNamespaces(list);
       setNamespacesFailed(false);
       return list;
@@ -111,7 +115,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       setNamespacesPending(false);
       after();
     }
-  }, [client, after]);
+  }, [client, source, after]);
 
   // The workspace chosen last time, if this account is still in it. Never one
   // picked silently: with none, the onboarding screen offers the list.
@@ -142,7 +146,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     async (name: string): Promise<CreateWorkspaceResult> => {
       setCreateNamespaceError(null);
       try {
-        const { namespaceId, warning } = await createWorkspace(client, name, passkey);
+        const { namespaceId, warning } = await createWorkspace(client, name, passkey, source);
         await loadNamespaces();
         selectNamespace(namespaceId);
         return { namespaceId, warning };
@@ -153,7 +157,30 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, passkey, loadNamespaces, selectNamespace, after],
+    [client, source, passkey, loadNamespaces, selectNamespace, after],
+  );
+
+
+  // "Connect to an existing organization": this app goes into an org the
+  // account has for another app only on this explicit choice, with a first one.
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      try {
+        await addRepoTo(client, source, org.orgId, 'Issues', '', after);
+      } finally {
+        after();
+      }
+      await loadNamespaces();
+      selectNamespace(org.orgId);
+    },
+    [client, source, after, loadNamespaces, selectNamespace],
   );
 
   // ── repos ─────────────────────────────────────────────────────────────────
@@ -316,6 +343,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   );
 
   return {
+    loadOtherOrgs,
+    connectOrg,
     namespacesPending,
     namespacesFailed,
     retryNamespaces: () => void loadNamespaces(),

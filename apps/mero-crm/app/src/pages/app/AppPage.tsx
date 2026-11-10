@@ -258,6 +258,8 @@ export default function AppPage(): React.ReactElement | null {
           onCreate={() => setShowCreateNs(true)}
           failed={ws.namespacesFailed}
           onRetry={ws.retryNamespaces}
+          loadOtherOrgs={ws.loadOtherOrgs}
+          onConnect={ws.connectOrg}
         />
         {dialogs}
       </>

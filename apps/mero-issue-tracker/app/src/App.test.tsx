@@ -121,6 +121,26 @@ function storeSession() {
 }
 
 describe('App', () => {
+  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  it('does not list or enter an org made for another app; connects it on request', async () => {
+    const client = fakeClient({ signedIn: true });
+    const blocks = { appId: 'w1', name: 'overworld', owner: 'acct-alice', org: 'ow', bundle: 'blocks', package: 'com.calimero.mero-blocks', version: null };
+    client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'ow', name: 'overworld', role: 'owner' }] }));
+    client.listApps.mockImplementation((async (f?: { bundle?: string }) => (f?.bundle ? [] : [blocks])) as never);
+    storeSession();
+    writeActiveNs('ow');
+    window.history.replaceState(null, '', '/tracker');
+    render(<App deps={deps(client)} />);
+    expect(await screen.findByTestId('ns-empty-state', {}, SLOW)).toBeTruthy();
+    expect(screen.queryByTestId('connect-org-ow')).toBeNull();
+    fireEvent.click(screen.getByTestId('connect-existing-org'));
+    const choice = await screen.findByTestId('connect-org-ow', {}, SLOW);
+    expect(choice.textContent).toContain('Mero Blocks: overworld');
+    fireEvent.click(choice);
+    await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Issues', 'bundle-hash', { org: 'ow' }), SLOW);
+    expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
   it('signs in with a passkey from the landing page', async () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
