@@ -371,5 +371,7 @@ jobs:
             apps/${{ matrix.app }}/app/playwright-report
             apps/${{ matrix.app }}/app/test-results
             .merod-local/*.log
+          # `.merod-local/` is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
