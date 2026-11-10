@@ -175,6 +175,13 @@ export interface SignUpHereOptions extends CeremonySignal {
   policy?: SignUpPolicy | null;
   /** Carry the invite wherever an organization invite admits, and report the join ({@link signUpInviteHere}). */
   join?: boolean;
+  /**
+   * Also show `name` in the organization the invite joined (its member
+   * metadata, which that org's people lists read). Off by default: an app that
+   * asks for a name per organization itself (a game's "your name in this
+   * world") keeps asking.
+   */
+  nameInOrg?: boolean;
   storage?: KeyValueStorage;
 }
 
@@ -190,7 +197,7 @@ export async function signUpHere(
   passkey: PasskeyProvider,
   options: SignUpHereOptions = {},
 ): Promise<{ accountId: string; joined: JoinedAtSignUp | null }> {
-  const { name = "", invite = null, policy, join = false, storage, signal } = options;
+  const { name = "", invite = null, policy, join = false, nameInOrg = false, storage, signal } = options;
   const carried = signUpInviteHere(policy, invite, join);
   const trimmed = name.trim();
   // Typed loosely: the installed mero-js may not take `signal` yet.
@@ -206,7 +213,7 @@ export async function signUpHere(
     carried && join
       ? { invite: carried, org: typeof said === "string" && said ? said : await soleOrg(client) }
       : null;
-  if (joined?.org && trimmed) await nameInOrg(client, joined.org, accountId, trimmed);
+  if (nameInOrg && joined?.org && trimmed) await nameJoinedOrg(client, joined.org, accountId, trimmed);
   return { accountId, joined };
 }
 
@@ -216,7 +223,7 @@ export async function signUpHere(
  * own name is seen by no one else). Best effort: the account and the join
  * stand without it, and the person can name themselves later.
  */
-async function nameInOrg(
+async function nameJoinedOrg(
   client: Partial<Pick<CalimeroClient, "setMemberMetadata">>,
   org: string,
   account: string,

@@ -59,6 +59,8 @@ export function useSession(
 ): SessionApi {
   return usePasskeySession(APP, deps, {
     package: PACKAGE,
+    // The name asked at sign-up is the one People and Invitations show.
+    nameJoinedOrg: true,
     ...(invites ? { invites } : {}),
     ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
   });

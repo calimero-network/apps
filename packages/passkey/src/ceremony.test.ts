@@ -102,14 +102,17 @@ describe("the shared ceremony", () => {
     expect(client.me).not.toHaveBeenCalled();
   });
 
-  it("names a new account in the org its invite joined, and a refusal there fails nothing", async () => {
+  it("names a new account in the org its invite joined only when asked, and a refusal there fails nothing", async () => {
     const client = {
       signUp: vi.fn(async () => ({ accountId: "acct-new", org: "org-1" })),
       me: vi.fn(),
       setMemberMetadata: vi.fn(async () => {}),
     };
     const c = client as unknown as CalimeroClient;
-    const opts = { invite: "tok", policy: policy("open"), join: true, storage: memory() };
+    const opts = { invite: "tok", policy: policy("open"), join: true, nameInOrg: true, storage: memory() };
+    // Not asked (the default): an app that names people per org itself keeps asking.
+    await signUpHere(c, TARGET, pk(), { ...opts, nameInOrg: false, name: "Eve" });
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
     await signUpHere(c, TARGET, pk(), { ...opts, name: "  Eve " });
     expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-new", { name: "Eve" });
     // No name, or no join: nothing to write.
