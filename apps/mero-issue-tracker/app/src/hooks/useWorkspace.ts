@@ -65,8 +65,12 @@ export interface UseWorkspaceReturn {
   /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
   createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
   createNamespaceError: Error | null;
-  /** Mints an invitation (a passkey step-up) and answers the link to share. */
-  invite: () => Promise<string>;
+  /**
+   * Mints an invitation (a passkey step-up) naming this app's team, and
+   * answers the link to share; `appOnly` when it gives this app only (an org
+   * that keeps its apps apart).
+   */
+  invite: () => Promise<{ link: string; appOnly: boolean }>;
 
   repos: RepoEntry[];
   activeRepo: string | null;
@@ -79,7 +83,7 @@ export interface UseWorkspaceReturn {
 
   /** The signed-in ACCOUNT: what `createdBy` and `author` name. */
   selfIdentity: string;
-  /** Every account in the workspace, people only. */
+  /** Everyone who has this app in the workspace (its app team, else the org), people only. */
   members: string[];
   memberNames: Map<string, string>;
   roles: UseMemberRolesReturn;
@@ -182,14 +186,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await addRepoTo(client, source, org.orgId, 'Issues', '', after);
+        await addRepoTo(client, source, org.orgId, 'Issues', '', passkey, after);
       } finally {
         after();
       }
       await loadNamespaces();
       selectNamespace(org.orgId);
     },
-    [client, source, after, loadNamespaces, selectNamespace],
+    [client, source, passkey, after, loadNamespaces, selectNamespace],
   );
 
   // ── repos ─────────────────────────────────────────────────────────────────
@@ -247,7 +251,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       if (!activeNs) return null;
       setAddRepoError(null);
       try {
-        const id = await addRepoTo(client, source, activeNs, name, repoUrl, after);
+        const id = await addRepoTo(client, source, activeNs, name, repoUrl, passkey, after);
         await loadRepos();
         selectRepo(id);
         return id;
@@ -258,7 +262,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, source, activeNs, loadRepos, selectRepo, after],
+    [client, source, passkey, activeNs, loadRepos, selectRepo, after],
   );
 
   // ── members ───────────────────────────────────────────────────────────────
@@ -271,7 +275,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (!activeNs) return;
     setMembersLoading(true);
     try {
-      const next = await readMembers(client, activeNs);
+      const next = await readMembers(client, activeNs, source);
       if (orgFor.current === activeNs) setOrg(next);
     } catch {
       /* the last answer stays; the next focus tries again */
@@ -280,7 +284,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       setMembersLoaded(true);
       after();
     }
-  }, [client, activeNs, after]);
+  }, [client, activeNs, source, after]);
 
   useEffect(() => {
     orgFor.current = activeNs;
@@ -289,7 +293,16 @@ export function useWorkspace(): UseWorkspaceReturn {
     void refetchMembers();
   }, [activeNs, refetchMembers]);
 
-  const roles = useMemberRoles({ client, org: activeNs, self: accountId, state: org, refetch: refetchMembers, passkey, after });
+  const roles = useMemberRoles({
+    client,
+    org: activeNs,
+    self: accountId,
+    state: org,
+    refetch: refetchMembers,
+    passkey,
+    after,
+    source,
+  });
 
   const setMemberName = useCallback(
     async (name: string) => {
@@ -307,11 +320,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   const invite = useCallback(async () => {
     if (!activeNs) throw new Error('No workspace is open.');
     try {
-      return inviteLink(await inviteToken(client, activeNs, passkey()), activeNs);
+      const { token, appOnly } = await inviteToken(client, activeNs, passkey(), source);
+      return { link: inviteLink(token, activeNs), appOnly };
     } finally {
       after();
     }
-  }, [client, activeNs, passkey, after]);
+  }, [client, activeNs, passkey, source, after]);
 
   // ── the active repo's URL ─────────────────────────────────────────────────
   const [repoUrl, setRepoUrlState] = useState('');
@@ -351,7 +365,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [loadNamespaces, loadRepos, refetchMembers]);
 
   const members = useMemo(
-    () => Array.from(org?.roles.keys() ?? []).filter((a) => a !== accountId).sort(),
+    () => (org?.people ?? []).filter((a) => a !== accountId).sort(),
     [org, accountId],
   );
 

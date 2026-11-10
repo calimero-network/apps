@@ -437,6 +437,18 @@ jobs:
       - name: Assert the wire checker still catches what it claims to
         run: python3 scripts/tests/admin-wire-test.py
 
+      # Since core#4890 each app has its own team in an organization, and what
+      # invite, remove and leave mean depends on the org's mode: in an org
+      # that keeps its apps apart, an invite that does not name the app's
+      # team opens every app to the person, with nothing thrown. Those rules
+      # live in one module (`packages/connect/src/orgApp.ts`); this fails when
+      # an org app calls `createOrg`, `scopeApps`, `invite` or `removeMember`
+      # itself. Unconverted apps sit on an exemption list that only shrinks.
+      - name: Assert org apps reach their organization through the shared module
+        run: python3 scripts/check-org-app-module.py
+      - name: Assert the org-app module check still catches what it claims to
+        run: python3 scripts/tests/org-app-module-test.py
+
       # `battleships.vercel.app` served a create-react-app build for an unknown
       # length of time after the app moved to Vite in this repo. The repo was
       # fine and every existing check passed; the Vercel project simply never

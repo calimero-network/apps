@@ -140,6 +140,13 @@ export interface LeaveGroupResponse {
 export interface LeaveNamespaceResponse {
   namespaceId: string;
   memberPublicKey: string;
+  /**
+   * What was left: `app`, Chat only (an org that keeps its apps apart,
+   * core#4890); `org`, the organization. Absent from an older data source.
+   */
+  left?: "app" | "org";
+  /** Leaving Chat left the person in no app of the org: offer to leave the org too. */
+  lastApp?: boolean;
 }
 
 export interface SyncGroupResponse {
@@ -263,6 +270,8 @@ export interface GroupApi {
   leaveContext(contextId: string): ApiResponse<LeaveContextResponse>;
   leaveGroup(groupId: string): ApiResponse<LeaveGroupResponse>;
   leaveNamespace(namespaceId: string): ApiResponse<LeaveNamespaceResponse>;
+  /** Leaves the organization altogether, every app in it. */
+  leaveOrganization(namespaceId: string): ApiResponse<void>;
   /** Node-only: an account session has no form of it. */
   deleteNamespace(namespaceId: string): ApiResponse<boolean>;
   syncGroup(groupId: string): ApiResponse<SyncGroupResponse>;

@@ -4,6 +4,7 @@ import { NotFound, ORG_CAPABILITIES, type AppTeam, type CalimeroSession, type Pa
 import {
   NoAppTeamError,
   appAccess,
+  appTeamInstances,
   appTeamMembers,
   appTeamOf,
   appTeams,
@@ -11,7 +12,10 @@ import {
   ensureAppTeam,
   inviteToApp,
   isNotFound,
+  keepAppsApart,
   membersMayInvite,
+  openAppTeam,
+  openAppTeams,
   setMembersMayInvite,
 } from "./appTeams";
 
@@ -69,6 +73,7 @@ function fake(opts: FakeOpts = {}) {
     })),
     invite: vi.fn(async () => "tok-1"),
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
+    updateTeam: vi.fn(async (_org: string, _team: string, _update: { join?: string }): Promise<void> => undefined),
   };
 }
 
@@ -282,5 +287,81 @@ describe("appTeamMembers: who is in an app team", () => {
 
   it("a team the caller does not see: nobody", () => {
     expect(appTeamMembers(org("invite"), "blocks", "shared")).toEqual([]);
+  });
+});
+
+describe("appTeamInstances: what deleting an app team deletes", () => {
+  const teamInfo = (id: string, named: Array<{ appId: string; name: string }>, children: string[] = []) => ({
+    teamId: id,
+    name: id,
+    parent: null,
+    join: "invite" as const,
+    metadata: null,
+    members: [],
+    children,
+    apps: named.map((a) => ({ ...a, contextId: `ctx-${a.appId}` })),
+    myRole: null,
+    member: false,
+  });
+
+  it("lists the team's instances and those of every team below it", async () => {
+    const teams: Record<string, ReturnType<typeof teamInfo>> = {
+      app: teamInfo("app", [{ appId: "a1", name: "general" }], ["ch1", "ch2"]),
+      ch1: teamInfo("ch1", [{ appId: "a2", name: "secret" }], ["ch3"]),
+      ch2: teamInfo("ch2", []),
+      ch3: teamInfo("ch3", [{ appId: "a3", name: "deeper" }]),
+    };
+    const getTeam = vi.fn(async (_org: string, id: string) => teams[id]!);
+    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([
+      { appId: "a1", name: "general", team: "app" },
+      { appId: "a2", name: "secret", team: "ch1" },
+      { appId: "a3", name: "deeper", team: "ch3" },
+    ]);
+  });
+
+  it("skips a team below it the caller may not read, but not the app team itself", async () => {
+    const getTeam = vi.fn(async (_org: string, id: string) => {
+      if (id !== "app") throw new NotFound("no such team");
+      return teamInfo("app", [{ appId: "a1", name: "general" }], ["hidden"]);
+    });
+    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([{ appId: "a1", name: "general", team: "app" }]);
+    getTeam.mockRejectedValue(new NotFound("no such team"));
+    await expect(appTeamInstances({ getTeam }, "org", "app")).rejects.toThrow("no such team");
+  });
+});
+
+describe("everyone gets every app / keep apps apart", () => {
+  it("opens one app team: join everyone, no passkey", async () => {
+    const c = fake();
+    await openAppTeam(c, "org", { teamId: "t-chat" });
+    expect(c.updateTeam).toHaveBeenCalledWith("org", "t-chat", { join: "everyone" });
+  });
+
+  it("opens only the closed ones, in turn, and says which", async () => {
+    const c = fake();
+    const opened = await openAppTeams(c, "org", [
+      { teamId: "a", join: "invite" },
+      { teamId: "b", join: "everyone" },
+      { teamId: "c", join: "invite" },
+    ]);
+    expect(opened).toEqual(["a", "c"]);
+    expect(c.updateTeam.mock.calls.map((x) => x[1])).toEqual(["a", "c"]);
+  });
+
+  it("stops at a refusal", async () => {
+    const c = fake();
+    c.updateTeam.mockRejectedValueOnce(new Error("not allowed to change this team's visibility"));
+    await expect(openAppTeams(c, "org", [{ teamId: "a", join: "invite" }, { teamId: "b", join: "invite" }])).rejects.toThrow(
+      /visibility/,
+    );
+    expect(c.updateTeam).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps apps apart: one ScopeApps naming no package, shared, and nothing opened", async () => {
+    const c = fake();
+    c.scopeApps.mockResolvedValueOnce({ mode: "shared" as never, teams: [] });
+    expect(await keepAppsApart(c, "org", passkey)).toBe("shared");
+    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [], shared: true });
+    expect(c.updateTeam).not.toHaveBeenCalled();
   });
 });

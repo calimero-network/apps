@@ -22,12 +22,20 @@
  */
 import type { AppInfo, CalimeroClient, OrgMode } from "@calimero-network/mero-js";
 import {
+  adoptAppTeam,
+  appInvite,
+  appPeople,
+  appTeamIdIn,
   appTeamMembers,
-  createAppTeam,
-  inviteToApp,
+  createAppOrg,
+  leaveApp,
+  leaveOrg,
+  orgWideAccess,
   orgsWithApp,
   otherOrgs,
-  type OrgAccessView,
+  removeFromApp,
+  type AppInviteToken,
+  type AppOrgView,
   type OrgTeamView,
   type OtherOrg,
 } from "@calimero-apps/connect";
@@ -179,40 +187,29 @@ export function chatPackage(): string | null {
 
 /** Chat's app team in `org` (a top-level team marked with chat's package), as the caller sees the org. */
 export function chatTeamId(org: OrgRecord): string | null {
-  const pkg = chatPackage();
-  if (!pkg) return null;
-  for (const [id, team] of Object.entries(org.teams)) {
-    if (team.parent) continue;
-    const app = (team.metadata as { app?: { package?: unknown } } | null | undefined)?.app;
-    if (app?.package === pkg) return id;
-  }
-  return null;
+  return appTeamIdIn(org as AppOrgView, chatPackage());
 }
 
-/**
- * Whether the workspace keeps its people per app: an org with app teams
- * (`standalone` or `shared`). In a legacy org (or a node that does not say)
- * chat is everyone's in the org, as before app teams.
- */
-function moded(org: OrgRecord): boolean {
-  return org.mode === "standalone" || org.mode === "shared";
-}
+/** The name Chat is added to an organization under, in what an owner or admin is told. */
+const CHAT_TITLE = "Mero Chat";
 
 /**
  * Who is in Chat in this workspace: chat's app team, else (no app team) every
  * org member, except a guest once the org has app teams (core gives them only
  * the apps they are invited to).
+ *
+ * In an org with app teams where the caller sees no team of chat's, nobody is
+ * (the caller included): core shows a closed team only to its members and the
+ * org's admins, so chat's team is closed to them (someone Calimero Home took
+ * out of Chat), or chat has none there yet. Reading every org member there
+ * kept that person in a workspace they had lost.
  */
 export function chatMembers(org: OrgRecord): string[] {
-  const team = chatTeamId(org);
-  if (team) return appTeamMembers(org as OrgAccessView, team, org.mode);
-  return Object.entries(org.members)
-    .filter(([, role]) => !(role === "guest" && moded(org)))
-    .map(([account]) => account);
+  return appPeople(org as AppOrgView, chatPackage());
 }
 
 /**
- * Gives chat its own app team in `org` (core `ScopeApps`, owner or admin, one
+ * Gives chat its own app team in `org` (`adoptAppTeam`, owner or admin, one
  * passkey): its organization-access channels move onto it, and everyone who
  * reaches them keeps them. The team is open (everyone in the org has Chat)
  * unless the org is shared already, where it is closed like the others: who
@@ -220,33 +217,28 @@ export function chatMembers(org: OrgRecord): string[] {
  * app's team is never closed from here. `null` without a package (a dev bundle).
  */
 export async function adoptChatTeam(org: string): Promise<string | null> {
-  const pkg = chatPackage();
-  if (!pkg) return null;
-  const record = await getOrgRecord(org);
-  const made = await run((c) => createAppTeam(c, org, pkg, passkey(), { shared: record.mode === "shared" }));
+  const made = await run((c) => adoptAppTeam(c, org, chatSource(), passkey));
   invalidate(org);
   invalidate();
-  return made.teamId;
+  return made;
 }
 
 /**
- * The access an open channel gets in `org`: chat's app team. An org with app
- * teams but none for chat gets one first, which only an owner or admin may
- * make (core: "only the organization's owner and admins install apps"). A
- * legacy org keeps organization access: moving it onto an app team is an
- * admin's choice (Calimero Home: "Give it its own access list"), never forced.
+ * The access an open channel gets in `org`: chat's app team (`orgWideAccess`).
+ * An org with app teams but none for chat gets one first, which only an owner
+ * or admin may make. A legacy org keeps organization access: moving it onto
+ * an app team is an admin's choice (Calimero Home), never forced.
  */
 async function openAccess(org: string): Promise<Access> {
   const record = await getOrgRecord(org);
   const team = chatTeamId(record);
   if (team) return { kind: "team", team };
-  if (!chatPackage() || !moded(record)) return { kind: "org" };
-  const role = record.members[getAccountId()];
-  if (role !== "owner" && role !== "admin") {
-    throw new Error("Only this organization's owners and admins can add Mero Chat to it.");
+  const access = await run((c) => orgWideAccess(c, org, chatSource(), passkey, CHAT_TITLE));
+  if (access.kind === "team") {
+    invalidate(org);
+    invalidate();
   }
-  const made = await adoptChatTeam(org);
-  return made ? { kind: "team", team: made } : { kind: "org" };
+  return access;
 }
 
 /** The orgs this account is in (`/me`). */
@@ -306,14 +298,12 @@ export async function appMembers(app: AppRecord): Promise<string[]> {
     return [...new Set([app.owner, ...app.access.accounts])];
   }
   if (app.access.kind === "org" && app.org) {
-    const org = await getOrgRecord(app.org);
-    return Object.entries(org.members)
-      .filter(([, role]) => !(role === "guest" && moded(org)))
-      .map(([account]) => account);
+    // Everyone in the org, but no guest once it has app teams.
+    return appPeople((await getOrgRecord(app.org)) as AppOrgView, null);
   }
   if (app.access.kind === "team" && app.org) {
     const org = await getOrgRecord(app.org);
-    return appTeamMembers(org as OrgAccessView, app.access.team, org.mode);
+    return appTeamMembers(org as AppOrgView, app.access.team, org.mode);
   }
   return [app.owner];
 }
@@ -419,10 +409,23 @@ export async function createChatApp(
 
 // ── orgs ─────────────────────────────────────────────────────────────────────
 
-export async function createOrg(name: string): Promise<string> {
-  const org = await run((c) => c.createOrg(name));
+/**
+ * A new workspace (`createAppOrg`): an org whose members get `capabilities`
+ * (a passkey step-up) and chat's own app team, open, so everyone in it has
+ * Chat, its invites name the team, and should the org later hold other apps,
+ * Calimero Home can keep Chat's people apart from theirs. Neither step fails
+ * the workspace: declined, or a node without app teams, it is a legacy one.
+ * Not marked: a workspace is listed once it holds #general.
+ */
+export async function createOrg(name: string, capabilities?: number): Promise<string> {
+  const made = await run((c) => createAppOrg(c, name, chatSource(), passkey, { mark: false }));
   invalidate();
-  return org;
+  if (capabilities !== undefined) {
+    await setCapabilities(made.orgId, capabilities).catch((e: unknown) => {
+      console.warn("createOrg: member capabilities not set", e);
+    });
+  }
+  return made.orgId;
 }
 
 export async function setCapabilities(org: string, capabilities: number, account?: string): Promise<void> {
@@ -435,10 +438,6 @@ export async function setMemberRole(org: string, account: string, role: "admin" 
   invalidate(org);
 }
 
-export async function removeOrgMember(org: string, account: string): Promise<void> {
-  await run((c) => c.removeMember(org, account, passkey()));
-  invalidate();
-}
 
 /** Puts an org member into Chat: a row on chat's app team (its managers; a passkey step-up). */
 export async function addToChat(org: string, account: string): Promise<void> {
@@ -448,17 +447,8 @@ export async function addToChat(org: string, account: string): Promise<void> {
   invalidate(org);
 }
 
-/**
- * Takes a person out of Chat in `org` and nothing else: off chat's app team
- * (a passkey step-up), and off the private channels and DMs listed for them
- * that this account reaches and may change (their access names accounts, so
- * the team does not carry them). Without an app team, out of the org.
- */
-export async function removeFromChat(org: string, account: string): Promise<void> {
-  const team = chatTeamId(await getOrgRecord(org));
-  if (!team) return removeOrgMember(org, account);
-  await run((c) => c.removeTeamMember(org, team, account, passkey()));
-  invalidate(org);
+/** Takes `account` off the private channels and DMs in `org` that list them and this account may change. */
+async function offPrivateChannels(org: string, account: string): Promise<void> {
   const apps = (await listChatApps().catch(() => [] as AppInfo[])).filter((a) => a.org === org);
   for (const app of apps) {
     const record = await getAppRecord(app.appId).catch(() => null);
@@ -467,6 +457,39 @@ export async function removeFromChat(org: string, account: string): Promise<void
       console.warn(`removeFromChat: ${app.appId} still lists ${account}`, e);
     });
   }
+}
+
+/**
+ * Removes a person from Chat in `org` (`removeFromApp`, a passkey step-up).
+ * In a shared org that is Chat only: off chat's app team, and off the private
+ * channels and DMs listed for them that this account may change (their access
+ * names accounts, so the team does not carry them). Elsewhere (standalone,
+ * legacy, a dev bundle) it is out of the organization, as before.
+ */
+export async function removeFromChat(org: string, account: string): Promise<"app" | "org"> {
+  const left = await run((c) => removeFromApp(c, org, chatSource(), account, passkey));
+  invalidate(org);
+  if (left === "app") await offPrivateChannels(org, account);
+  invalidate();
+  return left;
+}
+
+/**
+ * The signed-in account leaves Chat in `org` (`leaveApp`): in a shared org
+ * chat's team only, with `lastApp` set when it was their last app there (the
+ * caller offers {@link leaveChatOrg}); elsewhere the organization, as before.
+ */
+export async function leaveChat(org: string): Promise<{ left: "app" | "org"; lastApp: boolean }> {
+  const left = await run((c) => leaveApp(c, org, chatSource(), passkey));
+  invalidate(org);
+  invalidate();
+  return left;
+}
+
+/** The signed-in account leaves `org` altogether: every app in it. */
+export async function leaveChatOrg(org: string): Promise<void> {
+  await run((c) => leaveOrg(c, org, passkey));
+  invalidate(org);
   invalidate();
 }
 
@@ -488,15 +511,12 @@ export async function setOrgName(org: string, name: string): Promise<void> {
 
 /**
  * An invite into `org` as a member, naming chat's app team, so it gives Chat
- * and no other app of a shared org (`inviteToApp`): a passkey step-up for the
- * inviter. An org-wide invite where the org has no app teams (legacy, an
- * older node) or under a dev bundle.
+ * and no other app of a shared org (`appInvite`, `appOnly`): a passkey step-up
+ * for the inviter. An org-wide invite where the org has no app teams (legacy,
+ * an older node) or under a dev bundle.
  */
-export async function inviteToken(org: string): Promise<string> {
-  const pkg = chatPackage();
-  if (!pkg) return run((c) => c.invite(org, "member", passkey()));
-  const made = await run((c) => inviteToApp(c, org, pkg, { passkey: passkey() }));
-  return made.token;
+export function inviteToken(org: string): Promise<AppInviteToken> {
+  return run((c) => appInvite(c, org, chatSource(), passkey));
 }
 
 /** Redeems an invite token; answers the org it joined. */

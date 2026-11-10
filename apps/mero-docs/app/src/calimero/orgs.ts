@@ -22,6 +22,17 @@
 // Every membership change (a role, capabilities, adding or removing someone,
 // an invite, deleting or leaving a workspace) is a passkey step-up on 1.0, so
 // those calls prompt for the caller's passkey.
+//
+// Docs has its own **app team** in the org (core#4890), through
+// `@calimero-apps/connect`'s org-app module: a new workspace's team is open,
+// the registry instance uses team access on it, invites name it, and the
+// workspace's member list is its people. Once an admin keeps the org's apps
+// apart in Calimero Home (`shared`), an invite gives Docs only, and Remove and
+// Leave take someone out of Docs, not out of the org. App teams (Docs' and
+// other apps') are not folders. Folders stay teams of their own: core lets
+// only an app team's leads create teams below it, so they are not moved under
+// Docs' team. An org without one (made before app teams, a node without
+// them, a raw dev bundle) is legacy, as before.
 
 import {
   CalimeroError,
@@ -30,7 +41,22 @@ import {
   type CalimeroClient,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
+import {
+  appInvite,
+  appPeople,
+  createAppOrg,
+  leaveApp,
+  leaveOrg,
+  orgModeOf,
+  orgWideAccess,
+  removeFromApp,
+  removeFromPrivateTeam,
+  sourcePackage,
+  type AppOrgView,
+  type AppSource,
+  type LeftApp,
+} from '@calimero-apps/connect';
+import type { OrgMode } from '@calimero-network/mero-js';
 import { CAPABILITIES } from './capabilities';
 
 export type GroupRoleName = 'Admin' | 'Member' | 'ReadOnly';
@@ -77,6 +103,17 @@ export interface OrgView {
   capabilities: Record<string, number>;
   metadata: Record<string, unknown>;
   memberMetadata: Record<string, unknown>;
+  /** How the org holds its apps (core#4890); `null` on a node that does not say. */
+  mode: OrgMode | null;
+}
+
+/** The name Docs is added to an organization under, in what an owner or admin is told. */
+const PRODUCT_NAME = 'Mero Docs';
+
+/** Whether `team` is an app's own team (Docs' or another app's): a top-level team marked `metadata.app`. */
+export function isAppTeam(team: Pick<TeamView, 'parent' | 'metadata'>): boolean {
+  const app = record(team.metadata).app;
+  return !team.parent && !!record(app).package;
 }
 
 /** Where the folder's docs instance id is kept in the team's metadata. */
@@ -139,6 +176,7 @@ export function parseOrg(orgId: string, raw: unknown): OrgView {
     capabilities: numbers(o.capabilities),
     metadata: record(o.metadata),
     memberMetadata: record(o.memberMetadata),
+    mode: orgModeOf(o),
   };
 }
 
@@ -220,6 +258,11 @@ export class OrgAdmin {
 
   // ---------------------------------------------------------------- reads
 
+  /** Who has Docs in `view`: its app team's people, else every member (no guest once the org has app teams). */
+  people(view: OrgView): string[] {
+    return appPeople(view as unknown as AppOrgView, sourcePackage(this.source));
+  }
+
   /** The organization as the caller sees it; `fresh` skips the short cache. */
   org(orgId: string, fresh = false): Promise<OrgView> {
     const hit = this.cache.get(orgId);
@@ -269,7 +312,7 @@ export class OrgAdmin {
                 namespaceId: o.orgId,
                 name: o.name ?? view?.name,
                 role: o.role,
-                ...(view ? { memberCount: Object.keys(view.members).length } : {}),
+                ...(view ? { memberCount: this.people(view).length } : {}),
               };
             }),
         );
@@ -304,7 +347,7 @@ export class OrgAdmin {
     if (team && !view.teams[team]) throw notFound(`group '${team}'`);
     const rows = team
       ? [...teamMembers(view, team)]
-      : Object.entries(view.members).map(([acct, role]) => [acct, orgGroupRole(role)] as const);
+      : this.people(view).map((acct) => [acct, orgGroupRole(view.members[acct])] as const);
     return {
       members: rows.map(([identity, role]) => {
         const name = memberName(view, identity);
@@ -354,7 +397,7 @@ export class OrgAdmin {
         groupId,
         namespaceId: org,
         metadata: { name: view.name, data },
-        memberCount: Object.keys(view.members).length,
+        memberCount: this.people(view).length,
         contextCount: data[REGISTRY_APP_KEY] ? 1 : 0,
       };
     }
@@ -378,7 +421,7 @@ export class OrgAdmin {
     const { org, team } = await this.locate(groupId);
     const view = await this.org(org);
     return Object.values(view.teams)
-      .filter((t) => t.parent === team)
+      .filter((t) => t.parent === team && !isAppTeam(t))
       .map((t) => ({ groupId: t.teamId }));
   }
 
@@ -397,9 +440,15 @@ export class OrgAdmin {
 
   // ---------------------------------------------------------------- workspaces
 
-  /** A new workspace: the org, its member defaults and its registry instance. */
+  /**
+   * A new workspace: the org and Docs' own team, open (`createAppOrg`;
+   * declined, or a node without app teams, a legacy org). Its member defaults
+   * and registry instance follow.
+   */
   async createNamespace(input: { name: string }): Promise<{ namespaceId: string }> {
-    const namespaceId = await this.client.createOrg(input.name);
+    const { orgId: namespaceId } = await createAppOrg(this.client, input.name, this.source, this.passkey, {
+      mark: false,
+    });
     this.changed(namespaceId);
     return { namespaceId };
   }
@@ -409,8 +458,20 @@ export class OrgAdmin {
     this.changed(orgId);
   }
 
-  async leaveNamespace(orgId: string): Promise<void> {
-    await this.client.removeMember(orgId, this.self, this.passkey());
+  /**
+   * Leaves Docs in `orgId` (`leaveApp`): in an org that keeps its apps apart,
+   * Docs' team only (`lastApp` when it was the account's last app there, for
+   * the caller to offer {@link leaveOrganization}); elsewhere the organization.
+   */
+  async leaveNamespace(orgId: string): Promise<LeftApp> {
+    const left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    this.changed(orgId);
+    return left;
+  }
+
+  /** Leaves the organization altogether: every app in it. */
+  async leaveOrganization(orgId: string): Promise<void> {
+    await leaveOrg(this.client, orgId, this.passkey);
     this.changed(orgId);
   }
 
@@ -492,10 +553,12 @@ export class OrgAdmin {
   async createContext(input: CreateContextInput): Promise<{ contextId: string }> {
     const { org, team } = await this.locate(input.groupId);
     const name = input.name || (team ? 'Folder' : 'Registry');
-    const contextId = await this.client.createApp(name, this.source, {
-      org,
-      access: team ? { kind: 'team', team } : { kind: 'org' },
-    });
+    // A folder's on its team; the registry on Docs' team (made first, by an
+    // owner or admin, in an org whose other apps have teams), else org access.
+    const access = team
+      ? { kind: 'team' as const, team }
+      : await orgWideAccess(this.client, org, this.source, this.passkey, PRODUCT_NAME);
+    const contextId = await this.client.createApp(name, this.source, { org, access });
     await this.setGroupMetadata(input.groupId, {
       data: { [team ? DOCS_APP_KEY : REGISTRY_APP_KEY]: contextId },
     });
@@ -547,11 +610,16 @@ export class OrgAdmin {
     }
   }
 
+  /**
+   * Off a folder's team; or, for the workspace, out of Docs (`removeFromApp`):
+   * in an org that keeps its apps apart Docs' team only, never the org (the
+   * caller clears folder rows, `removeFromFolders`); elsewhere the org.
+   */
   async removeGroupMembers(groupId: string, input: { members: string[] }): Promise<void> {
     const { org, team } = await this.locate(groupId);
     for (const account of input.members) {
-      if (team) await this.client.removeTeamMember(org, team, account, this.passkey());
-      else await this.client.removeMember(org, account, this.passkey());
+      if (team) await removeFromPrivateTeam(this.client, org, team, account, this.passkey);
+      else await removeFromApp(this.client, org, this.source, account, this.passkey);
     }
     this.changed(org);
   }
@@ -567,16 +635,22 @@ export class OrgAdmin {
 
   // ---------------------------------------------------------------- invites
 
-  /** A workspace invitation: an org invite token, approved with the passkey. */
-  async createNamespaceInvitation(orgId: string): Promise<string> {
-    return this.client.invite(orgId, 'member', this.passkey());
+  /**
+   * A workspace invitation: an org invite token naming Docs' team
+   * (`appInvite`), approved with the passkey. `appOnly` when it gives Docs
+   * only (an org that keeps its apps apart).
+   */
+  async createNamespaceInvitation(orgId: string): Promise<{ token: string; appOnly: boolean }> {
+    return appInvite(this.client, orgId, this.source, this.passkey);
   }
 
-  /** A folder invitation: an org invite that also gives a row in the folder's team. */
-  async createGroupInvitation(groupId: string): Promise<{ token: string; namespaceId: string }> {
+  /** A folder invitation: an org invite naming Docs' team and the folder's. */
+  async createGroupInvitation(
+    groupId: string,
+  ): Promise<{ token: string; namespaceId: string; appOnly?: boolean }> {
     const { org, team } = await this.locate(groupId);
-    const token = await this.client.invite(org, 'member', this.passkey(), team ? [team] : []);
-    return { token, namespaceId: org };
+    const made = await appInvite(this.client, org, this.source, this.passkey, team ? { teams: [team] } : {});
+    return { token: made.token, namespaceId: org, ...(made.appOnly ? { appOnly: true } : {}) };
   }
 
   /** Whether this account is already a member of `orgId` (its `/me` org list). */

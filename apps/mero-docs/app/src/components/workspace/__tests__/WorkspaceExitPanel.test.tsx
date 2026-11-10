@@ -12,8 +12,11 @@ const h = vi.hoisted(() => ({
   isDelegated: false,
   admin: {
     deleteNamespace: vi.fn(async () => ({ isDeleted: true })),
-    leaveNamespace: vi.fn(async () => undefined),
+    leaveNamespace: vi.fn(async (): Promise<{ left: 'app' | 'org'; lastApp: boolean } | undefined> => undefined),
+    leaveOrganization: vi.fn(async () => undefined),
   },
+  confirms: [] as string[],
+  answer: true,
   clearNamespace: vi.fn(),
   refetch: vi.fn(async () => undefined),
 }));
@@ -34,13 +37,18 @@ vi.mock('@/hooks/useMemberCaps', () => ({
   useMemberCaps: () => h.caps,
 }));
 vi.mock('@/components/ui/confirm-dialog', () => ({
-  useConfirm: () => async () => true,
+  useConfirm: () => async (o: { title: string }) => {
+    h.confirms.push(o.title);
+    return o.title.startsWith('Leave the organization') ? h.answer : true;
+  },
 }));
 
 afterEach(() => {
   vi.clearAllMocks();
   h.caps = { caps: 0, isAdmin: false };
   h.isDelegated = false;
+  h.confirms = [];
+  h.answer = true;
 });
 
 describe('WorkspaceExitPanel', () => {
@@ -60,6 +68,32 @@ describe('WorkspaceExitPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /leave workspace/i }));
     await waitFor(() => expect(h.admin.leaveNamespace).toHaveBeenCalledWith('ns'));
     expect(h.admin.deleteNamespace).not.toHaveBeenCalled();
+  });
+
+  it('left Docs only, the last app in an org that keeps its apps apart: asks, then leaves the org too', async () => {
+    h.admin.leaveNamespace.mockResolvedValueOnce({ left: 'app', lastApp: true });
+    render(<WorkspaceExitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /leave workspace/i }));
+    await waitFor(() => expect(h.admin.leaveOrganization).toHaveBeenCalledWith('ns'));
+    expect(h.confirms).toEqual(['Leave this workspace?', 'Leave the organization too?']);
+    expect(h.clearNamespace).toHaveBeenCalled();
+  });
+
+  it('left Docs only, the last app: staying in the org leaves it alone', async () => {
+    h.admin.leaveNamespace.mockResolvedValueOnce({ left: 'app', lastApp: true });
+    h.answer = false;
+    render(<WorkspaceExitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /leave workspace/i }));
+    await waitFor(() => expect(h.clearNamespace).toHaveBeenCalled());
+    expect(h.admin.leaveOrganization).not.toHaveBeenCalled();
+  });
+
+  it('left the organization (open and legacy orgs): nothing more is asked', async () => {
+    h.admin.leaveNamespace.mockResolvedValueOnce({ left: 'org', lastApp: false });
+    render(<WorkspaceExitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /leave workspace/i }));
+    await waitFor(() => expect(h.clearNamespace).toHaveBeenCalled());
+    expect(h.confirms).toEqual(['Leave this workspace?']);
   });
 
   it('keeps the workspace selected and says why when the delete is refused', async () => {

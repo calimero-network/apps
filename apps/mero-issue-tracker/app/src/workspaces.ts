@@ -1,8 +1,15 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
+  appInvite,
+  appPeople,
+  createAppOrg,
   createInviteStore,
-  markOrgFor,
+  isAppOnly,
+  orgInstanceOptions,
   orgsWithApp,
+  sourcePackage,
+  type AppInviteToken,
+  type AppOrgView,
   inviteLink as sharedInviteLink,
   type AppSource,
   type InviteStore,
@@ -11,7 +18,7 @@ import {
 } from '@calimero-apps/connect';
 import { nodeBasename } from '@calimero-apps/node-served';
 
-import { APP_NAME, APP_ROUTE } from './config';
+import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
 import { tracker } from './tracker';
 
 /**
@@ -22,9 +29,18 @@ import { tracker } from './tracker';
  * | a workspace: a namespace of the app | an **organization** (`createOrg`) |
  * | a repo: a context in the namespace (`serviceName: issue-tracker`) | an **app instance** in the org (`createApp(name, source, { org })`) |
  * | the repo name: the context's name | the instance's `name` |
- * | a namespace invitation (signed payload in a deflate+base58 link) | an **org invite** token in `?invite=` (`invite` is a passkey step-up; `redeemInvite` after sign-in) |
+ * | a namespace invitation (signed payload in a deflate+base58 link) | an **org invite** token in `?invite=` naming this app's team (`appInvite`, a passkey step-up; `redeemInvite` after sign-in) |
  * | member aliases: namespace member metadata | org **member metadata** `{ name }` |
  * | `Admin` / `Member` + capability bits | org roles `owner`/`admin`/`member`/`guest` + the same capability bits |
+ *
+ * The org gets this app's own **app team** (core#4890), through
+ * `@calimero-apps/connect`'s org-app module: a new workspace's team is open
+ * (everyone in the org has the app), instances use team access on it,
+ * invites name it, and the member list is its people. Once an admin keeps
+ * the org's apps apart in Calimero Home (`shared`), an invite gives this app
+ * only and Remove takes someone out of this app, not out of the org. An org
+ * without one (made before app teams, a node without them, a raw dev bundle)
+ * is legacy: organization access, as before.
  */
 
 /** A workspace this account is in. */
@@ -89,36 +105,36 @@ export interface CreatedWorkspace {
  * is a passkey step-up; refused, the org stays and the Members page offers it again).
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata'>,
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedWorkspace> {
-  const namespaceId = await client.createOrg(name);
-  // Listed as a workspace before it holds repositories.
-  if (source) await markOrgFor(client, namespaceId, source);
-  try {
-    await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
-    return { namespaceId, warning: null };
-  } catch {
-    return {
-      namespaceId,
-      warning:
-        'The workspace was created, but people you invite will not be able to add repositories or invite others until an admin fixes the defaults on the Members page.',
-    };
-  }
+  // The org, marked so it is listed before it holds repositories, and this app's
+  // own team, open (declined, or an older node: a legacy org). Declined member
+  // defaults leave the org too, and the Members page offers them again.
+  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  return {
+    namespaceId: made.orgId,
+    warning: made.capabilitiesError
+      ? 'The workspace was created, but people you invite will not be able to add repositories or invite others until an admin fixes the defaults on the Members page.'
+      : null,
+  };
 }
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */
 export async function addRepo(
-  client: Pick<CalimeroClient, 'createApp' | 'call' | 'view'>,
+  client: Pick<CalimeroClient, 'createApp' | 'call' | 'view' | 'getOrg' | 'scopeApps' | 'session'>,
   source: AppSource,
   org: string,
   name: string,
   repoUrl: string,
+  passkey: () => PasskeyProvider,
   after: () => void = () => {},
 ): Promise<string> {
-  const appId = await client.createApp(name, source, { org });
+  // On this app's team (`orgWideAccess`): made first, by an owner or admin,
+  // in an org whose other apps have teams; organization access in a legacy org.
+  const appId = await client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
   if (repoUrl.trim()) await tracker(client, appId, after).setRepoUrl(repoUrl.trim());
   return appId;
 }
@@ -134,10 +150,24 @@ export interface OrgMembers {
   /** account -> its own capability mask, where one is set. */
   overrides: Map<string, number>;
   defaultCapabilities: number | null;
+  /**
+   * Who has this app in the org, in org order: its app team's people; without
+   * one, every member (no guest once the org has app teams). `roles` keeps
+   * the whole org, which the role checks read.
+   */
+  people: string[];
+  /** The org keeps its apps apart and this one has its team: invites and Remove are this app's only. */
+  appOnly: boolean;
 }
 
-export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: string): Promise<OrgMembers> {
+export async function readMembers(
+  client: Pick<CalimeroClient, 'getOrg'>,
+  org: string,
+  source: AppSource | null = null,
+): Promise<OrgMembers> {
   const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const view = o as AppOrgView;
+  const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
   const caps = (o.capabilities ?? {}) as Record<string, number>;
@@ -151,18 +181,25 @@ export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: s
     names,
     overrides: new Map(Object.entries(caps)),
     defaultCapabilities: typeof o.defaultCapabilities === 'number' ? o.defaultCapabilities : null,
+    people: appPeople(view, pkg),
+    appOnly: isAppOnly(view, pkg),
   };
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
+/**
+ * An invitation into `org` as a member, approved with the inviter's passkey
+ * (412 step-up), naming this app's team (`appInvite`): in an org that keeps
+ * its apps apart it gives this app only (`appOnly`). Org-wide in a legacy org.
+ */
 export function inviteToken(
-  client: Pick<CalimeroClient, 'invite'>,
+  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
   org: string,
   passkey: PasskeyProvider,
-): Promise<string> {
-  return client.invite(org, 'member', passkey);
+  source: AppSource | null = null,
+): Promise<AppInviteToken> {
+  return appInvite(client, org, source, passkey);
 }
 
 /**
