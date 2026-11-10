@@ -52,7 +52,7 @@ describe('DisplayNameGate across a namespace switch', () => {
     act(() => onContextEvent());
     driveState.namespaceId = 'new-ns';
     rerender(ui());
-    const gate = await screen.findByRole('dialog', { name: /Set your name/i });
+    const gate = await screen.findByRole('dialog', { name: /Your name in this workspace/i });
     await act(async () => resolveLateRefetch({ name: 'alice' }));
 
     expect(gate.isConnected).toBe(true);

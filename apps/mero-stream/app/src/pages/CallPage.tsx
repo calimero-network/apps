@@ -17,11 +17,11 @@ import PeopleDialog from "../components/PeopleDialog";
 import { buildRoster, initials, shortId } from "../lib/people";
 import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
+import { decideSelfName } from "@calimero-apps/names";
 import {
   getActiveNamespaceId,
   getRoomName,
-  getUsername,
-  setUsername,
+  storedName,
 } from "../lib/session";
 import {
   DEGRADED_DELIVERY_PERCENT,
@@ -89,6 +89,9 @@ export default function CallPage() {
   // no nickname for.
   const conn = useConn();
   const [streamNames, setStreamNames] = useState<Record<string, string>>({});
+  // Until the stream's names have loaded, "no name" is not known to mean no
+  // name. A room stored before its stream was recorded has none to load.
+  const [streamReady, setStreamReady] = useState(!namespaceId);
   useEffect(() => {
     if (!conn || !namespaceId) return;
     let cancelled = false;
@@ -97,7 +100,10 @@ export default function CallPage() {
         if (!cancelled) setStreamNames(info.names);
       })
       .catch(() => {})
-      .finally(conn.after);
+      .finally(() => {
+        if (!cancelled) setStreamReady(true);
+        conn.after();
+      });
     return () => {
       cancelled = true;
     };
@@ -107,9 +113,12 @@ export default function CallPage() {
     [streamNames],
   );
 
-  // The STORED nickname — "" when never set, which is a state worth knowing:
-  // it is what makes the identity control worth pointing at on first run.
-  const [nickname, setNickname] = useState(getUsername());
+  // Your name in the stream — "" until it is known, and while it is not set,
+  // which is a state worth knowing: it is what makes the identity control
+  // worth pointing at on first run.
+  const [nickname, setNickname] = useState("");
+  // What the name field offers when the stream has no name for you.
+  const [suggestion, setSuggestion] = useState("");
   const [joined, setJoined] = useState(false);
   const [showData, setShowData] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
@@ -150,24 +159,48 @@ export default function CallPage() {
   const join = useCallback(async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setUsername(trimmed);
     const generation = ++joinGeneration.current;
     const m = await streamRef.current.join(trimmed);
     if (!alive.current || joinGeneration.current !== generation) return;
     if (m) setJoined(true);
   }, []);
 
+  // Your name lives on the stream (asked when you created or joined it), and
+  // the room's `join` is fed it without asking. A name this browser used before
+  // the stream held one is published to the stream instead. Only a stream with
+  // no name for you anywhere asks — once, below, for every room in it.
+  const account = conn?.accountId ?? stream.executorId ?? null;
+  const decision = useMemo(
+    () =>
+      decideSelfName({
+        orgReady: streamReady,
+        orgName: account ? streamNames[account] : "",
+        fallbacks: [storedName()],
+      }),
+    [streamReady, streamNames, account],
+  );
   useEffect(() => {
-    if (joinAttempted.current) return;
+    if (joinAttempted.current || decision.kind === "wait") return;
     joinAttempted.current = true;
-    void join(getUsername() || "guest");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (decision.kind === "ask") {
+      setSuggestion(decision.suggestion);
+      void join("guest");
+      return;
+    }
+    setNickname(decision.name);
+    void join(decision.name);
+    if (decision.kind === "adopt" && conn && namespaceId) {
+      void publishMyName(conn.client, namespaceId, conn.accountId, decision.name)
+        .catch(() => {})
+        .finally(conn.after);
+    }
+  }, [decision, join, conn, namespaceId]);
 
-  // Open the identity dialog ONCE for someone who has never picked a name. Not a
-  // blocking gate — the call still joins and still works as "guest" — because
-  // demanding a form before showing anything is a worse first run than a tile
-  // labelled with a placeholder.
+  // Open the identity dialog ONCE, for a stream that has no name for you. Not
+  // a blocking gate — the call still joins and still works as "guest" —
+  // because demanding a form before showing anything is a worse first run
+  // than a tile labelled with a placeholder. The name saved is the stream's,
+  // so no other room in it asks.
   const nudged = useRef(false);
   useEffect(() => {
     if (nudged.current || !joined || nickname !== "") return;
@@ -179,9 +212,9 @@ export default function CallPage() {
     (next: string) => {
       setNickname(next);
       void join(next);
-      // The stream-wide name too (org member metadata), so every room shows
-      // it. Best-effort: the room nickname is what was asked for, and a
-      // refusal here must not undo it.
+      // The stream-wide name (org member metadata), so every room joins you
+      // with it. Best-effort: the room nickname still takes, and a refusal
+      // here must not undo it.
       const trimmed = next.trim();
       if (conn && namespaceId && trimmed) {
         void publishMyName(conn.client, namespaceId, conn.accountId, trimmed)
@@ -191,16 +224,6 @@ export default function CallPage() {
     },
     [join, conn, namespaceId],
   );
-
-  // Adopt the name this person already set for the stream. A blank nickname
-  // would otherwise join as "guest" even though everyone on the namespace
-  // already knows them by name.
-  const spaceName = stream.executorId ? nameOf(stream.executorId) : undefined;
-  useEffect(() => {
-    if (getUsername() || !spaceName) return;
-    setNickname(spaceName);
-    void join(spaceName);
-  }, [spaceName, join]);
 
   // Refresh names when the participant set changes, plus a slow tick for someone
   // who renames themselves. Keyed on peer COUNT rather than "is any name
@@ -694,6 +717,7 @@ export default function CallPage() {
         onClose={() => setShowPeople(false)}
         people={people}
         name={nickname}
+        suggestion={suggestion}
         onRename={rename}
         maxBroadcasters={MAX_BROADCASTERS}
       />

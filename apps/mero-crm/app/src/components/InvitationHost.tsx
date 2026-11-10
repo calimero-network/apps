@@ -1,6 +1,7 @@
 import React, { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from '@calimero-apps/connect';
+import { orgMemberName, setOrgName } from '@calimero-apps/names';
 
 import { PRODUCT_NAME } from '../config';
 import { useSessionApi } from '../sessionContext';
@@ -10,9 +11,13 @@ import { SignInPanel, usePendingInvite } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 import { ONBOARDING, takeJoinedLanding } from '../session';
 import { Page, Card, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin, TextLink } from './modalKit';
+import AliasGate from './AliasGate';
 
 /** What the screen says once the invitation can no longer be accepted. */
 type Outcome = { kind: 'member'; org: string; route: string } | { kind: 'spent' };
+
+/** Joined, and the workspace has no name for you yet: asked before opening it. */
+type Naming = { org: string; route: string };
 
 /**
  * The invitation screens, wrapped around the routes because a link can land on
@@ -25,7 +30,9 @@ type Outcome = { kind: 'member'; org: string; route: string } | { kind: 'spent' 
  *    the token, so signing in later still asks.
  *  - signed in: "Join the workspace?" straight away. The org invite is
  *    redeemed only on the click, as v1 joined only on the click, and joining
- *    goes to the route the link opened (e.g. `/crm/members`).
+ *    goes to the route the link opened (e.g. `/crm/members`). Your name in the
+ *    workspace is asked right after joining, once, unless it already has one;
+ *    every pipeline in it then uses that name.
  *
  * Redeeming spends one of the invite's uses even for someone already in the
  * org, so a link that names its org is checked against the account's orgs
@@ -44,6 +51,7 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [naming, setNaming] = useState<Naming | null>(null);
 
   // A sign-up that joined with the invite: open the page its link pointed at.
   useEffect(() => {
@@ -72,6 +80,26 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
       setChecking(false);
     };
   }, [signedIn, token, pendingOrg]);
+
+  if (naming && signedIn) {
+    const open = () => {
+      setNaming(null);
+      announceJoined(naming.org);
+      navigate(naming.route);
+    };
+    return (
+      <Page>
+        <AliasGate
+          namespaceId={naming.org}
+          identity={signedIn.accountId}
+          orgName=""
+          membersLoaded
+          onSave={(name) => setOrgName(signedIn.client, naming.org, signedIn.accountId, name)}
+          onDone={open}
+        />
+      </Page>
+    );
+  }
 
   if (outcome) {
     const done = () => {
@@ -130,7 +158,16 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
     try {
       const org = joinedOrg(await client.redeemInvite(token)) ?? pendingOrg;
       invites.drop();
-      if (org) announceJoined(org);
+      // Your name in the workspace: asked now, once, unless it already has one
+      // (a rejoin). Unknown (the read failed): asked too; the gate prefills it.
+      if (org) {
+        const o = (await client.getOrg(org).catch(() => null)) as { memberMetadata?: Record<string, unknown> } | null;
+        if (!orgMemberName(o?.memberMetadata, signedIn.accountId)) {
+          setNaming({ org, route });
+          return;
+        }
+        announceJoined(org);
+      }
       navigate(route);
     } catch (e) {
       // Only the node's word that the invite is done drops it: a lapsed

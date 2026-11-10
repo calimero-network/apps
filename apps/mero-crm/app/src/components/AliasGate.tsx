@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { tokens as t } from '../theme';
+import { decideSelfName } from '@calimero-apps/names';
 import { Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
 const MAX_NAME = 64;
@@ -19,29 +20,37 @@ function writeMarker(key: string | null): void {
 interface Props {
   namespaceId: string | null;
   identity: string | null;
-  /** True when the current member already has a display name in this namespace. */
-  hasName: boolean;
+  /** The current member's name in this workspace (org member metadata), or "". */
+  orgName: string;
   /** True once the member list for this namespace has settled (avoids a flash). */
   membersLoaded: boolean;
   onSave: (name: string) => Promise<void>;
+  /** Called once the name is saved or skipped (the invitation flow continues on it). */
+  onDone?: () => void;
 }
 
 /**
- * Blocking "set your name" overlay shown on entering a namespace where the
- * current member has no display name. Skippable only via the explicit Skip
- * action, which writes a localStorage marker so it does not re-prompt.
+ * Blocking "your name in this workspace" overlay. The name is asked once per
+ * workspace (an org): when creating it (in the create dialog) or right after
+ * joining it. Entering a workspace that already has your name never shows
+ * this; it is the fallback for a workspace made before names were asked
+ * there. Skippable only via the explicit Skip action, which writes a
+ * localStorage marker so it does not re-prompt.
  */
-export default function AliasGate({ namespaceId, identity, hasName, membersLoaded, onSave }: Props): React.ReactElement | null {
+export default function AliasGate({ namespaceId, identity, orgName, membersLoaded, onSave, onDone }: Props): React.ReactElement | null {
   const key = namespaceId && identity ? markerKey(namespaceId, identity) : null;
+  const decision = decideSelfName({ orgReady: membersLoaded, orgName });
+  const hasName = decision.kind === 'use';
   const [dismissed, setDismissed] = useState(false);
-  const [draft, setDraft] = useState('');
+  // null until edited: the field starts on the name used for the last workspace.
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Re-arm on namespace/identity change; a different workspace may need a name.
   useEffect(() => {
     setDismissed(readMarker(key));
-    setDraft('');
+    setDraft(null);
     setError(null);
   }, [key]);
 
@@ -51,9 +60,10 @@ export default function AliasGate({ namespaceId, identity, hasName, membersLoade
     if (key && hasName) writeMarker(key);
   }, [key, hasName]);
 
-  if (!namespaceId || !identity || !membersLoaded || hasName || dismissed) return null;
+  if (!namespaceId || !identity || decision.kind !== 'ask' || dismissed) return null;
 
-  const trimmed = draft.trim();
+  const value = draft ?? decision.suggestion;
+  const trimmed = value.trim();
   const canSave = trimmed.length > 0 && trimmed.length <= MAX_NAME && !saving;
 
   const save = async () => {
@@ -64,6 +74,7 @@ export default function AliasGate({ namespaceId, identity, hasName, membersLoade
       await onSave(trimmed);
       writeMarker(key);
       setDismissed(true);
+      onDone?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your name.');
     } finally {
@@ -71,21 +82,21 @@ export default function AliasGate({ namespaceId, identity, hasName, membersLoade
     }
   };
 
-  const skip = () => { writeMarker(key); setDismissed(true); };
+  const skip = () => { writeMarker(key); setDismissed(true); onDone?.(); };
 
   return (
     <Backdrop role="dialog" aria-modal="true" aria-labelledby="alias-gate-title" data-testid="alias-gate">
       <Card onClick={(e) => e.stopPropagation()}>
-        <h3 id="alias-gate-title">Set your name</h3>
-        <p className="sub">Teammates in this workspace see this name instead of your public key. You can change it later on the Members page.</p>
+        <h3 id="alias-gate-title">Your name in this workspace</h3>
+        <p className="sub">Teammates see this name instead of your public key, in every pipeline of this workspace. You can change it later on the Members page.</p>
         <Field>
-          <label htmlFor="alias-gate-name">Display name</label>
+          <label htmlFor="alias-gate-name">Your name in this workspace</label>
           <input
             id="alias-gate-name"
             data-testid="alias-gate-name"
             autoFocus
             maxLength={MAX_NAME}
-            value={draft}
+            value={value}
             onChange={(e) => { setDraft(e.target.value); setError(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter') void save(); }}
             placeholder="e.g. ronit"

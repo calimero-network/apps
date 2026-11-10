@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage } from "../../utils/errorMessage";
 import { teamLabel } from "../../utils/teamName";
+import { suggestedName } from "../../utils/boardName";
+import { useAuth } from "../../sessionContext";
 import { initialsOf, tileGradient } from "../../utils/artwork";
 import { IconCheck, IconChevron, IconPlus } from "../HomeIcons";
 import { useShell } from "./shellContext";
@@ -18,6 +20,9 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  // Your name in the new team: asked here, once, and used by every board in it.
+  const { accountId } = useAuth();
+  const [myName, setMyName] = useState("");
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,12 +49,16 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
     }
   }, [open]);
 
+  useEffect(() => {
+    if (creating) setMyName(suggestedName(accountId));
+  }, [creating, accountId]);
+
   async function create() {
     const name = newName.trim();
-    if (!name || busy) return;
+    if (!name || !myName.trim() || busy) return;
     setBusy(true);
     try {
-      const { id, warning } = await teams.createTeam(name);
+      const { id, warning } = await teams.createTeam(name, myName);
       setOpen(false);
       if (id) openTeam(id);
       // Say it now, not at invite time: an unhosted team's invitations cannot
@@ -122,31 +131,48 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
             <p className={styles.menuNote}>{teams.error ? "Could not load teams." : "Loading teams…"}</p>
           )}
           {creating ? (
-            <div className={styles.inlineField}>
-              <input
-                autoFocus
-                className={styles.inlineInput}
-                placeholder="New team name…"
-                aria-label="New team name"
-                value={newName}
-                maxLength={64}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void create();
-                  if (e.key === "Escape") { e.stopPropagation(); setCreating(false); }
-                }}
-                data-testid="new-team-input"
-              />
-              <button
-                type="button"
-                className={styles.inlineBtn}
-                onClick={() => void create()}
-                disabled={busy || !newName.trim()}
-                data-testid="create-team-btn"
-              >
-                {busy ? "…" : "Create"}
-              </button>
-            </div>
+            <>
+              <div className={styles.inlineField}>
+                <input
+                  autoFocus
+                  className={styles.inlineInput}
+                  placeholder="New team name…"
+                  aria-label="New team name"
+                  value={newName}
+                  maxLength={64}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void create();
+                    if (e.key === "Escape") { e.stopPropagation(); setCreating(false); }
+                  }}
+                  data-testid="new-team-input"
+                />
+              </div>
+              <div className={styles.inlineField}>
+                <input
+                  className={styles.inlineInput}
+                  placeholder="Your name in this team…"
+                  aria-label="Your name in this team"
+                  value={myName}
+                  maxLength={32}
+                  onChange={(e) => setMyName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void create();
+                    if (e.key === "Escape") { e.stopPropagation(); setCreating(false); }
+                  }}
+                  data-testid="new-team-my-name"
+                />
+                <button
+                  type="button"
+                  className={styles.inlineBtn}
+                  onClick={() => void create()}
+                  disabled={busy || !newName.trim() || !myName.trim()}
+                  data-testid="create-team-btn"
+                >
+                  {busy ? "…" : "Create"}
+                </button>
+              </div>
+            </>
           ) : (
             <button
               type="button"

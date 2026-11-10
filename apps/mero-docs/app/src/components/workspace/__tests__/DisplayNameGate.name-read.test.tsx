@@ -80,7 +80,7 @@ describe('DisplayNameGate decides only once the name read has answered', () => {
           })
         : Promise.resolve(null),
     );
-    const gate = await screen.findByRole('dialog', { name: /Set your name/i });
+    const gate = await screen.findByRole('dialog', { name: /Your name in this workspace/i });
     fireEvent.change(screen.getByPlaceholderText('Your display name'), {
       target: { value: 'bob' },
     });

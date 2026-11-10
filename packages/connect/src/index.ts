@@ -76,6 +76,7 @@ export {
   CREATED_FOR,
   appFilter,
   appKey,
+  appTeamsLabel,
   holdingsLabel,
   isMarkedFor,
   markOrgFor,
@@ -89,3 +90,20 @@ export {
   type OtherOrg,
   type OtherOrgsOptions,
 } from "./orgs";
+export {
+  NoAppTeamError,
+  appAccess,
+  appTeamOf,
+  appTeams,
+  createAppTeam,
+  ensureAppTeam,
+  inviteToApp,
+  isNotFound,
+  membersMayInvite,
+  setMembersMayInvite,
+  type AppAccess,
+  type AppInvite,
+  type AppTeamOf,
+  type CreateAppTeamOptions,
+  type InviteToAppOptions,
+} from "./appTeams";

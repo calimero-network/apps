@@ -98,6 +98,8 @@ export const EditorWrapper = styled.div`
 
 const Container = styled.div`
   width: 100%;
+  /* The message list above gives way, not the composer. */
+  flex-shrink: 0;
   padding-left: 16px;
   padding-right: 16px;
   padding-top: 1px;
@@ -372,7 +374,13 @@ const ReadOnlyField = styled.div<{ $banned?: boolean }>`
  * height so the composer never shifts as the occupant changes.
  */
 export const StatusBar = styled.div`
+  /* Its own 18px whatever the column around it does. A flex item shrinks by
+     default, and the message list above asks for the full height, so the
+     strip was squeezed to ~13px and its text cut off at the panel's edge.
+     The margin keeps it clear of the panel's rounded bottom edge. */
+  flex-shrink: 0;
   height: 18px;
+  margin-bottom: 6px;
   padding: 0 25px;
   font-size: 12px;
   line-height: 18px;

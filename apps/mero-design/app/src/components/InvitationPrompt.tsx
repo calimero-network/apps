@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { publishMyName } from "../api/names";
 import { readTeam, redeemInvitation } from "../api/rpc";
+import { suggestedName } from "../utils/boardName";
+import UsernameModal from "./UsernameModal";
 import { useAuth } from "../sessionContext";
 import { isSpentInvite } from "@calimero-apps/connect";
 import { usePendingInvite } from "@calimero-apps/passkey";
@@ -19,7 +22,8 @@ import styles from "./InviteModal.module.css";
  * Signed out it renders nothing: the invitation is then the whole page
  * (`InvitationPage`, on the front door), whose sign-in brings the visitor
  * straight back here. Signed in, Join redeems the org invite and opens the
- * team, or the route the link was opened on.
+ * team, or the route the link was opened on. A team that has no name for you
+ * asks for one first, once: every board in the team uses it.
  *
  * ⚠️ Someone already in the team is not offered Join. Redeeming spends the
  * link's single use, so the owner testing their own link used to leave the
@@ -39,6 +43,8 @@ export default function InvitationPrompt() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spent, setSpent] = useState(false);
+  // Joined, and asking your name in the team before going on to `to`.
+  const [naming, setNaming] = useState<{ org: string; to: string } | null>(null);
 
   // Signed up from a page holding the invite: already joined; open what it named.
   useEffect(() => {
@@ -95,7 +101,12 @@ export default function InvitationPrompt() {
     try {
       const org = (await redeemInvitation(invite.token)) ?? invite.org ?? null;
       invites.drop();
-      navigate(inviteDestination(invite, org));
+      const to = inviteDestination(invite, org);
+      // Your name in the team, asked once, here: never again on its boards.
+      // Unknown (the read failed): the team's first board asks instead.
+      const named = org && accountId ? await readTeam(org).then((t) => t.names.has(accountId), () => true) : true;
+      if (org && !named) setNaming({ org, to });
+      else navigate(to);
     } catch (e) {
       // A refusal (unknown, used, expired, revoked) can never succeed: drop
       // it. Anything else (a lapsed session, a rate limit, the cluster
@@ -109,7 +120,25 @@ export default function InvitationPrompt() {
     } finally {
       setBusy(false);
     }
-  }, [signedIn, invite, navigate]);
+  }, [signedIn, invite, accountId, navigate]);
+
+  const named = useCallback(
+    async (name: string) => {
+      if (!naming) return;
+      // Best effort: refused, the team's first board asks again.
+      if (accountId) await publishMyName(naming.org, accountId, name).catch(() => {});
+      setNaming(null);
+      navigate(naming.to);
+    },
+    [naming, accountId, navigate],
+  );
+
+  if (naming && signedIn) {
+    return createPortal(
+      <UsernameModal onSubmit={(n) => void named(n)} initialValue={suggestedName(accountId)} />,
+      document.body,
+    );
+  }
 
   if (!invite || !signedIn || member === "checking") return null;
 

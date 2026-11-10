@@ -11,6 +11,7 @@ const setMemberMetadataFn = vi.fn();
 vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({ mero: null }),
+  useLive: () => ({ admin: { setMemberMetadata: setMemberMetadataFn } }),
   useMemberMetadata: (...args: unknown[]) => memberMetadataMock(...args),
   useSetMemberMetadata: () => ({
     setMemberMetadata: setMemberMetadataFn,
@@ -111,7 +112,6 @@ describe('useMemberDisplayName', () => {
     });
     expect(setMemberMetadataFn).toHaveBeenCalledWith('ns1', 'self-pubkey', {
       name: 'Bob',
-      data: {},
     });
     expect(refetch).toHaveBeenCalled();
   });

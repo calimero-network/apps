@@ -79,7 +79,7 @@ import StatusBar from '../../components/StatusBar';
 import { avatarLabel, distinctCollaborators, peerCount } from '../../spreadsheet/presence';
 import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
-import { isUsableName, normaliseName, rememberName, rememberedName } from '../../lib/displayName';
+import { normaliseName, selfNameStep, skipWorkspaceName } from '../../lib/displayName';
 import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
@@ -157,67 +157,72 @@ export default function AppPage() {
     }
   }, [ws]);
 
-  // ── Nickname ────────────────────────────────────────────────────
-  // Asked once per spreadsheet, the first time this device opens one it has not
-  // named itself in. The name goes to the CONTRACT (`join`), because a name in
-  // localStorage is visible only to the person who already knows it. What the
-  // browser remembers is the SUGGESTION, so the second spreadsheet does not ask
-  // again from scratch.
+  // ── Your name ───────────────────────────────────────────────────
+  // One per workspace: the org's member metadata. A spreadsheet copies it into
+  // its own roster (`join`, which carets and the people panel read) without
+  // asking. The question is asked once per workspace - right after joining it,
+  // or, for a workspace that has none for you, the first time one of its
+  // spreadsheets opens - never per spreadsheet. A name this spreadsheet's
+  // roster or this browser already had is published to the workspace instead.
   const [savingNickname, setSavingNickname] = useState(false);
   const [nicknameError, setNicknameError] = useState<string | null>(null);
-  const [nicknameSkipped, setNicknameSkipped] = useState(false);
-  // Per spreadsheet, not per session: skipping in one should not leave you
-  // silently unnamed in the next one you open.
-  useEffect(() => {
-    setNicknameSkipped(false);
-    setNicknameError(null);
-  }, [ws.contextId]);
-  const needsNickname =
-    !nicknameSkipped &&
-    ss.ready &&
-    ss.membersLoaded &&
-    ss.selfId !== null &&
-    !ss.members.some((m) => m.id === ss.selfId && m.nickname.trim());
+  // Re-renders once the question is skipped for the workspace (kept in lib).
+  const [, setSkippedTick] = useState(0);
+  const rosterReady = ss.ready && ss.membersLoaded && ss.selfId !== null;
+  const rosterName = rosterReady
+    ? normaliseName(ss.members.find((m) => m.id === ss.selfId)?.nickname ?? '')
+    : '';
 
   // The name each person set for the whole workspace (org member metadata),
   // shared by every app in it. It names people who have not picked a nickname
   // in this workbook, or have not opened it at all.
   const org = useOrgMembers(ws.namespaceId);
   const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = org;
-  // Your own name is the workspace's, one per workspace: a workbook asks only
-  // when the workspace has none for you, and only once its names have loaded.
-  const selfNamespaceName = normaliseName(org.myName);
   const setMyName = org.setMyName;
+  const selfName = selfNameStep({
+    org: ws.namespaceId,
+    orgReady: org.loaded && rosterReady,
+    orgName: org.myName,
+    rosterName,
+  });
 
+  // `use` / `adopt`: no prompt. Once per spreadsheet and name; a failed write
+  // is left for the next open rather than retried in a loop.
+  const joinAs = ss.joinAs;
+  const syncedFor = useRef<string | null>(null);
+  const silentName = selfName.kind === 'use' || selfName.kind === 'adopt' ? selfName.name : null;
+  const adoptName = selfName.kind === 'adopt';
+  useEffect(() => {
+    if (!silentName || !ws.contextId) return;
+    const key = `${ws.contextId}:${silentName}`;
+    if (syncedFor.current === key) return;
+    syncedFor.current = key;
+    if (adoptName) void setMyName(silentName).catch((err) => console.warn('[name] workspace name not published', err));
+    if (rosterName !== silentName) {
+      void joinAs(silentName).catch((err) => console.warn('[name] spreadsheet roster not updated', err));
+    }
+  }, [silentName, adoptName, rosterName, ws.contextId, setMyName, joinAs]);
+
+  // `ask`: the answer goes to the workspace; the effect above then copies it
+  // into this spreadsheet's roster.
   const submitNickname = useCallback(
     async (name: string) => {
       setSavingNickname(true);
       setNicknameError(null);
       try {
-        await ss.joinAs(name);
-        rememberName(name);
-        // The workspace-wide name too, so every other app on it says the same.
-        // Best-effort: the workbook nickname is what was asked for.
-        if (name !== selfNamespaceName) void setMyName(name).catch(() => undefined);
+        await setMyName(name);
       } catch (err) {
         setNicknameError(describeError(err));
       } finally {
         setSavingNickname(false);
       }
     },
-    [ss, setMyName, selfNamespaceName],
+    [setMyName],
   );
-
-  // Someone who already named themselves for the workspace is not asked again:
-  // the workbook adopts that name. Once per spreadsheet; if the write fails,
-  // the modal opens with the name filled in and the error shown.
-  const adoptedFor = useRef<string | null>(null);
-  const adoptNamespaceName = needsNickname && isUsableName(selfNamespaceName) && !nicknameError;
-  useEffect(() => {
-    if (!adoptNamespaceName || adoptedFor.current === ws.contextId) return;
-    adoptedFor.current = ws.contextId;
-    void submitNickname(selfNamespaceName);
-  }, [adoptNamespaceName, ws.contextId, selfNamespaceName, submitNickname]);
+  const skipNickname = useCallback(() => {
+    if (ws.namespaceId) skipWorkspaceName(ws.namespaceId);
+    setSkippedTick((n) => n + 1);
+  }, [ws.namespaceId]);
 
   // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
@@ -1825,14 +1830,14 @@ export default function AppPage() {
           onClose={() => setShowInvite(false)}
         />
       )}
-      {needsNickname && org.loaded && !adoptNamespaceName && (
+      {selfName.kind === 'ask' && (
         <NicknameModal
-          projectName={activeWorkspaceName}
-          initialName={selfNamespaceName || rememberedName()}
+          workspaceName={ws.namespaceName}
+          initialName={selfName.suggestion}
           saving={savingNickname}
           error={nicknameError}
           onSubmit={(name) => void submitNickname(name)}
-          onSkip={() => setNicknameSkipped(true)}
+          onSkip={skipNickname}
         />
       )}
       {ctxMenu && (

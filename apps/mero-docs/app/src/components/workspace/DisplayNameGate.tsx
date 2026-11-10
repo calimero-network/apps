@@ -1,14 +1,16 @@
-// Blocking "set your name" overlay. State-driven: it appears whenever
-// the active namespace has no display name for the current member -
-// which covers just-created, just-joined, and older nameless
-// workspaces alike, with no per-event wiring. It decides only once the
-// name read has answered, and a background refetch never hides it.
+// Blocking "set your name" overlay: the fallback for a workspace that has
+// no name for you. Your name is asked once per workspace - in the New
+// workspace dialog, or right after accepting an invitation - so this only
+// shows for workspaces made before that (or when that write was refused).
+// It decides only once the name read has answered (`decideSelfName`), and a
+// background refetch never hides it.
 //
 // Rendered INSIDE the workspace body (an `absolute inset-0` overlay
 // over sidebar + main), NOT over the top bar - so the namespace
 // switcher and Log out stay reachable as an escape hatch.
 
 import React, { useEffect, useState } from 'react';
+import { decideSelfName, lastUsedName } from '@calimero-apps/names';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import {
@@ -66,9 +68,6 @@ function NameGate({
   const memberRowName = namespaceMemberNames[selfIdentity] ?? null;
   // The effective name from ANY reliable source.
   const effectiveName = name ?? memberRowName;
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
   // Close immediately once OUR OWN save succeeds - don't wait for `name`
   // to flip non-null via refetch (see the marker note above).
   const [dismissed, setDismissed] = useState(false);
@@ -101,31 +100,18 @@ function NameGate({
   // localStorage marker is gone (new device, cleared storage) AND the
   // hook returns null, the member rows still show the name, so we
   // must not ask the user to set it again.
-  if (!loaded) return null;
+  const decision = decideSelfName({ orgReady: loaded, orgName: effectiveName });
+  if (decision.kind === 'wait') return null;
   // The gate decides after an async read, so a wait for "gate or no gate"
   // needs a definite end: this marker says the decision was "no gate".
-  if (effectiveName !== null || dismissed || knownSet) {
+  if (decision.kind !== 'ask' || dismissed || knownSet) {
     return <span hidden data-testid="name-gate-settled" />;
   }
 
-  const trimmed = draft.trim();
-  const canSave =
-    trimmed.length > 0 && trimmed.length <= MAX_DISPLAY_NAME_LEN && !saving;
-
-  const onSave = async () => {
-    if (!canSave) return;
-    setSaving(true);
-    setSaveFailed(false);
-    try {
-      await setName(trimmed);
-      rememberNameSet(markerKey);
-      setDismissed(true);
-    } catch (e: unknown) {
-      console.warn('display name save failed', e);
-      setSaveFailed(true);
-    } finally {
-      setSaving(false);
-    }
+  const onSave = async (next: string) => {
+    await setName(next);
+    rememberNameSet(markerKey);
+    setDismissed(true);
   };
 
   return (
@@ -136,50 +122,102 @@ function NameGate({
       className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
     >
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
-        <h2 id="name-gate-title" className="text-lg font-semibold text-foreground">
-          Set your name
+        <h2
+          id="name-gate-title"
+          className="text-lg font-semibold text-foreground"
+        >
+          Your name in this workspace
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Members of this workspace see this name. You can change it later in
-          settings.
+          Members of this workspace see this name in every folder and doc. You
+          can change it later in settings.
         </p>
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setSaveFailed(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void onSave();
-          }}
-          placeholder="Your display name"
-          maxLength={MAX_DISPLAY_NAME_LEN}
-          autoFocus
-          disabled={saving}
-          className="mt-4 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        <SelfNameForm
+          suggestion={decision.suggestion}
+          onSave={onSave}
+          loadFailed={!!error}
+          onRetry={() => void refetch()}
         />
-        {error && (
-          <p className="mt-2 text-xs text-destructive" role="alert">
-            Couldn&apos;t load your name. Try again.
-          </p>
-        )}
-        {saveFailed && (
-          <p className="mt-2 text-xs text-destructive" role="alert">
-            Couldn&apos;t save your name. Try again.
-          </p>
-        )}
-        <div className="mt-4 flex justify-end gap-2">
-          {error && (
-            <Button size="sm" variant="outline" onClick={() => void refetch()}>
-              Try again
-            </Button>
-          )}
-          <Button size="sm" onClick={() => void onSave()} disabled={!canSave}>
-            {saving ? 'Saving…' : 'Continue'}
-          </Button>
-        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The name field and its Continue button: the gate's, and the invitation
+ * prompt's right after joining. `onSave` throws to say the save failed.
+ */
+export function SelfNameForm({
+  suggestion = lastUsedName(),
+  onSave,
+  loadFailed = false,
+  onRetry,
+}: {
+  suggestion?: string;
+  onSave: (name: string) => Promise<void>;
+  loadFailed?: boolean;
+  onRetry?: () => void;
+}) {
+  const [draft, setDraft] = useState(suggestion);
+  const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+
+  const trimmed = draft.trim();
+  const canSave =
+    trimmed.length > 0 && trimmed.length <= MAX_DISPLAY_NAME_LEN && !saving;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      await onSave(trimmed);
+    } catch (e: unknown) {
+      console.warn('display name save failed', e);
+      setSaveFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setSaveFailed(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void save();
+        }}
+        placeholder="Your display name"
+        maxLength={MAX_DISPLAY_NAME_LEN}
+        autoFocus
+        disabled={saving}
+        className="mt-4 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      />
+      {loadFailed && (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          Couldn&apos;t load your name. Try again.
+        </p>
+      )}
+      {saveFailed && (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          Couldn&apos;t save your name. Try again.
+        </p>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        {loadFailed && onRetry && (
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+        <Button size="sm" onClick={() => void save()} disabled={!canSave}>
+          {saving ? 'Saving…' : 'Continue'}
+        </Button>
+      </div>
+    </>
   );
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTeam as createOrg, deleteTeam as deleteOrg, leaveTeam as leaveOrg, listTeams } from "../api/rpc";
+import { getApi } from "../api/client";
+import { publishMyName } from "../api/names";
 import { setStoredTeamName } from "../utils/teamName";
 import type { Team } from "../types";
 
@@ -16,8 +18,11 @@ export interface TeamList {
   /** The last read failed (and nothing has been listed yet, or since). */
   error: boolean;
   reload: () => Promise<void>;
-  /** Founds a team and adds it to the list; rejects with the node's reason. */
-  createTeam: (name: string) => Promise<CreatedTeam>;
+  /**
+   * Founds a team and adds it to the list; rejects with the node's reason.
+   * `myName` is your name in it, asked in the same step so no board asks.
+   */
+  createTeam: (name: string, myName?: string) => Promise<CreatedTeam>;
   /** Its owner only (a passkey step-up). Rejects with the node's reason; the team stays listed then. */
   deleteTeam: (teamId: string) => Promise<void>;
   /** What a member who is not an admin does instead. The team stays listed when refused. */
@@ -62,9 +67,11 @@ export function useTeamList(): TeamList {
     return () => clearInterval(id);
   }, [reload]);
 
-  const createTeam = useCallback(async (name: string): Promise<CreatedTeam> => {
+  const createTeam = useCallback(async (name: string, myName?: string): Promise<CreatedTeam> => {
     const data = await createOrg(name);
     const id = data.namespaceId;
+    // Best effort: refused, the team's first board asks for it, once.
+    if (id && myName?.trim()) await publishMyName(id, getApi().accountId, myName).catch(() => {});
     // Cache the name so it survives even if the server later returns no alias,
     // and so it can be embedded in invitations for joiners.
     if (id) setStoredTeamName(id, name);

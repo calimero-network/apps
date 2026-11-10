@@ -135,7 +135,7 @@ export function useGroupContexts() {
                 // as write-once, so later local edits won't overwrite
                 // what other members see, and the user appears in
                 // `get_profiles` (= channel member list) immediately.
-                const username = getMessengerDisplayName();
+                const username = getMessengerDisplayName(groupId);
                 if (username) {
                   clientApi
                     .joinChat({

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CalimeroError, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import App from './App';
 import type { SessionDeps } from './session';
@@ -86,6 +86,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
       { appId: 'app-x', name: 'elsewhere', owner: 'acct-alice', org: 'org-2', bundle: 'bundle-hash', package: null, version: null },
     ]),
     createOrg: vi.fn(async () => 'org-new'),
+    setOrgMetadata: vi.fn(async () => {}),
     setCapabilities: vi.fn(async () => {}),
     createApp: vi.fn(async () => 'app-new'),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
@@ -361,5 +362,101 @@ describe('App', () => {
     expect(await screen.findByText(says, {}, SLOW)).toBeTruthy();
     expect(invites.token()).toBe('tok-xyz');
     expect(screen.getByTestId('invitation-join').textContent).toBe('Try again');
+  });
+
+  describe('your name, asked once per workspace', () => {
+    /** An org that has no name for Alice yet, until `setMemberMetadata` writes one. */
+    function unnamed(client: ReturnType<typeof fakeClient>) {
+      let alice: Record<string, unknown> | undefined;
+      const mocks = client as unknown as { getOrg: Mock; setMemberMetadata: Mock };
+      mocks.getOrg.mockImplementation(async () => ({
+        members: { 'acct-alice': 'owner', 'acct-bob': 'member' },
+        memberMetadata: { ...(alice ? { 'acct-alice': alice } : {}), 'acct-bob': { name: 'Bob' } },
+        capabilities: {},
+        defaultCapabilities: 3,
+      }));
+      mocks.setMemberMetadata.mockImplementation(async (_org: string, _account: string, meta: Record<string, unknown>) => {
+        alice = meta;
+      });
+    }
+
+    it('never asks on opening a workspace that already has your name', async () => {
+      const client = fakeClient({ signedIn: true });
+      storeSession();
+      writeActiveNs('org-1');
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client)} />);
+
+      expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('alias-gate')).toBeNull();
+      expect(client.setMemberMetadata).not.toHaveBeenCalled();
+    });
+
+    it('asks for your name in the create dialog and writes it to the new workspace', async () => {
+      const client = fakeClient({ signedIn: true });
+      unnamed(client);
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      localStorage.setItem('calimero-names:last', 'Alice L');
+      storeSession();
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client)} />);
+
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      // Prefilled with the name used for the last workspace, and required.
+      const self = screen.getByTestId('ns-create-self-name') as HTMLInputElement;
+      expect(self.value).toBe('Alice L');
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(self, { target: { value: '' } });
+      expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(self, { target: { value: 'Alice' } });
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }] }));
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+
+      await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-new', 'acct-alice', { name: 'Alice' }), SLOW);
+      await waitFor(() => expect(readActiveNs()).toBe('org-new'), SLOW);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(screen.queryByTestId('alias-gate')).toBeNull();
+      expect(localStorage.getItem('calimero-names:last')).toBe('Alice');
+    });
+
+    it('asks once right after joining a workspace that has no name for you', async () => {
+      const client = fakeClient({ signedIn: true });
+      unnamed(client);
+      localStorage.setItem('calimero-names:last', 'Alice');
+      storeSession();
+      holdInvite('tok-xyz');
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client)} />);
+
+      fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+      const input = (await screen.findByTestId('alias-gate-name', {}, SLOW)) as HTMLInputElement;
+      expect(input.value).toBe('Alice');
+      fireEvent.click(screen.getByTestId('alias-gate-save'));
+
+      await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-1', 'acct-alice', { name: 'Alice' }), SLOW);
+      expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+      // Not asked again on opening the workspace.
+      expect(screen.queryByTestId('alias-gate')).toBeNull();
+      expect(client.setMemberMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks once on entering a workspace made before names were asked, then never again', async () => {
+      const client = fakeClient({ signedIn: true });
+      unnamed(client);
+      storeSession();
+      writeActiveNs('org-1');
+      window.history.replaceState(null, '', '/crm');
+      const { unmount } = render(<App deps={deps(client)} />);
+
+      fireEvent.change(await screen.findByTestId('alias-gate-name', {}, SLOW), { target: { value: 'Alice' } });
+      fireEvent.click(screen.getByTestId('alias-gate-save'));
+      await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-1', 'acct-alice', { name: 'Alice' }), SLOW);
+      await waitFor(() => expect(screen.queryByTestId('alias-gate')).toBeNull(), SLOW);
+      unmount();
+
+      render(<App deps={deps(client)} />);
+      expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('alias-gate')).toBeNull();
+    });
   });
 });

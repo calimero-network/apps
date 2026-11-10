@@ -13,8 +13,9 @@
  * filter; `GET /apps?package=` answers this app's instances with their `org`,
  * so the organizations holding this app are `me.orgs` ∩ those.
  */
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo, AppTeams, CalimeroClient, OrgMode } from "@calimero-network/mero-js";
 
+import { appTeams } from "./appTeams";
 import { mayCreateIn, type OrgAccessView } from "./invite";
 import type { AppSource } from "./target";
 
@@ -37,7 +38,18 @@ export interface OrgHolding {
 export interface OtherOrg extends MyOrg {
   /** The app instances it holds that this account reaches. */
   holds: OrgHolding[];
-  /** What it holds, in words: "Mero Blocks: overworld" ({@link holdingsLabel}). */
+  /**
+   * Its app teams (one per app installed there), on a node with app teams
+   * (core#4890); `null` (or absent) on an older node, where `holds` is all there is.
+   */
+  apps?: AppTeams["appTeams"] | null;
+  /** How it holds its apps; `null` (or absent) on a node without app teams. */
+  mode?: OrgMode | null;
+  /**
+   * What it holds, in words: its apps by name ({@link appTeamsLabel}) where the
+   * node lists app teams, else the instances this account reaches
+   * ("Mero Blocks: overworld", {@link holdingsLabel}).
+   */
   label: string;
   /** Whether this account may create an app there; `null` when it cannot be told (the node decides). */
   canCreate: boolean | null;
@@ -177,6 +189,25 @@ export function holdingsLabel(holds: readonly OrgHolding[]): string {
     .join(", ");
 }
 
+/**
+ * An org's apps in words, from its app teams: "Mero Chat, Mero Blocks", with
+ * the ones this account is not in marked "(not yours)". An org whose apps
+ * this account does not reach still holds them, which the instance list
+ * ({@link holdingsLabel}) cannot see: it said "No apps yet" for a shared org
+ * whose apps were all closed to the account. `null` when there are no app
+ * teams to go by (a legacy org), so the caller falls back to the instances.
+ */
+export function appTeamsLabel(teams: AppTeams["appTeams"]): string | null {
+  if (teams.length === 0) return null;
+  return [...teams]
+    .sort((a, b) => a.name.localeCompare(b.name) || a.package.localeCompare(b.package))
+    .map((t) => {
+      const title = t.name || packageTitle(t.package);
+      return t.member ? title : `${title} (not yours)`;
+    })
+    .join(", ");
+}
+
 export interface OtherOrgsOptions {
   /** Also list organizations where this account may not create apps (default: left out). */
   includeNotAllowed?: boolean;
@@ -190,7 +221,7 @@ export interface OtherOrgsOptions {
  * creates this app's instance there (`createApp(name, source, { org })`).
  */
 export async function otherOrgs(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg" | "session">,
+  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg" | "session"> & Partial<Pick<CalimeroClient, "listAppTeams">>,
   source: AppSource,
   options: OtherOrgsOptions = {},
 ): Promise<OtherOrg[]> {
@@ -216,10 +247,38 @@ export async function otherOrgs(
           marked = isMarkedFor(view.metadata, source);
           if (account) canCreate = mayCreateIn(view, account);
         }
-        return { ...o, holds, label: holdingsLabel(holds), canCreate, marked };
+        const teams = await teamsOf(client, o.orgId);
+        // In an org with app teams, only an owner or admin installs an app
+        // that has no team there yet (core#4890, decision 4).
+        const pkg = typeof source === "string" ? null : source.package;
+        if (
+          canCreate === true &&
+          teams &&
+          teams.mode !== "legacy" &&
+          !(pkg && teams.appTeams.some((t) => t.package === pkg)) &&
+          o.role !== "owner" &&
+          o.role !== "admin"
+        ) {
+          canCreate = false;
+        }
+        const label = (teams && appTeamsLabel(teams.appTeams)) ?? holdingsLabel(holds);
+        return { ...o, holds, apps: teams?.appTeams ?? null, mode: teams?.mode ?? null, label, canCreate, marked };
       }),
   );
   // An org made for this app is in its own list already ({@link orgsWithApp} `marked`).
   const others = rows.filter((o) => !o.marked).map(({ marked: _marked, ...o }) => o as OtherOrg);
   return options.includeNotAllowed ? others : others.filter((o) => o.canCreate !== false);
+}
+
+/** {@link appTeams}, or `null` for a client without the method or any failure: the label falls back. */
+async function teamsOf(
+  client: Partial<Pick<CalimeroClient, "listAppTeams">>,
+  org: string,
+): Promise<AppTeams | null> {
+  if (typeof client.listAppTeams !== "function") return null;
+  try {
+    return await appTeams(client as Pick<CalimeroClient, "listAppTeams">, org);
+  } catch {
+    return null;
+  }
 }

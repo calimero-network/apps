@@ -109,6 +109,18 @@ export interface MyName {
   setName: (name: string) => Promise<void>;
 }
 
+/**
+ * Publishes `account`'s name for the whole team and shows it here at once.
+ * Answers the name as stored; rejects when the node refuses.
+ */
+export async function publishMyName(team: string, account: string, name: string): Promise<string> {
+  const trimmed = name.trim();
+  await setTeamName(team, account, trimmed);
+  entry(team).names = new Map(entry(team).names).set(account, trimmed);
+  changed();
+  return trimmed;
+}
+
 export function useMyName(team: string | null | undefined, account: string | null | undefined): MyName {
   const e = useDirectory(team);
   const [pending, setPending] = useState<string | null>(null);
@@ -116,11 +128,7 @@ export function useMyName(team: string | null | undefined, account: string | nul
   const setName = useCallback(
     async (name: string) => {
       if (!team || !account) throw new Error("Open a team first.");
-      const trimmed = name.trim();
-      await setTeamName(team, account, trimmed);
-      entry(team).names = new Map(entry(team).names).set(account, trimmed);
-      setPending(trimmed);
-      changed();
+      setPending(await publishMyName(team, account, name));
     },
     [team, account],
   );

@@ -86,6 +86,8 @@ private fun SignedIn(
 
     BackHandler(enabled = stack.size > 1) { vm.pop() }
 
+    var naming by remember { mutableStateOf<String?>(null) }
+
     suspend fun joined(namespaceId: String) {
         teams.load()
         val team =
@@ -93,6 +95,8 @@ private fun SignedIn(
                 .firstOrNull { it.id == namespaceId }
                 ?: Team(namespaceId, vm.names.team(namespaceId) ?: TeamsModel.teamPlaceholder(namespaceId), CalendarConstants.PACKAGE_NAME)
         vm.didJoin(team)
+        // Joining is where your name in the team is asked, once; a team that has it opens as is.
+        if (teams.needsName(namespaceId)) naming = namespaceId
     }
 
     when (val screen = stack.last()) {
@@ -154,6 +158,17 @@ private fun SignedIn(
                 TextButton(enabled = !busy, onClick = { session?.dismissPendingInvitation() }) { Text("Not now", color = Tokens.muted) }
             },
             containerColor = Tokens.surface,
+        )
+    }
+
+    naming?.let { teamId ->
+        NameSheet(
+            initial = teams.lastName,
+            onSave = {
+                teams.setMyName(teamId, it)
+                naming = null
+            },
+            onSkip = { naming = null },
         )
     }
 }

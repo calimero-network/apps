@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AppInfo } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import {
   appSource,
   askAnOwnerCopy,
@@ -9,6 +9,7 @@ import {
   type KeyValueStorage,
   type PendingInvite,
 } from "@calimero-apps/connect";
+import { decideSelfName, lastUsedName, orgMemberName, setOrgName } from "@calimero-apps/names";
 import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
@@ -27,6 +28,15 @@ type Tab = "standup" | "week" | "decisions" | "invite";
 
 /** The team open in this page: an app instance and the org it lives in. */
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
+
+/** What reads and writes your name in a team's org (member metadata `{ name }`). */
+type OrgClient = Pick<CalimeroClient, "getOrg" | "setMemberMetadata">;
+
+/** Your name in `org`'s member metadata, or "". */
+async function readOrgName(client: OrgClient, org: string, account: string): Promise<string> {
+  const o = (await client.getOrg(org)) as { memberMetadata?: Record<string, unknown> | null };
+  return orgMemberName(o.memberMetadata, account);
+}
 
 function readSelection(storage: KeyValueStorage, key: string): Opened | null {
   try {
@@ -62,15 +72,20 @@ export function App({
     [deps, storage],
   );
   // Signed up with the invite: the account is in its org already, which
-  // opens once the session is signed in.
-  const api = useSession(sessionDeps, invites, (joined, pending) =>
-    setLanding({ org: joined.org ?? pending?.org ?? null }),
+  // opens once the session is signed in. Your name in it is asked once.
+  const api = useSession(sessionDeps, invites, (joined, pending) => {
+    const org = joined.org ?? pending?.org ?? null;
+    setJoinedOrg(org);
+    setLanding({ org });
+  },
   );
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<Opened | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
+  // An org just joined: your name in it is asked once, here.
+  const [joinedOrg, setJoinedOrg] = useState<string | null>(null);
   const [theme, setTheme] = useTheme();
 
   const client = session.status === "signed-in" ? session.client : null;
@@ -197,6 +212,7 @@ export function App({
           after={after}
           onJoined={({ org }) => {
             setAsked(null);
+            setJoinedOrg(org);
             setLanding({ org });
           }}
           onClose={({ member }) => {
@@ -216,7 +232,24 @@ export function App({
             <p className="empty">{notice}</p>
           </div>
         )}
-        <TeamPicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
+        {joinedOrg && (
+          <JoinedName
+            key={joinedOrg}
+            client={session.client}
+            org={joinedOrg}
+            accountId={session.accountId}
+            after={after}
+            onDone={() => setJoinedOrg(null)}
+          />
+        )}
+        <TeamPicker
+          key={pickerKey}
+          client={session.client}
+          accountId={session.accountId}
+          source={source}
+          onOpen={open}
+          after={after}
+        />
         <div className="card">
           <h2>Join with an invitation</h2>
           <p className="empty">
@@ -239,6 +272,8 @@ export function App({
       opened={opened}
       after={after}
       inviteClient={session.client}
+      orgClient={session.client}
+      accountId={session.accountId}
       passkey={deps.passkey}
       theme={theme}
       setTheme={setTheme}
@@ -293,6 +328,8 @@ function TeamView({
   opened,
   after,
   inviteClient,
+  orgClient,
+  accountId,
   passkey,
   theme,
   setTheme,
@@ -303,6 +340,8 @@ function TeamView({
   opened: Opened;
   after: () => void;
   inviteClient: Parameters<typeof InviteCard>[0]["client"];
+  orgClient: OrgClient;
+  accountId: string;
   passkey: SessionDeps["passkey"];
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -318,8 +357,69 @@ function TeamView({
   const myName = useRead(
     team.client,
     team.version,
-    (c) => (me.data ? c.getName({ account: me.data }) : Promise.resolve("")),
+    // null until `me` is known: "" would read as "no name" and ask.
+    (c): Promise<string | null> => (me.data ? c.getName({ account: me.data }) : Promise.resolve(null)),
     [me.data],
+  );
+
+  // Your name is the org's, asked when you created or joined it and copied
+  // into this team's contract (`setName`) without asking. null: not read yet.
+  const org = opened.org;
+  const [orgName, setOrgNameRead] = useState<string | null>(null);
+  useEffect(() => {
+    if (!org) return;
+    let live = true;
+    readOrgName(orgClient, org, accountId)
+      .then((name) => live && setOrgNameRead(name))
+      .catch(() => {})
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [orgClient, org, accountId, after]);
+
+  const contractName = myName.data;
+  // A team with no org (made before teams had one) keeps its name on the contract alone.
+  const decision = org
+    ? decideSelfName({ orgReady: orgName !== null && contractName !== null, orgName, fallbacks: [contractName] })
+    : contractName === null
+      ? ({ kind: "wait" } as const)
+      : contractName
+        ? ({ kind: "use", name: contractName } as const)
+        : ({ kind: "ask", suggestion: lastUsedName() } as const);
+
+  const adopt = decision.kind === "adopt" ? decision.name : "";
+  useEffect(() => {
+    if (!adopt || !org) return;
+    setOrgName(orgClient, org, accountId, adopt)
+      .then(() => setOrgNameRead(adopt))
+      .catch(() => {})
+      .finally(after);
+  }, [adopt, org, orgClient, accountId, after]);
+
+  // Only when it differs: every rename is an event to the whole team.
+  const use = decision.kind === "use" ? decision.name : "";
+  const fed = useRef("");
+  useEffect(() => {
+    if (!use || contractName === null || contractName === use || fed.current === use) return;
+    fed.current = use;
+    void team.act((c) => c.setName({ name: use })).catch(() => {});
+  }, [use, contractName, team]);
+
+  /** Your name on the org (every team in it) and on this team's contract. */
+  const saveName = useCallback(
+    async (name: string) => {
+      const clean = name.trim();
+      if (!clean) return;
+      await team.act((c) => c.setName({ name: clean }));
+      if (!org) return;
+      // A failed write is adopted from the contract next time, without asking.
+      await setOrgName(orgClient, org, accountId, clean)
+        .then(() => setOrgNameRead(clean))
+        .catch(() => {})
+        .finally(after);
+    },
+    [team, org, orgClient, accountId, after],
   );
 
   return (
@@ -329,7 +429,7 @@ function TeamView({
         <Menu
           me={me.data}
           myName={myName.data ?? ""}
-          team={team}
+          onRename={saveName}
           theme={theme}
           setTheme={setTheme}
           onSwitchTeam={onSwitchTeam}
@@ -338,7 +438,9 @@ function TeamView({
       }
     >
       {me.error && <pre className="err">{me.error}</pre>}
-      {me.data && myName.data === "" && <Welcome team={team} appId={opened.appId} />}
+      {decision.kind === "ask" && (
+        <Welcome scope={org ?? opened.appId} suggestion={decision.suggestion} onSave={saveName} />
+      )}
 
       <nav className="tabs" role="tablist">
         {(
@@ -429,12 +531,21 @@ function TeamName({ team }: { team: Team }) {
 }
 
 /**
- * First run in a team: ask for a name, because the alternative is everyone
- * seeing `4845d7…c6b1` on your updates. Skippable, and the skip is
- * remembered per team on this browser.
+ * Your name in a team made before names were asked on create and join: asked
+ * once for the org, because the alternative is everyone seeing `4845d7…c6b1`
+ * on your updates. Skippable, and the skip is remembered per org on this
+ * browser.
  */
-function Welcome({ team, appId }: { team: Team; appId: string }) {
-  const key = `mero-standup:welcomed:${appId}`;
+function Welcome({
+  scope,
+  suggestion,
+  onSave,
+}: {
+  scope: string;
+  suggestion: string;
+  onSave: (name: string) => Promise<void>;
+}) {
+  const key = `mero-standup:welcomed:${scope}`;
   const [dismissed, setDismissed] = useState(() => {
     try {
       return window.localStorage.getItem(key) === "1";
@@ -442,9 +553,6 @@ function Welcome({ team, appId }: { team: Team; appId: string }) {
       return false;
     }
   });
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   if (dismissed) return null;
 
   function dismiss() {
@@ -457,20 +565,103 @@ function Welcome({ team, appId }: { team: Team; appId: string }) {
   }
 
   return (
+    <NameCard
+      title="Welcome to the team"
+      body="Your name in this team: it shows on everything you post, in every team of this organization."
+      submit="Continue"
+      initial={suggestion}
+      onSave={onSave}
+      onLater={dismiss}
+    />
+  );
+}
+
+/**
+ * Just joined an org by invitation: your name in it, asked once, unless the
+ * org already has one for you.
+ */
+function JoinedName({
+  client,
+  org,
+  accountId,
+  after,
+  onDone,
+}: {
+  client: OrgClient;
+  org: string;
+  accountId: string;
+  after: () => void;
+  onDone: () => void;
+}) {
+  const [ask, setAsk] = useState(false);
+  useEffect(() => {
+    let live = true;
+    readOrgName(client, org, accountId)
+      .then((name) => {
+        if (!live) return;
+        if (name) onDone();
+        else setAsk(true);
+      })
+      // Unreadable now: a team in it asks when it opens.
+      .catch(() => live && onDone())
+      .finally(after);
+    return () => {
+      live = false;
+    };
+    // `onDone` is the parent's; the check runs once per org.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, org, accountId, after]);
+  if (!ask) return null;
+  return (
+    <NameCard
+      title="Your name in this team"
+      body="Teammates see it on everything you post, in every team of this organization."
+      submit="Save"
+      initial={lastUsedName()}
+      onSave={async (name) => {
+        await setOrgName(client, org, accountId, name);
+        after();
+        onDone();
+      }}
+      onLater={onDone}
+    />
+  );
+}
+
+/** Ask for your name: a card with one field, Save and Later. */
+function NameCard({
+  title,
+  body,
+  submit,
+  initial,
+  onSave,
+  onLater,
+}: {
+  title: string;
+  body: string;
+  submit: string;
+  initial: string;
+  onSave: (name: string) => Promise<void>;
+  onLater: () => void;
+}) {
+  const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
     <form
       className="card welcome"
       onSubmit={(e) => {
         e.preventDefault();
         setBusy(true);
         setError(null);
-        team
-          .act((c) => c.setName({ name }))
+        onSave(name)
           .catch((err: unknown) => setError(describeError(err)))
           .finally(() => setBusy(false));
       }}
     >
-      <h2>Welcome to the team</h2>
-      <p className="empty">What should your teammates call you? It shows on everything you post.</p>
+      <h2>{title}</h2>
+      <p className="empty">{body}</p>
       <div className="row">
         <input
           aria-label="your name"
@@ -481,9 +672,9 @@ function Welcome({ team, appId }: { team: Team; appId: string }) {
           onChange={(e) => setName(e.target.value)}
         />
         <button type="submit" disabled={busy || !name.trim()}>
-          {busy ? "Saving…" : "Continue"}
+          {busy ? "Saving…" : submit}
         </button>
-        <button type="button" className="ghost" onClick={dismiss}>
+        <button type="button" className="ghost" onClick={onLater}>
           Later
         </button>
       </div>
@@ -496,7 +687,7 @@ function Welcome({ team, appId }: { team: Team; appId: string }) {
 function Menu({
   me,
   myName,
-  team,
+  onRename,
   theme,
   setTheme,
   onSwitchTeam,
@@ -504,7 +695,8 @@ function Menu({
 }: {
   me?: string | null;
   myName?: string;
-  team?: Team;
+  /** Your name in the team's org (and this team), when a team is open. */
+  onRename?: (name: string) => Promise<void>;
   theme: Theme;
   setTheme: (t: Theme) => void;
   onSwitchTeam?: () => void;
@@ -545,7 +737,7 @@ function Menu({
       </button>
       {open && (
         <div className="menu-panel" role="menu">
-          {me && team && (
+          {me && onRename && (
             <div className="menu-section">
               {renaming === null ? (
                 <button className="menu-item" onClick={() => setRenaming(myName ?? "")}>
@@ -556,7 +748,7 @@ function Menu({
                   className="row"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void team.act((c) => c.setName({ name: renaming })).then(() => setRenaming(null));
+                    void onRename(renaming).then(() => setRenaming(null));
                   }}
                 >
                   <input

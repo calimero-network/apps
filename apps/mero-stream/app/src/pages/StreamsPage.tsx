@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { lastUsedName } from "@calimero-apps/names";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
@@ -11,8 +12,10 @@ import {
   inviteLink,
   inviteToken,
   listStreams,
+  publishMyName,
   type StreamRow,
 } from "../lib/streams";
+import { storedName } from "../lib/session";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
@@ -49,6 +52,9 @@ export default function StreamsPage() {
   const [streams, setStreams] = useState<StreamRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
+  // Your name in the new stream: asked here, once, and every room in it
+  // joins you with it. Offered from the last stream you named yourself in.
+  const [selfName, setSelfName] = useState(() => lastUsedName() || storedName());
 
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -107,10 +113,14 @@ export default function StreamsPage() {
 
   const create = useCallback(() => {
     const streamName = name.trim();
-    if (!streamName || !conn) return;
+    const yourName = selfName.trim();
+    if (!streamName || !yourName || !conn) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the stream, then approve with your passkey so members can create rooms…");
       const { orgId, warning } = await createStream(conn.client, streamName, conn.passkey, conn.source);
+      // Best effort: the stream exists either way, and its first room asks
+      // for the name once if this did not land.
+      await publishMyName(conn.client, orgId, conn.accountId, yourName).catch(() => {});
       conn.after();
       setName("");
       if (warning) showToast(warning);
@@ -118,7 +128,7 @@ export default function StreamsPage() {
       await load(false);
       navigate(`/streams/${orgId}`);
     });
-  }, [name, conn, run, load, navigate, showToast]);
+  }, [name, selfName, conn, run, load, navigate, showToast]);
 
   // "Connect to an existing organization": a room goes into an org the
   // account has for another app only on this explicit choice.
@@ -204,11 +214,22 @@ export default function StreamsPage() {
             data-testid="stream-name-input"
             aria-label="New stream name"
           />
+          <input
+            className={styles.input}
+            placeholder="Your name in this stream"
+            value={selfName}
+            onChange={(e) => setSelfName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            maxLength={40}
+            disabled={pending === "create"}
+            data-testid="stream-self-name-input"
+            aria-label="Your name in this stream"
+          />
           <ActionButton
             onClick={create}
             pending={pending === "create"}
             pendingLabel="Creating…"
-            disabled={!name.trim() || !conn}
+            disabled={!name.trim() || !selfName.trim() || !conn}
             testId="create-stream"
           >
             <PlusIcon size={16} />

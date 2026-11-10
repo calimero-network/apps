@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { describeRedeemFailure } from "@calimero-apps/connect";
+import { describeError, describeRedeemFailure } from "@calimero-apps/connect";
+import { lastUsedName } from "@calimero-apps/names";
 import { useConn } from "../hooks/useConn";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { useSessionApi } from "../session";
-import { setActiveRoom } from "../lib/session";
+import { setActiveRoom, storedName } from "../lib/session";
 import {
   INVITE_REFUSED,
   alreadyMember,
   dropInvite,
   inviteRefused,
   pendingInvite,
+  publishMyName,
+  streamInfo,
   type PendingInvite,
 } from "../lib/streams";
 import { UserPlusIcon, XIcon } from "./icons";
@@ -34,6 +37,9 @@ import styles from "./InviteModal.module.css";
  * so and the token dropped: redeeming it would spend its single use, and the
  * person it was meant for could no longer join. A refused invite (unknown,
  * used, expired, revoked) is said plainly.
+ *
+ * Once joined, a stream that has no name for you asks for one here, once:
+ * every room in it then joins you with it, without asking.
  */
 export default function InvitationPrompt() {
   const conn = useConn();
@@ -47,6 +53,9 @@ export default function InvitationPrompt() {
   const [member, setMember] = useState<boolean | null>(null);
   // An invite the sign-up joined with: opened, never asked about.
   const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
+  // Joined, and asking for your name in the stream before opening it.
+  const [naming, setNaming] = useState<string | null>(null);
+  const [selfName, setSelfName] = useState("");
   const ref = useRef<HTMLDialogElement | null>(null);
   const client = conn?.client ?? null;
   const open = !!client && !!invite && member !== null;
@@ -120,9 +129,23 @@ export default function InvitationPrompt() {
     setBusy(true);
     setError(null);
     try {
-      await conn.client.redeemInvite(invite.token);
+      const redeemed = (await conn.client.redeemInvite(invite.token)) as { org?: unknown; orgId?: unknown } | null;
       conn.after();
       dropInvite();
+      const org =
+        [redeemed?.org, redeemed?.orgId, invite.stream].find(
+          (v): v is string => typeof v === "string" && !!v,
+        ) ?? null;
+      const known = org
+        ? await streamInfo(conn.client, org)
+            .then((info) => info.names[conn.accountId] ?? "")
+            .catch(() => "")
+        : "";
+      if (org && !known) {
+        setSelfName(lastUsedName() || storedName());
+        setNaming(org);
+        return;
+      }
       setInvite(null);
       go(invite);
     } catch (e) {
@@ -140,71 +163,138 @@ export default function InvitationPrompt() {
     }
   };
 
+  /** Into what the invitation named; a skipped name is asked by the stream's first room. */
+  const finish = () => {
+    if (!invite) return;
+    setNaming(null);
+    setInvite(null);
+    setError(null);
+    go(invite);
+  };
+
+  const saveName = async () => {
+    if (!conn || !naming || !selfName.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await publishMyName(conn.client, naming, conn.accountId, selfName);
+      conn.after();
+      finish();
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!open) return null;
   return (
     <dialog
       ref={ref}
       className={styles.dialog}
-      onClose={dismiss}
+      onClose={() => {
+        if (!naming) dismiss();
+        else if (!busy) finish();
+      }}
       data-testid="invitation-prompt"
     >
-      <div className={styles.body}>
-        <header className={styles.head}>
-          <span className={styles.headIcon} aria-hidden="true">
-            <UserPlusIcon size={18} />
-          </span>
-          <h2 className={styles.title}>
-            {member
-              ? "You're already in this stream"
-              : `Join ${invite?.name ? `“${invite.name}”` : "this stream"}?`}
-          </h2>
-          <button
-            type="button"
-            className={styles.close}
-            onClick={dismiss}
-            aria-label="Not now"
-          >
-            <XIcon size={18} />
-          </button>
-        </header>
-        <p
-          className={styles.scope}
-          data-testid={member ? "invitation-member" : undefined}
-        >
-          {member
-            ? "This invitation is for a stream you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
-            : invite?.room
-              ? "Joining takes you straight into that call."
-              : "Joining gives you access to the stream and every room in it."}
-        </p>
-        {member ? (
+      {naming ? (
+        <div className={styles.body} data-testid="invitation-name">
+          <header className={styles.head}>
+            <span className={styles.headIcon} aria-hidden="true">
+              <UserPlusIcon size={18} />
+            </span>
+            <h2 className={styles.title}>Your name in this stream</h2>
+          </header>
+          <p className={styles.scope}>
+            The name on your tile in every room of the stream. Asked once.
+          </p>
+          <input
+            className={styles.nameInput}
+            aria-label="Your name in this stream"
+            placeholder="e.g. Ana"
+            value={selfName}
+            maxLength={40}
+            autoFocus
+            autoComplete="nickname"
+            onChange={(e) => setSelfName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void saveName()}
+            data-testid="invitation-name-input"
+          />
           <button
             type="button"
             className={styles.primary}
-            onClick={openIt}
-            data-testid="invitation-open"
+            onClick={() => void saveName()}
+            disabled={busy || !selfName.trim()}
+            data-testid="invitation-name-save"
           >
-            Open it
+            {busy ? "Saving…" : "Continue"}
           </button>
-        ) : (
-          !refused && (
+          {error && (
+            <p className={styles.hint} role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className={styles.body}>
+          <header className={styles.head}>
+            <span className={styles.headIcon} aria-hidden="true">
+              <UserPlusIcon size={18} />
+            </span>
+            <h2 className={styles.title}>
+              {member
+                ? "You're already in this stream"
+                : `Join ${invite?.name ? `“${invite.name}”` : "this stream"}?`}
+            </h2>
+            <button
+              type="button"
+              className={styles.close}
+              onClick={dismiss}
+              aria-label="Not now"
+            >
+              <XIcon size={18} />
+            </button>
+          </header>
+          <p
+            className={styles.scope}
+            data-testid={member ? "invitation-member" : undefined}
+          >
+            {member
+              ? "This invitation is for a stream you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
+              : invite?.room
+                ? "Joining takes you straight into that call."
+                : "Joining gives you access to the stream and every room in it."}
+          </p>
+          {member ? (
             <button
               type="button"
               className={styles.primary}
-              onClick={() => void join()}
-              disabled={busy}
-              data-testid="invitation-join"
+              onClick={openIt}
+              data-testid="invitation-open"
             >
-              {busy ? "Joining…" : "Join"}
+              Open it
             </button>
-          )
-        )}
-        {error && (
-          <p className={styles.hint} role="alert" data-testid="invitation-error">
-            {error}
-          </p>
-        )}
-      </div>
+          ) : (
+            !refused && (
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={() => void join()}
+                disabled={busy}
+                data-testid="invitation-join"
+              >
+                {busy ? "Joining…" : "Join"}
+              </button>
+            )
+          )}
+          {error && (
+            <p className={styles.hint} role="alert" data-testid="invitation-error">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </dialog>
   );
 }

@@ -30,39 +30,54 @@ import { NAME_POLICY } from "./policy";
 class MemberMetadataSource implements SourceLayer<string> {
   private api = new GroupApiDataSource();
 
-  constructor(private readonly getNamespaceId: () => string | undefined) {}
-
   async load(keys: string[]): Promise<Map<string, string | undefined>> {
-    const namespaceId = this.getNamespaceId();
     const out = new Map<string, string | undefined>();
-    if (!namespaceId) {
-      // No namespace yet (pre-login). Answer nothing rather than assert
-      // "these accounts have no name" — the caller retries once we have one.
-      return out;
+    // Keys are `namespace|account`: a name belongs to an account IN a
+    // namespace. One account (Calimero 1.0) is the same in every workspace,
+    // and may go by a different name in each.
+    const byNamespace = new Map<string, string[]>();
+    for (const key of keys) {
+      const parsed = splitKey(key);
+      if (!parsed) continue;
+      const list = byNamespace.get(parsed.namespaceId) ?? [];
+      list.push(key);
+      byNamespace.set(parsed.namespaceId, list);
     }
 
-    const resp = await this.api.listMembers(namespaceId);
-    const members = resp?.data?.members;
-    if (!members) return out;
-
-    // Index the whole member list, not just the requested keys: one call
-    // already carries every name, and caching them all means the next 200 rows
-    // are answered from memory.
-    const byAccount = new Map<string, string>();
-    members.forEach((m: { identity: string; alias?: string }) => {
-      const alias = m.alias?.trim();
-      if (!alias) return;
-      const account = canonical(m.identity);
-      if (account) byAccount.set(account, alias);
-    });
-
-    for (const [account, alias] of byAccount) out.set(account, alias);
-    // Requested keys absent from the list genuinely have no name: assert that
-    // so negative caching can hold, rather than leaving them to re-fetch.
-    for (const key of keys) if (!out.has(key)) out.set(key, undefined);
+    await Promise.all(
+      [...byNamespace].map(async ([namespaceId, wanted]) => {
+        const resp = await this.api.listMembers(namespaceId);
+        const members = resp?.data?.members;
+        if (!members) return;
+        // Index the whole member list, not just the requested keys: one call
+        // already carries every name, and caching them all means the next 200
+        // rows are answered from memory.
+        members.forEach((m: { identity: string; alias?: string }) => {
+          const alias = m.alias?.trim();
+          if (!alias) return;
+          const account = canonical(m.identity);
+          if (account) out.set(scopedKey(namespaceId, account), alias);
+        });
+        // Requested keys absent from the list genuinely have no name: assert
+        // that so negative caching can hold, rather than leaving them to re-fetch.
+        for (const key of wanted) if (!out.has(key)) out.set(key, undefined);
+      }),
+    );
 
     return out;
   }
+}
+
+const SEP = "|";
+
+function scopedKey(namespaceId: string, account: string): string {
+  return `${namespaceId}${SEP}${account}`;
+}
+
+function splitKey(key: string): { namespaceId: string; account: string } | undefined {
+  const at = key.indexOf(SEP);
+  if (at <= 0) return undefined;
+  return { namespaceId: key.slice(0, at), account: key.slice(at + 1) };
 }
 
 /**
@@ -86,12 +101,19 @@ function canonical(account: string | undefined): string | undefined {
 export class NameRepository {
   private repo: LayeredRepository<string>;
 
-  constructor(getNamespaceId: () => string | undefined) {
+  constructor(private readonly getNamespaceId: () => string | undefined) {
     this.repo = new LayeredRepository<string>(
-      new MemberMetadataSource(getNamespaceId),
+      new MemberMetadataSource(),
       NAME_POLICY,
       new IndexedDbPersistence<string>("names"),
     );
+  }
+
+  /** `account`'s key in the current namespace, or undefined before there is one. */
+  private key(account: string | undefined): string | undefined {
+    const namespaceId = this.getNamespaceId();
+    const hex = canonical(account);
+    return namespaceId && hex ? scopedKey(namespaceId, hex) : undefined;
   }
 
   /**
@@ -102,20 +124,20 @@ export class NameRepository {
    * schedules a fetch but never suspends.
    */
   displayName(account: string | undefined): string {
-    const key = canonical(account);
+    const key = this.key(account);
     if (!key) return shortAccount(account);
     return this.repo.get(key) || shortAccount(account);
   }
 
   /** Known name, without scheduling a fetch. For hot paths and tests. */
   peek(account: string | undefined): string | undefined {
-    const key = canonical(account);
+    const key = this.key(account);
     return key ? this.repo.peek(key) : undefined;
   }
 
   /** Await the authoritative name — for non-render callers such as notifications. */
   async resolve(account: string | undefined): Promise<string> {
-    const key = canonical(account);
+    const key = this.key(account);
     if (!key) return shortAccount(account);
     return (await this.repo.resolve(key)) || shortAccount(account);
   }
@@ -127,7 +149,7 @@ export class NameRepository {
    * when the TTL happens to lapse.
    */
   invalidate(account?: string): void {
-    this.repo.invalidate(account ? canonical(account) : undefined);
+    this.repo.invalidate(account ? this.key(account) : undefined);
   }
 
   subscribe(fn: () => void): () => void {

@@ -232,6 +232,10 @@ catalog:
 # 29.7.4 (mero-js#338) asks confirm prompts for `userVerification: 'required'`
 # and throws `ConfirmPromptBlocked` for a prompt the browser or a password
 # manager blocked; 29.7.5 (mero-js#339) always uses the browser's own WebAuthn.
+# 29.8.0 wraps core's app teams (core#4890, #4891): listAppTeams, scopeApps,
+# listInvites, revokeInvite, setTeamDefaultCapabilities, and `mode` on getOrg.
+# A node without those routes answers them 404; @calimero-apps/connect's
+# app-team helpers fall back to the org routes there.
 catalogs:
   component:
     "@calimero-network/mero-js": 29.8.1

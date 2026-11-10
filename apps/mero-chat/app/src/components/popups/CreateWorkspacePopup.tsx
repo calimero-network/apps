@@ -1,3 +1,4 @@
+import { lastUsedName } from "@calimero-apps/names";
 import { useState, useCallback } from "react";
 import { styled } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
@@ -135,7 +136,7 @@ export default function CreateWorkspacePopup({
   // own. Without one, every view showed the shortened account instead. Ask
   // here, prefilled with the name used elsewhere, the way the first-run
   // picker does.
-  const [displayName, setDisplayName] = useState(getMessengerDisplayName());
+  const [displayName, setDisplayName] = useState(getMessengerDisplayName() || lastUsedName());
   const trimmedWorkspaceName = workspaceName.trim();
   const trimmedDisplayName = displayName.trim();
   const canCreateWorkspace =
@@ -174,7 +175,7 @@ export default function CreateWorkspacePopup({
 
     const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
     const memberIdentity = identityResult.data?.memberIdentity;
-    setMessengerDisplayName(trimmedDisplayName);
+    setMessengerDisplayName(trimmedDisplayName, groupId);
     if (memberIdentity) {
       setGroupMemberIdentity(groupId, memberIdentity);
       // Awaited: `onSuccess` reloads the page, which would abort the request.

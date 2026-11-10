@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
+import { lastUsedName } from '@calimero-apps/names';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;
+const MAX_SELF_NAME = 64;
 
 interface Props {
-  onCreate: (name: string) => Promise<CreateWorkspaceResult>;
+  onCreate: (name: string, selfName: string) => Promise<CreateWorkspaceResult>;
   onClose: () => void;
 }
 
-/** New-workspace (namespace) dialog. Name is required; delegates to
- *  useWorkspace.createNamespace, which creates + selects the namespace.
+/** New-workspace (namespace) dialog. Name is required, and so is your name in
+ *  the workspace (asked here, once, for every pipeline in it; it starts on the
+ *  name used for the last workspace); delegates to useWorkspace.createNamespace,
+ *  which creates + selects the namespace and writes your name to it.
  *
  *  When the workspace was created but its member defaults could not be set
  *  (the passkey prompt was cancelled), the dialog stays open to say so: the
@@ -18,6 +22,7 @@ interface Props {
  *  pointing back at the cause. */
 export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
   const [name, setName] = useState('');
+  const [selfName, setSelfName] = useState(() => lastUsedName());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hostingNotice, setHostingNotice] = useState<string | null>(null);
@@ -30,11 +35,12 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
 
   const submit = async () => {
     const trimmed = name.trim();
-    if (!trimmed || busy) return;
+    const me = selfName.trim();
+    if (!trimmed || !me || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const { namespaceId, warning } = await onCreate(trimmed);
+      const { namespaceId, warning } = await onCreate(trimmed, me);
       if (!namespaceId) { setError('Could not create the workspace. Try again.'); return; }
       if (warning) { setHostingNotice(warning); return; }
       onClose();
@@ -82,10 +88,23 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
             disabled={busy}
           />
         </Field>
+        <Field>
+          <label htmlFor="ns-create-self-name">Your name in this workspace</label>
+          <input
+            id="ns-create-self-name"
+            data-testid="ns-create-self-name"
+            maxLength={MAX_SELF_NAME}
+            value={selfName}
+            onChange={(e) => { setSelfName(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder="e.g. ronit"
+            disabled={busy}
+          />
+        </Field>
         {error && <ErrorLine>{error}</ErrorLine>}
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
-          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!name.trim() || busy}>
+          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!name.trim() || !selfName.trim() || busy}>
             {busy ? <Spin /> : 'Create workspace'}
           </PrimaryBtn>
         </Actions>

@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   createGroup: vi.fn(),
   createChannel: vi.fn(),
   listOtherOrgs: vi.fn(),
+  enterWorkspace: vi.fn(),
   sessionKey: "account:me" as string | null,
 }));
 
@@ -25,6 +26,12 @@ vi.mock("../../utils/installedApps", async (importOriginal) => ({
 vi.mock("../../utils/createChannel", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createChannel: h.createChannel,
+}));
+
+// Entering loads the page; here it only has to be seen.
+vi.mock("../../utils/enterWorkspace", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  enterWorkspace: h.enterWorkspace,
 }));
 
 vi.mock("@calimero-network/mero-ui", () => ({
@@ -95,6 +102,7 @@ beforeEach(() => {
       canCreate: true,
     },
   ]);
+  h.enterWorkspace.mockReset();
   h.createChannel
     .mockReset()
     .mockResolvedValue({ contextId: "ctx-general", memberKey: "key" });
@@ -160,10 +168,45 @@ describe("NamespaceEntryPopup", () => {
     fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), {
       target: { value: "Design team" },
     });
+    fireEvent.change(screen.getByTestId("create-self-name"), { target: { value: "Ada" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(h.createChannel).toHaveBeenCalledWith("ns-new", "general", true),
     );
+  });
+
+  // A workspace left on its name step after creating it was listed alone and
+  // later entered nameless from the sidebar. The name is asked with the
+  // workspace's own, so neither can happen.
+  it("asks your name with the workspace's, and enters it named, with no second step", async () => {
+    localStorage.setItem("calimero-names:last", "Ada");
+    open();
+    fireEvent.click(await screen.findByText("+ Create new workspace"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
+    const self = screen.getByTestId("create-self-name") as HTMLInputElement;
+    // Prefilled with the name used last, and required.
+    expect(self.value).toBe("Ada");
+    fireEvent.change(self, { target: { value: " " } });
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    fireEvent.change(self, { target: { value: "Ada L" } });
+    let nameAtGeneral = "";
+    h.createChannel.mockImplementation(async () => {
+      nameAtGeneral = localStorage.getItem("chat-username:ns-new") ?? "";
+      return { contextId: "ctx-general", memberKey: "key" };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "ns-new", "Ada L", "me"));
+    // #general is made under your name in the new workspace.
+    expect(nameAtGeneral).toBe("Ada L");
+    expect(screen.queryByText("Choose a display name to use in this server.")).toBeNull();
+  });
+
+  it("cannot create a workspace without your name", async () => {
+    open();
+    fireEvent.click(await screen.findByText("+ Create new workspace"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(h.createGroup).not.toHaveBeenCalled();
   });
 
   // An account in an org made for another app (a Mero Blocks world) has no

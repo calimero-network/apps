@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { decideSelfName } from "@calimero-apps/names";
 import { useInstanceRelease } from "@calimero-apps/passkey";
 
-import { bindCalendar } from "../../api/binding";
+import { bindCalendar, getBinding } from "../../api/binding";
 import type { Owner } from "../../api/booking";
-import { readOrg } from "../../api/teams";
+import { readOrg, setMyTeamName } from "../../api/teams";
 import { useSignedIn } from "../../api/sessionContext";
 import { TeamScopeContext } from "../../api/teamScope";
 import { rememberCalendar } from "../../utils/lastVisit";
@@ -16,7 +17,10 @@ import BookingLinksModal from "../../components/common/modals/booking-links-moda
 import "../../common.scss";
 import { useActions, useAppEvents, useModal } from "../../hooks";
 
-/** The calendar username this browser last set in a calendar. */
+/**
+ * The calendar username this browser last set in a calendar, from before your
+ * name lived on the team. Only read now, to adopt into the team.
+ */
 const nameKey = (app: string) => `mc-username-${app}`;
 
 /** How long a burst of events waits before one re-read. */
@@ -47,26 +51,47 @@ export default function CalendarPage() {
   const { openErrorModal } = useModal();
   const [ready, setReady] = useState(false);
   const [showBookingLinks, setShowBookingLinks] = useState(false);
-  const [askUsername, setAskUsername] = useState(false);
+  const [skipped, setSkipped] = useState(false);
   const [teamNames, setTeamNames] = useState<Map<string, string>>(new Map());
+  const [teamRead, setTeamRead] = useState(false);
+  // Your username in this calendar's roster; null until read.
+  const [rosterName, setRosterName] = useState<string | null>(null);
   const setupFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (teamId && contextId) rememberCalendar(targetKey, teamId, contextId);
   }, [targetKey, teamId, contextId]);
 
-  // The names members set on the team, for people with no calendar username.
+  // The names members set on the team: yours is the one every calendar in it
+  // uses, and theirs stand in for people with no calendar username.
   useEffect(() => {
     if (!teamId) return;
     let live = true;
     readOrg(client, teamId)
-      .then((org) => live && setTeamNames(org.names))
+      .then((org) => {
+        if (!live) return;
+        setTeamNames(org.names);
+        setTeamRead(true);
+      })
       .catch(() => {})
       .finally(after);
     return () => {
       live = false;
     };
   }, [client, teamId, after]);
+
+  // The open calendar is bound for the data layer for as long as this page
+  // shows it, and on every mount: StrictMode mounts twice, and a bind done once
+  // behind the setup guard below was cleared by the first unmount and never
+  // redone, so every read after it failed with "No active calendar". Declared
+  // before the setup so the first read already finds it bound.
+  useEffect(() => {
+    if (!contextId) return;
+    bindCalendar({ client, app: contextId, after });
+    return () => {
+      if (getBinding().app === contextId) bindCalendar({ app: "" });
+    };
+  }, [client, contextId, after]);
 
   useEffect(() => {
     if (!contextId) {
@@ -75,19 +100,11 @@ export default function CalendarPage() {
     }
     if (setupFor.current === contextId) return;
     setupFor.current = contextId;
-    bindCalendar({ client, app: contextId, after });
 
+    setRosterName(null);
     (async () => {
-      const stored = localStorage.getItem(nameKey(contextId));
-      if (stored) {
-        // Best effort, and only when it differs: every rename is an event to
-        // everyone in the calendar.
-        const data = new ClientApiDataSource();
-        const mine = (await data.getMembers()).data?.find((m) => m.id === accountId);
-        if (mine?.username !== stored) await data.setUsername(stored);
-      } else {
-        setAskUsername(true);
-      }
+      const mine = (await new ClientApiDataSource().getMembers()).data?.find((m) => m.id === accountId);
+      setRosterName(mine?.username?.trim() ?? "");
       try {
         await Promise.all([getEvents(), getMembers()]);
       } catch (error) {
@@ -97,8 +114,6 @@ export default function CalendarPage() {
       setReady(true);
     })();
   }, [contextId, teamId, client, accountId, after, navigate, getEvents, getMembers, openErrorModal]);
-
-  useEffect(() => () => bindCalendar({ app: "" }), []);
 
   // Every event only means "read again": coalesce a burst into one read.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,24 +130,51 @@ export default function CalendarPage() {
   }, []);
   useAppEvents(client, contextId ?? null, refreshCalendar, refreshCalendar);
 
-  async function handleUsernameSubmit(name: string) {
-    const trimmed = name.trim();
-    if (trimmed && contextId) {
-      localStorage.setItem(nameKey(contextId), trimmed);
-      await new ClientApiDataSource().setUsername(trimmed);
-      getMembers();
-    }
-    setAskUsername(false);
-  }
-
-  // A name already set on the team is used without asking.
+  // Your name is the team's, asked once for the team, never per calendar.
   const myTeamName = teamNames.get(accountId) ?? "";
-  useEffect(() => {
-    if (askUsername && myTeamName) void handleUsernameSubmit(myTeamName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askUsername, myTeamName]);
+  const decision = decideSelfName({
+    orgReady: teamRead && rosterName !== null,
+    orgName: myTeamName,
+    fallbacks: [rosterName, contextId ? localStorage.getItem(nameKey(contextId)) : null],
+  });
 
-  const defaultName = myTeamName || (accountId ? `user-${accountId.slice(0, 6)}` : "");
+  /** Your name on the team, for every calendar in it (and in this calendar's roster). */
+  const saveTeamName = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || !teamId) return;
+      try {
+        await setMyTeamName(client, teamId, accountId, trimmed);
+      } catch {
+        /* the calendar still shows it; the team asks again next time */
+      } finally {
+        after();
+      }
+      setTeamNames((prev) => new Map(prev).set(accountId, trimmed));
+    },
+    [client, teamId, accountId, after],
+  );
+
+  // A name another calendar or an older version knew is published to the team.
+  const adopt = decision.kind === "adopt" ? decision.name : "";
+  useEffect(() => {
+    if (adopt) void saveTeamName(adopt);
+  }, [adopt, saveTeamName]);
+
+  // The team's name is copied into this calendar's roster without asking.
+  // Only when it differs: every rename is an event to everyone in the calendar.
+  const use = decision.kind === "use" ? decision.name : "";
+  useEffect(() => {
+    if (!use || rosterName === null || rosterName === use) return;
+    // Silent: only into the calendar that is open, never into none.
+    if (!contextId || getBinding().app !== contextId) return;
+    setRosterName(use);
+    void new ClientApiDataSource().setUsername(use).then(() => getMembers());
+  }, [use, rosterName, contextId, getMembers]);
+
+  const askUsername = decision.kind === "ask" && !skipped;
+  const defaultName =
+    (decision.kind === "ask" && decision.suggestion) || (accountId ? `user-${accountId.slice(0, 6)}` : "");
 
   const owner: Owner | null = useMemo(
     () => (contextId ? { client, app: contextId, passkey, after } : null),
@@ -143,11 +185,11 @@ export default function CalendarPage() {
   return (
     <TeamScopeContext.Provider value={scope}>
       <div data-testid="calendar-container">
-        {askUsername && !myTeamName && (
+        {askUsername && (
           <UsernameModal
             defaultName={defaultName}
-            onSubmit={handleUsernameSubmit}
-            onSkip={() => setAskUsername(false)}
+            onSubmit={(name) => void saveTeamName(name)}
+            onSkip={() => setSkipped(true)}
           />
         )}
         {ready && (

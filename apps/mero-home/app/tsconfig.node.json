@@ -1,0 +1,15 @@
+{
+  "// note": "Build and Playwright config (Node). The e2e suite itself is type-checked by e2e/tsconfig.json: it imports packages/merod-local by path, which a composite project cannot include.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/node",
+    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts"
+  ]
+}

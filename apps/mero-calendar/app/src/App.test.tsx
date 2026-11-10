@@ -56,6 +56,7 @@ function fakeClient() {
     me: vi.fn(async () => ({ accountId: ME, orgs: [{ orgId: "org-1", name: "Team", role: "owner" }] })),
     getOrg: vi.fn(async () => ({ name: "Team", members: { [ME]: "owner" }, memberMetadata: {} })),
     redeemInvite: vi.fn(async (): Promise<Record<string, unknown>> => ({ org: "org-1" })),
+    setMemberMetadata: vi.fn(async () => undefined),
   };
 }
 
@@ -100,9 +101,10 @@ describe("an invitation link opened while signed out", () => {
     expect(screen.queryByText("Landing sign in")).toBeNull();
   });
 
-  it("signing in asks before joining (B5): nothing is redeemed until Join, which opens the team", async () => {
+  it("signing in asks before joining (B5): nothing is redeemed until Join, which asks your name in the team once and opens it", async () => {
     localStorage.setItem(PENDING, "tok-1");
     migrateLegacyInvite();
+    localStorage.setItem("calimero-names:last", "Ada");
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
@@ -112,8 +114,26 @@ describe("an invitation link opened while signed out", () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
-    expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
+    const input = (await screen.findByTestId("username-input")) as HTMLInputElement;
+    expect(input.value).toBe("Ada");
+    fireEvent.change(input, { target: { value: "Ada L" } });
+    fireEvent.click(screen.getByTestId("username-submit"));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", ME, { name: "Ada L" });
     expect(invites.token()).toBeNull();
+  });
+
+  it("does not ask for a name the team already has for you", async () => {
+    localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
+    const client = fakeClient();
+    client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ada" } } });
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
+    expect(screen.queryByTestId("username-modal")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
   it("Not now shows the landing page and keeps the token", async () => {

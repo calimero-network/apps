@@ -28,7 +28,8 @@ import type { AppCtx, NewDealDefaults } from "./appContext";
  * data hook scoped to the active pipeline, the owner filter, and every modal. Onboarding is
  * explicit: no active namespace -> full-pane empty state (with a picker if
  * namespaces exist); a namespace with no pipeline -> add-pipeline prompt; a member
- * with no name -> blocking alias gate.
+ * with no name in the workspace (one made before names were asked on creating
+ * or joining it) -> blocking alias gate, once per workspace.
  */
 export default function AppPage(): React.ReactElement | null {
   const { client, after } = useSignedIn();
@@ -270,7 +271,7 @@ export default function AppPage(): React.ReactElement | null {
     <AliasGate
       namespaceId={ws.activeNs}
       identity={ws.selfIdentity}
-      hasName={!!ws.selfIdentity && aliases.hasAlias(ws.selfIdentity)}
+      orgName={ws.memberNames.get(ws.selfIdentity) ?? ""}
       membersLoaded={ws.membersLoaded}
       onSave={ws.setMemberName}
     />

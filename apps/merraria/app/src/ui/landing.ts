@@ -9,6 +9,10 @@
 // An invitation link waits in the shared invite store (net/worlds.ts). Once
 // signed in, the person is asked "Join {inviter}'s game as {account}?" (Join or
 // Not now), and Join enters the invited world; nothing is redeemed before that.
+//
+// The player's name is the world org's (net/playerName.ts): asked in the
+// create-world dialog, or once right after an invite joins a world, and
+// never again when entering a world that has it.
 
 import type { SignUpPolicy } from "@calimero-network/mero-js";
 import {
@@ -39,6 +43,7 @@ import {
   SIGN_IN_HINT,
   type CeremonyFailure,
 } from "@calimero-apps/passkey/ceremony";
+import { decideSelfName, rememberLastUsedName } from "@calimero-apps/names";
 
 import {
   CURRENT_WORLD,
@@ -58,6 +63,7 @@ import {
 } from "../net/worlds";
 import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
 import { PACKAGE, toSeed } from "../net/merraria";
+import { knownName, readOrgName, saveOrgName } from "../net/playerName";
 import { shortAccount, type Connection } from "../net/session";
 import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
@@ -399,22 +405,6 @@ export class Landing {
   private renderPlayCard(defaults: Defaults, done: (c: LaunchChoice) => void): void {
     if (this.conn.accountId) this.renderWorldPicker(defaults, done);
     else this.renderSignIn(defaults, done);
-    // Remembered as it is typed: the passkey ceremony can reload nothing, but a
-    // player who leaves and comes back keeps the name they chose.
-    this.root.querySelector<HTMLInputElement>("#mtl-name")?.addEventListener("input", (e) => {
-      localStorage.setItem("mt-name", (e.target as HTMLInputElement).value);
-    });
-  }
-
-  private commonInputs(defaults: { name: string }): string {
-    return `
-      <label>player name</label>
-      <input id="mtl-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-    `;
-  }
-
-  private readName(): string {
-    return (this.root.querySelector<HTMLInputElement>("#mtl-name")?.value || "Player").trim() || "Player";
   }
 
   // state 1: signed out. The game is online-only: the way in is an account.
@@ -433,7 +423,6 @@ export class Landing {
           ? `<div class="mtl-account" data-testid="invite-waiting">You've been invited to join a world in Merraria. Sign in or create an account to accept.</div>`
           : ""
       }
-      ${this.commonInputs(defaults)}
       <div class="mtl-note" data-testid="signin-switched" role="status" hidden></div>
       <div data-testid="sign-in-actions">
         <div data-testid="sign-in-group">
@@ -450,7 +439,7 @@ export class Landing {
       <div class="mtl-note" data-testid="sign-up-unavailable" hidden></div>
       <div class="mtl-error" data-testid="sign-in-error"></div>
       <div class="mtl-note">Accounts are passkeys: nothing to remember, nothing to leak.
-        Connected to ${escapeHtml(this.conn.describe())}. A new account takes the player name above.</div>
+        Connected to ${escapeHtml(this.conn.describe())}.</div>
       ${invited ? `<button class="mtl-link" data-testid="invite-not-now">Not now</button>` : ""}
     `;
     // "Not now": the landing page, over this launcher; the invitation stays
@@ -574,7 +563,7 @@ export class Landing {
         async () => {
           const pending = this.invites.pending();
           const made = await this.conn.signUp(
-            this.readName(),
+            defaults.name || "Player",
             { invite: invited ? (pending?.token ?? null) : null, policy },
             signUp.passkey,
           );
@@ -616,7 +605,6 @@ export class Landing {
       <h3>Choose a world</h3>
       <div class="mtl-account" data-testid="account-badge">Signed in as
         <code>${escapeHtml(shortAccount(this.conn.accountId ?? ""))}</code> on ${escapeHtml(this.conn.describe())}</div>
-      ${this.commonInputs(defaults)}
       <div class="mtl-worlds" data-testid="world-list"></div>
       <div class="mtl-warn" data-testid="notice" hidden></div>
       <div class="mtl-error" data-testid="join-error"></div>
@@ -647,8 +635,8 @@ export class Landing {
         inviteBtn.textContent = "Creating invite…";
         try {
           const token = await inviteToken(this.conn.client, org, this.conn.approver());
-          const name = this.readName();
-          const from = name === "Player" ? shortAccount(this.conn.accountId ?? "") : name;
+          const name = knownName() || defaults.name;
+          const from = !name || name === "Player" ? shortAccount(this.conn.accountId ?? "") : name;
           const link = worldInviteLink(token, org, { world: current.appId, from });
           await navigator.clipboard.writeText(link);
           inviteBtn.textContent = "Single-use invite link copied!";
@@ -665,9 +653,15 @@ export class Landing {
       });
     }
 
-    const enter = (w: World) => {
+    // `joined`: an invite just let the player in, so a world's org without
+    // their name asks for it rather than adopting an older one.
+    let entering = false;
+    const enter = async (w: World, opts: { joined?: boolean } = {}) => {
+      if (entering) return;
+      entering = true;
+      const name = await this.playerName(w.org ?? null, defaults.name, !!opts.joined);
       this.setCurrent(w);
-      done({ name: this.readName(), world: w });
+      done({ name, world: w });
     };
     const joined = this.joinedAtSignUp;
     this.joinedAtSignUp = null;
@@ -677,7 +671,7 @@ export class Landing {
 
     // the world last played renders synchronously — entering it must never
     // wait on the world-list fetch
-    if (current && !inviting) listEl.appendChild(this.worldCard(current, true, -1, done));
+    if (current && !inviting) listEl.appendChild(this.worldCard(current, true, -1, enter));
     const loading = document.createElement("div");
     loading.className = "mtl-note";
     loading.textContent = "Loading worlds…";
@@ -689,7 +683,7 @@ export class Landing {
       if (joined) {
         const world = worldIn(await listWorlds(this.conn.client, this.source).catch(() => []), joined.org, joined.world);
         this.conn.sync();
-        if (world) return enter(world);
+        if (world) return enter(world, { joined: true });
         noticeEl.textContent = "Invitation accepted: the world is in your list.";
         noticeEl.hidden = false;
       }
@@ -703,13 +697,13 @@ export class Landing {
         const pending = this.invites.pending();
         if (pending) {
           const answer = await this.askToJoin(listEl, pending);
-          if (answer.world) return enter(answer.world);
+          if (answer.world) return enter(answer.world, { joined: true });
           if (answer.note) {
             noticeEl.textContent = answer.note;
             noticeEl.hidden = false;
           }
           listEl.innerHTML = "";
-          if (current) listEl.appendChild(this.worldCard(current, true, -1, done));
+          if (current) listEl.appendChild(this.worldCard(current, true, -1, enter));
           listEl.appendChild(loading);
         }
       }
@@ -721,7 +715,7 @@ export class Landing {
           listEl.innerHTML = `<div class="mtl-note">No worlds yet — create one, or open an invite link a friend sent you.</div>`;
           return;
         }
-        others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done)));
+        others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, enter)));
       } catch (e) {
         loading.textContent = `Could not list worlds (${describeError(e)}).`;
       } finally {
@@ -786,7 +780,12 @@ export class Landing {
   }
 
   /** one Minecraft-style world card: blurred terrain thumb, name, Play/Enter, ⋯ menu */
-  private worldCard(w: World, isCurrent: boolean, index: number, done: (c: LaunchChoice) => void): HTMLElement {
+  private worldCard(
+    w: World,
+    isCurrent: boolean,
+    index: number,
+    enter: (w: World) => Promise<void>,
+  ): HTMLElement {
     const card = document.createElement("div");
     card.className = "mtl-world-card";
     card.dataset.testid = isCurrent ? "world-card-current" : `world-card-${index}`;
@@ -809,6 +808,7 @@ export class Landing {
       </div>
       <div class="mtl-card-menu" hidden>
         <button data-action="copy-id">Copy world ID</button>
+        ${w.org ? `<button data-action="rename">Change your name</button>` : ""}
         <button data-action="forget">Forget local data</button>
       </div>
     `;
@@ -818,8 +818,7 @@ export class Landing {
     // Every listed world is one this account already reaches (a member of its
     // org): entering it is all there is to do.
     card.querySelector<HTMLButtonElement>(`[data-testid="${joinTestId}"]`)!.addEventListener("click", () => {
-      this.setCurrent(w);
-      done({ name: this.readName(), world: w });
+      void enter(w);
     });
 
     const menu = card.querySelector<HTMLElement>(".mtl-card-menu")!;
@@ -838,6 +837,22 @@ export class Landing {
         /* clipboard unavailable — nothing sensible to do */
       }
       menu.hidden = true;
+    });
+    // The name this player shows in this world (its org), changed in place.
+    menu.querySelector("[data-action=rename]")?.addEventListener("click", async () => {
+      menu.hidden = true;
+      const account = this.conn.accountId ?? "";
+      const { name: current } = await readOrgName(this.conn.client, w.org!, account);
+      const name = await this.askName(current || knownName(), "Change your name", "Save", true);
+      if (name === null) return;
+      try {
+        await saveOrgName(this.conn.client, w.org!, account, name);
+      } catch (e) {
+        const errEl = this.root.querySelector<HTMLElement>("[data-testid=join-error]");
+        if (errEl) errEl.textContent = `Could not change your name: ${describeError(e)}`;
+      } finally {
+        this.conn.sync();
+      }
     });
     menu.querySelector("[data-action=forget]")!.addEventListener("click", () => {
       deleteWorld(w.appId); // local tile edits + player position only
@@ -861,6 +876,8 @@ export class Landing {
         <input id="mtl-world-name" data-testid="world-name-input" value="surface" maxlength="24" />
         <label>seed</label>
         <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
+        <label>your name in this world</label>
+        <input id="mtl-self-name" data-testid="self-name-input" value="${escapeHtml(knownName() || defaults.name)}" maxlength="16" />
         <button class="mtl-btn green" data-testid="create-world-btn">Create world</button>
         <div class="mtl-error" data-testid="create-error"></div>
       </div>
@@ -881,15 +898,28 @@ export class Landing {
       errEl.textContent = "";
       const worldName = shade.querySelector<HTMLInputElement>("#mtl-world-name")?.value.trim() || "surface";
       const seed = toSeed(shade.querySelector<HTMLInputElement>("#mtl-seed")?.value, defaults.seed);
+      const selfName = shade.querySelector<HTMLInputElement>("#mtl-self-name")?.value.trim() ?? "";
+      if (!selfName) {
+        errEl.textContent = "Enter the name other players will see.";
+        return;
+      }
       busy = true;
       createBtn.disabled = true;
       closeBtn.disabled = true;
       createBtn.textContent = "Creating…";
       try {
         const world = await createWorld(this.conn.client, this.source, worldName, seed, this.conn.sync);
+        // The world's org holds the player's name from here on. Best effort:
+        // a refused write leaves it unset, and the next entry adopts the name
+        // remembered here instead of asking.
+        rememberLastUsedName(selfName);
+        if (world.org) {
+          await saveOrgName(this.conn.client, world.org, this.conn.accountId ?? "", selfName).catch(() => {});
+          this.conn.sync();
+        }
         this.setCurrent(world);
         shade.remove();
-        done({ name: this.readName(), world });
+        done({ name: selfName, world });
       } catch (e) {
         errEl.textContent = `Could not create world: ${describeError(e)}`;
         busy = false;
@@ -897,6 +927,67 @@ export class Landing {
         closeBtn.disabled = false;
         createBtn.textContent = "Create world";
       }
+    });
+  }
+
+  /**
+   * The name to enter a world as. A world's org that has one is used as is;
+   * one without adopts the name this browser knew (worlds from before names
+   * lived on the org), or asks once and saves it there.
+   */
+  private async playerName(org: string | null, fallback: string, joined = false): Promise<string> {
+    const known = knownName();
+    const account = this.conn.accountId ?? "";
+    if (!org) return known || fallback || "Player";
+    const { ready, name } = await readOrgName(this.conn.client, org, account);
+    const decision = decideSelfName({ orgReady: ready, orgName: name, fallbacks: joined ? [] : [known] });
+    if (decision.kind === "use") return decision.name;
+    // The org could not be read: play under the name known here, ask nobody twice.
+    if (decision.kind === "wait" && known) return known;
+    const chosen =
+      decision.kind === "adopt"
+        ? decision.name
+        : ((await this.askName((decision.kind === "ask" && decision.suggestion) || known, "Your name in this world", "Play")) ?? "Player");
+    await saveOrgName(this.conn.client, org, account, chosen).catch(() => rememberLastUsedName(chosen));
+    this.conn.sync();
+    return chosen;
+  }
+
+  /** popup: the player's name in a world. `null` when closed without one (only a `cancellable` one closes). */
+  private askName(suggestion: string, title: string, action: string, cancellable = false): Promise<string | null> {
+    return new Promise((resolve) => {
+      const shade = document.createElement("div");
+      shade.className = "mtl-modal-shade";
+      shade.dataset.testid = "name-modal";
+      shade.innerHTML = `
+        <div class="mtl-modal">
+          <div class="mtl-modal-head">
+            <h3>${escapeHtml(title)}</h3>
+            ${cancellable ? `<button class="mtl-modal-close" data-testid="name-close" aria-label="Close">✕</button>` : ""}
+          </div>
+          <label>the name other players see in this world</label>
+          <input id="mtl-self-name" data-testid="self-name-input" value="${escapeHtml(suggestion)}" maxlength="16" />
+          <button class="mtl-btn green" data-testid="name-save-btn">${escapeHtml(action)}</button>
+          <div class="mtl-error" data-testid="name-error"></div>
+        </div>
+      `;
+      this.root.appendChild(shade);
+      const input = shade.querySelector<HTMLInputElement>("#mtl-self-name")!;
+      const finish = (name: string | null) => {
+        shade.remove();
+        resolve(name);
+      };
+      const save = () => {
+        const name = input.value.trim();
+        if (name) finish(name);
+        else shade.querySelector<HTMLElement>("[data-testid=name-error]")!.textContent = "Enter a name.";
+      };
+      shade.querySelector("[data-testid=name-save-btn]")!.addEventListener("click", save);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") save();
+      });
+      shade.querySelector("[data-testid=name-close]")?.addEventListener("click", () => finish(null));
+      input.focus();
     });
   }
 }

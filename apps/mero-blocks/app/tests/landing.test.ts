@@ -30,7 +30,10 @@ const world = (appId: string, name: string, org: string | null): AppInfo => ({
 
 function fakeClient(worlds: AppInfo[]) {
   let session: CalimeroSession | undefined;
+  // org → account → member metadata
+  const members: Record<string, Record<string, Record<string, unknown>>> = {};
   return {
+    members,
     get session() {
       return session;
     },
@@ -43,6 +46,10 @@ function fakeClient(worlds: AppInfo[]) {
     createApp: vi.fn(async () => "app-new"),
     invite: vi.fn(async () => "tok"),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
+    getOrg: vi.fn(async (org: string) => ({ memberMetadata: members[org] ?? {} })),
+    setMemberMetadata: vi.fn(async (org: string, account: string, meta: Record<string, unknown>) => {
+      (members[org] ??= {})[account] = meta;
+    }),
   };
 }
 
@@ -189,6 +196,8 @@ describe("a sign-up's second prompt", () => {
 
 describe("launcher", () => {
   it("signs in with a passkey, lists the account's worlds and enters one", async () => {
+    // A world from before names lived on the org: the old launcher name is adopted, not asked.
+    localStorage.setItem("mb-name", "Steve");
     const { client, choice } = await launcher([world("app-b", "beta", "org-b"), world("app-a", "alpha", "org-a")]);
     expect(q("[data-testid=target]")?.textContent).toBe("merod local (3 nodes)");
     click(q("[data-testid=sign-in-btn]"));
@@ -204,9 +213,46 @@ describe("launcher", () => {
     expect(entered.world).toEqual({ appId: "app-b", name: "beta", org: "org-b" });
     expect(entered.name).toBe("Steve");
     expect(entered.session.accountId).toBe("acc-1");
+    expect(q("[data-testid=name-modal]")).toBeNull();
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-b", "acc-1", { name: "Steve" });
+  });
+
+  it("enters a world whose org has the player's name without asking, as that name", async () => {
+    localStorage.setItem("mb-name", "Old");
+    const { client, choice } = await launcher([world("app-a", "alpha", "org-a")], localStorage, undefined, (c) => {
+      c.members["org-a"] = { "acc-1": { name: "Alex" } };
+    });
+    expect(q("[data-testid=name-input]")).toBeNull();
+    click(q("[data-testid=sign-in-btn]"));
+    await flush();
+    await flush();
+    click(q("[data-testid=join-world-0]"));
+    const entered = await choice;
+    expect(entered.name).toBe("Alex");
+    expect(q("[data-testid=name-modal]")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
+  });
+
+  it("changes the player's name in a world's org from the card menu", async () => {
+    const { client } = await launcher([world("app-a", "alpha", "org-a")], localStorage, undefined, (c) => {
+      c.members["org-a"] = { "acc-1": { name: "Alex", color: "red" } };
+    });
+    click(q("[data-testid=sign-in-btn]"));
+    await flush();
+    await flush();
+    click(q("[data-testid=world-card-0] [data-action=rename]"));
+    await flush();
+    const input = q("[data-testid=name-modal] input") as HTMLInputElement;
+    expect(input.value).toBe("Alex");
+    input.value = "Alexa";
+    click(q("[data-testid=name-save-btn]"));
+    await flush();
+    await flush();
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-a", "acc-1", { name: "Alexa", color: "red" });
   });
 
   it("puts the world last played first, with Enter and an invite button", async () => {
+    localStorage.setItem("mb-name", "Steve");
     const { client, choice } = await launcher([world("app-a", "alpha", "org-a"), world("app-b", "beta", "org-b")]);
     click(q("[data-testid=sign-in-btn]"));
     await flush();
@@ -235,8 +281,14 @@ describe("launcher", () => {
     click(q("[data-testid=create-world-open-btn]"));
     (q("#mbl-world-name") as HTMLInputElement).value = "castle";
     (q("#mbl-seed") as HTMLInputElement).value = "42";
+    // The name is asked here, once, and lives on the world's org.
+    expect((q("[data-testid=self-name-input]") as HTMLInputElement).value).toBe("Steve");
+    (q("[data-testid=self-name-input]") as HTMLInputElement).value = "Alex";
     click(q("[data-testid=create-world-btn]"));
     const entered = await choice;
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", "acc-1", { name: "Alex" });
+    expect(entered.name).toBe("Alex");
+    expect(q("[data-testid=name-modal]")).toBeNull();
     expect(client.createOrg).toHaveBeenCalledWith("castle");
     expect(client.createApp).toHaveBeenCalledWith("castle", "bundle-1", {
       org: "org-new",
@@ -253,8 +305,16 @@ describe("launcher", () => {
     const asked = () => q("[data-testid=invite-confirm]") !== null;
     const listed = () => document.querySelectorAll(".mbl-card-title").length > 0;
 
+    // Just joined: the world's org has no name for this player yet, asked once.
+    const named = async (name: string) => {
+      await until(() => q("[data-testid=name-modal]") !== null);
+      (q("[data-testid=name-modal] input") as HTMLInputElement).value = name;
+      click(q("[data-testid=name-save-btn]"));
+    };
+
     it("asks which account joins whose game, and redeems nothing until Join", async () => {
       invited("tok-1", { extra: { from: "Alex" } });
+      localStorage.setItem("calimero-names:last", "Alex");
       const { client, choice } = await launcher([world("app-1", "mine", "org-1"), world("app-2", "theirs", "org-2")]);
       expect(q("[data-testid=invite-note]")).not.toBeNull();
       click(q("[data-testid=sign-in-btn]"));
@@ -265,8 +325,14 @@ describe("launcher", () => {
       expect(listed()).toBe(false);
 
       click(q("[data-testid=invite-join]"));
+      // Your name in the world's org, asked once, prefilled with the last one used.
+      await until(() => q("[data-testid=name-modal]") !== null);
+      expect((q("[data-testid=name-modal] input") as HTMLInputElement).value).toBe("Alex");
+      await named("Sam");
       const entered = await choice;
       expect(client.redeemInvite).toHaveBeenCalledWith("tok-1");
+      expect(entered.name).toBe("Sam");
+      expect(client.setMemberMetadata).toHaveBeenCalledWith("org-2", "acc-1", { name: "Sam" });
       // The world of the org it joined opens.
       expect(entered.world.appId).toBe("app-2");
       expect(invites.token()).toBeNull();
@@ -298,6 +364,7 @@ describe("launcher", () => {
       expect(q("[data-testid=invite-question]")?.textContent).toBe("Join the game as acc-1?");
       expect(client.redeemInvite).not.toHaveBeenCalled();
       click(q("[data-testid=invite-join]"));
+      await named("Sam");
       expect((await choice).world.appId).toBe("app-3");
     });
 
@@ -389,10 +456,13 @@ describe("launcher", () => {
 
   it("enters a world the player is already in without spending the link", async () => {
     invited("tok-1", { org: "org-1" });
-    const { client, choice } = await launcher([world("app-1", "mine", "org-1")]);
+    const { client, choice } = await launcher([world("app-1", "mine", "org-1")], localStorage, undefined, (c) => {
+      c.members["org-1"] = { "acc-1": { name: "Alex" } };
+    });
     click(q("[data-testid=sign-in-btn]"));
     const entered = await choice;
     expect(entered.world.appId).toBe("app-1");
+    expect(entered.name).toBe("Alex");
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   });
@@ -510,7 +580,12 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     const { client, choice } = await withPasskey([world("app-1", "mine", "org-1"), world("app-2", "theirs", "org-2")]);
     await flush();
     click(q("[data-testid=sign-up-btn]"));
+    // Joined at sign-up: the world's org has no name for the player yet, asked once.
+    await until(() => q("[data-testid=name-modal]") !== null);
+    (q("[data-testid=name-modal] input") as HTMLInputElement).value = "Sam";
+    click(q("[data-testid=name-save-btn]"));
     const entered = await choice;
+    expect(entered.name).toBe("Sam");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Steve", { invite: "tok-1" });
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(entered.world.appId).toBe("app-2");
@@ -543,7 +618,14 @@ describe("a new version of a world", () => {
   function reports(client: Record<string, unknown>, role: string, upgradesHeldBy = "owner") {
     Object.assign(client, {
       me: vi.fn(async () => ({ accountId: "acc-1", orgs: [{ orgId: "org-a", role }] })),
-      getOrg: vi.fn(async () => ({ members: { "acc-1": role }, defaultCapabilities: 4, capabilities: {}, teams: {} })),
+      // The org already holds the player's name, so entering the world asks for none.
+      getOrg: vi.fn(async () => ({
+        members: { "acc-1": role },
+        memberMetadata: { "acc-1": { name: "Alex" } },
+        defaultCapabilities: 4,
+        capabilities: {},
+        teams: {},
+      })),
       getApp: vi.fn(async () => ({ appId: "app-a", owner: "someone-else", org: "org-a" })),
       appsReportAll: vi.fn(async (scope: string | null) => ({
         scope: scope ? { kind: "org", org: scope } : { kind: "account" },

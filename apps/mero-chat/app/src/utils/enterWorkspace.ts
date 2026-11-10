@@ -5,6 +5,7 @@ import {
   setIdentityDisplayName,
   setMessengerDisplayName,
 } from "./messengerName";
+import { joinPendingChannels } from "./createChannel";
 import { ensureNotificationPermission } from "./notificationPermission";
 import {
   clearNamespaceReady,
@@ -31,7 +32,9 @@ export function enterWorkspace(
   memberIdentity: string,
 ): void {
   setGroupId(namespaceId);
-  setMessengerDisplayName(username);
+  setMessengerDisplayName(username, namespaceId);
+  // Channels made with the workspace before this name was chosen (#general).
+  if (username) void joinPendingChannels(namespaceId, username);
   if (memberIdentity) {
     setGroupMemberIdentity(namespaceId, memberIdentity);
     setIdentityDisplayName(memberIdentity, username);

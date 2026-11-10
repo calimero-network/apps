@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
+import { setOrgName } from '@calimero-apps/names';
 
 import { useSignedIn } from '../sessionContext';
 import {
@@ -59,7 +60,8 @@ export interface UseWorkspaceReturn {
   namespaces: Workspace[];
   activeNs: string | null;
   selectNamespace: (id: string) => void;
-  createNamespace: (name: string) => Promise<CreateWorkspaceResult>;
+  /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
+  createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
   createNamespaceError: Error | null;
   /** Mints an invitation (a passkey step-up) and answers the link to share. */
   invite: () => Promise<string>;
@@ -138,10 +140,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [loadNamespaces, selectNamespace]);
 
   const createNamespace = useCallback(
-    async (name: string): Promise<CreateWorkspaceResult> => {
+    async (name: string, selfName?: string): Promise<CreateWorkspaceResult> => {
       setCreateNamespaceError(null);
       try {
         const { namespaceId, warning } = await createWorkspace(client, name, passkey, source);
+        // Your name in the new workspace, before it opens so the name gate never
+        // shows. Best effort: if it fails the workspace exists anyway, and the
+        // gate asks for the name on entering it.
+        if (selfName?.trim()) await setOrgName(client, namespaceId, accountId, selfName).catch(() => {});
         await loadNamespaces();
         selectNamespace(namespaceId);
         return { namespaceId, warning };
@@ -152,7 +158,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, source, passkey, loadNamespaces, selectNamespace, after],
+    [client, source, accountId, passkey, loadNamespaces, selectNamespace, after],
   );
 
 
@@ -277,7 +283,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     async (name: string) => {
       if (!activeNs) return;
       try {
-        await client.setMemberMetadata(activeNs, accountId, { name });
+        await setOrgName(client, activeNs, accountId, name);
       } finally {
         after();
       }

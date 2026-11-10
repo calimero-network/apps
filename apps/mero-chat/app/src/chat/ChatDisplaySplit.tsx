@@ -119,7 +119,9 @@ const ContainerPadding = styled.div<{ $isThread?: boolean }>`
   @media (max-width: 1024px) {
     height: ${props => props.$isThread 
       ? 'calc(100% - 188px)' 
-      : 'calc(100dvh - 230px)'
+      // The header (42px), the composer and the status strip under it (18px
+      // + 6px margin): 230px left the strip 3px below the screen's edge.
+      : 'calc(100dvh - 240px)'
     } !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
@@ -127,6 +129,10 @@ const ContainerPadding = styled.div<{ $isThread?: boolean }>`
 
   /* Apply shared scrollbar styles */
   ${scrollbarStyles}
+
+  /* It takes the room the composer and the status strip leave; it may be
+     shorter than its content (it scrolls), so it is the one that shrinks. */
+  min-height: 0;
 
   /* Optimize scrolling performance */
   contain: layout style paint;
