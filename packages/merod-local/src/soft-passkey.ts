@@ -53,8 +53,27 @@ function fromB64url(text: string): Uint8Array {
   return Uint8Array.from(atob(padded + "===".slice((padded.length + 3) % 4)), (c) => c.charCodeAt(0));
 }
 
+/**
+ * A passkey as Chrome DevTools' `WebAuthn.addCredential` takes it (standard
+ * base64): a browser's virtual authenticator holding it signs in as the same
+ * account, from any origin with the same relying party.
+ */
+export interface BrowserCredential {
+  credentialId: string;
+  isResidentCredential: true;
+  rpId: string;
+  privateKey: string;
+  userHandle: string;
+  signCount: number;
+}
+
+function toB64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes));
+}
+
 export class SoftPasskey implements PasskeyProvider {
   private keys: CryptoKeyPair | undefined;
+  private userHandle: Uint8Array | undefined;
   private readonly credentialId = crypto.getRandomValues(new Uint8Array(16));
   private counter = 0;
   private readonly rpId: string;
@@ -80,7 +99,10 @@ export class SoftPasskey implements PasskeyProvider {
   }
 
   async create(options: Record<string, unknown>): Promise<RegistrationJSON> {
-    this.keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign", "verify"]);
+    // Extractable for {@link toBrowser}; this passkey is for development and tests only.
+    this.keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const user = (options as { user?: { id?: unknown } }).user?.id;
+    this.userHandle = typeof user === "string" ? fromB64url(user) : undefined;
     const raw = new Uint8Array(await crypto.subtle.exportKey("raw", this.keys.publicKey));
     const cose = new Uint8Array(cbor([[1, 2], [3, -7], [-1, 1], [-2, raw.slice(1, 33)], [-3, raw.slice(33, 65)]]));
     const attested = new Uint8Array([...new Uint8Array(16), 0, this.credentialId.length, ...this.credentialId, ...cose]);
@@ -102,6 +124,25 @@ export class SoftPasskey implements PasskeyProvider {
       authenticatorData: b64url(authData),
       clientDataJson: b64url(clientData),
       signature: b64url(toDer(sig)),
+    };
+  }
+
+  /**
+   * This passkey for a browser's virtual authenticator (`WebAuthn.addCredential`),
+   * at its current signature counter: an e2e signs someone up here, does what
+   * the browser cannot (install a package), then hands the browser the same
+   * passkey. Use one or the other from then on, or the counters disagree.
+   */
+  async toBrowser(): Promise<BrowserCredential> {
+    if (!this.keys || !this.userHandle) throw new Error("this passkey has not been registered yet");
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", this.keys.privateKey));
+    return {
+      credentialId: toB64(this.credentialId),
+      isResidentCredential: true,
+      rpId: this.rpId,
+      privateKey: toB64(pkcs8),
+      userHandle: toB64(this.userHandle),
+      signCount: this.counter,
     };
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { getAccountId } from "../api/calimero";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import { clearWorkspaceSelection, getGroupId } from "../constants/config";
 import { clearNamespaceReady } from "../utils/session";
@@ -11,22 +12,31 @@ const POLL_INTERVAL_MS = 30_000;
 export const REMOVAL_CONFIRMATIONS = 2;
 
 /**
- * What one poll says about the caller's membership.
+ * What one poll says about the caller's membership, from the workspace's
+ * member list (`listMembers`: Chat's app team where the workspace has one,
+ * else the organization's members).
  *
- * - `member`: the caller's row resolved.
- * - `removed`: core refused the caller as a non-member (403 "not a member"),
- *   or listed the members without the caller's row (the 404 the data source
- *   returns when nothing resolves).
+ * - `member`: the list holds the caller.
+ * - `removed`: the list loaded without the caller (taken out of Chat, or out
+ *   of the organization), or core refused the caller as a non-member (403
+ *   "not a member"), or answered 404 for the workspace.
  * - `unknown`: anything else, including core's 404 "group '<id>' not found".
  *   That one means this node has not applied the namespace's governance yet -
  *   it is lagging or stuck - and says nothing about the caller, so it must
  *   never read as a removal.
  */
-export function classifyMembershipCheck(resp: {
-  data?: { memberIdentity?: string } | null;
-  error?: { code?: number; message?: string } | null;
-}): "member" | "removed" | "unknown" {
-  if (resp.data?.memberIdentity) return "member";
+export function classifyMembershipCheck(
+  resp: {
+    data?: { members?: ReadonlyArray<{ identity: string }> } | null;
+    error?: { code?: number; message?: string } | null;
+  },
+  self: string,
+): "member" | "removed" | "unknown" {
+  const members = resp.data?.members;
+  if (members) {
+    if (!self) return "unknown";
+    return members.some((m) => m.identity.toLowerCase() === self.toLowerCase()) ? "member" : "removed";
+  }
   const code = resp.error?.code;
   const message = resp.error?.message ?? "";
   if (code === 404 && /group '[^']*' not found/i.test(message)) return "unknown";
@@ -44,11 +54,11 @@ export function classifyMembershipCheck(resp: {
  * channel for governance ops, so a removed user keeps seeing their stale
  * sidebar until they refresh. This poll closes that gap.
  *
- * How: we call `resolveCurrentMemberIdentity(groupId, "")` — pass empty
- * stored identity so the API does NOT fall back to the cached value when
- * `listMembers` returns 405 on older merods (that fallback path is meant
- * for "workspace entry on older nodes" and would mask a real removal).
- * After the first successful resolution we mark `everHadIdentity = true`;
+ * How: we read the workspace's member list (`listMembers`) and look for the
+ * caller's account in it. Not `resolveCurrentMemberIdentity`: on 1.0 that
+ * answers the signed-in account whatever the list holds, so it never saw a
+ * removal (someone taken out of Chat by Calimero Home kept the workspace open).
+ * After the first poll that finds the caller we mark `everHadIdentity = true`;
  * from then on, REMOVAL_CONFIRMATIONS polls in a row that say "removed"
  * (see classifyMembershipCheck) mean the server has cascaded us out. One poll
  * is not enough: a member list still catching up can briefly lack our row.
@@ -96,10 +106,10 @@ export function useNamespaceMembershipWatch(): void {
 
     const check = async () => {
       if (cancelled || removedRef.current) return;
-      const resp = await api.resolveCurrentMemberIdentity(groupId, "");
+      const resp = await api.listMembers(groupId);
       if (cancelled || removedRef.current) return;
 
-      const verdict = classifyMembershipCheck(resp);
+      const verdict = classifyMembershipCheck(resp, getAccountId());
       if (verdict === "member") {
         everHadIdentity.current = true;
         removalSignals.current = 0;

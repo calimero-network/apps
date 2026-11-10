@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const resolve = vi.fn();
 vi.mock("../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
-    resolveCurrentMemberIdentity = resolve;
+    listMembers = resolve;
   },
 }));
+vi.mock("../api/calimero", () => ({ getAccountId: () => "me" }));
 vi.mock("../constants/config", () => ({
   getGroupId: () => "ns-1",
   clearWorkspaceSelection: vi.fn(),
@@ -21,34 +22,38 @@ import {
   useNamespaceMembershipWatch,
 } from "./useNamespaceMembershipWatch";
 
-const member = { data: { memberIdentity: "me" }, error: null };
+const member = { data: { members: [{ identity: "other" }, { identity: "me" }] }, error: null };
 const notFound = { data: null, error: { code: 404, message: "group 'ab12' not found" } };
-const noRow = {
-  data: null,
-  error: { code: 404, message: "Could not resolve identity for this namespace." },
-};
+// Taken out of Chat (its app team) or out of the org: the list loads without the caller.
+const noRow = { data: { members: [{ identity: "other" }] }, error: null };
+const gone = { data: null, error: { code: 404, message: "Not found: app 'ab12'" } };
 const refused = { data: null, error: { code: 403, message: "node is not a member of group 'ab12'" } };
 
 describe("classifyMembershipCheck", () => {
-  it("reads a resolved row as a member", () => {
-    expect(classifyMembershipCheck(member)).toBe("member");
+  it("reads a list holding the caller as a member", () => {
+    expect(classifyMembershipCheck(member, "me")).toBe("member");
   });
 
   // The node has not applied the namespace yet: nothing about the caller.
   it("never reads a group this node does not hold as a removal", () => {
-    expect(classifyMembershipCheck(notFound)).toBe("unknown");
+    expect(classifyMembershipCheck(notFound, "me")).toBe("unknown");
   });
 
-  it("reads a missing row and a non-member refusal as removed", () => {
-    expect(classifyMembershipCheck(noRow)).toBe("removed");
-    expect(classifyMembershipCheck(refused)).toBe("removed");
+  it("reads a list without the caller, a 404 and a non-member refusal as removed", () => {
+    expect(classifyMembershipCheck(noRow, "me")).toBe("removed");
+    expect(classifyMembershipCheck(gone, "me")).toBe("removed");
+    expect(classifyMembershipCheck(refused, "me")).toBe("removed");
   });
 
-  it("reads any other failure as unknown", () => {
-    expect(classifyMembershipCheck({ data: null, error: { code: 500, message: "boom" } })).toBe("unknown");
+  it("reads any other failure, or no signed-in account, as unknown", () => {
+    expect(classifyMembershipCheck({ data: null, error: { code: 500, message: "boom" } }, "me")).toBe("unknown");
     expect(
-      classifyMembershipCheck({ data: null, error: { code: 403, message: "Token does not carry the permissions" } }),
+      classifyMembershipCheck(
+        { data: null, error: { code: 403, message: "Token does not carry the permissions" } },
+        "me",
+      ),
     ).toBe("unknown");
+    expect(classifyMembershipCheck(noRow, "")).toBe("unknown");
   });
 });
 

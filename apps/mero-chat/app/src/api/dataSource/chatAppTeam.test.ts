@@ -39,10 +39,16 @@ const h = vi.hoisted(() => {
     me: vi.fn(async () => ({
       orgs: [...state.orgs.values()].map((o) => ({ orgId: o.orgId, name: o.name, role: o.members[state.me] })),
     })),
+    // As core answers it: a closed team only for its members and the org's admins.
     getOrg: vi.fn(async (org: string) => {
       const o = state.orgs.get(org);
       if (!o) throw Object.assign(new Error("404"), { status: 404 });
-      return structuredClone({ ...o, mode: modeOf(o) });
+      const role = o.members[state.me];
+      const admin = role === "owner" || role === "admin";
+      const teams = Object.fromEntries(
+        Object.entries(o.teams).filter(([, t]) => admin || t.join === "everyone" || state.me in t.members),
+      );
+      return structuredClone({ ...o, teams, mode: modeOf(o) });
     }),
     getApp: vi.fn(async (app: string) => {
       const a = state.apps.get(app);
@@ -292,6 +298,21 @@ describe("the workspace's people are Chat's", () => {
     expect((await api.listMembers(org)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect((await api.listMembers(general)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect((await api.getGroup(general)).data?.subgroupVisibility).toBe("open");
+  });
+
+  it("shared: someone taken out of Chat sees nobody in it, themselves included", async () => {
+    const { org } = await workspace(people);
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.join = "invite";
+    team.members["acct-bob"] = false;
+    h.state.me = "acct-bob";
+    invalidate();
+    expect((await api.listMembers(org)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
+    // Calimero Home sets Bob to No for Chat: core no longer shows him its team.
+    delete team.members["acct-bob"];
+    invalidate();
+    expect((await api.listMembers(org)).data!.members).toEqual([]);
+    expect((await api.getGroup(org)).data?.memberCount).toBe(0);
   });
 
   it("someone in the org but not in Chat is added to the app team, not the org", async () => {

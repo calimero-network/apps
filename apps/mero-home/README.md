@@ -79,3 +79,8 @@ only that app, and the admin removes them from the org. It needs core#4890 and
 global setup refuses an older merod with that reason. CI runs it in
 `components.yml`'s `browser` job. By hand: `MEROD_BIN=/path/to/merod-rc.14
 pnpm -F mero-home test:e2e`.
+
+[`e2e/cross-app`](../../e2e/cross-app/playwright.config.ts) runs Home beside
+Mero Chat and KV Store over one org (CI: `components.yml`'s `cross-app` job):
+a workspace made in Chat shows in Home, Home adds an app, invites to both and
+takes someone out of Chat only, and Chat's member list follows.
