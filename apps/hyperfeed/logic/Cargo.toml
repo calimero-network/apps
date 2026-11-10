@@ -20,15 +20,15 @@ crate-type = ["cdylib"]
 # crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
 # inherit `[workspace.dependencies]`.
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.12" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # The harness (`TestApp`, `run_scenario`) and the builder the tests build this
 # crate with, for `cargo test` on the host only.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.12", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.12" }
 
 # Read by `mero-component bundle` (tools/component-bundle), with the keys
 # `cargo mero bundle` reads for a v1 app.
@@ -47,7 +47,7 @@ tags = ["agent", "notifications", "feed", "approvals", "delegated-execution"]
 github = "https://github.com/calimero-network/apps"
 # `component-min-runtime-version` in the root Cargo.toml: a node compares it
 # with its own release.
-min-runtime-version = "1.0.0-rc.11"
+min-runtime-version = "1.0.0-rc.12"
 # Doubles as the registered login callback origin, compared by exact origin:
 # without it a hosted login dies on "Login callback destination is not allowed".
 # Hyperfeed's own domain, served by the `hyperfeed` Vercel project (Root
