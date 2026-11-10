@@ -10,11 +10,23 @@
 //                    in a production build (net/session.ts).
 //  3. signed in    → the worlds this account reaches (app instances): enter
 //                    one, create one, copy an invite for the last one played.
-// An invite link (`?invite=`) is redeemed right after sign-in and opens the
-// world it joins.
+// An invite link (`?invite=`) is asked about once signed in: "Join {inviter}'s
+// game as {account}?", Join or Not now. Join redeems it and enters the world
+// it joins; nothing is redeemed before that.
 
 import type { AppInfo, SignUpPolicy } from "@calimero-network/mero-js";
-import { describeError, readSignUpPolicy, signUpAccess, signUpNotice } from "@calimero-apps/connect";
+import {
+  describeError,
+  describeInviteRefusal,
+  describeRedeemFailure,
+  inviteRefusal,
+  isSpentInvite,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpNotice,
+  type InviteStore,
+  type PendingInvite,
+} from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
 import {
   describeSignUpNotFinished,
@@ -47,18 +59,20 @@ import {
   type SignedOut,
 } from "../net/session";
 import {
+  alreadyInInvitedWorld,
   createWorld,
-  dropInvite,
   forgetWorld,
-  inviteLink,
+  invitedWorld,
+  inviter,
+  invites as gameInvites,
   inviteToken,
   lastWorld,
   listWorlds,
-  alreadyInInvitedWorld,
-  inviteFailure,
-  pendingInvite,
   redeemPendingInvite,
   rememberWorld,
+  shortAccount,
+  worldIn,
+  worldInviteLink,
   worldSource,
 } from "../net/worlds";
 import { PACKAGE } from "../net/blocks";
@@ -205,6 +219,10 @@ const css = `
 .mbl-info { font-size: 12px; color: #cfd9e4; line-height: 1.55; margin: 8px 0 0; text-align: left; }
 .mbl-account-note { font-size: 12px; color: #ffd27a; line-height: 1.5; margin: 10px 0 0; text-align: center; }
 .mbl-account-note:empty { display: none; }
+.mbl-ask { text-align: center; }
+.mbl-ask h3 { margin: 4px 0 6px; }
+.mbl-ask-actions { display: flex; gap: 8px; }
+.mbl-ask-actions .mbl-btn { flex: 1; }
 .mbl-error { color: #ff8686; font-size: 12px; margin-top: 8px; min-height: 14px; text-align: center; }
 .mbl-controls { margin-top: 14px; color: #cfd9e4; font-size: 12px; line-height: 2; text-align: center;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
@@ -230,12 +248,17 @@ export class Landing {
   private root: HTMLElement;
   private panorama: Panorama;
   private phase!: Phase;
-  /** A sign-up from this card carried the invite and joined: the organization it joined (`null` when it cannot be told). */
-  private joined: { org: string | null } | null = null;
+  /**
+   * A sign-up from this card carried the invite and joined: the organization
+   * it joined (`null` when it cannot be told) and the world its link named.
+   */
+  private joined: { org: string | null; world: string | null } | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly deps: SessionDeps = defaultDeps,
+    /** The pending-invite store; the game's own unless a test passes one. */
+    private readonly invites: InviteStore = gameInvites,
   ) {
     const style = document.createElement("style");
     style.textContent = css;
@@ -254,6 +277,7 @@ export class Landing {
    */
   show(phase: Phase, defaults: { name: string; seed: number }, opts: { chromeless?: boolean } = {}): Promise<LaunchChoice> {
     this.phase = phase;
+    this.sessionChanged();
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
@@ -262,6 +286,17 @@ export class Landing {
         resolve(choice);
       });
     });
+  }
+
+  /**
+   * The pending invite follows the session, as `usePasskeySession({ invites })`
+   * keeps it in the React apps: kept under this cluster's key, held for the
+   * account that signs in (and dropped when another one does).
+   */
+  private sessionChanged(): void {
+    const phase = this.phase;
+    if (phase.status === "signed-out" || phase.status === "signed-in") this.invites.bind(phase.target);
+    if (phase.status === "signed-in") this.invites.signedIn(phase.accountId);
   }
 
   private render(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
@@ -359,7 +394,8 @@ export class Landing {
   // and a sign-up carries the invite, joining the world in that step.
   private renderSignIn(phase: SignedOut, defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
-    const invited = pendingInvite() !== null;
+    // An invite the node refuses at sign-up is dropped: the card stops offering it.
+    let invited = this.invites.token() !== null;
     el.innerHTML = `
       ${this.commonInputs(defaults)}
       ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
@@ -401,7 +437,7 @@ export class Landing {
     // invite-only cluster gets no "Create account", and says why.
     let policy: SignUpPolicy | null | undefined;
     let failure: CeremonyFailure | null = null;
-    const access = () => signUpAccess(policy, pendingInvite() !== null);
+    const access = () => signUpAccess(policy, this.invites.token() !== null);
     // Which action leads: an invited player this browser knows no account for
     // (or whose sign-in just found none) creates one; a sign-in the cluster
     // has no account for turns any player to creating one, in place.
@@ -462,8 +498,25 @@ export class Landing {
       flow = signingUp;
       try {
         this.phase = await run();
+        this.sessionChanged();
         this.renderPlayCard({ ...defaults, name: this.readName() }, done);
       } catch (e) {
+        // A sign-up refused because of its invite (unknown, used up,
+        // expired, its org gone): the token is dropped and never sent again,
+        // and the card says why, offering the account without it where the
+        // cluster takes one.
+        const refused = during === "sign-up" && invited ? inviteRefusal(e) : null;
+        if (refused) {
+          invited = false;
+          this.invites.drop();
+          el.querySelector("[data-testid=invite-note]")?.remove();
+          failure = null;
+          buttons.forEach((b) => (b.disabled = false));
+          layout();
+          const canSignUp = signUpNotice(access()) === null;
+          errEl.textContent = `${describeInviteRefusal(refused)}${canSignUp ? " You can still create your account without it." : ""}`;
+          return;
+        }
         // A dismissed prompt (or a cancel at Approve) is quiet. An invited
         // player whose sign-in found no account is told so by the switch.
         failure = { error: e, during };
@@ -486,17 +539,18 @@ export class Landing {
       void ceremony(
         "sign-up",
         async () => {
+          const pending = this.invites.pending();
           const { joined, ...signedIn } = await signUp(
             phase,
             account,
             this.deps,
-            { invite: pendingInvite(), policy },
+            { invite: invited ? (pending?.token ?? null) : null, policy },
             signingUp.passkey,
           );
-          // Joined at sign-up: nothing is left to redeem.
+          // Joined at sign-up: nothing is left to ask or redeem.
           if (joined) {
-            dropInvite();
-            this.joined = { org: joined.org };
+            this.invites.drop();
+            this.joined = { org: joined.org ?? pending?.org ?? null, world: invitedWorld(pending) };
           }
           return signedIn;
         },
@@ -532,6 +586,8 @@ export class Landing {
     };
 
     el.querySelector("[data-testid=sign-out-btn]")!.addEventListener("click", () => {
+      // The next person on this browser is not asked to join.
+      this.invites.signedOut();
       void signOut(phase).then((next) => {
         this.phase = next;
         this.renderPlayCard(defaults, done);
@@ -547,27 +603,23 @@ export class Landing {
       const joined = this.joined;
       this.joined = null;
       if (joined) {
-        const world = joined.org
-          ? (await listWorlds(phase.client, source).catch(() => [])).find((w) => w.org === joined.org)
-          : undefined;
+        const world = worldIn(await listWorlds(phase.client, source).catch(() => []), joined.org, joined.world);
         phase.sessions.sync(phase.client);
         if (world) return enter(world);
         noteEl.textContent = "Invitation accepted — pick the world below.";
       }
-      // An invitation opened before signing in: redeem it, then enter the
-      // world it joined (or list it, if the answer did not say which).
-      if (pendingInvite()) {
-        noteEl.textContent = "Joining the world you were invited to…";
-        // Already in it: open it, and leave the link unspent for whoever it was for.
-        const mine = await alreadyInInvitedWorld(phase.client, source);
+      // An invitation: asked, never redeemed on its own. Already in its world:
+      // enter it, and leave the link unspent for whoever it was for.
+      if (this.invites.pending()) {
+        const mine = await alreadyInInvitedWorld(phase.client, source, this.invites);
+        phase.sessions.sync(phase.client);
         if (mine) return enter(mine);
-        try {
-          const invited = await redeemPendingInvite(phase.client, source);
-          phase.sessions.sync(phase.client);
-          if (invited) return enter(invited);
-          noteEl.textContent = "Invitation accepted — pick the world below.";
-        } catch (e) {
-          noteEl.textContent = inviteFailure(e);
+        const pending = this.invites.pending();
+        if (pending) {
+          const answer = await this.askToJoin(listEl, phase, pending);
+          if (answer.world) return enter(answer.world);
+          noteEl.textContent = answer.note;
+          listEl.innerHTML = `<div class="mbl-note">Loading worlds…</div>`;
         }
       }
       let worlds: AppInfo[];
@@ -600,7 +652,9 @@ export class Landing {
           try {
             const token = await inviteToken(phase.client, org, this.deps.passkey());
             phase.sessions.sync(phase.client);
-            await navigator.clipboard.writeText(inviteLink(token, window.location, org));
+            const name = this.readName();
+            const from = name === "Player" ? shortAccount(phase.accountId) : name;
+            await navigator.clipboard.writeText(worldInviteLink(token, org, { world: current.appId, from }));
             // Each link lets one person in: say so where it is copied.
             inviteBtn.textContent = "Invite copied: single use";
           } catch (e) {
@@ -615,6 +669,65 @@ export class Landing {
         });
       }
     })();
+  }
+
+  /**
+   * "Join {inviter}'s game as {account}?" in place of the world list, until
+   * the player answers. Join redeems the invite: joined, it answers the world
+   * to enter (or a note when the org holds none yet); refused for good, the
+   * token is dropped and the note says so. A lapsed session, a rate limit or
+   * the network keeps the token and the question, to try again. Not now
+   * drops the token and joins nothing.
+   */
+  private askToJoin(
+    listEl: HTMLElement,
+    phase: SignedIn,
+    pending: PendingInvite,
+  ): Promise<{ world: AppInfo | null; note: string }> {
+    const from = inviter(pending);
+    const joining = from ? `${from}'s game` : "the game";
+    listEl.innerHTML = `
+      <div class="mbl-ask" data-testid="invite-confirm">
+        <h3 data-testid="invite-question">Join ${escapeHtml(joining)} as ${escapeHtml(shortAccount(phase.accountId))}?</h3>
+        <div class="mbl-note">Joining makes you a member of its world's organization: you can enter its worlds and build there.</div>
+        <div class="mbl-error" data-testid="invite-error" role="alert"></div>
+        <div class="mbl-ask-actions">
+          <button class="mbl-btn green" data-testid="invite-join">Join</button>
+          <button class="mbl-btn ghost" data-testid="invite-not-now">Not now</button>
+        </div>
+      </div>
+    `;
+    const joinBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-join]")!;
+    const laterBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-not-now]")!;
+    const errEl = listEl.querySelector<HTMLElement>("[data-testid=invite-error]")!;
+    joinBtn.focus();
+    return new Promise((resolve) => {
+      laterBtn.addEventListener("click", () => {
+        this.invites.drop();
+        resolve({ world: null, note: "" });
+      });
+      joinBtn.addEventListener("click", async () => {
+        errEl.textContent = "";
+        joinBtn.disabled = true;
+        laterBtn.disabled = true;
+        joinBtn.textContent = "Joining…";
+        try {
+          const world = await redeemPendingInvite(phase.client, worldSource(this.deps.env), this.invites);
+          resolve({ world, note: world ? "" : "Invitation accepted — pick the world below." });
+        } catch (e) {
+          if (isSpentInvite(e)) {
+            resolve({ world: null, note: describeRedeemFailure(e) });
+            return;
+          }
+          errEl.textContent = describeRedeemFailure(e);
+          joinBtn.textContent = "Try again";
+          joinBtn.disabled = false;
+          laterBtn.disabled = false;
+        } finally {
+          phase.sessions.sync(phase.client);
+        }
+      });
+    });
   }
 
   /** one Minecraft-style world card: blurred terrain thumb, name, Enter, ⋯ menu */

@@ -147,7 +147,9 @@ a **passkey**, lists and creates **arenas** (app instances: v1's contexts) in
 **organizations** (v1's namespaces: "New arena" makes both, "Add arena" puts
 another arena in one you have), invites an opponent with an **org invite link**
 that also names the arena (making it is approved with your passkey; opening it
-after signing in redeems it and opens the arena), streams movement over the
+after signing in redeems it and opens the arena, else one in that organization;
+the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on
+sign-out; a member who may not add an arena is told to ask an owner), streams movement over the
 node's **presence** channel and the arena's **event stream**, and calls the
 contract by method name through `src/kombat.ts`, whose method list a test checks
 against `logic/res/abi.json`. A corner with no name given shows a short account

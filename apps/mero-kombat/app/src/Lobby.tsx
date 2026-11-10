@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import type { AppSource } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, type AppSource } from "@calimero-apps/connect";
 
 import { createArena, listArenas } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
@@ -26,7 +26,7 @@ export function Lobby({
   onOpen,
   after,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg">;
+  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg" | "getOrg" | "session">;
   source: AppSource;
   onOpen: (arena: OpenArena) => void;
   /** Runs after each request (keeps the stored session current). */
@@ -56,6 +56,23 @@ export function Lobby({
     for (const a of arenas ?? []) if (a.org) seen.set(a.org, (seen.get(a.org) ?? 0) + 1);
     return [...seen.entries()];
   }, [arenas]);
+
+  // Who may add an arena to each organization (core's CREATE_APP rule): a
+  // member who may not is told to ask an owner instead of a button that
+  // fails. Unknown (`null`, the org unreadable) keeps the button.
+  const orgKey = orgs.map(([org]) => org).join(",");
+  const [mayAdd, setMayAdd] = useState<Record<string, boolean | null>>({});
+  useEffect(() => {
+    let live = true;
+    for (const org of orgKey ? orgKey.split(",") : []) {
+      void canCreateIn(client, org).then((may) => {
+        if (live) setMayAdd((m) => ({ ...m, [org]: may }));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [client, orgKey]);
 
   async function make(key: string, org?: string) {
     setBusy(key);
@@ -156,9 +173,15 @@ export function Lobby({
                     <span className="mono ns-id" title={org}>
                       {shortId(org)} · {count} arena{count === 1 ? "" : "s"}
                     </span>
-                    <button className="ghost small" disabled={busy !== null} onClick={() => void make(org, org)}>
-                      {busy === org ? "Creating…" : "Add arena"}
-                    </button>
+                    {mayAdd[org] === false ? (
+                      <p className="hint" data-testid="ask-an-owner">
+                        {askAnOwnerCopy("an arena")}
+                      </p>
+                    ) : (
+                      <button className="ghost small" disabled={busy !== null} onClick={() => void make(org, org)}>
+                        {busy === org ? "Creating…" : "Add arena"}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

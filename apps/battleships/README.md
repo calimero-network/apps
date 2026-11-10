@@ -38,7 +38,9 @@ pnpm dev:local battleships       # merod local + build + deploy + http://localho
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`).
 In the browser, **create an account** (a passkey), create a lobby, and
 **Invite player** for your opponent: a second browser profile with its own
-passkey that opens the link joins the lobby's organization. Each of you opens
+passkey that opens the link is asked "Join {inviter}'s game as {account}?" and,
+on **Join**, joins the lobby's organization (an account made from the
+invitation page joins in that one step). Each of you opens
 the lobby once (that is what puts you on its roster), then one challenges the
 other, both deploy a fleet, and you take turns.
 
@@ -145,7 +147,7 @@ them, the same answers and events, with these differences a client sees:
 | stats | derived on every read from the reported results | counters kept with the result | only the contract writes them |
 | events | lobby events on the lobby context, match events on the game context | one event stream per lobby: `MatchCreated`, `MatchListUpdated` (now also when a fleet is committed), `PlayersUpdated`, `PlayerStatsUpdated` to everyone the lobby reaches; a match's events (with its `id`) to its two players. `MatchIdCollision` (never emitted) is gone | `Audience` |
 | access | anyone in the namespace's contexts | the lobby org's members, admins, guests and owner; anonymous `401`, outsiders `404`; a match's views (`getShots`, `getIncomingShots`, `getMatchState`) to its players only, as before | the node's access gate |
-| frontend | node login / Calimero account through a relay, namespaces, contexts, namespace invitations, names via `@calimero-apps/names`, the desktop SSO hand-off | passkey sign-in or sign-up (no node to pick: the build sets the target), lobbies as app instances in orgs, org invite links (`?invite=&lobby=`, a passkey step-up), names as org member metadata | `@calimero-apps/connect` |
+| frontend | node login / Calimero account through a relay, namespaces, contexts, namespace invitations, names via `@calimero-apps/names`, the desktop SSO hand-off | passkey sign-in or sign-up (no node to pick: the build sets the target), lobbies as app instances in orgs, org invite links (`?invite=&org=&lobby=&from=`, a passkey step-up; kept in `@calimero-apps/connect`'s invite store and redeemed only on **Join**), names as org member metadata | `@calimero-apps/connect` |
 
 No migrations existed in v1 and the component SDK has none, so v1 lobby and
 game state does not carry over: lobbies are created anew.

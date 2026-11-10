@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel } from "@calimero-apps/passkey";
+import {
+  appSource,
+  askAnOwnerCopy,
+  canCreateIn,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
+import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { InviteCard } from "./InviteCard";
@@ -9,7 +16,7 @@ import { KvPanel } from "./KvPanel";
 import { PACKAGE, kvStore } from "./kvStore";
 import { StorePicker } from "./StorePicker";
 import { LISTING, ONBOARDING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
-import { dropInvite, isSpentInvite, pendingInvite, pendingInviteOrg, selectionKey } from "./stores";
+import { instanceIn, invites as appInvites, listStores, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
 
@@ -51,24 +58,22 @@ function subscribeTo(client: CalimeroClient, app: string) {
 export function App({
   deps = defaultDeps,
   storage = globalThis.localStorage,
+  invites = appInvites,
 }: {
   deps?: SessionDeps;
   storage?: KeyValueStorage;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
 }) {
   // Memoised: a new object every render would reconnect every render.
   const sessionDeps = useMemo(
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(
-    sessionDeps,
-    () => pendingInvite(storage),
-    // Signed up with the invite: the account is in the store's org already.
-    () => {
-      dropInvite(storage);
-      setInvite(null);
-      setNotice("Invitation accepted: the shared store is in your list.");
-    },
+  // Signed up with the invite: the account is in the store's org already,
+  // which opens once the session is signed in.
+  const api = useSession(sessionDeps, invites, (joined, pending) =>
+    setLanding({ org: joined.org ?? pending?.org ?? null }),
   );
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
@@ -102,12 +107,44 @@ export function App({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (see `Invitation.tsx`), redeemed only on "Join".
-  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
-  const [inviteLater, setInviteLater] = useState(false);
+  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
+  // The store drops it once joined, refused or declined, and on sign-out.
+  const pending = usePendingInvite(invites);
+  const invite = pending?.token ?? null;
+  // The invitation a signed-in account is asked about stays on screen until it
+  // closes: `JoinInvitation` drops the token before it says "already in" or
+  // "used up", and the store would take the page away with it.
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
   useEffect(() => {
-    if (client) setInvite(pendingInvite(storage));
-  }, [client, storage]);
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
+  const asking = client ? (pending ?? asked) : null;
+  const [inviteLater, setInviteLater] = useState(false);
+
+  // The org an invite joined (or the account was already in): its store opens
+  // once there is a client to list it with. `org: null` when nothing said which.
+  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  useEffect(() => {
+    if (!client || !landing) return;
+    setLanding(null);
+    const { org } = landing;
+    void (async () => {
+      setPickerKey((k) => k + 1);
+      const remembered = key ? readSelection(storage, key)?.appId : null;
+      const found = org ? instanceIn(await listStores(client, source).catch(() => []), org, remembered) : null;
+      after();
+      if (found) {
+        open(found);
+        setNotice(null);
+        return;
+      }
+      open(null);
+      // In the org, but with no store there to open: say who may add one.
+      const may = org ? await canCreateIn(client, org) : null;
+      setNotice(may === false ? askAnOwnerCopy("a store") : "Invitation accepted: the shared store is in your list.");
+    })();
+  }, [client, landing, source, key, storage, after, open]);
 
   const kv = useMemo(
     () => (client && opened ? kvStore(client, opened.appId, after) : null),
@@ -153,22 +190,23 @@ export function App({
           </section>
         ))}
 
-      {session.status === "signed-in" && invite && (
+      {session.status === "signed-in" && asking && (
         <JoinInvitation
           {...ONBOARDING}
+          key={asking.token}
           client={session.client}
-          token={invite}
-          org={pendingInviteOrg(storage)}
-          drop={() => dropInvite(storage)}
-          isSpent={isSpentInvite}
+          token={asking.token}
+          org={asking.org}
+          drop={invites.drop}
           after={after}
-          onJoined={() => {
-            setInvite(null);
-            setNotice("Invitation accepted: the shared store is in your list.");
-            setPickerKey((k) => k + 1);
-            open(null);
+          onJoined={({ org }) => {
+            setAsked(null);
+            setLanding({ org });
           }}
-          onClose={() => setInvite(null)}
+          onClose={({ member }) => {
+            setAsked(null);
+            if (member) setLanding({ org: member });
+          }}
         />
       )}
 
@@ -178,11 +216,11 @@ export function App({
         </div>
       )}
 
-      {session.status === "signed-in" && !invite && !opened && (
+      {session.status === "signed-in" && !asking && !opened && (
         <StorePicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
       )}
 
-      {session.status === "signed-in" && !invite && opened && kv && (
+      {session.status === "signed-in" && !asking && opened && kv && (
         <>
           <div className="card context-bar">
             <div className="row" style={{ justifyContent: "space-between" }}>

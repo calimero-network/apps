@@ -1,5 +1,15 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  createInviteStore,
+  inviteLink,
+  targetKey,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+  type Target,
+} from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP } from "./session";
 
@@ -46,74 +56,97 @@ export function inviteToken(
   return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem and `table` to open after. */
-export function inviteLink(
-  token: string,
-  table: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  url.searchParams.set("table", table);
-  return url.toString();
-}
+/**
+ * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
+ * A version-pinned invite link's route is read relative to it.
+ */
+export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
 
-export interface PendingInvite {
-  token: string;
-  /** The table the link was made in: opened once the invitation is redeemed. */
-  table: string | null;
-}
-
-const PENDING = `${APP}:pending-invite`;
+/** The link parameter naming the table an invite opens. */
+const TABLE_PARAM = "table";
+/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
+const FROM_PARAM = "from";
 
 /**
- * Takes `?invite=` (and `&table=`) off the address bar into storage, before
- * anything renders: a person opening a link is usually not signed in yet, and
- * the token must survive the sign-up. Redeemed (and dropped) once a session
- * exists.
+ * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`),
+ * with the table its link names (`&table=`) and who sent it (`&from=`):
+ * captured in `main.tsx` before React mounts, then bound to the cluster, held
+ * for the account that signs in with it and dropped on sign-out by the passkey
+ * session (`usePasskeySession({ invites })`).
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
+export const invites: InviteStore = createInviteStore(APP, { keep: [TABLE_PARAM, FROM_PARAM] });
+
+/** The table a pending invite's link names, opened once it is redeemed. */
+export function invitedTable(invite: PendingInvite | null): string | null {
+  return invite?.extra[TABLE_PARAM] ?? null;
+}
+
+/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
+export function inviter(invite: PendingInvite | null): string | null {
+  return invite?.extra[FROM_PARAM] ?? null;
+}
+
+/**
+ * The link that opens this frontend with `token` to redeem and `table` to open
+ * after. It also names `org` (redeeming spends the link's single use even for
+ * someone already in the org, so the app tells a member first) and `from`, the
+ * inviter's name, for the question the invitee is asked.
+ *
+ * Pinned to the router's basename (the served `/{version}/`) until every
+ * cluster keeps the query on its root redirect (core's served-redirect fix).
+ */
+export function tableInviteLink(token: string, table: string, org: string, from?: string | null): string {
+  return inviteLink(token, { org, root: basename(), extra: { [TABLE_PARAM]: table, [FROM_PARAM]: from } });
+}
+
+/** The key this app kept its pending invite under before the shared store: `{ token, table }`. */
+const LEGACY_INVITE = `${APP}:pending-invite`;
+
+/**
+ * Moves an invite stored by an older build of this app into `store`, unless
+ * the store holds one already (a link opened just now wins), and forgets the
+ * old key.
+ */
+export function migrateStoredInvite(
+  store: InviteStore,
+  storage: KeyValueStorage | undefined = globalThis.localStorage,
+): void {
+  if (!storage) return;
+  let raw: string | null;
   try {
-    storage.setItem(PENDING, JSON.stringify({ token, table: url.searchParams.get("table") }));
+    raw = storage.getItem(LEGACY_INVITE);
   } catch {
     return;
   }
-  dropDeferral();
-  url.searchParams.delete("invite");
-  url.searchParams.delete("table");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === "string"
-      ? { token: parsed.token, table: typeof parsed.table === "string" ? parsed.table : null }
-      : null;
-  } catch {
-    return null;
+  if (raw && !store.pending()) {
+    try {
+      const old = JSON.parse(raw) as { token?: unknown; table?: unknown };
+      if (typeof old.token === "string" && old.token) {
+        store.put({
+          token: old.token,
+          org: null,
+          team: null,
+          doc: null,
+          route: null,
+          extra: typeof old.table === "string" && old.table ? { [TABLE_PARAM]: old.table } : {},
+        });
+      }
+    } catch {
+      /* not an invite */
+    }
   }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
   try {
-    storage.removeItem(PENDING);
+    storage.removeItem(LEGACY_INVITE);
   } catch {
     /* nothing stored */
   }
-  dropDeferral();
 }
 
 const DEFERRED = `${APP}:invite-deferred`;
 
 /**
- * "Not now" on the invitation: the ordinary landing page for the rest of this
- * tab, with the token KEPT, so signing in later still joins.
+ * "Not now" on the signed-out invitation page: the ordinary landing page for
+ * the rest of this tab, with the token KEPT, so signing in later still asks.
  */
 export function deferInvite(storage: Pick<Storage, "setItem"> = sessionStorage): void {
   try {
@@ -131,7 +164,8 @@ export function inviteDeferred(storage: Pick<Storage, "getItem"> = sessionStorag
   }
 }
 
-function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): void {
+/** A new link was opened: its invitation page shows again. */
+export function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): void {
   try {
     storage.removeItem(DEFERRED);
   } catch {
@@ -139,16 +173,23 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
   }
 }
 
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
 /**
- * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer: a 4xx other than 401/429.
+ * The table to open in `org` (the one an invite joined, or the account was
+ * already in): the table the link named when the account reaches it, else
+ * `prefer` (the one opened last) when it is in `org`, else the first by name.
+ * `null` when the account reaches none there yet.
  */
-export function inviteRefused(e: unknown): boolean {
-  if (e instanceof CalimeroError) return e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429;
-  return /unknown invite|already used|expired|revoked/i.test(describeError(e));
+export function tableIn(
+  tables: AppInfo[],
+  org: string | null,
+  named?: string | null,
+  prefer?: string | null,
+): AppInfo | null {
+  const asked = named ? tables.find((a) => a.appId === named) : undefined;
+  if (asked) return asked;
+  if (!org) return null;
+  const inOrg = tables.filter((a) => a.org === org);
+  return inOrg.find((a) => a.appId === prefer) ?? inOrg[0] ?? null;
 }
 
 /** The table last opened on this target by this account, remembered across loads. */

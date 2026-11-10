@@ -2,15 +2,17 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { captureInvite } from "./arenas";
+import { basename, invites, migrateStoredInvite } from "./arenas";
 import "./index.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
 
 // Before React mounts: a person opening an invitation link is usually not
-// signed in yet, and the token has to survive the passkey sign-up.
-captureInvite();
+// signed in yet, and the token has to survive the passkey sign-up. An invite an
+// older build stored under its own key moves over.
+invites.capture(window.location, { basename: basename() });
+migrateStoredInvite(invites);
 
 // StrictMode in dev only. Double-invoking effects is useful for catching
 // missing cleanup and actively misleading when you are reading a call log.

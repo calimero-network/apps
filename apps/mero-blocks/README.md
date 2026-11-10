@@ -89,7 +89,11 @@ pnpm dev:local mero-blocks       # merod local + build + deploy + http://localho
 **create an account** (a passkey), **create a world** (name + seed), and play.
 **Invite friends** (or **Copy world invite** in the in-game menu) copies a link
 carrying an org invite (approved with your passkey); a second browser profile
-with its own passkey opening it signs in and lands in the same world.
+with its own passkey opening it signs in, is asked "Join {inviter}'s game as
+{account}?" and, on **Join**, lands in the same world (an account made from the
+invitation joins in that one step). A lapsed session, a rate limit or a network
+failure keeps the invite to try again; only the node's word that it is used up
+or expired drops it.
 
 **Controls:** click to lock the mouse · WASD + Space · LMB **or Q** break ·
 RMB **or E** place · 1–9/wheel select · **M** live world map · **O** options
@@ -175,7 +179,8 @@ Playwright from `package.json`. **Now:** the target comes from the build
 (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
 `vite build`), sign-in is a **passkey**, worlds are **app instances** (v1's
 contexts) each in an **organization** of its own (v1's namespace), sharing is an
-**org invite link** redeemed after sign-in, and the game calls the contract
+**org invite link** (kept in `@calimero-apps/connect`'s invite store) redeemed
+after sign-in once the player says Join, and the game calls the contract
 through `src/net/blocks.ts`. Kept: the launcher's look (panorama, world cards,
 create dialog), the game, the marketing landing page.
 

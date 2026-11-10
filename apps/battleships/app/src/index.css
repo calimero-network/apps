@@ -2129,3 +2129,16 @@ html, body {
   :root { --cell-size: 26px; }
   .nav-brand-text { display: none; }
 }
+
+/* The invitation question (`JoinInvitation`): the card's body, Join and Not now in a row. */
+.invitation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
