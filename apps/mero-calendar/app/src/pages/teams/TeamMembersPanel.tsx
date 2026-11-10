@@ -4,7 +4,7 @@ import "@calimero-apps/members/members.css";
 
 import { messageOf } from "../../api/calendar";
 import { useSignedIn } from "../../api/sessionContext";
-import { isAdmin, readOrg } from "../../api/teams";
+import { PRODUCT_NAME, isAdmin, readOrg, removeTeamMember } from "../../api/teams";
 import { useToast } from "../../contexts/ToastContext";
 import { CloseIcon, ShieldIcon, UserIcon } from "../../components/common/icons/Icons";
 import styles from "./teams.module.scss";
@@ -48,7 +48,7 @@ const short = (account: string) => (account.length > 16 ? `${account.slice(0, 16
  */
 export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) {
   const { showToast } = useToast();
-  const { client, accountId: me, passkey, after } = useSignedIn();
+  const { client, accountId: me, passkey, source, after } = useSignedIn();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,10 +56,11 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const org = await readOrg(client, teamId);
+      const org = await readOrg(client, teamId, source);
       setRows(
-        [...org.roles]
-          .map(([account, role]) => ({ account, role, name: org.names.get(account) ?? "" }))
+        // Who has Mero Calendar in the team (its app team, else the org), with their org role.
+        org.people
+          .map((account) => ({ account, role: org.roles.get(account) ?? "member", name: org.names.get(account) ?? "" }))
           .sort((a, b) => (a.account === me ? -1 : b.account === me ? 1 : a.account.localeCompare(b.account))),
       );
     } catch (err) {
@@ -69,7 +70,7 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
       setLoading(false);
       after();
     }
-  }, [client, teamId, me, showToast, after]);
+  }, [client, teamId, me, source, showToast, after]);
 
   useEffect(() => {
     void load();
@@ -116,8 +117,13 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
   async function removeMember(row: Row) {
     setBusy(row.account);
     try {
-      await client.removeMember(teamId, row.account, passkey());
-      showToast(`${display(row)} was removed from the team.`, "success");
+      const left = await removeTeamMember(client, teamId, source, row.account, passkey);
+      showToast(
+        left === "app"
+          ? `${display(row)} was removed from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
+          : `${display(row)} was removed from the team.`,
+        "success",
+      );
       onChanged?.();
       await load();
     } catch (err) {

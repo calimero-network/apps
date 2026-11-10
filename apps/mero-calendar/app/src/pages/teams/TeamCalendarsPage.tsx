@@ -48,7 +48,7 @@ export default function TeamCalendarsPage() {
   const location = useLocation();
   const { teamId = "" } = useParams();
   const { showToast } = useToast();
-  const { client, accountId, source, after, targetKey } = useSignedIn();
+  const { client, accountId, source, passkey, after, targetKey } = useSignedIn();
 
   const [calendars, setCalendars] = useState<CalendarEntry[]>([]);
   const [teamName, setTeamName] = useState(() => teamLabel(teamId, getStoredTeamName(teamId)));
@@ -158,7 +158,7 @@ export default function TeamCalendarsPage() {
     const name = newName.trim() || teamName;
     setCreating(true);
     try {
-      const contextId = await createCalendarIn(client, source, teamId, name);
+      const contextId = await createCalendarIn(client, source, teamId, name, passkey);
       setStoredCalendarName(contextId, name);
       setNewName("");
       navigate(`/teams/${teamId}/calendar/${contextId}`);

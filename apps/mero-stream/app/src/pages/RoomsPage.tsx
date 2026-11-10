@@ -7,7 +7,7 @@ import { setActiveRoom, setRoomName } from "../lib/session";
 import {
   createRoom,
   inviteLink,
-  inviteToken,
+  appInviteToken,
   listRooms,
   membersCreateRooms,
   setMembersCreateRooms,
@@ -75,6 +75,7 @@ export default function RoomsPage() {
     link: string;
     scope: string;
     hint: React.ReactNode;
+    appOnly?: boolean;
   } | null>(null);
 
   const run = useCallback(
@@ -103,7 +104,7 @@ export default function RoomsPage() {
       if (showSpinner) setListing(true);
       try {
         const [info, list, may] = await Promise.all([
-          streamInfo(conn.client, orgId),
+          streamInfo(conn.client, orgId, conn.source),
           listRooms(conn.client, conn.source, orgId),
           canCreateIn(conn.client, orgId),
         ]);
@@ -157,7 +158,7 @@ export default function RoomsPage() {
     if (!roomName || !conn) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the room…");
-      const appId = await createRoom(conn.client, conn.source, orgId, roomName);
+      const appId = await createRoom(conn.client, conn.source, orgId, roomName, conn.passkey);
       conn.after();
       setRoomName(appId, roomName);
       setName("");
@@ -196,13 +197,16 @@ export default function RoomsPage() {
     async (onStatus: (m: string) => void, room?: RoomRow) => {
       if (!conn) throw new Error("not signed in");
       onStatus("Approve the invitation with your passkey…");
-      const token = await inviteToken(conn.client, orgId, conn.passkey());
+      const { token, appOnly } = await appInviteToken(conn.client, orgId, conn.passkey(), conn.source);
       conn.after();
-      return inviteLink(token, {
-        stream: orgId,
-        room: room?.appId,
-        name: room?.name ?? nsName,
-      });
+      return {
+        link: inviteLink(token, {
+          stream: orgId,
+          room: room?.appId,
+          name: room?.name ?? nsName,
+        }),
+        appOnly,
+      };
     },
     [conn, orgId, nsName],
   );
@@ -210,10 +214,11 @@ export default function RoomsPage() {
   const inviteToRoom = useCallback(
     (room: RoomRow) => {
       void run(`invite:${room.appId}`, async (onStatus) => {
-        const link = await mint(onStatus, room);
+        const { link, appOnly } = await mint(onStatus, room);
         setInvite({
           key: `room:${room.appId}`,
           link,
+          appOnly,
           scope: `Opens ${room.name}`,
           hint: (
             <>
@@ -234,10 +239,11 @@ export default function RoomsPage() {
 
   const inviteToNamespace = useCallback(() => {
     void run("invite:namespace", async (onStatus) => {
-      const link = await mint(onStatus);
+      const { link, appOnly } = await mint(onStatus);
       setInvite({
         key: "namespace",
         link,
+        appOnly,
         scope: `Whole stream · ${nsName}`,
         hint: (
           <>
@@ -388,6 +394,7 @@ export default function RoomsPage() {
           link={invite?.link ?? ""}
           scope={invite?.scope ?? ""}
           hint={invite?.hint}
+          appOnly={invite?.appOnly === true}
           onClose={() => setInvite(null)}
         />
 

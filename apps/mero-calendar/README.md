@@ -54,6 +54,30 @@ events. **Invite** from a team's menu: a second browser profile with its own
 passkey and the invitation link is a second member. **Booking links** are in the
 calendar's sidebar; open one in a private window to book as a guest.
 
+
+## Mero Calendar's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Calendar reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Calendar's team at once, **open**
+  (`standalone`: everyone in the org has the app). New calendars use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Calendar only (the dialog says so) and only its people are shown.
+  **Remove** and **Leave** take someone out of Mero Calendar, never out of the
+  organization (leaving the last app there offers the org too); in open and
+  legacy orgs both are about the org, as before.
+- Adding Mero Calendar to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Test it
 
 | | what it covers | needs a node |
