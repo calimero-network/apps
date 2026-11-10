@@ -62,17 +62,22 @@ const doc = (name: string) => ({
 
 beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
+  client.listApps.mockResolvedValue([]);
   localStorage.clear();
 });
 
 describe("TeamsPage", () => {
-  it("lists the account's orgs as teams, with Delete for the owner and Leave for others", async () => {
+  it("lists the account's orgs holding projects as teams, with Delete for the owner and Leave for others", async () => {
     client.me.mockResolvedValue({
       orgs: [
         { orgId: "org-b", name: "Beta", role: "member" },
         { orgId: "org-a", name: "Alpha", role: "owner" },
       ],
     });
+    client.listApps.mockResolvedValue([
+      { appId: "p1", name: "A", owner: ME, org: "org-a", bundle: "bundle-hash" },
+      { appId: "p2", name: "B", owner: ME, org: "org-b", bundle: "bundle-hash" },
+    ]);
     renderAt("/teams");
     expect(await screen.findByText("Alpha")).toBeTruthy();
     const menus = screen.getAllByTitle("More options");
@@ -84,6 +89,28 @@ describe("TeamsPage", () => {
     fireEvent.click(screen.getByText("Leave"));
     await waitFor(() => expect(client.removeMember).toHaveBeenCalledWith("org-b", ME, expect.anything()));
     await waitFor(() => expect(screen.queryByText("Beta")).toBeNull());
+  });
+
+  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  it("does not list an org made for another app; connects it on request with a project", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] });
+    client.listApps.mockImplementation(async (f?: { bundle?: string }) =>
+      [{ appId: "w1", name: "overworld", owner: ME, org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks" }].filter(
+        (a) => !f?.bundle || a.bundle === f.bundle,
+      ),
+    );
+    client.getOrg.mockResolvedValue({ members: { [ME]: "owner" }, metadata: null });
+    client.createApp.mockResolvedValue("p-new");
+    renderAt("/teams");
+    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("connect-existing-org"));
+    const choice = await screen.findByTestId("connect-org-ow");
+    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    fireEvent.click(choice);
+    await waitFor(() =>
+      expect(client.createApp).toHaveBeenCalledWith("Untitled", "bundle-hash", expect.objectContaining({ org: "ow" })),
+    );
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 
   it("creates a team as an org whose members may create projects and invite", async () => {

@@ -61,14 +61,32 @@ function fake(
 }
 
 describe('workspaces', () => {
-  it('are the orgs, with their agreement and member counts, by name', async () => {
+  it('are the orgs holding agreements, with their agreement and member counts, by name', async () => {
     const c = fake([app('a1', 'NDA', 'org-a'), app('a2', 'SOW', 'org-a'), app('lib', LIBRARY_NAME, null)]);
     const rows = await listWorkspaces(c as never, 'bundle');
-    expect(rows.map((r) => [r.name, r.agreementCount, r.memberCount])).toEqual([
-      ['Acme', 2, 2],
-      ['Beta', 0, 2],
-    ]);
+    // Beta holds no agreement and was not made for Mero Sign: another app's org.
+    expect(rows.map((r) => [r.name, r.agreementCount, r.memberCount])).toEqual([['Acme', 2, 2]]);
     expect(c.listApps).toHaveBeenCalledWith({ bundle: 'bundle' });
+  });
+
+  it('a workspace made here is listed before it holds an agreement', async () => {
+    const meta: Record<string, unknown> = {};
+    const c = {
+      ...fake([app('a1', 'NDA', 'org-a')]),
+      getOrg: vi.fn(async (org: string) => ({ name: org, members: { [ME]: 'owner' }, metadata: meta[org] ?? null })),
+      setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
+        meta[org] = m;
+      }),
+    };
+    c.me.mockResolvedValue({
+      orgs: [
+        { orgId: 'org-a', name: 'Acme', role: 'owner' },
+        { orgId: 'org-new', name: 'Fresh', role: 'owner' },
+      ],
+    });
+    expect((await listWorkspaces(c as never, 'b')).map((r) => r.namespaceId)).toEqual(['org-a']);
+    await createWorkspace(c as never, 'Fresh', () => ({}) as never, () => {}, 'b');
+    expect((await listWorkspaces(c as never, 'b')).map((r) => r.namespaceId)).toEqual(['org-a', 'org-new']);
   });
 
   it('lists by package in production', async () => {

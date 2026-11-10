@@ -1,5 +1,7 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  markOrgFor,
+  orgsWithApp,
   createInviteStore,
   inviteLink as sharedInviteLink,
   type AppSource,
@@ -44,18 +46,19 @@ export interface ProjectEntry {
   owner: string;
 }
 
-interface MeOrgs {
-  orgs?: Array<{ orgId: string; name: string; role: string }>;
-}
 
 /**
- * Every org this account is in. Orgs are the platform's teams, not this app's
- * alone: a team made in another Calimero 1.0 app shows here too, and can hold
- * projects.
+ * The teams: the orgs this account is in that hold projects or were made for
+ * this app. An org made for another app (a Mero Blocks world) is not listed:
+ * it is offered under "Connect to an existing organization" ({@link
+ * otherOrgs} in `@calimero-apps/connect`) and joins the list once it holds
+ * one.
  */
-export async function listTeams(client: Pick<CalimeroClient, "me">): Promise<Team[]> {
-  const me = (await client.me()) as MeOrgs;
-  return (me.orgs ?? [])
+export async function listTeams(
+  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
+  source: AppSource,
+): Promise<Team[]> {
+  return (await orgsWithApp(client, source, { marked: true }))
     .map((o) => ({ groupId: o.orgId, name: o.name, role: o.role }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.groupId.localeCompare(b.groupId));
 }
@@ -75,11 +78,14 @@ export interface CreatedTeam {
 
 /** A new team: an org whose members may create projects and invite (a passkey step-up). */
 export async function createTeam(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
   name: string,
   passkey: () => PasskeyProvider,
+  source?: AppSource,
 ): Promise<CreatedTeam> {
   const groupId = await client.createOrg(name);
+  // Listed as a team before it holds projects.
+  if (source) await markOrgFor(client, groupId, source);
   try {
     await client.setCapabilities(groupId, MEMBER_DEFAULTS, passkey());
     return { groupId, warning: null };
@@ -117,6 +123,9 @@ export interface NewDocument {
   width: number;
   height: number;
 }
+
+/** The project created in an org the account connects to this app ("Connect to an existing organization"). */
+export const CONNECTED_PROJECT: NewDocument = { name: "Untitled", description: "", width: 1280, height: 720 };
 
 /** A new project in `org`: one document. Answers the instance id. */
 export function createProject(

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "../contexts/ToastContext";
 import { useSignedIn } from "../sessionContext";
 import {
+  CONNECTED_FORUM_NAME,
+  createForum,
   createSpace,
   deleteSpace,
   inviteLink,
@@ -148,7 +151,7 @@ export default function SpacesPage() {
     const spaceName = name.trim();
     if (!spaceName) return;
     void run("create", async (onStatus) => {
-      const { namespaceId, warning } = await createSpace(client, spaceName, passkey, onStatus);
+      const { namespaceId, warning } = await createSpace(client, spaceName, passkey, onStatus, source);
       if (warning) showToast(warning, "error");
       setName("");
       onStatus("Refreshing your spaces…");
@@ -157,7 +160,29 @@ export default function SpacesPage() {
       // the only useful next step.
       navigate(`/spaces/${namespaceId}`);
     });
-  }, [name, client, passkey, run, load, navigate, showToast]);
+  }, [name, client, passkey, source, run, load, navigate, showToast]);
+
+  // "Connect to an existing organization": forums go into an org the account
+  // has for another app only on this explicit choice, with a first forum.
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      try {
+        await createForum(client, source, org.orgId, CONNECTED_FORUM_NAME);
+      } finally {
+        after();
+      }
+      await load(false);
+      navigate(`/spaces/${org.orgId}`);
+    },
+    [client, source, after, load, navigate],
+  );
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
@@ -301,6 +326,10 @@ export default function SpacesPage() {
             {error}
           </p>
         )}
+
+        <div style={{ margin: "8px 0 16px" }}>
+          <ConnectExistingOrg appName="Mero Forum" load={loadOtherOrgs} onConnect={connectOrg} />
+        </div>
 
         {listing ? (
           <div aria-label="Loading…">

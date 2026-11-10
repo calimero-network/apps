@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
-import { createTeam as createOrgTeam, listTeams, ownsTeam, type Team } from "../api/teams";
+import { CONNECTED_PROJECT, createProject, createTeam as createOrgTeam, listTeams, ownsTeam, type Team } from "../api/teams";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
@@ -19,7 +21,7 @@ export default function TeamsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
-  const { client, accountId, passkey, after, targetKey, signOut } = useSignedIn();
+  const { client, accountId, source, passkey, after, targetKey, signOut } = useSignedIn();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   // The cluster has answered the list (empty or not). A failed read has not, and
@@ -33,7 +35,7 @@ export default function TeamsPage() {
 
   const loadTeams = useCallback(async () => {
     try {
-      setTeams(await listTeams(client));
+      setTeams(await listTeams(client, source));
       setListed(true);
     } catch {
       /* the last answer stays; the next poll tries again */
@@ -41,7 +43,7 @@ export default function TeamsPage() {
       setLoading(false);
       after();
     }
-  }, [client, after]);
+  }, [client, source, after]);
 
   useEffect(() => {
     void loadTeams();
@@ -73,12 +75,34 @@ export default function TeamsPage() {
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
+  // "Connect to an existing organization": this app goes into an org the
+  // account has for another app only on this explicit choice.
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      try {
+        await createProject(client, source, org.orgId, CONNECTED_PROJECT);
+      } finally {
+        after();
+      }
+      setStoredTeamName(org.orgId, org.name);
+      navigate(`/teams/${org.orgId}/projects`);
+    },
+    [client, source, after, navigate],
+  );
+
   async function createTeam() {
     const name = newName.trim();
     if (!name) return;
     setCreating(true);
     try {
-      const { groupId, warning } = await createOrgTeam(client, name, passkey);
+      const { groupId, warning } = await createOrgTeam(client, name, passkey, source);
       setStoredTeamName(groupId, name);
       setTeams((prev) => [...prev, { groupId, name, role: "owner" }]);
       setNewName("");
@@ -161,6 +185,7 @@ export default function TeamsPage() {
             {creating ? "Creating…" : "Create team"}
           </button>
         </div>
+        <ConnectExistingOrg appName="Mero PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (
           <p className={styles.empty}>Loading…</p>

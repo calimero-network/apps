@@ -8,6 +8,7 @@ import {
   getBlob,
   listBoards,
   listGroupMembers,
+  listOtherTeams,
   listTeams,
   rpcCall,
   uploadBlob,
@@ -68,9 +69,33 @@ describe("rpcCall", () => {
 });
 
 describe("teams and boards", () => {
-  it("lists the account's organizations as teams", async () => {
-    bind({ me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "org-1", name: "Design", role: "member" }] }) });
+  it("lists the account's organizations holding boards as teams", async () => {
+    bind({
+      me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "org-1", name: "Design", role: "member" }] }),
+      listApps: vi.fn().mockResolvedValue([{ appId: "b1", name: "Board", owner: "x", org: "org-1", bundle: "bundle-hash" }]),
+    });
     expect(await listTeams()).toEqual([{ namespaceId: "org-1", name: "Design", role: "member" }]);
+  });
+
+  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  it("leaves out an org made for another app, which only connecting offers", async () => {
+    const blocks = { appId: "w1", name: "overworld", owner: "x", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks" };
+    bind({
+      me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] }),
+      listApps: vi.fn(async (f?: { bundle?: string }) => [blocks].filter((a) => !f?.bundle || a.bundle === f.bundle)),
+      getOrg: vi.fn().mockResolvedValue({ members: { x: "owner" }, metadata: null }),
+    });
+    expect(await listTeams()).toEqual([]);
+    expect((await listOtherTeams()).map((o) => [o.orgId, o.label])).toEqual([["ow", "Mero Blocks: overworld"]]);
+  });
+
+  it("lists a team made here before it holds a board", async () => {
+    bind({
+      me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "org-9", name: "New", role: "owner" }] }),
+      listApps: vi.fn().mockResolvedValue([]),
+      getOrg: vi.fn().mockResolvedValue({ members: {}, metadata: { createdFor: "bundle-hash" } }),
+    });
+    expect(await listTeams()).toEqual([{ namespaceId: "org-9", name: "New", role: "owner" }]);
   });
 
   it("creates a team whose members may create boards and invite", async () => {
