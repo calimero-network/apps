@@ -199,6 +199,7 @@ body {
 }
 
 .home-cell--none,
+.home-cell--removed,
 .home-cell--unknown {
   color: var(--glass-muted);
 }

@@ -95,6 +95,12 @@ export interface OrgApp {
   name: string;
   /** Its app team; `null` for a legacy app (organization access: everyone in the org). */
   team: AppTeam | null;
+  /**
+   * Who was taken out of its team while it is open to everyone (`getOrg`'s
+   * team `removed`): they stay out, also after an admin reopens a closed
+   * team, until a row puts them back. Absent where `getOrg` does not say.
+   */
+  removed?: readonly string[];
   /** The instances the caller reaches (legacy apps only: an app team's are the app's business). */
   instances: AppInfo[];
 }
@@ -140,12 +146,17 @@ export async function loadOrg(
     client.listApps().catch(() => [] as AppInfo[]),
   ]);
   const inOrg = reached.filter((a) => a.org === org);
-  const apps: OrgApp[] = (teams?.appTeams ?? []).map((team) => ({
-    package: team.package,
-    name: team.name || packageTitle(team.package),
-    team,
-    instances: inOrg.filter((a) => a.package === team.package),
-  }));
+  const orgTeams = asObject(info.teams);
+  const apps: OrgApp[] = (teams?.appTeams ?? []).map((team) => {
+    const removed = asObject(orgTeams[team.teamId]).removed;
+    return {
+      package: team.package,
+      name: team.name || packageTitle(team.package),
+      team,
+      ...(Array.isArray(removed) ? { removed: removed.filter((a): a is string => typeof a === "string") } : {}),
+      instances: inOrg.filter((a) => a.package === team.package),
+    };
+  });
   const withTeam = new Set(apps.map((a) => a.package));
   const legacy = new Map<string, AppInfo[]>();
   for (const a of inOrg) {
@@ -257,15 +268,18 @@ export async function loadRosters(
   return rosters;
 }
 
-export type Cell = "all" | "lead" | "member" | "readOnly" | "none" | "unknown";
+export type Cell = "all" | "lead" | "member" | "readOnly" | "none" | "removed" | "unknown";
 
 /**
  * One cell of the People matrix: what `person` has in `app`. An open team (or
  * a legacy app) is everyone's, except a guest's once the org has app teams:
- * guests inherit no open team and reach no organization-access app then.
+ * guests inherit no open team and reach no organization-access app then, and
+ * except someone taken out of it (`removed`, kept when a closed team is
+ * reopened), who stays out.
  */
 export function accessCell(view: Pick<OrgView, "mode">, app: OrgApp, rosters: Rosters, person: Person): Cell {
   const moded = view.mode === "standalone" || view.mode === "shared";
+  if (app.team?.join === "everyone" && app.removed?.includes(person.account)) return "removed";
   if (!app.team || app.team.join === "everyone") {
     if (person.role === "guest" && moded) return app.team ? (rosters.get(app.team.teamId)?.get(person.account) ?? "none") : "none";
     return "all";
@@ -279,7 +293,7 @@ export function accessCell(view: Pick<OrgView, "mode">, app: OrgApp, rosters: Ro
 export function appsOf(view: OrgView, rosters: Rosters, person: Person): OrgApp[] {
   return view.apps.filter((a) => {
     const cell = accessCell(view, a, rosters, person);
-    return cell !== "none";
+    return cell !== "none" && cell !== "removed";
   });
 }
 
@@ -503,7 +517,7 @@ export function removeAllPlan(view: Pick<OrgView, "role" | "mode" | "apps">, ros
   const plan: BulkPlan = { apps: [], skipped: [] };
   for (const app of view.apps) {
     const cell = accessCell(view, app, rosters, person);
-    if (cell === "none") continue;
+    if (cell === "none" || cell === "removed") continue;
     const why = bulkBlock(view, app, rosters, person);
     if (why) {
       plan.skipped.push({

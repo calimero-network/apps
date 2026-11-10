@@ -32,6 +32,7 @@ const CELL_TEXT: Record<Cell, string> = {
   member: "Yes",
   readOnly: "Read only",
   none: "No",
+  removed: "Removed",
   unknown: "Not shown",
 };
 
