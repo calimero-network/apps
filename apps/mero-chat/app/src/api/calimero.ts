@@ -45,6 +45,7 @@ import {
   signUpHere,
   type CeremonyFailure,
   type ListingProps,
+  type Session,
   type SignUpFlow,
   type SignUpStage,
 } from "@calimero-apps/passkey";
@@ -433,6 +434,8 @@ export interface CalimeroState {
   /** The reconnect source, once signed in (v1: `mero.events`). */
   mero: { events: typeof connectEvents } | null;
   logout: () => void;
+  /** The session as `@calimero-apps/passkey` sees it (`ManageInHomeLink`); null unless signed in. */
+  session: Session | null;
 }
 
 const meroHandle = { events: connectEvents };
@@ -459,5 +462,9 @@ export function useCalimero(): CalimeroState {
     accountId: s.accountId,
     mero: s.status === "signed-in" ? meroHandle : null,
     logout: () => void signOut(),
+    session:
+      s.status === "signed-in" && client && target && s.accountId
+        ? { status: "signed-in", client, target, accountId: s.accountId }
+        : null,
   };
 }

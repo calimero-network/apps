@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
-import { useSignedIn } from "../api/sessionContext";
+import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { useSessionApi, useSignedIn } from "../api/sessionContext";
 import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
 import { appOnlyInviteNote } from "@calimero-apps/connect";
 import { PRODUCT_NAME, createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
@@ -41,6 +42,7 @@ interface ProjectCard extends Project {
 
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
+  const { api: sessionApi } = useSessionApi();
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
@@ -309,6 +311,7 @@ export default function ProjectsPage() {
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
         <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
         <div className={styles.headerRight}>
+          <ManageInHomeLink session={sessionApi.session} org={teamId} className={styles.homeLink} />
           <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
         </div>
       </header>

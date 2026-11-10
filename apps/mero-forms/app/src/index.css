@@ -265,6 +265,8 @@ td.mono { word-break: break-all; }
 .menu-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
 .menu-item { background: none; color: var(--text); font-weight: 500; justify-content: flex-start; width: 100%; padding: 7px 8px; }
 .menu-item:hover { background: var(--surface-2); }
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`): a link styled as a menu item. */
+.menu-item.home-link { display: flex; align-items: center; color: var(--accent); text-decoration: none; }
 .menu-section .row input { flex: 1 1 100px; }
 
 /* ── tabs ──────────────────────────────────────────────────────────────── */

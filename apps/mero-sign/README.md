@@ -84,6 +84,30 @@ browser; `searchDocumentByEmbedding` answers the assistant's questions from them
   <img src="assets/Legal_Chatbot_dark.png" alt="Legal Chatbot" width="700"/>
 </p>
 
+
+## Mero Sign's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Sign reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Sign's team at once, **open**
+  (`standalone`: everyone in the org has the app). New agreements use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Sign only (the dialog says so) and only its people are shown.
+  Sign has no organization-level Remove or Leave: an agreement's roster is
+  the contract's. The private signature library stays an instance outside any
+  organization.
+- Adding Mero Sign to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Run it
 
 ```bash

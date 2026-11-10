@@ -26,6 +26,9 @@
 .back:hover { color: var(--text); background: var(--bg-3); }
 .logo { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`), before Logout. */
+.homeLink { font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; white-space: nowrap; }
+.homeLink:hover { text-decoration: underline; }
 
 .main { padding: 36px 40px; max-width: 1040px; margin: 0 auto; }
 

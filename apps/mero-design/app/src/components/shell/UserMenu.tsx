@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ManageInHomeLink } from "@calimero-apps/passkey";
 import { useMyName } from "../../api/names";
 import { useSessionApi } from "../../sessionContext";
 import { describeTarget } from "../../session";
@@ -71,6 +72,7 @@ export default function UserMenu({ account, onLogout }: { account: string; onLog
               <span className={styles.menuItemText}>Team settings</span>
             </button>
           )}
+          <ManageInHomeLink session={api.session} org={teamId} role="menuitem" className={`${styles.menuItem} ${styles.menuLink}`} />
           <button
             type="button"
             role="menuitem"

@@ -24,8 +24,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { targetKey, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg } from '@calimero-apps/passkey';
-import { useSignedIn } from '../../sessionContext';
+import { ConnectExistingOrg, ManageInHomeLink } from '@calimero-apps/passkey';
+import { useSessionApi, useSignedIn } from '../../sessionContext';
 import { describeTarget } from '../../session';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
@@ -33,6 +33,7 @@ import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { removeFromWorkspace } from '../../lib/workspaces';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
@@ -84,8 +85,9 @@ import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
 export default function AppPage() {
-  const { client, signOut: endSession, passkey, after, target, accountId } = useSignedIn();
+  const { client, signOut: endSession, passkey, after, target, accountId, source } = useSignedIn();
   const ws = useWorkspace();
+  const { api: sessionApi } = useSessionApi();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
     contextId: ws.contextId,
@@ -142,16 +144,18 @@ export default function AppPage() {
   // its result — keeping them together made the dialog either mint on every open
   // or show a stale invitation from a previous one.
   const [inviteCode, setInviteCode] = useState('');
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   const openInvite = useCallback(async () => {
     setShowInvite(true);
     setInviteCode('');
+    setInviteAppOnly(false);
     setInviteError(null);
     try {
-      setInviteCode(
-        await ws.invite({ contextId: ws.contextId }),
-      );
+      const made = await ws.invite({ contextId: ws.contextId });
+      setInviteCode(made.link);
+      setInviteAppOnly(made.appOnly);
     } catch (err) {
       setInviteError(describeError(err));
     }
@@ -1290,9 +1294,10 @@ export default function AppPage() {
   // ════════════════════════════════════════════════════════════════
 
   // The account controls every screen carries in its top bar: the light/dark
-  // switch and Log out.
+  // switch, "Manage people in Calimero Home" (where it applies) and Log out.
   const accountControls = (
     <>
+      <HomeLink session={sessionApi.session} org={ws.namespaceId} />
       <ThemeToggle />
       <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out" data-testid="action-logout">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -1826,6 +1831,7 @@ export default function AppPage() {
           // UI says that rather than implying a narrower scope than it gives.
           scope={`${ws.namespaceName} · all ${ws.workspaces.length} spreadsheet${ws.workspaces.length === 1 ? '' : 's'}, opening “${activeWorkspaceName}”`}
           loading={ws.inviteLoading && !inviteCode}
+          appOnly={inviteAppOnly}
           error={inviteError}
           onClose={() => setShowInvite(false)}
         />
@@ -2075,7 +2081,8 @@ export default function AppPage() {
           onRemove={async (account) => {
             if (!ws.namespaceId) return;
             try {
-              await client.removeMember(ws.namespaceId, account, passkey());
+              // In an org that keeps its apps apart: out of Mero Sheets only.
+              await removeFromWorkspace(client, ws.namespaceId, source, account, passkey);
             } finally {
               after();
             }
@@ -2320,6 +2327,15 @@ const PrimaryAction = styled.button`
   padding: 0 16px;
   svg { flex-shrink: 0; }
   @media (max-width: 640px) { width: 38px; padding: 0; span { display: none; } }
+`;
+
+// "Manage people in Calimero Home →" (`ManageInHomeLink`), beside the account controls.
+const HomeLink = styled(ManageInHomeLink)`
+  font-size: 13px;
+  color: var(--glass-accent-solid, var(--glass-ink-2));
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover { text-decoration: underline; }
 `;
 
 const LogoutBtn = styled.button`

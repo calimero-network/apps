@@ -1,3 +1,4 @@
+import { appOnlyInviteNote } from '@calimero-apps/connect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useInstanceRelease } from '@calimero-apps/passkey';
@@ -37,8 +38,8 @@ import {
   integrityWarning,
   verifyDocumentBytes,
 } from '../../lib/documentIntegrity';
-import { inviteLink as linkFor, inviteToken } from '../../lib/invites';
-import { publishWorkspaceName, readMembers } from '../../lib/agreements';
+import { appInviteToken, inviteLink as linkFor } from '../../lib/invites';
+import { PRODUCT_NAME, publishWorkspaceName, readMembers } from '../../lib/agreements';
 import {
   INVITABLE_LEVELS,
   INVITE_LEVEL_LABELS,
@@ -208,6 +209,7 @@ export default function AgreementPage() {
   const [roleBusyFor, setRoleBusyFor] = useState<string | null>(null);
 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [mintingInvite, setMintingInvite] = useState(false);
   // ⚠️ An invitation is to the WORKSPACE (an organization), not to this
   // agreement. The workspace is the instance's own org, read from the cluster;
@@ -418,8 +420,9 @@ export default function AgreementPage() {
     }
     setMintingInvite(true);
     try {
-      const token = await inviteToken(app.client, workspaceId, app.passkey());
+      const { token, appOnly } = await appInviteToken(app.client, workspaceId, app.passkey(), app.source);
       setInviteLink(linkFor(token, contextId, window.location, workspaceId));
+      setInviteAppOnly(appOnly);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -810,6 +813,11 @@ export default function AgreementPage() {
                     and open the agreement with this link. Make a new one for
                     each person you invite. Creating it asks for your passkey.
                   </p>
+                  {inviteLink && inviteAppOnly && (
+                    <p className={styles.panelText} data-testid="invite-app-only">
+                      {appOnlyInviteNote(PRODUCT_NAME)}
+                    </p>
+                  )}
                 </div>
               </div>
               {inviteLink ? (

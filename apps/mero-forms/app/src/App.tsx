@@ -15,6 +15,7 @@ import { useActiveWorkspace } from "./useActiveWorkspace";
 import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
+import { ManageInHomeLink } from "@calimero-apps/passkey";
 
 export function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
@@ -201,6 +202,7 @@ function WorkspaceView({
           me={me.data}
           theme={theme}
           setTheme={setTheme}
+          org={org}
           onSwitchWorkspace={switchWorkspace}
           onLogout={onLogout}
         />
@@ -340,17 +342,21 @@ function WorkspaceName({ workspace, editable }: { workspace: Workspace; editable
 /** Your avatar in the top bar, opening: your name, theme, switch workspace, log out. */
 function Menu({
   me,
+  org,
   theme,
   setTheme,
   onSwitchWorkspace,
   onLogout,
 }: {
   me?: string | null;
+  /** The open workspace's org, for "Manage people in Calimero Home". */
+  org?: string | null;
   theme: Theme;
   setTheme: (t: Theme) => void;
   onSwitchWorkspace?: () => void;
   onLogout: () => void;
 }) {
+  const { api } = useSessionApi();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -433,6 +439,7 @@ function Menu({
             </div>
           </div>
           <div className="menu-section">
+            <ManageInHomeLink session={api.session} org={org} className="menu-item home-link" />
             {onSwitchWorkspace && (
               <button className="menu-item" onClick={onSwitchWorkspace}>
                 Switch workspace

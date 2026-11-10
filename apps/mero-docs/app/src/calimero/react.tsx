@@ -23,6 +23,7 @@ import {
 } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
 import { targetKey } from '@calimero-apps/connect';
+import type { Session } from '@calimero-apps/passkey';
 import { describeTarget, useSession } from './session';
 import { OrgAdmin, type GroupMember } from './orgs';
 import {
@@ -84,6 +85,8 @@ export interface MeroValue {
   /** "merod local (3 nodes)" / "Calimero Cloud <cluster>", for the top bar. */
   nodeLabel: string | null;
   logout: () => Promise<void>;
+  /** The passkey session itself (`ManageInHomeLink`). */
+  session: Session;
 }
 
 /** v1's `useMero()`, on the 1.0 session. */
@@ -108,6 +111,7 @@ export function useMero(): MeroValue {
       nodeUrl,
       nodeLabel: session.status === 'signed-in' ? describeTarget(session.target) : null,
       logout: api.signOut,
+      session,
     }),
     [live, session, isOnline, nodeUrl, api.signOut],
   );
