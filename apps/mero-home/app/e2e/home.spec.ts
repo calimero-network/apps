@@ -3,7 +3,7 @@
  * an app team, invites someone to that app only, sees and revokes pending
  * invites, and removes a person from the org and so from every app.
  *
- * ⚠️ Waits for a core release with core#4890 and #4891 (see
+ * Needs core#4890 and #4891, first released in 1.0.0-rc.14 (see
  * playwright.config.ts): global-setup refuses an older merod with that reason.
  */
 import { readFileSync } from "node:fs";
