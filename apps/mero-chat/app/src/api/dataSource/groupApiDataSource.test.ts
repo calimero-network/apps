@@ -21,8 +21,18 @@ const h = vi.hoisted(() => {
       if (!a) throw Object.assign(new Error("404"), { status: 404 });
       return a;
     }),
-    listApps: vi.fn(async () =>
-      [...state.apps.values()].map((a) => ({ appId: a.appId, name: a.name, owner: a.owner, org: a.org, bundle: "b", package: null, version: null })),
+    listApps: vi.fn(async (filter: { bundle?: string; package?: string } = {}) =>
+      [...state.apps.values()]
+        .map((a) => ({
+          appId: a.appId as string,
+          name: a.name as string,
+          owner: a.owner as string,
+          org: a.org as string | null,
+          bundle: (a.bundle as string | undefined) ?? "bundle-hash",
+          package: (a.package as string | undefined) ?? null,
+          version: null,
+        }))
+        .filter((a) => (!filter.bundle || a.bundle === filter.bundle) && (!filter.package || a.package === filter.package)),
     ),
     createOrg: vi.fn(async (name: string) => {
       const orgId = `org-${(state.seq += 1)}`;
@@ -39,6 +49,7 @@ const h = vi.hoisted(() => {
       const a = state.apps.get(app)!;
       a.access = access;
     }),
+    session: { accountId: "acct-me" },
     invite: vi.fn(async () => "tok-1"),
     redeemInvite: vi.fn(async () => ({ org: "org-joined" })),
     setMemberMetadata: vi.fn(async () => {}),
@@ -81,8 +92,9 @@ describe("a workspace is an org", () => {
     expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", DEFAULT_MEMBER_CAPABILITIES, expect.anything(), {});
   });
 
-  it("lists the orgs the account is in", async () => {
+  it("lists the orgs the account is in that hold chat", async () => {
     await api.createGroup({ applicationId: "x", name: "Team" });
+    await createChannel("org-1", "general", true);
     const res = await api.listGroups();
     expect(res.data).toEqual([expect.objectContaining({ groupId: "org-1", alias: "Team" })]);
   });
@@ -165,5 +177,50 @@ describe("a channel is a chat instance in the org", () => {
     h.state.apps.set("app-9", { appId: "app-9", name: "x", owner: "o", org: "org-1", access: { kind: "org" } });
     const res = await api.joinGroupContext("org-1", { contextId: "app-9" });
     expect(res.data).toEqual({ contextId: "app-9", memberPublicKey: "acct-me" });
+  });
+});
+
+describe("an org made for another app is not a workspace", () => {
+  /** The account of the bug: in `overworld`, which holds only a Mero Blocks world. */
+  function overworld(): void {
+    h.state.orgs.set("ow", {
+      orgId: "ow",
+      name: "overworld",
+      members: { "acct-me": "owner" },
+      memberMetadata: {},
+      defaultCapabilities: 4,
+      capabilities: {},
+      metadata: null,
+    });
+    h.state.apps.set("blocks-1", {
+      appId: "blocks-1",
+      name: "overworld",
+      owner: "acct-me",
+      org: "ow",
+      bundle: "blocks-bundle",
+      package: "com.calimero.mero-blocks",
+      access: { kind: "org" },
+      metadata: null,
+    });
+  }
+
+  it("is not listed, so nothing is preselected or entered", async () => {
+    overworld();
+    expect((await api.listGroups()).data).toEqual([]);
+  });
+
+  it("is offered under connect, labelled with what it holds", async () => {
+    overworld();
+    const others = await api.listOtherOrgs();
+    expect(others.map((o) => [o.orgId, o.name, o.label])).toEqual([["ow", "overworld", "Mero Blocks: overworld"]]);
+  });
+
+  it("becomes a workspace once #general is created in it, and stays resumable", async () => {
+    overworld();
+    await createChannel("ow", "general", true);
+    invalidate();
+    expect((await api.listGroups()).data).toEqual([expect.objectContaining({ groupId: "ow", alias: "overworld" })]);
+    expect(await api.listOtherOrgs()).toEqual([]);
+    expect(h.client.createApp).toHaveBeenCalledWith("general", "bundle-hash", expect.objectContaining({ org: "ow" }));
   });
 });

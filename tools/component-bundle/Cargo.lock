@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "eyre",
  "serde_json",
@@ -123,7 +123,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "base64 0.23.1",
  "bs58",
@@ -144,7 +144,7 @@ dependencies = [
 [[package]]
 name = "calimero-utils-fs"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "windows-sys",
 ]
@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.4"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
+checksum = "2b929dd2a135771f40afabd1073f85eed59c800b7c61901e5c254270497dad64"
 dependencies = [
  "cfg-if",
 ]
@@ -530,7 +530,7 @@ dependencies = [
 [[package]]
 name = "mero-sign"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "base64 0.23.1",
  "calimero-bundle",

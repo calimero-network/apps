@@ -37,6 +37,14 @@ account, nothing to install, no permissions to grant.
   team, doc, route, the app's own parameters), so the app opens what the link
   pointed at. Without it, the token goes with a sign-up only on an `invite`
   cluster, as before.
+- `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
+  is the secondary "Connect to an existing organization" choice
+  (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button
+  (`connect-existing-org`) that, only when pressed, lists the account's other
+  organizations with what each holds ("overworld", "Mero Blocks: overworld"),
+  one button each (`connect-org-<orgId>`). Nothing is preselected; `onConnect`
+  creates the app's instance there. An app's default list stays the
+  organizations that already hold it, and creating a new one stays primary.
 - Pass the app's invite store (`invites: createInviteStore(...)` from
   `@calimero-apps/connect`) and the hook does the rest: the token is its
   `invite`, the store is bound to the cluster, and the invite is dropped

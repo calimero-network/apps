@@ -118,7 +118,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "eyre",
  "serde_json",
@@ -129,7 +129,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "async-trait",
  "bytes",
@@ -152,7 +152,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -167,12 +167,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -194,7 +194,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.12#08b266a2ee44c1c52887398afc371547c3f396a0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -460,9 +460,9 @@ checksum = "6f34b169b8cbbaed2b4995205f1d02d7eac4b2771df5479255fe5483e1334a39"
 
 [[package]]
 name = "crc32fast"
-version = "1.5.4"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
+checksum = "2b929dd2a135771f40afabd1073f85eed59c800b7c61901e5c254270497dad64"
 dependencies = [
  "cfg-if",
 ]

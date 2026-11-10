@@ -135,3 +135,32 @@ React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`
   differs after the move (a core without the record redirecting to another
   release of the same WASM); arriving clears the note. With no storage for
   the note it never moves.
+
+## Organizations
+
+An account is in organizations made for other apps (a Mero Blocks world, a
+chat workspace). An app lists, resumes and enters only its own (`orgs.ts`):
+
+```ts
+import { appSource, orgsWithApp, otherOrgs } from "@calimero-apps/connect";
+
+const source = appSource(import.meta.env, "com.calimero.my-app");
+const mine = await orgsWithApp(client, source);   // the default list: orgs holding this app
+const others = await otherOrgs(client, source);   // "Connect to an existing organization"
+await client.createApp(name, source, { org: others[0].orgId }); // only on the person's choice
+```
+
+- **The default list** is `orgsWithApp(client, source)`: the account's
+  organizations (`/me`) that hold an instance of this app (`listApps` by
+  package, or by bundle in development). Nothing outside it is preselected or
+  entered automatically. With none, the primary action is creating a new
+  organization for the app.
+- **Connecting an existing organization** is a separate, secondary choice:
+  `otherOrgs(client, source)` lists the rest, where the account may create
+  apps (`CREATE_APP`, as `canCreateIn` decides it; `{ includeNotAllowed: true }`
+  keeps the others with `canCreate: false`). Each carries `holds` (the
+  instances it holds that the account reaches) and `label`, what it holds in
+  words: "Mero Blocks: overworld". `<ConnectExistingOrg>` in
+  `@calimero-apps/passkey` is the list every React app shows for it.
+- `myOrgs(client)` is `/me`'s organizations, sorted; `appFilter(source)` the
+  `listApps` filter for a source; `packageTitle` and `holdingsLabel` the words.

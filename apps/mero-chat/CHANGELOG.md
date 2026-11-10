@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Signing in no longer offers, preselects or enters an organization made for
+  another app (a Mero Blocks world, say) as a chat workspace. The workspace
+  list holds only the organizations that already hold chat; with none,
+  **Create workspace** is the primary action. Putting chat into one of the
+  account's other organizations is a separate, explicit choice, **Connect to
+  an existing organization**, which lists each with what it holds and creates
+  #general there when picked.
+
 - Opening an invitation link and signing in now offers the invitation's
   **Join workspace**, and Join lands in the inviting workspace. The workspace
   picker, a full-screen overlay, came up beside the invitation prompt and

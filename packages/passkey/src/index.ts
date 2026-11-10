@@ -91,3 +91,4 @@ export {
   type WatchUpgradesOptions,
 } from "./upgrade";
 export { useInstanceRelease } from "./release";
+export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";

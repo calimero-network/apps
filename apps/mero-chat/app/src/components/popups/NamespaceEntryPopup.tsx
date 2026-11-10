@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
+import type { OtherOrg } from "@calimero-apps/connect";
+import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { isDelegatedSession } from "../../api/meroJsClient";
@@ -226,6 +229,10 @@ const FieldError = styled.p`
 const Row = styled.div`
   display: flex;
   gap: 0.5rem;
+  margin-top: 0.75rem;
+`;
+
+const ConnectRow = styled.div`
   margin-top: 0.75rem;
 `;
 
@@ -554,6 +561,50 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
   }, [nsNameInput, namespaces, enterChat, addToast]);
 
+  // "Connect to an existing organization": an org the account is in that
+  // holds no chat yet (one made for another app) becomes a workspace once
+  // #general is created in it. Only on the person's choice; its name and
+  // member defaults are its owners', so they are left as they are.
+  const handleConnect = useCallback(async (org: OtherOrg) => {
+    setError("");
+    const general = await createChannel(org.orgId, GENERAL_CHANNEL, true);
+    if ("error" in general) throw new Error(general.error);
+    const alias = org.name || undefined;
+    if (alias) setStoredGroupAlias(org.orgId, alias);
+    const idRes = await api.current.resolveCurrentMemberIdentity(org.orgId);
+    const memberIdentity = idRes.data?.memberIdentity ?? "";
+    if (memberIdentity) setGroupMemberIdentity(org.orgId, memberIdentity);
+    setNamespaces((current) => [
+      ...current.filter((g) => g.groupId !== org.orgId),
+      {
+        groupId: org.orgId,
+        alias,
+        appKey: "",
+        targetApplicationId: "",
+        upgradePolicy: "Automatic",
+        createdAt: Math.floor(Date.now() / 1000),
+      },
+    ]);
+    setSelectedId(org.orgId);
+    const existingName = getMessengerDisplayName();
+    if (existingName) {
+      enterChat(org.orgId, existingName, memberIdentity);
+      return;
+    }
+    setStep("enter-name");
+  }, [enterChat]);
+
+  const loadOtherOrgs = useCallback(() => api.current.listOtherOrgs(), []);
+
+  const connectExisting = (
+    <ConnectExistingOrg
+      appName="Mero Chat"
+      load={loadOtherOrgs}
+      onConnect={handleConnect}
+      className="chat-connect-existing"
+    />
+  );
+
   // Install the configured app, then resume the create the user asked for.
   const handleInstallApp = useCallback(async () => {
     setStep("installing");
@@ -635,6 +686,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <CreateLink onClick={() => { setError(""); setNsNameInput(""); setStep("create"); }}>
               + Create new workspace
             </CreateLink>
+            {connectExisting}
             <JoinHint data-testid="join-hint">
               To join someone else&apos;s workspace, open the invitation link they sent you.
             </JoinHint>
@@ -696,7 +748,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           <>
             <Header>
               <Title>Welcome to MeroChat</Title>
-              <Sub>No servers found on this node yet. Create one to get started.</Sub>
+              <Sub>You have no Mero Chat workspace yet. Create one to get started.</Sub>
             </Header>
             {error && <Err>{error}</Err>}
             <Button
@@ -707,6 +759,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Create workspace
             </Button>
+            <ConnectRow>{connectExisting}</ConnectRow>
             <JoinHint data-testid="join-hint">
               To join someone else&apos;s workspace, open the invitation link they sent you.
             </JoinHint>

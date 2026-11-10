@@ -14,7 +14,7 @@
  *    you still reach it (see `lib/lastWorkspace`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { targetKey } from '@calimero-apps/connect';
+import { otherOrgs, targetKey, type OtherOrg } from '@calimero-apps/connect';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 import { describeError } from '../utils/errors';
 import { APP_DISPLAY_NAME } from '../config';
@@ -87,7 +87,14 @@ export interface UseWorkspaceReturn {
   landJoined: (landed: AcceptedInvite) => Promise<void>;
   /** Re-read orgs and instances from the cluster. */
   refresh: () => Promise<void>;
+  /** The account's other orgs, where a spreadsheet may be added ("Connect to an existing organization"). */
+  loadOtherOrgs: () => Promise<OtherOrg[]>;
+  /** Create a spreadsheet (`name`, else "Untitled spreadsheet") in `org` and open it. Throws on failure. */
+  connectWorkspace: (org: OtherOrg, name?: string) => Promise<void>;
 }
+
+/** The name of a spreadsheet created by connecting an org without one typed. */
+export const CONNECTED_SPREADSHEET_NAME = 'Untitled spreadsheet';
 
 export function useWorkspace(): UseWorkspaceReturn {
   const { client, accountId, target, source, passkey, after } = useSignedIn();
@@ -132,10 +139,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [refresh]);
 
   // The workspace: the one just joined, else the one open last, else the first
-  // org holding a spreadsheet, else the first org.
+  // org holding a spreadsheet. Never an org that holds none (one made for
+  // another app): with no workspace, creating a spreadsheet creates one, and
+  // another org is used only when chosen under "Connect to an existing
+  // organization" (or an invite just joined it).
   const withSheets = orgs.filter((o) => instances.some((a) => a.org === o.orgId)).map((o) => o.orgId);
+  const joinedListed = joinedNsId && orgs.some((o) => o.orgId === joinedNsId) && !withSheets.includes(joinedNsId);
   const pickedNsId = pickNamespace(
-    [...withSheets, ...orgs.map((o) => o.orgId).filter((id) => !withSheets.includes(id))],
+    joinedListed ? [...withSheets, joinedNsId] : withSheets,
     joinedNsId,
     remembered.namespaceId,
   );
@@ -189,6 +200,37 @@ export function useWorkspace(): UseWorkspaceReturn {
       }
     },
     [client, source, passkey, after, listed, listError, namespaceId, refresh],
+  );
+
+  const loadOtherOrgs = useCallback(async () => {
+    try {
+      return await otherOrgs(client, source);
+    } finally {
+      after();
+    }
+  }, [client, source, after]);
+
+  const connectWorkspace = useCallback(
+    async (target: OtherOrg, name?: string) => {
+      if (creatingRef.current) return;
+      creatingRef.current = true;
+      setBusy(true);
+      setError(null);
+      const title = name?.trim() || CONNECTED_SPREADSHEET_NAME;
+      try {
+        const appId = await createSpreadsheet(client, source, target.orgId, title, setStatus);
+        setJoinedNsId(target.orgId);
+        setContextId(appId);
+        setPendingInitName(title);
+        await refresh();
+      } finally {
+        creatingRef.current = false;
+        setBusy(false);
+        setStatus(null);
+        after();
+      }
+    },
+    [client, source, after, refresh],
   );
 
   const activeName = useMemo(() => {
@@ -270,5 +312,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     inviteLoading,
     landJoined,
     refresh,
+    loadOtherOrgs,
+    connectWorkspace,
   };
 }
