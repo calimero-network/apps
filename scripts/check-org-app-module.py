@@ -54,15 +54,15 @@ CONVERTED = {
     "mero-crm",
     "mero-issue-tracker",
     "mero-docs",
+    "mero-forms",
+    "mero-forum",
+    "mero-pass",
+    "mero-pixart",
 }
 
 NOT_CONVERTED_YET = {
     "mero-calendar",
     "mero-design",
-    "mero-forms",
-    "mero-forum",
-    "mero-pass",
-    "mero-pixart",
     "mero-sheets",
     "mero-sign",
     "mero-stream",

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
-import { inviteLink, inviteToken } from "../api/teams";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME, inviteLink, inviteToken } from "../api/teams";
 import { useToast } from "../contexts/ToastContext";
 import { truncateMiddle } from "../utils/format";
 import styles from "./InviteModal.module.css";
@@ -13,8 +14,9 @@ interface Props {
 
 export default function InviteModal({ teamId, onClose }: Props) {
   const { showToast } = useToast();
-  const { client, passkey, after } = useSignedIn();
+  const { client, passkey, source, after } = useSignedIn();
   const [invitation, setInvitation] = useState("");
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
   const [error, setError] = useState("");
@@ -30,8 +32,9 @@ export default function InviteModal({ teamId, onClose }: Props) {
     try {
       // An org invite, approved with this account's passkey. The link is all
       // there is to share: opening it (and signing in) joins the team.
-      const token = await inviteToken(client, teamId, passkey());
+      const { token, appOnly } = await inviteToken(client, teamId, passkey(), source);
       setInvitation(inviteLink(token, teamId));
+      setInviteAppOnly(appOnly);
     } catch (err) {
       const msg = `Failed to generate invitation: ${messageOf(err)}`;
       setError(msg);
@@ -71,6 +74,11 @@ export default function InviteModal({ teamId, onClose }: Props) {
           Generate an invitation link and share it with your teammate. Opening it
           and signing in with a passkey joins this team. Single use: one person can join with this link; generate another for each person you invite.
         </p>
+        {invitation && inviteAppOnly && (
+          <p className={styles.desc} data-testid="invite-app-only">
+            {appOnlyInviteNote(PRODUCT_NAME)}
+          </p>
+        )}
 
         {invitation ? (
           copying ? (

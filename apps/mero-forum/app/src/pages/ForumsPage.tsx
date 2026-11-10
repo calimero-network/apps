@@ -84,6 +84,7 @@ export default function ForumsPage() {
     code: string;
     scope: string;
     hint: React.ReactNode;
+    appOnly?: boolean;
   } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -118,9 +119,9 @@ export default function ForumsPage() {
       if (showSpinner) setListing(true);
       try {
         // The space's own name for the header, and who is in it.
-        const members = await readMembers(client, namespaceId).catch(() => null);
+        const members = await readMembers(client, namespaceId, source).catch(() => null);
         setNsName((members?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`);
-        setMemberCount(members ? members.roles.size : null);
+        setMemberCount(members ? members.people.length : null);
         void roleIn(client, namespaceId)
           .then((role) => setSpaceAdmin(isSpaceAdmin(role ?? undefined)))
           .catch(() => setSpaceAdmin(false));
@@ -158,19 +159,20 @@ export default function ForumsPage() {
     if (!forumName) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the forum…");
-      const forumId = await createForum(client, source, namespaceId, forumName);
+      const forumId = await createForum(client, source, namespaceId, forumName, passkey);
       setName("");
       // Into the forum: there is nothing to join or wait for.
       open({ forumId, contextId: forumId, name: forumName, owner: accountId });
     });
-  }, [name, client, source, namespaceId, accountId, run, open]);
+  }, [name, client, source, passkey, namespaceId, accountId, run, open]);
 
   const inviteToForum = useCallback(
     (forum: ForumRow) => {
       void run(`invite:${forum.forumId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
-        const token = await inviteToken(client, namespaceId, passkey());
+        const { token, appOnly } = await inviteToken(client, namespaceId, passkey(), source);
         setInvite({
+          appOnly,
           key: `forum:${forum.forumId}`,
           code: inviteLink(token, forum.forumId, window.location, namespaceId),
           scope: `Opens ${forum.name}`,
@@ -187,14 +189,15 @@ export default function ForumsPage() {
         showToast(`Invite ready for “${forum.name}”.`);
       });
     },
-    [client, passkey, namespaceId, nsName, run, showToast],
+    [client, passkey, source, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
     void run("invite:namespace", async (onStatus) => {
       onStatus("Approve the invitation with your passkey…");
-      const token = await inviteToken(client, namespaceId, passkey());
+      const { token, appOnly } = await inviteToken(client, namespaceId, passkey(), source);
       setInvite({
+        appOnly,
         key: "namespace",
         code: inviteLink(token, undefined, window.location, namespaceId),
         scope: `Whole space · ${nsName}`,
@@ -209,7 +212,7 @@ export default function ForumsPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [client, passkey, namespaceId, nsName, run, showToast]);
+  }, [client, passkey, source, namespaceId, nsName, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -575,6 +578,7 @@ export default function ForumsPage() {
         code={invite?.code ?? ""}
         scope={invite?.scope ?? ""}
         hint={invite?.hint}
+        appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
       />
     </>

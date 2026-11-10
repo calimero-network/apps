@@ -301,6 +301,11 @@ export function orgCluster(options: OrgClusterOptions = {}) {
       if (!a) throw notFound(`app ${id}`);
       a.access = access;
     },
+    /** A contract call: answered empty (the app's own tests cover its contract). */
+    call: async (app: string, method: string, ...rest: unknown[]) => {
+      record("call", [app, method, ...rest]);
+      return { index: 1, result: null, events: [] };
+    },
     deleteApp: async (id: string) => {
       record("deleteApp", [id]);
       state.apps.delete(id);

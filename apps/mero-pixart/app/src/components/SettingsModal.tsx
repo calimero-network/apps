@@ -4,7 +4,7 @@ import "@calimero-apps/members/members.css";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
-import { isAdmin } from "../api/teams";
+import { PRODUCT_NAME, isAdmin, removeTeamMember } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import { useToast } from "../contexts/ToastContext";
 import { effectiveDocumentRole } from "../utils/documentRoles";
@@ -45,7 +45,7 @@ const TEAM_ROLE_LABEL: Record<string, string> = {
 export default function SettingsModal({ type, id, name, namespaceId, onClose }: Props) {
   const api = useApi();
   const rpcCall = api.call;
-  const { client, accountId: selfIdentity, passkey, after } = useSignedIn();
+  const { client, accountId: selfIdentity, passkey, source, after } = useSignedIn();
   const { showToast } = useToast();
   const teamId = namespaceId ?? (type === "team" ? id : undefined);
   const team = useTeam(teamId);
@@ -144,8 +144,9 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
 
   // ── Team roles (team settings) ──────────────────────────────────────────────
 
-  const members = [...team.roles]
-    .map(([identity, role]) => ({ identity, role }))
+  // Who has Mero Pixart in the team (its app team, else the org), with their org role.
+  const members = team.people
+    .map((identity) => ({ identity, role: team.roles.get(identity) ?? "member" }))
     .sort((a, b) =>
       a.identity === selfIdentity ? -1 : b.identity === selfIdentity ? 1 : a.identity.localeCompare(b.identity),
     );
@@ -187,8 +188,13 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
   async function removeMember(identity: string) {
     setBusyMember(identity);
     try {
-      await client.removeMember(teamId!, identity, passkey());
-      showToast("Member removed from the team.", "success");
+      const left = await removeTeamMember(client, teamId!, source, identity, passkey);
+      showToast(
+        left === "app"
+          ? `Member removed from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
+          : "Member removed from the team.",
+        "success",
+      );
     } catch (err) {
       showToast(`Could not remove that member: ${messageOf(err)}`);
     } finally {

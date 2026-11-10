@@ -9,7 +9,10 @@ import {
   CONNECTED_PROJECT,
   createProject,
   createTeam as createOrgTeam,
+  leaveTeam as leaveOrgTeam,
+  leaveTeamOrg,
   listTeams,
+  PRODUCT_NAME,
   ownsTeam,
   setMyTeamName,
   type Team,
@@ -99,14 +102,14 @@ export default function TeamsPage() {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await createProject(client, source, org.orgId, CONNECTED_PROJECT);
+        await createProject(client, source, org.orgId, CONNECTED_PROJECT, passkey);
       } finally {
         after();
       }
       setStoredTeamName(org.orgId, org.name);
       navigate(`/teams/${org.orgId}/projects`);
     },
-    [client, source, after, navigate],
+    [client, source, passkey, after, navigate],
   );
 
   async function createTeam() {
@@ -145,11 +148,22 @@ export default function TeamsPage() {
     forgetTeam(targetKey, teamId);
   }
 
-  /** Anyone else leaves it: removes their own membership (a passkey step-up). */
+  /**
+   * Anyone else leaves it (a passkey step-up). In an org that keeps its apps
+   * apart that is Mero Pixart only; when it was the last app there, the
+   * organization itself is offered too.
+   */
   async function leaveTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await client.removeMember(teamId, accountId, passkey());
+      const left = await leaveOrgTeam(client, teamId, source, passkey, accountId);
+      if (
+        left.left === "app" &&
+        left.lastApp &&
+        window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`)
+      ) {
+        await leaveTeamOrg(client, teamId, passkey, accountId);
+      }
     } catch (err) {
       showToast(`Could not leave team: ${messageOf(err)}`);
       return;
