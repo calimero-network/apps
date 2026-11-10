@@ -1,4 +1,10 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  DEFAULT_ORG_CAPABILITIES,
+  ORG_CAPABILITIES,
+  type AppInfo,
+  type CalimeroClient,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 import {
   SPENT_INVITE_COPY,
   createInviteStore,
@@ -92,9 +98,62 @@ export async function listStreams(
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.orgId.localeCompare(b.orgId));
 }
 
-/** A new stream: an organization the caller owns. */
-export function createStream(client: Pick<CalimeroClient, "createOrg">, name: string): Promise<string> {
-  return client.createOrg(name);
+/**
+ * What a member of a stream made here may do unless an owner says otherwise:
+ * core's own default (join open teams) plus `CREATE_APP`, so members add
+ * rooms the way anyone in a Slack workspace adds a channel.
+ */
+export const MEMBER_DEFAULTS = DEFAULT_ORG_CAPABILITIES | ORG_CAPABILITIES.CREATE_APP;
+
+export interface CreatedStream {
+  orgId: string;
+  /** Set when the stream exists but its member defaults could not be set (a cancelled passkey). */
+  warning: string | null;
+}
+
+/**
+ * A new stream: an organization the caller owns, whose members may create
+ * rooms (the org's default capabilities, a passkey step-up).
+ */
+export async function createStream(
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities">,
+  name: string,
+  passkey: () => PasskeyProvider,
+): Promise<CreatedStream> {
+  const orgId = await client.createOrg(name);
+  try {
+    await client.setCapabilities(orgId, MEMBER_DEFAULTS, passkey());
+    return { orgId, warning: null };
+  } catch {
+    return {
+      orgId,
+      warning:
+        "The stream was created, but people you invite cannot create rooms yet. Turn on \u201cMembers can create rooms\u201d in the stream to let them.",
+    };
+  }
+}
+
+/** Whether the org's default lets a plain member create rooms. */
+export function membersCreateRooms(memberDefaults: number): boolean {
+  return (memberDefaults & ORG_CAPABILITIES.CREATE_APP) !== 0;
+}
+
+/**
+ * Turn "Members can create rooms" on or off: `CREATE_APP` in the org's
+ * default, the other bits kept. A member an owner set capabilities for keeps
+ * their own. Owner or admin only, with their passkey.
+ */
+export function setMembersCreateRooms(
+  client: Pick<CalimeroClient, "setCapabilities">,
+  org: string,
+  memberDefaults: number,
+  on: boolean,
+  passkey: PasskeyProvider,
+): Promise<void> {
+  const next = on
+    ? memberDefaults | ORG_CAPABILITIES.CREATE_APP
+    : memberDefaults & ~ORG_CAPABILITIES.CREATE_APP;
+  return client.setCapabilities(org, next, passkey);
 }
 
 /** A stream's name, its members, and the display names they set for it. */
@@ -102,6 +161,10 @@ export interface StreamInfo {
   name: string;
   members: string[];
   names: Record<string, string>;
+  /** Each member's role (`owner`, `admin`, `member`, `guest`). */
+  roles: Record<string, string>;
+  /** The org's default capabilities: what a member holds unless set for them. */
+  memberDefaults: number;
 }
 
 export async function streamInfo(
@@ -118,8 +181,16 @@ export async function streamInfo(
       if (typeof name === "string" && name.trim()) names[account] = name.trim();
     }
   }
+  const roles: Record<string, string> = {};
+  if (info.members && typeof info.members === "object") {
+    for (const [account, role] of Object.entries(info.members as Record<string, unknown>)) {
+      roles[account] = String(role).toLowerCase();
+    }
+  }
+  const memberDefaults =
+    typeof info.defaultCapabilities === "number" ? info.defaultCapabilities : DEFAULT_ORG_CAPABILITIES;
   const name = typeof info.name === "string" ? info.name.trim() : "";
-  return { name: name || `Stream ${org.slice(0, 6)}`, members, names };
+  return { name: name || `Stream ${org.slice(0, 6)}`, members, names, roles, memberDefaults };
 }
 
 /**

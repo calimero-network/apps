@@ -105,15 +105,16 @@ export default function StreamsPage() {
     const streamName = name.trim();
     if (!streamName || !conn) return;
     void run("create", async (onStatus) => {
-      onStatus("Creating the stream…");
-      const orgId = await createStream(conn.client, streamName);
+      onStatus("Creating the stream, then approve with your passkey so members can create rooms…");
+      const { orgId, warning } = await createStream(conn.client, streamName, conn.passkey);
       conn.after();
       setName("");
+      if (warning) showToast(warning);
       onStatus("Refreshing your streams…");
       await load(false);
       navigate(`/streams/${orgId}`);
     });
-  }, [name, conn, run, load, navigate]);
+  }, [name, conn, run, load, navigate, showToast]);
 
   const mintInvite = useCallback(
     (row: StreamRow) => {

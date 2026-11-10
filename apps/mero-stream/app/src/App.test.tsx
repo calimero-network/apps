@@ -1,12 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import {
+  CalimeroError,
+  DEFAULT_ORG_CAPABILITIES,
+  ORG_CAPABILITIES,
+  type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
-import { dropInvite, inviteLink, migrateLegacyInvite, pendingInvite } from "./lib/streams";
+import { MEMBER_DEFAULTS, dropInvite, inviteLink, migrateLegacyInvite, pendingInvite } from "./lib/streams";
 
 /** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
 function hold(legacy: string) {
@@ -64,6 +68,8 @@ function fakeClient() {
   let session: CalimeroSession | undefined;
   const apps: AppInfo[] = [];
   const orgs: { orgId: string; name: string; role: string }[] = [];
+  /** The org's member defaults as the node keeps them (`setCapabilities` without `at`). */
+  const defaults = new Map<string, number>();
   const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null });
   return {
     apps,
@@ -91,7 +97,11 @@ function fakeClient() {
       name: orgs.find((o) => o.orgId === org)?.name ?? "Stream",
       members: { "acct-alice": "owner" },
       memberMetadata: {},
+      defaultCapabilities: defaults.get(org) ?? DEFAULT_ORG_CAPABILITIES,
     })),
+    setCapabilities: vi.fn(async (org: string, caps: number, _pk: unknown, at?: { account?: string }) => {
+      if (!at?.account) defaults.set(org, caps);
+    }),
     listApps: vi.fn(async () => apps),
     getApp: vi.fn(async (app: string) => ({ appId: app })),
     createOrg: vi.fn(async (name: string) => {
@@ -163,6 +173,10 @@ describe("App", () => {
     fireEvent.change(screen.getByTestId("stream-name-input"), { target: { value: "Team" } });
     fireEvent.click(screen.getByTestId("create-stream"));
     await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Team"));
+    // Its members may create rooms: the org's default, with the owner's passkey.
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenCalledWith("org-1", MEMBER_DEFAULTS, expect.anything()),
+    );
     await screen.findByText("No rooms in this stream");
 
     fireEvent.change(screen.getByTestId("room-name-input"), { target: { value: "Standup" } });
@@ -298,15 +312,63 @@ describe("App", () => {
     expect(pendingInvite()).toBeNull();
   });
 
-  it("tells a member who may not add a room to ask an owner, instead of offering Create room (B8)", async () => {
+  /** Alice as a plain member of org-1, whose org's member defaults are `defaultCapabilities` (core's own unless set). */
+  function asMember(defaultCapabilities = DEFAULT_ORG_CAPABILITIES) {
     const client = fakeClient();
     client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
-    // A stream sets no member defaults: a plain member has no CREATE_APP.
     client.getOrg.mockImplementation(async () => ({
       name: "Team",
       members: { "acct-alice": "member", "acct-bob": "owner" },
       memberMetadata: {},
+      defaultCapabilities,
     }));
+    return client;
+  }
+
+  it("offers Create room to a member of a stream made here (members may create rooms)", async () => {
+    const client = asMember(MEMBER_DEFAULTS);
+    renderApp(client, "/streams/org-1", true);
+    expect(await screen.findByTestId("create-room")).toBeTruthy();
+    expect(screen.queryByTestId("create-room-ask")).toBeNull();
+    // Only an owner or admin changes the stream's setting.
+    expect(screen.queryByTestId("members-create-rooms")).toBeNull();
+  });
+
+  it("tells a member of a stream with the default off to ask an owner", async () => {
+    const client = asMember(DEFAULT_ORG_CAPABILITIES & ~ORG_CAPABILITIES.CREATE_APP);
+    renderApp(client, "/streams/org-1", true);
+    expect((await screen.findByTestId("create-room-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-room")).toBeNull();
+  });
+
+  it("lets the owner turn \"Members can create rooms\" off and on, with a passkey approval", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    await client.setCapabilities("org-1", MEMBER_DEFAULTS, null);
+    client.setCapabilities.mockClear();
+    renderApp(client, "/streams/org-1", true);
+
+    const toggle = (await screen.findByTestId("members-create-rooms")) as HTMLInputElement;
+    await waitFor(() => expect(toggle.checked).toBe(true));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenCalledWith(
+        "org-1",
+        MEMBER_DEFAULTS & ~ORG_CAPABILITIES.CREATE_APP,
+        expect.anything(),
+      ),
+    );
+    await waitFor(() => expect(toggle.checked).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(client.setCapabilities).toHaveBeenLastCalledWith("org-1", MEMBER_DEFAULTS, expect.anything()),
+    );
+    await waitFor(() => expect(toggle.checked).toBe(true));
+  });
+
+  it("tells a member who may not add a room to ask an owner, instead of offering Create room (B8)", async () => {
+    // A stream made before member defaults: a plain member has no CREATE_APP.
+    const client = asMember();
     renderApp(client, "/streams/org-1", true);
     expect((await screen.findByTestId("create-room-ask")).textContent).toMatch(/Only an owner or admin/);
     expect(screen.queryByTestId("create-room")).toBeNull();

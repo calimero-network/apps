@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_CAPABILITIES, ORG_CAPABILITIES } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 import {
+  MEMBER_DEFAULTS,
   captureInvite,
   createRoom,
+  createStream,
+  setMembersCreateRooms,
   dropInvite,
   inviteLink,
   listRooms,
@@ -87,7 +91,48 @@ describe("streams are organizations, rooms are app instances", () => {
       name: "Team",
       members: ["a", "b"],
       names: { a: "Alice" },
+      roles: { a: "owner", b: "member" },
+      memberDefaults: DEFAULT_ORG_CAPABILITIES,
     });
+  });
+});
+
+describe("members of a new stream may create rooms (core's CREATE_APP)", () => {
+  it("member defaults are core's own plus CREATE_APP", () => {
+    expect(MEMBER_DEFAULTS & ORG_CAPABILITIES.CREATE_APP).toBe(ORG_CAPABILITIES.CREATE_APP);
+    expect(MEMBER_DEFAULTS & DEFAULT_ORG_CAPABILITIES).toBe(DEFAULT_ORG_CAPABILITIES);
+  });
+
+  it("creating a stream sets the org's member defaults, approved with the owner's passkey", async () => {
+    const pk = { create: vi.fn(), get: vi.fn() };
+    const client = {
+      createOrg: vi.fn(async () => "o1"),
+      setCapabilities: vi.fn(async () => {}),
+    };
+    expect(await createStream(client as never, "Team", () => pk as never)).toEqual({ orgId: "o1", warning: null });
+    expect(client.createOrg).toHaveBeenCalledWith("Team");
+    // No `at`: the organization's default, not one member's row.
+    expect(client.setCapabilities).toHaveBeenCalledWith("o1", MEMBER_DEFAULTS, pk);
+  });
+
+  it("keeps the stream when the defaults are refused (a cancelled passkey), and says so", async () => {
+    const client = {
+      createOrg: vi.fn(async () => "o1"),
+      setCapabilities: vi.fn(async () => Promise.reject(new Error("cancelled"))),
+    };
+    const created = await createStream(client as never, "Team", () => ({}) as never);
+    expect(created.orgId).toBe("o1");
+    expect(created.warning).toMatch(/Members can create rooms/);
+  });
+
+  it("the toggle flips only CREATE_APP in the org's default, keeping the other bits", async () => {
+    const client = { setCapabilities: vi.fn(async () => {}) };
+    const pk = {} as never;
+    const others = ORG_CAPABILITIES.JOIN_OPEN_TEAMS | ORG_CAPABILITIES.INVITE_MEMBERS;
+    await setMembersCreateRooms(client as never, "o1", others, true, pk);
+    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others | ORG_CAPABILITIES.CREATE_APP, pk);
+    await setMembersCreateRooms(client as never, "o1", others | ORG_CAPABILITIES.CREATE_APP, false, pk);
+    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others, pk);
   });
 });
 
