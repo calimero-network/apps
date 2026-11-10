@@ -27,6 +27,7 @@ import type {
   CalimeroClient,
   OrgInvite,
   OrgMode,
+  PasskeyProvider,
 } from "@calimero-network/mero-js";
 
 /** Home's own package: one first-party package every cluster serves. */
@@ -260,6 +261,49 @@ export function appsOf(view: OrgView, rosters: Rosters, person: Person): OrgApp[
     const cell = accessCell(view, a, rosters, person);
     return cell !== "none";
   });
+}
+
+/** What a manager can set one person to in a closed app team. */
+export type Seat = "none" | "member" | "lead" | "readOnly";
+
+/**
+ * Whether the caller may change who is in `app` from the People matrix: a
+ * closed app team they manage (an owner or admin, or its lead), whose rows
+ * they could read. An open team (everyone in the org) and a legacy app have
+ * no list to change; a person's own row is left to someone else, so a lead
+ * cannot drop their own lead by mistake. A guest can be given an app (that is
+ * how a guest gets one), never made its lead.
+ */
+export function mayChangeSeat(view: Pick<OrgView, "role">, app: OrgApp, rosters: Rosters, person: Person, account: string): boolean {
+  if (!app.team || app.team.join === "everyone") return false;
+  if (!(isAdmin(view.role) || app.team.manages)) return false;
+  if (!rosters.has(app.team.teamId)) return false;
+  return person.account !== account;
+}
+
+/** The seats offered for `person` ({@link mayChangeSeat}): a guest is never offered lead. */
+export function seatsFor(person: Pick<Person, "role">): Seat[] {
+  return person.role === "guest" ? ["none", "member", "readOnly"] : ["none", "member", "readOnly", "lead"];
+}
+
+/**
+ * Puts `account` in `app`'s team at `seat`, or takes them out of it (`none`:
+ * core#4891 also takes them out of every team below it, a private channel's
+ * say), approved with the caller's passkey.
+ */
+export async function setSeat(
+  client: Pick<CalimeroClient, "setTeamMember" | "removeTeamMember">,
+  org: string,
+  team: string,
+  account: string,
+  seat: Seat,
+  passkey: PasskeyProvider,
+): Promise<void> {
+  if (seat === "none") {
+    await client.removeTeamMember(org, team, account, passkey);
+    return;
+  }
+  await client.setTeamMember(org, team, account, passkey, { role: seat });
 }
 
 /** An invite's teams by app name, for the pending list: "Chat, Blocks", or "Organization only". */

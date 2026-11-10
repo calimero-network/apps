@@ -125,6 +125,8 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       teams: (o.apps ?? []).map((a) => ({ package: a.package, teamId: `t-${a.package}`, created: true, apps: [], added: 0 })),
     })),
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
+    setTeamMember: vi.fn(async () => undefined),
+    removeTeamMember: vi.fn(async () => undefined),
   };
   return { client, asClient: client as unknown as CalimeroClient, me };
 }
