@@ -23,6 +23,8 @@ export interface FakeOrgOptions {
   invites?: OrgInvite[];
   /** Chat's "members may invite" switch. */
   chatInvite?: boolean;
+  /** Chat open to everyone in a shared org (an admin opened it on its own). */
+  chatOpen?: boolean;
 }
 
 const ACCOUNT: Record<As, string> = {
@@ -44,7 +46,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     package: CHAT,
     teamId: "t-chat",
     name: "Chat",
-    join: mode === "standalone" ? "everyone" : "invite",
+    join: mode === "standalone" || opts.chatOpen ? "everyone" : "invite",
     memberCount: 3,
     defaultCapabilities: opts.chatInvite || mode === "standalone" ? 2 : null,
     member: as !== "admin",
@@ -54,7 +56,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     package: BLOCKS,
     teamId: "t-blocks",
     name: "Blocks",
-    join: "invite",
+    join: mode === "standalone" ? "everyone" : "invite",
     memberCount: 1,
     defaultCapabilities: null,
     member: as === "owner",
@@ -125,7 +127,8 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       teams: (o.apps ?? []).map((a) => ({ package: a.package, teamId: `t-${a.package}`, created: true, apps: [], added: 0 })),
     })),
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
-    setTeamMember: vi.fn(async () => undefined),
+    setTeamMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    updateTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
     removeTeamMember: vi.fn(async () => undefined),
   };
   return { client, asClient: client as unknown as CalimeroClient, me };

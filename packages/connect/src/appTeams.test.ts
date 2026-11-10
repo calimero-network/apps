@@ -11,7 +11,10 @@ import {
   ensureAppTeam,
   inviteToApp,
   isNotFound,
+  keepAppsApart,
   membersMayInvite,
+  openAppTeam,
+  openAppTeams,
   setMembersMayInvite,
 } from "./appTeams";
 
@@ -69,6 +72,7 @@ function fake(opts: FakeOpts = {}) {
     })),
     invite: vi.fn(async () => "tok-1"),
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
+    updateTeam: vi.fn(async (_org: string, _team: string, _update: { join?: string }): Promise<void> => undefined),
   };
 }
 
@@ -282,5 +286,41 @@ describe("appTeamMembers: who is in an app team", () => {
 
   it("a team the caller does not see: nobody", () => {
     expect(appTeamMembers(org("invite"), "blocks", "shared")).toEqual([]);
+  });
+});
+
+describe("everyone gets every app / keep apps apart", () => {
+  it("opens one app team: join everyone, no passkey", async () => {
+    const c = fake();
+    await openAppTeam(c, "org", { teamId: "t-chat" });
+    expect(c.updateTeam).toHaveBeenCalledWith("org", "t-chat", { join: "everyone" });
+  });
+
+  it("opens only the closed ones, in turn, and says which", async () => {
+    const c = fake();
+    const opened = await openAppTeams(c, "org", [
+      { teamId: "a", join: "invite" },
+      { teamId: "b", join: "everyone" },
+      { teamId: "c", join: "invite" },
+    ]);
+    expect(opened).toEqual(["a", "c"]);
+    expect(c.updateTeam.mock.calls.map((x) => x[1])).toEqual(["a", "c"]);
+  });
+
+  it("stops at a refusal", async () => {
+    const c = fake();
+    c.updateTeam.mockRejectedValueOnce(new Error("not allowed to change this team's visibility"));
+    await expect(openAppTeams(c, "org", [{ teamId: "a", join: "invite" }, { teamId: "b", join: "invite" }])).rejects.toThrow(
+      /visibility/,
+    );
+    expect(c.updateTeam).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps apps apart: one ScopeApps naming no package, shared, and nothing opened", async () => {
+    const c = fake();
+    c.scopeApps.mockResolvedValueOnce({ mode: "shared" as never, teams: [] });
+    expect(await keepAppsApart(c, "org", passkey)).toBe("shared");
+    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [], shared: true });
+    expect(c.updateTeam).not.toHaveBeenCalled();
   });
 });

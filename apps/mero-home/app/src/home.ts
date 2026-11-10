@@ -353,3 +353,129 @@ export function modeLabel(mode: OrgMode | null): string {
       return "This cluster does not list app teams yet";
   }
 }
+
+/** Whether the caller manages at least one closed app team: an owner or admin, or a lead of one. */
+export function managesAnyApp(view: Pick<OrgView, "role" | "apps">): boolean {
+  if (view.role === "guest") return false;
+  return view.apps.some((a) => a.team && a.team.join === "invite" && (isAdmin(view.role) || a.team.manages));
+}
+
+/** One app a bulk action leaves alone, and why, in words. */
+export interface Skipped {
+  app: OrgApp;
+  why: string;
+}
+
+/** What a bulk action ({@link giveAllPlan}, {@link removeAllPlan}) will change, and what it leaves. */
+export interface BulkPlan {
+  /** The closed app teams it changes, one passkey step-up each. */
+  apps: OrgApp[];
+  skipped: Skipped[];
+}
+
+const SEAT_WORD: Record<"lead" | "member" | "readOnly", string> = { lead: "Lead", member: "Member", readOnly: "Read only" };
+
+/** Why an app outside a person's reach for bulk changes is left alone, or `null` when the caller may change it. */
+function bulkBlock(view: Pick<OrgView, "role" | "mode">, app: OrgApp, rosters: Rosters, person: Person): string | null {
+  if (!app.team) return "everyone in the organization has it";
+  if (app.team.join === "everyone") {
+    const moded = view.mode === "standalone" || view.mode === "shared";
+    return person.role === "guest" && moded
+      ? "open to everyone but guests: invite them to it"
+      : "open to everyone in the organization";
+  }
+  if (!(isAdmin(view.role) || app.team.manages)) return "you do not manage it";
+  if (!rosters.has(app.team.teamId)) return "its list could not be read";
+  return null;
+}
+
+/**
+ * "Give all apps": every closed app team the caller manages (and could read)
+ * that `person` has no row in, to be added as a Member, one `setTeamMember`
+ * (one passkey step-up) each. An app they are in already keeps its row as it
+ * is (a Read only seat is not raised); open and legacy apps are theirs
+ * already. Core has no batch route for team rows (rc.14), hence one each.
+ */
+export function giveAllPlan(view: Pick<OrgView, "role" | "mode" | "apps">, rosters: Rosters, person: Person): BulkPlan {
+  const plan: BulkPlan = { apps: [], skipped: [] };
+  for (const app of view.apps) {
+    const why = bulkBlock(view, app, rosters, person);
+    if (why) {
+      plan.skipped.push({ app, why });
+      continue;
+    }
+    const seat = rosters.get(app.team!.teamId)?.get(person.account);
+    if (seat) plan.skipped.push({ app, why: `already in it (${SEAT_WORD[seat]})` });
+    else plan.apps.push(app);
+  }
+  return plan;
+}
+
+/**
+ * "Remove from all apps" (never from the organization): every closed app team
+ * the caller manages that `person` has a row in, one `removeTeamMember` (one
+ * passkey step-up) each. Apps they are not in are not listed; an open or
+ * legacy app stays theirs while they are in the organization.
+ */
+export function removeAllPlan(view: Pick<OrgView, "role" | "mode" | "apps">, rosters: Rosters, person: Person): BulkPlan {
+  const plan: BulkPlan = { apps: [], skipped: [] };
+  for (const app of view.apps) {
+    const cell = accessCell(view, app, rosters, person);
+    if (cell === "none") continue;
+    const why = bulkBlock(view, app, rosters, person);
+    if (why) {
+      plan.skipped.push({
+        app,
+        why: !app.team || app.team.join === "everyone" ? "open to everyone in the organization: they keep it while they are in it" : why,
+      });
+      continue;
+    }
+    plan.apps.push(app);
+  }
+  return plan;
+}
+
+/** How a bulk run ended ({@link runEach}). */
+export interface BulkResult {
+  done: OrgApp[];
+  /** The app whose step failed, and why; the run stops there. */
+  failed: { app: OrgApp; error: unknown } | null;
+  /** The apps after a failure, not tried. */
+  notTried: OrgApp[];
+}
+
+/**
+ * Runs `step` for each app in turn (each its own passkey step-up, so one at a
+ * time), telling `progress` how many are done. Stops at the first failure, a
+ * refusal or a cancelled passkey prompt alike, so a cancel never turns into
+ * a prompt for the next app.
+ */
+export async function runEach(
+  apps: readonly OrgApp[],
+  step: (app: OrgApp) => Promise<void>,
+  progress: (done: number, current: OrgApp | null) => void = () => {},
+): Promise<BulkResult> {
+  const done: OrgApp[] = [];
+  for (let i = 0; i < apps.length; i++) {
+    const app = apps[i]!;
+    progress(done.length, app);
+    try {
+      await step(app);
+      done.push(app);
+    } catch (error) {
+      progress(done.length, null);
+      return { done, failed: { app, error }, notTried: apps.slice(i + 1) };
+    }
+  }
+  progress(done.length, null);
+  return { done, failed: null, notTried: [] };
+}
+
+/** The app teams that list their own people (closed), and those open to everyone. */
+export function teamsByJoin(view: Pick<OrgView, "apps">): { closed: OrgApp[]; open: OrgApp[]; legacy: OrgApp[] } {
+  return {
+    closed: view.apps.filter((a) => a.team?.join === "invite"),
+    open: view.apps.filter((a) => a.team?.join === "everyone"),
+    legacy: view.apps.filter((a) => !a.team),
+  };
+}
