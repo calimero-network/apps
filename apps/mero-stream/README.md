@@ -150,6 +150,28 @@ prune or plant media under someone else's name, and readers need no
 renames it and sweeps departed senders' buffers. Still open, as in v1:
 approach 3's global frame seq is shared, so a member can advance it.
 
+
+## Mero Stream's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Stream reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Stream's team at once, **open**
+  (`standalone`: everyone in the org has the app). New rooms use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Stream only (the dialog says so) and only its people are shown.
+  Stream has no organization-level Remove or Leave.
+- Adding Mero Stream to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Test it
 
 | | what it covers | needs a node |

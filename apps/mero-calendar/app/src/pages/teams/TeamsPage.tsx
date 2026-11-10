@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { appOnlyInviteNote, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { lastUsedName } from "@calimero-apps/names";
 import { messageOf } from "../../api/calendar";
@@ -11,6 +11,9 @@ import {
   createTeam as createOrgTeam,
   inviteLink,
   inviteToken,
+  leaveTeam as leaveOrgTeam,
+  leaveTeamOrg,
+  PRODUCT_NAME,
   listTeams,
   ownsTeam,
   setMyTeamName,
@@ -49,7 +52,7 @@ export default function TeamsPage() {
   // Your name in the new team, asked here once: every calendar in it uses it.
   const [myName, setMyName] = useState(() => lastUsedName());
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [inviteFor, setInviteFor] = useState<{ id: string; link: string } | null>(
+  const [inviteFor, setInviteFor] = useState<{ id: string; link: string; appOnly?: boolean } | null>(
     null,
   );
   const menuRef = useRef<HTMLDivElement>(null);
@@ -131,14 +134,14 @@ export default function TeamsPage() {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await createCalendar(client, source, org.orgId, CONNECTED_CALENDAR_NAME);
+        await createCalendar(client, source, org.orgId, CONNECTED_CALENDAR_NAME, passkey);
       } finally {
         after();
       }
       setStoredTeamName(org.orgId, org.name);
       navigate(`/teams/${org.orgId}`);
     },
-    [client, source, after, navigate],
+    [client, source, passkey, after, navigate],
   );
 
   async function createTeam() {
@@ -178,11 +181,22 @@ export default function TeamsPage() {
     forgetTeam(targetKey, teamId);
   }
 
-  /** Anyone else leaves it: removes their own membership (a passkey step-up). */
+  /**
+   * Anyone else leaves it (a passkey step-up). In an org that keeps its apps
+   * apart that is Mero Calendar only; when it was the last app there, the
+   * organization itself is offered too.
+   */
   async function leaveTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await client.removeMember(teamId, accountId, passkey());
+      const left = await leaveOrgTeam(client, teamId, source, passkey, accountId);
+      if (
+        left.left === "app" &&
+        left.lastApp &&
+        window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`)
+      ) {
+        await leaveTeamOrg(client, teamId, passkey, accountId);
+      }
     } catch (err) {
       showToast(`Could not leave team: ${messageOf(err)}`);
       return;
@@ -204,9 +218,13 @@ export default function TeamsPage() {
     try {
       // An org invite, approved with this account's passkey. The link is all
       // there is to share: opening it (and signing in) joins the team.
-      const token = await inviteToken(client, teamId, passkey());
+      const { token, appOnly } = await inviteToken(client, teamId, passkey(), source);
       // The link names the team, so someone already in it is not joined again.
-      setInviteFor({ id: teamId, link: inviteLink(token, { href: new URL(appRoot(), window.location.origin).href }, teamId) });
+      setInviteFor({
+        id: teamId,
+        link: inviteLink(token, { href: new URL(appRoot(), window.location.origin).href }, teamId),
+        appOnly,
+      });
     } catch (err) {
       showToast(`Failed to generate invitation: ${messageOf(err)}`);
     } finally {
@@ -358,6 +376,15 @@ export default function TeamsPage() {
                     >
                       Single use
                     </span>
+                    {inviteFor.appOnly && (
+                      <span
+                        className={styles.inviteNote}
+                        data-testid="invite-app-only"
+                        title={appOnlyInviteNote(PRODUCT_NAME)}
+                      >
+                        {PRODUCT_NAME} only
+                      </span>
+                    )}
                     <button
                       className="mc-btn"
                       onClick={copyInvite}

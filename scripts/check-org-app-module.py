@@ -58,15 +58,15 @@ CONVERTED = {
     "mero-forum",
     "mero-pass",
     "mero-pixart",
+    "mero-stream",
+    "mero-updates",
+    "mero-calendar",
 }
 
 NOT_CONVERTED_YET = {
-    "mero-calendar",
     "mero-design",
     "mero-sheets",
     "mero-sign",
-    "mero-stream",
-    "mero-updates",
 }
 
 NOT_ORG_APPS = {

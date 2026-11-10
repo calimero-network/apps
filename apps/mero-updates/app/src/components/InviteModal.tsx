@@ -1,3 +1,5 @@
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME } from "../lib/companies";
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
@@ -25,6 +27,7 @@ export default function InviteModal({
   code,
   scope,
   hint,
+  appOnly = false,
   onClose,
 }: {
   open: boolean;
@@ -32,6 +35,8 @@ export default function InviteModal({
   /** What the invitation grants — "Whole space · Foo" or "Opens Bar". */
   scope: string;
   hint?: ReactNode;
+  /** The link gives Mero Updates only (an org that keeps its apps apart). */
+  appOnly?: boolean;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -133,6 +138,11 @@ export default function InviteModal({
           Single use: one person can join with this link. Make a new one for each person you invite.
         </p>
         {hint && <p className={styles.hint}>{hint}</p>}
+        {appOnly && (
+          <p className={styles.hint} data-testid="invite-app-only">
+            {appOnlyInviteNote(PRODUCT_NAME)}
+          </p>
+        )}
       </div>
     </dialog>
   );

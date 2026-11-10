@@ -293,6 +293,24 @@ body {
   }
 }
 
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`), before Log out on
+   a team's screens. Folds away on a phone with the Log out label. */
+.mc-home-link {
+  flex: none;
+  font: 600 13px/1 var(--font);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mc-home-link:hover {
+  text-decoration: underline;
+}
+@media (max-width: 640px) {
+  .mc-home-link {
+    display: none;
+  }
+}
+
 /* One focus ring for every control the app draws itself. */
 .mc-btn:focus-visible,
 .mc-theme-toggle:focus-visible,

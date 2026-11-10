@@ -80,8 +80,9 @@ describe("streams are organizations, rooms are app instances", () => {
   });
 
   it("creates a room in the org, naming the stream in init", async () => {
-    const client = { createApp: vi.fn(async () => "app-1") };
-    expect(await createRoom(client, "bundle", "o1", "Standup")).toBe("app-1");
+    // A raw dev bundle has no app team: the room keeps organization access.
+    const client = { createApp: vi.fn(async () => "app-1"), getOrg: vi.fn(), scopeApps: vi.fn(), session: undefined };
+    expect(await createRoom(client as never, "bundle", "o1", "Standup")).toBe("app-1");
     expect(client.createApp).toHaveBeenCalledWith("Standup", "bundle", {
       org: "o1",
       initArgs: { name: "Standup" },

@@ -11,7 +11,10 @@ import {
   setCompanyName,
   inviteLink,
   listCompanies,
+  leaveCompany,
+  leaveCompanyOrg,
   mintInvite,
+  PRODUCT_NAME,
   type NamespaceRow,
 } from "../lib/companies";
 import { getUsername } from "../lib/active";
@@ -59,7 +62,7 @@ export default function CompaniesPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; code: string } | null>(null);
+  const [invite, setInvite] = useState<{ id: string; code: string; appOnly?: boolean } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
@@ -140,25 +143,25 @@ export default function CompaniesPage() {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await createAudience(client, source, org.orgId, CONNECTED_AUDIENCE_NAME);
+        await createAudience(client, source, org.orgId, CONNECTED_AUDIENCE_NAME, passkey);
       } finally {
         after();
       }
       navigate(`/companies/${org.orgId}`);
     },
-    [client, source, after, navigate],
+    [client, source, passkey, after, navigate],
   );
 
   const inviteTo = useCallback(
     (ns: NamespaceRow) => {
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
-        const token = await mintInvite(client, ns.namespaceId, passkey());
-        setInvite({ id: ns.namespaceId, code: inviteLink(token, null, ns.namespaceId) });
+        const { token, appOnly } = await mintInvite(client, ns.namespaceId, passkey(), source);
+        setInvite({ id: ns.namespaceId, code: inviteLink(token, null, ns.namespaceId), appOnly });
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [client, passkey, run, showToast],
+    [client, passkey, source, run, showToast],
   );
 
   const removeSpace = useCallback(
@@ -179,13 +182,23 @@ export default function CompaniesPage() {
     (ns: NamespaceRow) => {
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve leaving with your passkey…");
-        await client.removeMember(ns.namespaceId, accountId, passkey());
+        const left = await leaveCompany(client, ns.namespaceId, source, passkey, accountId);
+        // An org that keeps its apps apart: Mero Updates only. When it was the
+        // last app there, the organization itself is offered too.
+        if (
+          left.left === "app" &&
+          left.lastApp &&
+          window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`)
+        ) {
+          onStatus("Approve leaving the organization with your passkey…");
+          await leaveCompanyOrg(client, ns.namespaceId, passkey, accountId);
+        }
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
-    [client, accountId, passkey, run, load, showToast],
+    [client, accountId, source, passkey, run, load, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -460,6 +473,7 @@ export default function CompaniesPage() {
         open={!!invite}
         code={invite?.code ?? ""}
         scope={`Whole company · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
+        appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
       />
     </div>
