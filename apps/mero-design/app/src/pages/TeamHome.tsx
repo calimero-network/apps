@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { askAnOwnerCopy } from "@calimero-apps/connect";
 import { useAuth } from "../sessionContext";
 import ProjectThumbnail from "../components/ProjectThumbnail";
 import { EmptyBoardsArt } from "../components/Artwork";
@@ -63,7 +64,12 @@ export default function TeamHome() {
     }
   }
 
-  const createField = (
+  // A member who may not add a board is told whom to ask, not offered a create that fails.
+  const createField = boards.mayCreate === false ? (
+    <p className={styles.emptyText} data-testid="create-board-ask">
+      {askAnOwnerCopy("a board")}
+    </p>
+  ) : (
     <div className={styles.field}>
       <input
         className={styles.input}
@@ -111,11 +117,15 @@ export default function TeamHome() {
         ) : boards.boards.length === 0 ? (
           <section className={`${styles.panel} ${styles.empty}`} data-testid="empty-projects">
             <EmptyBoardsArt />
-            <h2 className={styles.emptyTitle}>Make the first board</h2>
-            <p className={styles.emptyText}>
-              Name it and it opens right away. Everyone in {teamName} can draw on it with you —
-              press Invite to bring them in.
-            </p>
+            <h2 className={styles.emptyTitle}>
+              {boards.mayCreate === false ? "No boards yet" : "Make the first board"}
+            </h2>
+            {boards.mayCreate !== false && (
+              <p className={styles.emptyText}>
+                Name it and it opens right away. Everyone in {teamName} can draw on it with you —
+                press Invite to bring them in.
+              </p>
+            )}
             <div className={styles.emptyField}>{createField}</div>
           </section>
         ) : (
@@ -125,11 +135,13 @@ export default function TeamHome() {
               <span className={styles.count}>{boards.boards.length}</span>
             </div>
             <div className={styles.grid}>
-              <section className={`${styles.panel} ${styles.newCard}`}>
-                <span className={styles.newIcon} aria-hidden="true"><IconPlus /></span>
-                <span className={styles.newTitle}>New board</span>
-                {createField}
-              </section>
+              {boards.mayCreate !== false && (
+                <section className={`${styles.panel} ${styles.newCard}`}>
+                  <span className={styles.newIcon} aria-hidden="true"><IconPlus /></span>
+                  <span className={styles.newTitle}>New board</span>
+                  {createField}
+                </section>
+              )}
               {boards.boards.map((p) => {
                 const name = p.name || p.contextId.slice(0, 8);
                 return (

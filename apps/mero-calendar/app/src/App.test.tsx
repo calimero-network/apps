@@ -53,6 +53,7 @@ function fakeClient() {
     signOut: vi.fn(async () => {
       session = undefined;
     }),
+    me: vi.fn(async () => ({ accountId: ME, orgs: [{ orgId: "org-1", name: "Team", role: "owner" }] })),
     getOrg: vi.fn(async () => ({ name: "Team", members: { [ME]: "owner" }, memberMetadata: {} })),
     redeemInvite: vi.fn(async (): Promise<Record<string, unknown>> => ({ org: "org-1" })),
   };
@@ -99,12 +100,17 @@ describe("an invitation link opened while signed out", () => {
     expect(screen.queryByText("Landing sign in")).toBeNull();
   });
 
-  it("signing in joins straight away and opens the team", async () => {
+  it("signing in asks before joining (B5): nothing is redeemed until Join, which opens the team", async () => {
     localStorage.setItem(PENDING, "tok-1");
     migrateLegacyInvite();
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
+    expect(await screen.findByTestId("invitation-prompt")).toBeTruthy();
+    expect(screen.getByText("Join the team?")).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
     expect(invites.token()).toBeNull();
@@ -127,9 +133,11 @@ describe("an invitation link opened while signed out", () => {
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect(await screen.findByText("You're already in this team")).toBeTruthy();
+    expect(await screen.findByText("You're already in the team")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
+    fireEvent.click(screen.getByTestId("invitation-continue"));
+    expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
@@ -139,7 +147,8 @@ describe("an invitation link opened while signed out", () => {
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("invitation-message")).textContent).toBe(
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
     expect(invites.token()).toBeNull();
@@ -167,7 +176,19 @@ describe("an invitation link opened while signed out", () => {
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("invitation-message")).textContent).toMatch(says);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
     expect(invites.token()).toBe("tok-1");
+  });
+
+  it("Not now at the join prompt drops the invite and joins nothing (B5)", async () => {
+    invites.put({ token: "tok-1", org: null, team: null, doc: null, route: null, extra: {} });
+    const client = fakeClient();
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-dismiss"));
+    await waitFor(() => expect(screen.queryByTestId("invitation-prompt")).toBeNull());
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(invites.token()).toBeNull();
   });
 });

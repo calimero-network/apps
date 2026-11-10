@@ -150,4 +150,19 @@ describe("ProjectsPage", () => {
     await waitFor(() => expect(client.invite).toHaveBeenCalledWith("org-a", "member", expect.anything()));
     expect((await screen.findByTestId("invite-token")).getAttribute("title")).toMatch(/[?&]invite=tok-123/);
   });
+
+  it("tells a member who may not add a project to ask an owner, instead of offering New project (B8)", async () => {
+    // A member whose team defaults were never set (the step-up refused): no CREATE_APP.
+    client.getOrg.mockResolvedValue({ name: "Alpha", members: { [ME]: "member", "acct-o": "owner" }, memberMetadata: {} });
+    client.listApps.mockResolvedValue([]);
+    Object.assign(client, { session: { accountId: ME } });
+    try {
+      renderAt("/teams/org-a/projects");
+      expect((await screen.findByTestId("create-project-ask")).textContent).toMatch(/Only an owner or admin/);
+      expect(screen.queryByTestId("open-create-modal")).toBeNull();
+      expect(screen.queryByText("Create your first project")).toBeNull();
+    } finally {
+      delete (client as { session?: unknown }).session;
+    }
+  });
 });

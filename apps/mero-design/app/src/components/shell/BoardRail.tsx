@@ -79,17 +79,20 @@ export default function BoardRail({
 
       <div className={styles.railHead}>
         <span>Boards</span>
-        <button
-          type="button"
-          className={styles.railAdd}
-          onClick={() => setAdding((v) => !v)}
-          title="New board"
-          aria-label="New board"
-          aria-expanded={adding}
-          data-testid="new-board-btn"
-        >
-          <IconPlus size={15} />
-        </button>
+        {/* Only for who may add one: a member without CREATE_APP would be refused. */}
+        {boards.mayCreate !== false && (
+          <button
+            type="button"
+            className={styles.railAdd}
+            onClick={() => setAdding((v) => !v)}
+            title="New board"
+            aria-label="New board"
+            aria-expanded={adding}
+            data-testid="new-board-btn"
+          >
+            <IconPlus size={15} />
+          </button>
+        )}
       </div>
 
       {adding && (
@@ -128,7 +131,11 @@ export default function BoardRail({
           </>
         )}
         {listed && boards.boards.length === 0 && !adding && (
-          <p className={styles.railEmpty}>No boards yet. Press + to make the first one.</p>
+          <p className={styles.railEmpty}>
+            {boards.mayCreate === false
+              ? "No boards yet. An owner or admin of this team can add one."
+              : "No boards yet. Press + to make the first one."}
+          </p>
         )}
         {boards.boards.map((b) => {
           const name = b.name || b.contextId.slice(0, 8);

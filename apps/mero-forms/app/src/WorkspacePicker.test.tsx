@@ -2,7 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const client = {
+  session: { accountId: "acct-me" },
   me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Acme", role: "owner" }] })),
+  getOrg: vi.fn(async (_org: string): Promise<Record<string, unknown>> => ({ members: { "acct-me": "owner" } })),
   listApps: vi.fn(async () => [
     { appId: "app-1", name: "Marketing", owner: "o", org: "org-1", bundle: "b", package: null, version: null },
   ]),
@@ -36,5 +38,22 @@ describe("the workspace picker", () => {
     await waitFor(() => expect(onOpen).toHaveBeenCalledWith({ appId: "app-2", org: "org-2" }));
     expect(client.createApp).toHaveBeenCalledWith("Sales", "bundle-hash", { org: "org-2" });
     expect(client.call).toHaveBeenCalledWith("app-2", "setWorkspaceName", { name: "Sales" });
+  });
+
+  it("offers only the organizations this account may add a workspace in (B8)", async () => {
+    client.me.mockResolvedValueOnce({
+      orgs: [
+        { orgId: "org-1", name: "Acme", role: "owner" },
+        { orgId: "org-3", name: "Partner", role: "member" },
+      ],
+    });
+    // In Partner, a plain member with the node's default capabilities: no CREATE_APP.
+    client.getOrg.mockImplementation(async (org: string) =>
+      org === "org-3" ? { members: { "acct-me": "member" } } : { members: { "acct-me": "owner" } },
+    );
+    render(<WorkspacePicker onOpen={vi.fn()} />);
+    expect((await screen.findByTestId("workspace-ask-owner")).textContent).toMatch(/Only an owner or admin/);
+    const options = [...(screen.getByLabelText("organization") as HTMLSelectElement).options].map((o) => o.text);
+    expect(options).toEqual(["In a new organization", "In Acme"]);
   });
 });

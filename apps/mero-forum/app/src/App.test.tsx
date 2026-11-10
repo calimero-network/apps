@@ -262,6 +262,18 @@ describe("App", () => {
     expect(invites.token()).toBeNull();
   });
 
+  it("tells a member who may not add a forum to ask an owner, instead of offering Create (B8)", async () => {
+    remember();
+    const client = fakeClient();
+    // A member whose space defaults were never set (the step-up refused): no CREATE_APP.
+    client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member", "acct-bob": "owner" } });
+    window.history.replaceState(null, "", "/spaces/org-1");
+    render(<App deps={deps(client)} />);
+    expect((await screen.findByTestId("create-forum-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-forum")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New forum" })).toBeNull();
+  });
+
   it("creates a post through the log, and votes with camelCase arguments", async () => {
     remember(FORUM);
     const client = fakeClient();

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
 import { messageOf } from "../../api/calendar";
 import { useSignedIn } from "../../api/sessionContext";
 import {
@@ -60,18 +62,34 @@ export default function TeamCalendarsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  /**
+   * Whether this account may add a calendar here (core's `CREATE_APP`): a
+   * plain member may not unless an owner or admin let them. `null` while it
+   * is unknown, when the create row is shown and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
+  /** The node says this account is not in the team (a deep link opened by an outsider). */
+  const [outsider, setOutsider] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(menuRef, () => setMenuOpenId(null));
 
   const load = useCallback(async () => {
     try {
-      const [list, org] = await Promise.all([
+      const [list, read, may] = await Promise.all([
         listCalendars(client, source, teamId),
-        readOrg(client, teamId).catch(() => null),
+        readOrg(client, teamId).then(
+          (org) => ({ org, refused: false }),
+          // The node refuses a team's details to an account not in it.
+          (e: unknown) => ({ org: null, refused: notInTeam(e) }),
+        ),
+        canCreateIn(client, teamId),
       ]);
+      const { org } = read;
       setCalendars(list);
       setListedFor(teamId);
+      setMayCreate(may);
+      setOutsider(read.refused || (org !== null && !org.roles.has(accountId)));
       if (org) {
         if (org.name) {
           setTeamName(org.name);
@@ -206,106 +224,125 @@ export default function TeamCalendarsPage() {
             Members
           </button>
         </div>
-        <p className={styles.subtitle}>
-          Pick a calendar to open, or start another one in this team.
-        </p>
-
-        <div className={styles.createRow}>
-          <input
-            className={`mc-input ${styles.createInput}`}
-            placeholder="New calendar name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createCalendar()}
-            data-testid="new-calendar-input"
-          />
-          <button
-            className="mc-btn mc-btn--primary"
-            onClick={createCalendar}
-            disabled={creating}
-            data-testid="create-calendar-btn"
-          >
-            {creating ? "Creating…" : "New calendar"}
-          </button>
-        </div>
-
-        {loading ? (
-          <p className={styles.empty}>Loading calendars…</p>
-        ) : calendars.length === 0 ? (
-          <p className={styles.empty} data-testid="empty-calendars">
-            No calendars in this team yet. Create the first one above.
+        {outsider ? (
+          <p className={styles.empty} role="status" data-testid="team-not-member">
+            You're not in this team, so its calendars are not yours to see. Ask someone in it for an invite
+            link.
           </p>
         ) : (
-          <div className={styles.grid}>
-            {calendars.map(({ contextId: cid }) => (
-              <div className={styles.cardWrap} key={cid}>
+          <>
+            <p className={styles.subtitle}>
+              {mayCreate === false
+                ? "Pick a calendar to open."
+                : "Pick a calendar to open, or start another one in this team."}
+            </p>
+
+            {mayCreate === false ? (
+              <p className={styles.subtitle} data-testid="create-calendar-ask">
+                {askAnOwnerCopy("a calendar")}
+              </p>
+            ) : (
+              <div className={styles.createRow}>
+                <input
+                  className={`mc-input ${styles.createInput}`}
+                  placeholder="New calendar name…"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createCalendar()}
+                  data-testid="new-calendar-input"
+                />
                 <button
-                  className={styles.card}
-                  onClick={() => openCalendar(cid)}
-                  disabled={busyId === cid}
-                  data-testid={`calendar-card-${cid}`}
+                  className="mc-btn mc-btn--primary"
+                  onClick={createCalendar}
+                  disabled={creating}
+                  data-testid="create-calendar-btn"
                 >
-                  <span className={styles.cardIcon}>
-                    <CalendarLogo size={18} color="var(--accent)" />
-                  </span>
-                  <span className={styles.cardName}>{nameOf(cid)}</span>
-                  <span className={styles.cardSub}>{cid.slice(0, 12)}…</span>
+                  {creating ? "Creating…" : "New calendar"}
                 </button>
+              </div>
+            )}
 
-                {/* Only rendered when there is something to offer. */}
-                {canDelete(cid) && (
-                  <button
-                    className={styles.menuBtn}
-                    onClick={() =>
-                      setMenuOpenId((prev) => (prev === cid ? null : cid))
-                    }
-                    aria-label="Calendar options"
-                    data-testid={`calendar-menu-${cid}`}
-                  >
-                    ⋯
-                  </button>
-                )}
+            {loading ? (
+              <p className={styles.empty}>Loading calendars…</p>
+            ) : calendars.length === 0 ? (
+              <p className={styles.empty} data-testid="empty-calendars">
+                {mayCreate === false
+                  ? "No calendars in this team yet."
+                  : "No calendars in this team yet. Create the first one above."}
+              </p>
+            ) : (
+              <div className={styles.grid}>
+                {calendars.map(({ contextId: cid }) => (
+                  <div className={styles.cardWrap} key={cid}>
+                    <button
+                      className={styles.card}
+                      onClick={() => openCalendar(cid)}
+                      disabled={busyId === cid}
+                      data-testid={`calendar-card-${cid}`}
+                    >
+                      <span className={styles.cardIcon}>
+                        <CalendarLogo size={18} color="var(--accent)" />
+                      </span>
+                      <span className={styles.cardName}>{nameOf(cid)}</span>
+                      <span className={styles.cardSub}>{cid.slice(0, 12)}…</span>
+                    </button>
 
-                {menuOpenId === cid && canDelete(cid) && (
-                  <div className={styles.dropdown} ref={menuRef}>
+                    {/* Only rendered when there is something to offer. */}
                     {canDelete(cid) && (
                       <button
-                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                        onClick={() => setConfirmId(cid)}
-                        data-testid={`delete-calendar-${cid}`}
+                        className={styles.menuBtn}
+                        onClick={() =>
+                          setMenuOpenId((prev) => (prev === cid ? null : cid))
+                        }
+                        aria-label="Calendar options"
+                        data-testid={`calendar-menu-${cid}`}
                       >
-                        Delete calendar
+                        ⋯
                       </button>
                     )}
-                  </div>
-                )}
 
-                {confirmId === cid && (
-                  <div className={styles.confirmBox} data-testid="confirm-delete">
-                    <p className={styles.confirmText}>
-                      Delete <strong>{nameOf(cid)}</strong> for everyone in
-                      this team? Its events are removed for all members.
-                    </p>
-                    <div className={styles.confirmRow}>
-                      <button
-                        className="mc-btn mc-btn--ghost"
-                        onClick={() => setConfirmId(null)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        className="mc-btn mc-btn--danger"
-                        onClick={() => removeCalendar(cid)}
-                        data-testid="confirm-delete-btn"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {menuOpenId === cid && canDelete(cid) && (
+                      <div className={styles.dropdown} ref={menuRef}>
+                        {canDelete(cid) && (
+                          <button
+                            className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                            onClick={() => setConfirmId(cid)}
+                            data-testid={`delete-calendar-${cid}`}
+                          >
+                            Delete calendar
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {confirmId === cid && (
+                      <div className={styles.confirmBox} data-testid="confirm-delete">
+                        <p className={styles.confirmText}>
+                          Delete <strong>{nameOf(cid)}</strong> for everyone in
+                          this team? Its events are removed for all members.
+                        </p>
+                        <div className={styles.confirmRow}>
+                          <button
+                            className="mc-btn mc-btn--ghost"
+                            onClick={() => setConfirmId(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="mc-btn mc-btn--danger"
+                            onClick={() => removeCalendar(cid)}
+                            data-testid="confirm-delete-btn"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </main>
 
@@ -314,4 +351,9 @@ export default function TeamCalendarsPage() {
       )}
     </div>
   );
+}
+
+/** A refusal that says the account is not in the team: the node will not show it. */
+function notInTeam(e: unknown): boolean {
+  return e instanceof CalimeroError && (e.status === 403 || e.status === 404);
 }

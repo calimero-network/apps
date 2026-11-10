@@ -6,6 +6,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { askAnOwnerCopy, canCreateIn } from '@calimero-apps/connect';
 import {
   ArrowRight,
   Copy,
@@ -65,6 +66,13 @@ export default function AgreementsPage() {
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  /**
+   * Whether this account may add an agreement in the workspace (core's
+   * `CREATE_APP`): an owner or admin, or a member allowed to (the workspace's
+   * defaults, set by a best-effort step-up when it was made). `null` while
+   * unknown, when the create is offered and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -85,6 +93,7 @@ export default function AgreementsPage() {
     }
     setLoading(true);
     setError(null);
+    void canCreateIn(app.client, workspaceId).then(setMayCreate);
     try {
       setRows(
         await listAgreements(app.client, app.source, workspaceId, app.accountId),
@@ -281,26 +290,32 @@ export default function AgreementsPage() {
               </p>
             </div>
           </div>
-          <div className={styles.createRow}>
-            <input
-              className={styles.input}
-              placeholder="New agreement name…"
-              aria-label="New agreement name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void create()}
-              data-testid="new-agreement-name"
-            />
-            <button
-              className={styles.btn}
-              onClick={() => void create()}
-              disabled={creating || !newName.trim()}
-              data-testid="create-agreement"
-            >
-              {creating ? <span className={styles.spinner} /> : null}
-              {creating ? 'Creating…' : 'Create'}
-            </button>
-          </div>
+          {mayCreate === false ? (
+            <p className={styles.panelText} data-testid="create-agreement-ask">
+              {askAnOwnerCopy('an agreement')}
+            </p>
+          ) : (
+            <div className={styles.createRow}>
+              <input
+                className={styles.input}
+                placeholder="New agreement name…"
+                aria-label="New agreement name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void create()}
+                data-testid="new-agreement-name"
+              />
+              <button
+                className={styles.btn}
+                onClick={() => void create()}
+                disabled={creating || !newName.trim()}
+                data-testid="create-agreement"
+              >
+                {creating ? <span className={styles.spinner} /> : null}
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          )}
         </section>
 
         <section className={styles.section}>
@@ -326,7 +341,9 @@ export default function AgreementsPage() {
               </span>
               <p className={styles.emptyTitle}>Nothing to sign yet</p>
               <p className={styles.empty} data-testid="agreements-empty">
-                No agreements yet. Create one above.
+                {mayCreate === false
+                  ? 'No agreements yet.'
+                  : 'No agreements yet. Create one above.'}
               </p>
             </div>
           ) : (

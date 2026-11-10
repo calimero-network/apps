@@ -445,3 +445,26 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The owner's stream setting ("Members can create rooms"), under the create row. */
+.setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: -12px 0 24px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.setting input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: inherit;
+}
+
+.setting input:disabled {
+  cursor: progress;
+}
