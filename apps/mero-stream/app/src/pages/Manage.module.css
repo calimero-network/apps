@@ -228,6 +228,15 @@
   border-color: var(--text);
   box-shadow: var(--ring);
 }
+/* A phone fits the stream's name and yours one per line, the button below. */
+@media (max-width: 560px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+  .toolbar .input {
+    flex-basis: calc(100% - 48px);
+  }
+}
 
 /* ── Section ──────────────────────────────────────────────────────────────── */
 .sectionHead {

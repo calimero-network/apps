@@ -13,6 +13,7 @@ import {
   type PendingInvite,
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { setOrgName } from "@calimero-apps/names";
 
 import { APP } from "./session";
 
@@ -156,6 +157,19 @@ export async function readOrg(client: Pick<CalimeroClient, "getOrg">, org: strin
     roles: new Map(Object.entries(members)),
     names,
   };
+}
+
+/**
+ * Your name in `org`: asked when you create or join the team, and used by
+ * every calendar in it. Kept in the org's member metadata `{ name }`.
+ */
+export function setMyTeamName(
+  client: Pick<CalimeroClient, "getOrg" | "setMemberMetadata">,
+  org: string,
+  account: string,
+  name: string,
+): Promise<void> {
+  return setOrgName(client, org, account, name);
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────

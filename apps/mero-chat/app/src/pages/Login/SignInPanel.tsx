@@ -144,7 +144,7 @@ export default function SignInPanel({
         <ErrorText role="alert">{message}</ErrorText>
       )}
 
-      {status === "signed-out" && <PasskeySignIn api={api} askName invited={invited} joining="the workspace" />}
+      {status === "signed-out" && <PasskeySignIn api={api} invited={invited} joining="the workspace" />}
     </Container>
   );
 }

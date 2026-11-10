@@ -72,7 +72,7 @@ fun MembersSheet(
     }
 }
 
-/** "Your name": what teammates see on your events. */
+/** "Your name in this team": what teammates see on your events, in every calendar of the team. */
 @Composable
 fun NameSheet(
     initial: String,
@@ -83,8 +83,8 @@ fun NameSheet(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    AppSheet("Your name", onDismiss = onSkip) {
-        Text("What should your teammates call you?", style = Tokens.caption)
+    AppSheet("Your name in this team", onDismiss = onSkip) {
+        Text("Teammates see it on your events, in every calendar of the team.", style = Tokens.caption)
         TextInput(name, { name = it }, "e.g. Alice")
         error?.let { Text(it, style = Tokens.caption.copy(color = Tokens.danger)) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

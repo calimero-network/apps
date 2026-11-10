@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { otherOrgs, type OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { lastUsedName } from "@calimero-apps/names";
 import { messageOf } from "../../api/calendar";
 import { useSignedIn } from "../../api/sessionContext";
 import {
@@ -12,6 +13,7 @@ import {
   inviteToken,
   listTeams,
   ownsTeam,
+  setMyTeamName,
   type Team,
 } from "../../api/teams";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
@@ -44,6 +46,8 @@ export default function TeamsPage() {
   const [listed, setListed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  // Your name in the new team, asked here once: every calendar in it uses it.
+  const [myName, setMyName] = useState(() => lastUsedName());
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [inviteFor, setInviteFor] = useState<{ id: string; link: string } | null>(
     null,
@@ -139,11 +143,15 @@ export default function TeamsPage() {
 
   async function createTeam() {
     const name = newName.trim();
-    if (!name) return;
+    const me = myName.trim();
+    if (!name || !me) return;
     setCreating(true);
     try {
       const { groupId, warning } = await createOrgTeam(client, name, passkey, source);
       setStoredTeamName(groupId, name);
+      // Best effort: the team exists either way, and a calendar in it asks
+      // once when the name is missing.
+      await setMyTeamName(client, groupId, accountId, me).catch(() => {});
       setTeams((prev) => [...prev, { groupId, name, role: "owner" }]);
       setNewName("");
       if (warning) showToast(warning);
@@ -244,10 +252,19 @@ export default function TeamsPage() {
             onKeyDown={(e) => e.key === "Enter" && createTeam()}
             data-testid="new-team-input"
           />
+          <input
+            className={`mc-input ${styles.createInput}`}
+            placeholder="Your name in this team"
+            aria-label="Your name in this team"
+            value={myName}
+            onChange={(e) => setMyName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createTeam()}
+            data-testid="new-team-my-name"
+          />
           <button
             className="mc-btn mc-btn--primary"
             onClick={createTeam}
-            disabled={creating || !newName.trim()}
+            disabled={creating || !newName.trim() || !myName.trim()}
             data-testid="create-team-btn"
           >
             {creating ? "Creating…" : "Create team"}

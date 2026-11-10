@@ -88,8 +88,8 @@ function fakeClient() {
     me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Design team", role: "owner" }] })),
     getOrg: vi.fn(async () => ({
       name: "Design team",
-      members: { [ME]: "owner", "acct-bob": "member" },
-      memberMetadata: { [ME]: { name: "Alice" } },
+      members: { [ME]: "owner", "acct-bob": "member" } as Record<string, string>,
+      memberMetadata: { [ME]: { name: "Alice" } } as Record<string, { name: string }>,
     })),
     listApps: vi.fn(async () => [BOARD, ELSEWHERE]),
     createApp: vi.fn(async () => "board-new"),
@@ -101,6 +101,8 @@ function fakeClient() {
     events: vi.fn(async function* () {}),
     redeemInvite: vi.fn(async () => ({ org: "org-1" })),
     setMemberMetadata: vi.fn(async () => undefined),
+    createOrg: vi.fn(async () => "org-new"),
+    setCapabilities: vi.fn(async () => undefined),
   };
 }
 
@@ -143,6 +145,54 @@ describe("App", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
     expect(invites.token()).toBeNull();
   });
+  it("asks your name once on joining a team that has none for you, and keeps it in the team", async () => {
+    remember();
+    hold({ token: "tok-1" });
+    localStorage.setItem("calimero-names:last", "Alice A");
+    const client = fakeClient();
+    client.getOrg.mockResolvedValue({ name: "Design team", members: { [ME]: "member" }, memberMetadata: {} });
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    // Offered the name used last.
+    const input = (await screen.findByTestId("username-input")) as HTMLInputElement;
+    expect(input.value).toBe("Alice A");
+    fireEvent.change(input, { target: { value: "Alice" } });
+    fireEvent.click(screen.getByTestId("username-submit"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", ME, { name: "Alice" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
+  });
+
+  it("does not ask for a name on joining a team that already has yours", async () => {
+    remember();
+    hold({ token: "tok-1" });
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
+    expect(screen.queryByTestId("username-input")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
+  });
+
+  it("asks your name in a new team in the same step as its name, and keeps it in the team", async () => {
+    remember();
+    window.history.replaceState(null, "", "/teams");
+    const client = fakeClient();
+    client.me.mockResolvedValue({ orgs: [] });
+    client.getOrg.mockResolvedValue({ name: "Studio", members: { [ME]: "owner" }, memberMetadata: {} });
+    render(<App deps={deps(client)} />);
+    fireEvent.change(await screen.findByTestId("first-team-input"), { target: { value: "Studio" } });
+    const mine = screen.getByTestId("first-team-my-name") as HTMLInputElement;
+    // Required: no name, no team.
+    fireEvent.change(mine, { target: { value: " " } });
+    expect((screen.getByTestId("first-team-create") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(mine, { target: { value: "Alice" } });
+    fireEvent.click(screen.getByTestId("first-team-create"));
+    await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Studio"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Alice" }));
+    expect(localStorage.getItem("calimero-names:last")).toBe("Alice");
+  });
+
   describe("an invitation link opened while signed out", () => {
     it("shows the invitation as the page, not the landing hero", async () => {
       hold({ token: "tok-1" });

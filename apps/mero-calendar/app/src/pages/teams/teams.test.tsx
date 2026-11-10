@@ -11,6 +11,7 @@ const client = {
   session: { accountId: ME },
   me: vi.fn(),
   createOrg: vi.fn(),
+  setMemberMetadata: vi.fn(),
   setCapabilities: vi.fn(),
   deleteOrg: vi.fn(),
   removeMember: vi.fn(),
@@ -87,17 +88,31 @@ describe("TeamsPage", () => {
     await waitFor(() => expect(screen.queryByText("Beta")).toBeNull());
   });
 
-  it("creates a team as an org whose members may create calendars and invite", async () => {
+  it("creates a team as an org whose members may create calendars and invite, with your name in it", async () => {
     client.me.mockResolvedValue({ orgs: [] });
     client.createOrg.mockResolvedValue("org-new");
     client.setCapabilities.mockResolvedValue(undefined);
+    client.getOrg.mockResolvedValue({ memberMetadata: {} });
+    client.setMemberMetadata.mockResolvedValue(undefined);
     renderAt("/teams");
     expect(await screen.findByTestId("empty-teams")).toBeTruthy();
     fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
+    // Your name is required, in the same step.
+    expect((screen.getByTestId("create-team-btn") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId("new-team-my-name"), { target: { value: "Ada" } });
     fireEvent.click(screen.getByTestId("create-team-btn"));
     expect(await screen.findByText("Design")).toBeTruthy();
     expect(client.createOrg).toHaveBeenCalledWith("Design");
     expect(client.setCapabilities).toHaveBeenCalledWith("org-new", expect.any(Number), expect.anything());
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Ada" });
+  });
+
+  it("offers the name you last used for the next team", async () => {
+    localStorage.setItem("calimero-names:last", "Ada");
+    client.me.mockResolvedValue({ orgs: [] });
+    renderAt("/teams");
+    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
+    expect((screen.getByTestId("new-team-my-name") as HTMLInputElement).value).toBe("Ada");
   });
 
   // The account of the bug: in `overworld`, which holds only a Mero Blocks world.

@@ -9,7 +9,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
 import { useSignedIn } from "../api/sessionContext";
 import { useMyName, useTeam } from "../api/useTeam";
-import { decideProjectName } from "../utils/projectName";
+import { decideProjectName, legacyUsername } from "../utils/projectName";
 import { rememberProject } from "../utils/lastVisit";
 import { useEditorStore } from "../store/editorStore";
 import {
@@ -121,6 +121,7 @@ export default function EditorPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [needName, setNeedName] = useState(false);
+  const [nameSuggestion, setNameSuggestion] = useState("");
   // Whether this account is on this project's roster: null until known.
   const [onProject, setOnProject] = useState<boolean | null>(null);
   const [showInvite, setShowInvite] = useState(false);
@@ -315,37 +316,62 @@ export default function EditorPage() {
   useSse(ctxId || null, scheduleRefetch, scheduleRefetch);
 
   // ── Join / username ───────────────────────────────────────────────────────
+  // Puts you on this project's roster under `username` (the team's name for you).
+  // Once at a time: the team's name settling while a join is in flight must
+  // not join twice.
+  const joining = useRef(false);
   const handleJoin = useCallback(async (username: string) => {
+    if (joining.current) return;
+    joining.current = true;
     try {
       await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
-      setNeedName(false);
-      localStorage.setItem("mp-username", username);
       setOnProject(true);
-      // The name is the team's: every project and every other app on it
-      // uses it. Best-effort: the project roster above has it either way.
-      if (username !== myName.name) void myName.setName(username).catch(() => {});
       const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
       setRole(role);
       refetch();
     } catch (e) {
       showToast(errMsg(e), "error");
+    } finally {
+      joining.current = false;
     }
-  }, [ctxId, setRole, refetch, showToast, rpcCall, myName]);
+  }, [ctxId, setRole, refetch, showToast, rpcCall]);
+
+  // The name asked for once for the whole team (only for a team made before
+  // names were asked on create/join): the team keeps it, then the roster.
+  const handleTeamName = useCallback(async (username: string) => {
+    setNeedName(false);
+    try {
+      await myName.setName(username);
+    } catch {
+      /* best effort: the roster below has it either way */
+    }
+    if (!onProject) await handleJoin(username);
+  }, [myName, onProject, handleJoin]);
 
   // A name is asked for once per TEAM, never per project: a project you are
-  // not on yet is joined under your team name. Decided only once the team's
-  // names have loaded — deciding earlier asked people who already had one.
+  // not on yet is joined under your team name, silently. Decided only once the
+  // team's names have loaded — deciding earlier asked people who already had one.
+  const rosterName = members.find((m) => m.id === myId.current)?.username ?? "";
   useEffect(() => {
     const action = decideProjectName({
       onProject,
+      rosterName,
       teamReady: myName.ready,
       teamName: myName.name,
-      legacyName: localStorage.getItem("mp-username") ?? "",
+      legacyName: legacyUsername(),
     });
-    if (action.kind === "join") void handleJoin(action.name);
-    else if (action.kind === "ask") setNeedName(true);
+    if (action.kind === "ask") {
+      setNameSuggestion(action.suggestion);
+      setNeedName(true);
+      return;
+    }
+    if (action.kind !== "use") return;
+    setNeedName(false);
+    // A name the roster or this browser already had: the team takes it, unasked.
+    if (action.adopt) void myName.setName(action.name).catch(() => {});
+    if (action.join) void handleJoin(action.name);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onProject, myName.ready, myName.name]);
+  }, [onProject, rosterName, myName.ready, myName.name]);
 
   // ── Pixel commit (raster) ───────────────────────────────────────────────
   const commitPixels = useCallback(async (layerId: string) => {
@@ -1489,7 +1515,7 @@ export default function EditorPage() {
           onClose={() => setShowShowcase(false)}
         />
       )}
-      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") || myName.name || ""} />}
+      {needName && <UsernameModal onSubmit={(n) => void handleTeamName(n)} initialValue={nameSuggestion} />}
       {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal

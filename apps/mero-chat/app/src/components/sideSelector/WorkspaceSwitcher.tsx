@@ -12,6 +12,9 @@ import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/con
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import CreateWorkspacePopup from "../popups/CreateWorkspacePopup";
 import { nodeBasename } from "../../utils/servedByNode";
+import { getMessengerDisplayName, setMessengerDisplayName } from "../../utils/messengerName";
+import { enterJoinedWorkspaceForName } from "../../utils/enterWorkspace";
+import { getAccountId } from "../../api/calimero";
 
 interface WorkspaceSwitcherProps {
   isCollapsed: boolean;
@@ -234,8 +237,25 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
   const displayName = current?.alias || (currentGroupId ? currentName : "Workspace");
   const teeEnabled = useNamespaceTee(currentGroupId);
 
-  const handleSelect = useCallback((groupId: string) => {
+  const handleSelect = useCallback(async (groupId: string) => {
     if (groupId === currentGroupId) { setIsOpen(false); return; }
+    setIsOpen(false);
+    // Your name is per workspace: one with none for you (made and left before
+    // naming it) is entered through the picker's name step, never nameless.
+    // The org's member record is read first, so a name set elsewhere (another
+    // browser, another app) is used without asking.
+    if (!getMessengerDisplayName(groupId)) {
+      const res = await new GroupApiDataSource().resolveCurrentMemberIdentity(groupId).catch(() => null);
+      const me = res?.data?.memberIdentity || getAccountId();
+      const known = res?.data?.members?.find((m) => m.identity === me)?.alias?.trim();
+      if (known) {
+        setMessengerDisplayName(known, groupId);
+      } else {
+        clearStoredSession();
+        enterJoinedWorkspaceForName(groupId);
+        return;
+      }
+    }
     setGroupId(groupId);
     // The stored session chat belongs to the workspace we're leaving. Home
     // restores it verbatim on mount — subscribing SSE to its contextId and
@@ -325,7 +345,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
               <DropdownItem
                 key={w.groupId}
                 $active={active}
-                onClick={() => handleSelect(w.groupId)}
+                onClick={() => void handleSelect(w.groupId)}
                 title={name}
               >
                 {active ? <ActiveDot /> : <EmptyDot />}

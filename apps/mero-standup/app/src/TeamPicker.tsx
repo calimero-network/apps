@@ -1,23 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import { describeError, type AppSource } from "@calimero-apps/connect";
+import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { standup } from "./standup";
 import { createTeam, listTeams } from "./teams";
 
-type PickerClient = Pick<CalimeroClient, "listApps" | "createApp" | "createOrg" | "call" | "view">;
+type PickerClient = Pick<
+  CalimeroClient,
+  "listApps" | "createApp" | "createOrg" | "call" | "view" | "getOrg" | "setMemberMetadata"
+>;
 
 /**
  * v1's context picker: the teams this account reaches (app instances of this
  * app), and a new one. A new team is an organization with the app in it, named
- * with `setTeamName` so every member sees the same name.
+ * with `setTeamName` so every member sees the same name. Your name in it is
+ * asked here, once, and kept on the org.
  */
 export function TeamPicker({
   client,
+  accountId,
   source,
   onOpen,
   after,
 }: {
   client: PickerClient;
+  accountId: string;
   source: AppSource;
   onOpen: (app: Pick<AppInfo, "appId" | "name" | "org">) => void;
   /** Runs after each request (keeps the stored session current). */
@@ -26,6 +33,7 @@ export function TeamPicker({
   const [teams, setTeams] = useState<AppInfo[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
   const [teamName, setTeamName] = useState("");
+  const [myName, setMyName] = useState(() => lastUsedName());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +72,9 @@ export function TeamPicker({
     try {
       const { appId, org } = await createTeam(client, source, name);
       after();
+      // Best effort: the team exists either way, and opening it asks once
+      // when the org has no name for you.
+      await setOrgName(client, org, accountId, myName).catch(() => {});
       await standup(client, appId, after).setTeamName({ name });
       onOpen({ appId, name, org });
     } catch (e) {
@@ -100,7 +111,7 @@ export function TeamPicker({
         className="card"
         onSubmit={(e) => {
           e.preventDefault();
-          if (teamName.trim()) void create();
+          if (teamName.trim() && myName.trim()) void create();
         }}
       >
         <h2>Start a team</h2>
@@ -115,7 +126,14 @@ export function TeamPicker({
             value={teamName}
             onChange={(e) => setTeamName(e.target.value)}
           />
-          <button type="submit" disabled={busy || !teamName.trim()}>
+          <input
+            aria-label="your name in this team"
+            placeholder="Your name in this team"
+            maxLength={64}
+            value={myName}
+            onChange={(e) => setMyName(e.target.value)}
+          />
+          <button type="submit" disabled={busy || !teamName.trim() || !myName.trim()}>
             {busy ? "Starting…" : "Start a new team"}
           </button>
         </div>

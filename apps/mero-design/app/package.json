@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "Mero Design \u2014 collaborative design tool on Calimero (component SDK, CalimeroClient)",
+  "description": "Mero Design — collaborative design tool on Calimero (component SDK, CalimeroClient)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",

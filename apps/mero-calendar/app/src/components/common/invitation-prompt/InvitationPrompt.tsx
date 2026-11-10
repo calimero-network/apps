@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PendingInvite } from "@calimero-apps/connect";
+import { lastUsedName } from "@calimero-apps/names";
 import { JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
 
 import { useSessionApi } from "../../../api/sessionContext";
-import { dropInvite, inviteRoute, invites, takeJoinedAtSignUp } from "../../../api/teams";
+import { dropInvite, inviteRoute, invites, readOrg, setMyTeamName, takeJoinedAtSignUp } from "../../../api/teams";
 import { useToast } from "../../../contexts/ToastContext";
+import UsernameModal from "../modals/username-modal/UsernameModal";
 import styles from "../modals/username-modal/username-modal.module.scss";
 
 const CLASS_NAMES = {
@@ -34,6 +36,9 @@ const CLASS_NAMES = {
  * link's single use. `JoinInvitation` checks the team the link names first and
  * says so instead. It drops the token before it shows "already in" or "used
  * up", so the invitation asked about stays on screen here until it closes.
+ *
+ * Joining is where your name in the team is asked, once: every calendar in
+ * the team uses it. A team that already has one for you is opened at once.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
@@ -46,6 +51,8 @@ export default function InvitationPrompt() {
   // effect that held `pending` may still run once with the copy from before
   // the drop, so closing is by token, not by clearing `asked`.
   const [closed, setClosed] = useState<string | null>(null);
+  /** Joined, and the team has no name for you yet: asked once, here. */
+  const [naming, setNaming] = useState<{ org: string; to: string } | null>(null);
   const client = signedIn?.client ?? null;
 
   useEffect(() => {
@@ -60,11 +67,33 @@ export default function InvitationPrompt() {
     if (to) navigate(to, { replace: true });
   }, [client, navigate]);
 
+  if (naming && signedIn) {
+    const { org, to } = naming;
+    const done = () => {
+      setNaming(null);
+      navigate(to);
+    };
+    return (
+      <UsernameModal
+        defaultName={lastUsedName()}
+        onSubmit={async (name) => {
+          if (name.trim()) {
+            // Best effort: a calendar in the team asks again if this did not land.
+            await setMyTeamName(signedIn.client, org, signedIn.accountId, name).catch(() => {});
+          }
+          done();
+        }}
+        onSkip={done}
+      />
+    );
+  }
+
   const held = client ? (pending ?? asked) : null;
   const asking = held && held.token !== closed ? held : null;
   if (!signedIn || !asking) return null;
 
-  const open = (org: string | null) => navigate(inviteRoute(asking) ?? (org ? `/teams/${org}` : "/teams"));
+  const destination = (org: string | null) => inviteRoute(asking) ?? (org ? `/teams/${org}` : "/teams");
+  const open = (org: string | null) => navigate(destination(org));
 
   return (
     <div className="mc-overlay">
@@ -81,7 +110,18 @@ export default function InvitationPrompt() {
         onJoined={({ org }) => {
           setClosed(asking.token);
           showToast("You joined the team.", "success");
-          open(org);
+          if (!org) {
+            open(org);
+            return;
+          }
+          const to = destination(org);
+          // A team that cannot be read now asks when a calendar in it opens.
+          void readOrg(signedIn.client, org)
+            .catch(() => null)
+            .then((team) => {
+              if (team && !team.names.get(signedIn.accountId)) setNaming({ org, to });
+              else navigate(to);
+            });
         }}
         onClose={({ member }) => {
           setClosed(asking.token);

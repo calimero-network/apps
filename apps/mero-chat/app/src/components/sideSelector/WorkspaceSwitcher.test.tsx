@@ -11,7 +11,15 @@ const {
   mockGetGroupMetadata,
   mockSetGroupMetadata,
   mockListMembers,
+  mockResolveIdentity,
+  mockGetName,
+  mockSetName,
+  mockEnterForName,
 } = vi.hoisted(() => ({
+  mockResolveIdentity: vi.fn(),
+  mockGetName: vi.fn(),
+  mockSetName: vi.fn(),
+  mockEnterForName: vi.fn(),
   mockListGroups: vi.fn(),
   mockGetGroupId: vi.fn(),
   mockSetGroupId: vi.fn(),
@@ -33,8 +41,21 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     setGroupMetadata = mockSetGroupMetadata;
     // Read for the TEE indicator; no TEE unless a test says otherwise.
     listMembers = mockListMembers;
+    // Read when switching to a workspace this browser has no name for.
+    resolveCurrentMemberIdentity = mockResolveIdentity;
   },
 }));
+
+vi.mock("../../utils/messengerName", () => ({
+  getMessengerDisplayName: mockGetName,
+  setMessengerDisplayName: mockSetName,
+}));
+
+vi.mock("../../utils/enterWorkspace", () => ({
+  enterJoinedWorkspaceForName: mockEnterForName,
+}));
+
+vi.mock("../../api/calimero", () => ({ getAccountId: () => "acct-me" }));
 
 vi.mock("../../constants/config", () => ({
   getGroupId: mockGetGroupId,
@@ -73,6 +94,11 @@ describe("WorkspaceSwitcher", () => {
     mockSetGroupId.mockReset();
     mockClearStoredSession.mockReset();
     mockSetNamespaceReady.mockReset();
+    // Named in every workspace unless a test says otherwise.
+    mockGetName.mockReset().mockReturnValue("Ann");
+    mockSetName.mockReset();
+    mockEnterForName.mockReset();
+    mockResolveIdentity.mockReset().mockResolvedValue({ data: { memberIdentity: "acct-me", members: [] }, error: null });
 
     mockGetGroupId.mockReturnValue("group-current");
     mockListGroups.mockResolvedValue({
@@ -97,7 +123,7 @@ describe("WorkspaceSwitcher", () => {
 
     // Without this the previous workspace's chat is restored on mount and SSE
     // resubscribes to a context the new workspace does not have.
-    expect(mockSetGroupId).toHaveBeenCalledWith("group-other");
+    await waitFor(() => expect(mockSetGroupId).toHaveBeenCalledWith("group-other"));
     expect(mockClearStoredSession).toHaveBeenCalled();
     // The remembered workspace is scoped to its id: without moving it to the
     // new one, the reload would land on the picker instead of the switch.
@@ -120,6 +146,32 @@ describe("WorkspaceSwitcher", () => {
     expect(mockSetGroupId).not.toHaveBeenCalled();
     expect(mockClearStoredSession).not.toHaveBeenCalled();
     expect(mockSetNamespaceReady).not.toHaveBeenCalled();
+  });
+
+  describe("a workspace with no name for you", () => {
+    it("takes the name the workspace's member record has, without asking", async () => {
+      mockGetName.mockReturnValue("");
+      mockResolveIdentity.mockResolvedValue({
+        data: { memberIdentity: "acct-me", members: [{ identity: "acct-me", alias: "Ann B" }] },
+        error: null,
+      });
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+      fireEvent.click(await screen.findByText("Current"));
+      fireEvent.click(await screen.findByText("Other"));
+      await waitFor(() => expect(mockSetNamespaceReady).toHaveBeenCalledWith("group-other"));
+      expect(mockSetName).toHaveBeenCalledWith("Ann B", "group-other");
+      expect(mockEnterForName).not.toHaveBeenCalled();
+    });
+
+    it("is entered through the name step, never nameless", async () => {
+      mockGetName.mockReturnValue("");
+      render(<WorkspaceSwitcher isCollapsed={false} />);
+      fireEvent.click(await screen.findByText("Current"));
+      fireEvent.click(await screen.findByText("Other"));
+      await waitFor(() => expect(mockEnterForName).toHaveBeenCalledWith("group-other"));
+      expect(mockSetNamespaceReady).not.toHaveBeenCalled();
+      expect(mockClearStoredSession).toHaveBeenCalled();
+    });
   });
 
   describe("New workspace", () => {

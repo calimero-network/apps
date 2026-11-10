@@ -7,11 +7,10 @@ import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
 import { useMemberNames, useMyName } from "../api/names";
-import { decideBoardName } from "../utils/boardName";
+import { decideBoardName, legacyUsername } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
-import { useUsernameStore } from "../store/usernameStore";
 import type { CanvasComment, CursorState, Element, Member } from "../types";
 import Toolbar from "../components/Toolbar";
 import FabricCanvas, { type FabricCanvasHandle } from "../components/FabricCanvas";
@@ -62,7 +61,6 @@ export default function CanvasPage() {
       })),
     );
   const { showToast } = useToast();
-  const { getUsername, setUsername } = useUsernameStore();
 
   const canvasRef = useRef<FabricCanvasHandle>(null);
 
@@ -71,6 +69,7 @@ export default function CanvasPage() {
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [nameSuggestion, setNameSuggestion] = useState("");
   // This account's username on THIS board's contract: "" for none, null until
   // `get_members` has answered (or when it could not).
   const [boardName, setBoardName] = useState<string | null>(null);
@@ -323,12 +322,12 @@ export default function CanvasPage() {
       .catch(() => {});
   }
 
+  // Only for a team made before names were asked on create/join: asked once,
+  // for the team, then never again on any of its boards.
   async function handleUsernameSubmit(username: string) {
-    // Kept for pre-fill only; the team record is the name.
-    if (myIdentity) setUsername(myIdentity, username);
     setShowUsernameModal(false);
-    // Best-effort: this browser keeps the name and republishes it if the
-    // team write is refused, so the board is joined either way.
+    // Best-effort: the board is joined either way, and a refused team write
+    // is asked again next time rather than lost.
     await myName.setName(username).catch(() => {});
     await joinBoardAs(username);
   }
@@ -337,10 +336,21 @@ export default function CanvasPage() {
   // all?) and this board's (is it already on the roster?). Asking before the
   // team's names have loaded is what made people re-enter their name.
   useEffect(() => {
-    const action = decideBoardName({ teamReady: myName.ready, teamName: myName.name, boardName });
-    if (action.kind === "join") void joinBoardAs(action.name);
-    else if (action.kind === "adopt") void myName.setName(action.name).catch(() => {});
-    else if (action.kind === "ask") setShowUsernameModal(true);
+    const action = decideBoardName({
+      teamReady: myName.ready,
+      teamName: myName.name,
+      boardName,
+      legacyName: legacyUsername(myIdentity),
+    });
+    if (action.kind === "ask") {
+      setNameSuggestion(action.suggestion || legacyUsername(myIdentity));
+      setShowUsernameModal(true);
+      return;
+    }
+    if (action.kind !== "use") return;
+    setShowUsernameModal(false);
+    if (action.adopt) void myName.setName(action.name).catch(() => {});
+    if (action.join) void joinBoardAs(action.name);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myName.ready, myName.name, boardName]);
 
@@ -641,7 +651,7 @@ export default function CanvasPage() {
       {showUsernameModal && (
         <UsernameModal
           onSubmit={handleUsernameSubmit}
-          initialValue={getUsername(myIdentity) || ""}
+          initialValue={nameSuggestion}
         />
       )}
       <Toolbar

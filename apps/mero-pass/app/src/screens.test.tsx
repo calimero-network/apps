@@ -288,17 +288,14 @@ describe('SignInDialog', () => {
     };
   });
 
-  it('signs in with a passkey, or signs up with an optional name', () => {
+  it('signs in with a passkey, or signs up without asking a name (a team asks for it)', () => {
     const value = calimero(null);
     renderAt('/', value, <SignInDialog open onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('signin-passkey'));
     expect(value.signIn).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('signup-passkey'));
-    fireEvent.change(screen.getByTestId('signup-name'), {
-      target: { value: 'Ada' },
-    });
-    fireEvent.click(screen.getByTestId('signup-passkey'));
-    expect(value.signUp).toHaveBeenCalledWith('Ada');
+    expect(screen.queryByTestId('signup-name')).toBeNull();
+    expect(value.signUp).toHaveBeenCalled();
   });
 
   it('says why when the build has no cluster to connect to', () => {

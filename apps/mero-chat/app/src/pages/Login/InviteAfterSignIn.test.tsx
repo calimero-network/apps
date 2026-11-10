@@ -37,6 +37,7 @@ const h = vi.hoisted(() => {
     listGroups: vi.fn(),
     myOrgs: vi.fn(),
     enterWorkspace: vi.fn(),
+    enterJoinedWorkspaceForName: vi.fn(),
   };
 });
 
@@ -87,7 +88,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 vi.mock("../../utils/enterWorkspace", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   enterWorkspace: h.enterWorkspace,
-  enterJoinedWorkspaceForName: vi.fn(),
+  enterJoinedWorkspaceForName: h.enterJoinedWorkspaceForName,
 }));
 vi.mock("@calimero-network/mero-ui", () => ({
   Button: ({
@@ -145,6 +146,7 @@ beforeEach(() => {
   h.set({ status: "signed-out", message: null, accountId: null });
   h.joinGroup.mockReset();
   h.enterWorkspace.mockReset();
+  h.enterJoinedWorkspaceForName.mockReset();
   h.myOrgs.mockReset().mockResolvedValue([]);
   h.listGroups.mockReset().mockResolvedValue({ data: [], error: null });
 });
@@ -162,13 +164,12 @@ describe("an invitation link, then signing in with an account that has no worksp
     expect(picker()).toBeNull();
   });
 
-  it("Join redeems the invite and enters the inviting workspace", async () => {
+  it("Join redeems the invite and enters the inviting workspace, asking your name in it once", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok-1");
     h.joinGroup.mockResolvedValue({
       data: { groupId: "org-inviter", memberIdentity: "acct-me" },
       error: null,
     });
-    localStorage.setItem("chat-username", JSON.stringify("Ada"));
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(
@@ -177,8 +178,11 @@ describe("an invitation link, then signing in with an account that has no worksp
     await vi.waitFor(() =>
       expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok-1" }),
     );
-    await vi.waitFor(() => expect(h.enterWorkspace).toHaveBeenCalled());
-    expect(h.enterWorkspace.mock.calls[0]?.[1]).toBe("org-inviter");
+    // Your name is per workspace: a new one has none for you yet.
+    await vi.waitFor(() =>
+      expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-inviter"),
+    );
+    expect(h.enterWorkspace).not.toHaveBeenCalled();
     expect(picker()).toBeNull();
   });
 

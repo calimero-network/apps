@@ -2,7 +2,8 @@
 // useDriveWorkspace().createWorkspace - one call creates the
 // namespace AND the Registry context atomically (see the hook's
 // file header for the convention). Errors surface as a visible
-// message; no silent no-ops.
+// message; no silent no-ops. It also asks your name in the workspace,
+// once, here: every folder and doc in it uses that name without asking.
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,8 @@ import {
 } from '@/components/ui/dialog';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { MAX_DISPLAY_NAME_LEN } from '@/hooks/useMemberDisplayName';
+import { lastUsedName } from '@calimero-apps/names';
 
 interface Props {
   onClose: () => void;
@@ -23,6 +26,7 @@ interface Props {
 
 export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');
+  const [selfName, setSelfName] = useState(() => lastUsedName());
   const [submitError, setSubmitError] = useState<string | null>(null);
   const {
     createWorkspace,
@@ -31,8 +35,13 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   } = useDriveWorkspace();
 
   const trimmed = name.trim();
+  const trimmedSelf = selfName.trim();
   const canSubmit =
-    !!trimmed && trimmed.length <= MAX_ALIAS_LENGTH && !submitting;
+    !!trimmed &&
+    trimmed.length <= MAX_ALIAS_LENGTH &&
+    !!trimmedSelf &&
+    trimmedSelf.length <= MAX_DISPLAY_NAME_LEN &&
+    !submitting;
 
   const onCreate = async () => {
     const alias = name.trim();
@@ -44,9 +53,14 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
       setSubmitError(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
       return;
     }
+    const me = selfName.trim();
+    if (!me) {
+      setSubmitError('Your name is required');
+      return;
+    }
     setSubmitError(null);
 
-    const nsId = await createWorkspace(alias);
+    const nsId = await createWorkspace(alias, me);
     if (!nsId) {
       // createWorkspace sets createWorkspaceError internally via
       // setCreateError - a React state update that only lands on the
@@ -99,6 +113,25 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
             if (e.key === 'Enter' && canSubmit) onCreate();
           }}
         />
+        <input
+          className="mt-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          placeholder="Your name in this workspace"
+          aria-label="Your name in this workspace"
+          value={selfName}
+          maxLength={MAX_DISPLAY_NAME_LEN}
+          onChange={(e) => {
+            setSelfName(e.target.value);
+            setSubmitError(null);
+          }}
+          disabled={submitting}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canSubmit) onCreate();
+          }}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Members of this workspace see this name. You can change it later in
+          settings.
+        </p>
         {displayError && (
           <p className="mt-2 text-xs text-destructive break-words">{displayError}</p>
         )}

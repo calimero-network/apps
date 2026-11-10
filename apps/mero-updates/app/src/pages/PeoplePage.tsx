@@ -227,7 +227,7 @@ function MyProfile({ onSaved }: { onSaved: () => void }) {
             className="primary small"
             onClick={async () => {
               await client?.setProfile({ name, firm });
-              publishSpaceName(me.account, name);
+              void publishSpaceName(me.account, name);
               setEditing(false);
               onSaved();
             }}

@@ -16,6 +16,10 @@
 // link names its workspace, and when this account's orgs include it the token
 // is dropped unspent and the prompt says so. A folder invite also gives a row
 // in the folder's team, which org membership does not prove, so it asks.
+//
+// Joining is also where the workspace asks your name, once: when the org has
+// none for you yet, the same dialog asks it (`invite-name`) before the
+// workspace opens, and every folder and doc in it uses it from then on.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -37,6 +41,8 @@ import {
   type PendingInvite,
 } from '@/hooks/useNamespaceInvitation';
 import { rememberNamespaceName } from '@/hooks/namespaceNames';
+import { setOrgName } from '@calimero-apps/names';
+import { SelfNameForm } from './DisplayNameGate';
 
 interface Props {
   /** After a successful join: take the person into the workspace they joined. */
@@ -61,6 +67,8 @@ export function InvitationPrompt({ onJoined }: Props) {
   const [spent, setSpent] = useState(false);
   /** null while it is being checked. */
   const [member, setMember] = useState<boolean | null>(null);
+  /** Joined an org that has no name for you: where to go once it has one. */
+  const [naming, setNaming] = useState<{ org: string; folder: string | null } | null>(null);
 
   useEffect(() => {
     setInvite(isAuthenticated ? pendingInvite() : null);
@@ -115,7 +123,16 @@ export function InvitationPrompt({ onJoined }: Props) {
       }
       dropInvite();
       setInvite(null);
-      onJoined(joined, invite.kind === 'group' ? invite.targetId : null);
+      const folder = invite.kind === 'group' ? invite.targetId : null;
+      if (joined) {
+        // A read that fails leaves it to the workspace's name gate.
+        const meta = await admin.getMemberMetadata(joined, admin.self).catch(() => undefined);
+        if (meta !== undefined && !meta?.name?.trim()) {
+          setNaming({ org: joined, folder });
+          return;
+        }
+      }
+      onJoined(joined, folder);
     } catch (e) {
       console.warn('[InvitationPrompt] redeem failed', e);
       // A refusal (unknown, used, expired, revoked) can never succeed: drop
@@ -130,6 +147,33 @@ export function InvitationPrompt({ onJoined }: Props) {
       setBusy(false);
     }
   }, [admin, invite, onJoined]);
+
+  if (naming) {
+    const go = () => {
+      setNaming(null);
+      onJoined(naming.org, naming.folder);
+    };
+    return (
+      // Closed without a name, the workspace's name gate asks on entry.
+      <Dialog open onOpenChange={(open) => !open && go()}>
+        <DialogContent data-testid="invite-name">
+          <DialogHeader>
+            <DialogTitle>Your name in this workspace</DialogTitle>
+            <DialogDescription>
+              Members of this workspace see this name in every folder and doc. You can change it later in settings.
+            </DialogDescription>
+          </DialogHeader>
+          <SelfNameForm
+            onSave={async (name) => {
+              if (!admin) throw new Error('Not signed in');
+              await setOrgName(admin, naming.org, admin.self, name);
+              go();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (!invite || member === null) return null;
   const noun = inviteScope(invite);

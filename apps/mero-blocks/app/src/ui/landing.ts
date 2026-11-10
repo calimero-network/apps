@@ -13,6 +13,10 @@
 // An invite link (`?invite=`) is asked about once signed in: "Join {inviter}'s
 // game as {account}?", Join or Not now. Join redeems it and enters the world
 // it joins; nothing is redeemed before that.
+//
+// The player's name is the world org's (net/playerName.ts): asked in the
+// create-world dialog, or once right after an invite joins a world, and
+// never again when entering a world that has it.
 
 import type { AppInfo, SignUpPolicy } from "@calimero-network/mero-js";
 import {
@@ -44,6 +48,7 @@ import {
   type CeremonyFailure,
 } from "@calimero-apps/passkey/ceremony";
 import "@calimero-apps/passkey/passkey.css";
+import { decideSelfName, rememberLastUsedName } from "@calimero-apps/names";
 
 import {
   defaultDeps,
@@ -76,6 +81,7 @@ import {
   worldSource,
 } from "../net/worlds";
 import { PACKAGE } from "../net/blocks";
+import { knownName, readOrgName, saveOrgName } from "../net/playerName";
 import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
@@ -345,21 +351,6 @@ export class Landing {
     else if (phase.status === "unconfigured") this.renderUnconfigured(phase.message);
     else if (phase.status === "signed-out") this.renderSignIn(phase, defaults, done);
     else this.renderWorldPicker(phase, defaults, done);
-    // Remembered as it is typed: the name a player chose should survive a reload.
-    this.root.querySelector<HTMLInputElement>("#mbl-name")?.addEventListener("input", (e) => {
-      localStorage.setItem("mb-name", (e.target as HTMLInputElement).value);
-    });
-  }
-
-  private commonInputs(defaults: { name: string }): string {
-    return `
-      <label>player name</label>
-      <input id="mbl-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-    `;
-  }
-
-  private readName(): string {
-    return (this.root.querySelector<HTMLInputElement>("#mbl-name")?.value || "Player").trim() || "Player";
   }
 
   private readSeed(shade: HTMLElement, fallback: number): number {
@@ -397,7 +388,6 @@ export class Landing {
     // An invite the node refuses at sign-up is dropped: the card stops offering it.
     let invited = this.invites.token() !== null;
     el.innerHTML = `
-      ${this.commonInputs(defaults)}
       ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
       <div class="mbl-note" data-testid="signin-switched" role="status" hidden></div>
       <div data-testid="sign-in-actions">
@@ -407,7 +397,7 @@ export class Landing {
         </div>
         <div data-testid="sign-up-group">
           <label>new account name</label>
-          <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
+          <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name || "Steve")}" />
           <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
         </div>
       </div>
@@ -499,7 +489,7 @@ export class Landing {
       try {
         this.phase = await run();
         this.sessionChanged();
-        this.renderPlayCard({ ...defaults, name: this.readName() }, done);
+        this.renderPlayCard(defaults, done);
       } catch (e) {
         // A sign-up refused because of its invite (unknown, used up,
         // expired, its org gone): the token is dropped and never sent again,
@@ -534,7 +524,7 @@ export class Landing {
       void ceremony("sign-in", () => signIn(phase, this.deps));
     });
     signUpBtn.addEventListener("click", () => {
-      const account = el.querySelector<HTMLInputElement>("#mbl-account")?.value.trim() || this.readName();
+      const account = el.querySelector<HTMLInputElement>("#mbl-account")?.value.trim() || defaults.name || "Player";
       const signingUp: SignUpFlow = newSignUp(phase, showFlow, this.deps);
       void ceremony(
         "sign-up",
@@ -566,7 +556,6 @@ export class Landing {
     const source = worldSource(this.deps.env);
     el.innerHTML = `
       <h3>Choose a world</h3>
-      ${this.commonInputs(defaults)}
       <div class="mbl-account-note" data-testid="account-note"></div>
       <div class="mbl-worlds" data-testid="world-list"><div class="mbl-note">Loading worlds…</div></div>
       <div class="mbl-error" data-testid="join-error"></div>
@@ -580,9 +569,16 @@ export class Landing {
     const noteEl = el.querySelector<HTMLElement>("[data-testid=account-note]")!;
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
 
-    const enter = (w: AppInfo | EnteredWorld) => {
+    // `joined`: an invite just let the player in, so a world's org without
+    // their name asks for it rather than adopting an older one. `name`: the
+    // one the create dialog just took.
+    let entering = false;
+    const enter = async (w: AppInfo | EnteredWorld, opts: { joined?: boolean; name?: string } = {}) => {
+      if (entering) return;
+      entering = true;
+      const name = opts.name ?? (await this.playerName(phase, w.org ?? null, !!opts.joined, defaults.name));
       rememberWorld(phase.target, phase.accountId, w.appId);
-      done({ name: this.readName(), session: phase, world: { appId: w.appId, name: w.name, org: w.org ?? null } });
+      done({ name, session: phase, world: { appId: w.appId, name: w.name, org: w.org ?? null } });
     };
 
     el.querySelector("[data-testid=sign-out-btn]")!.addEventListener("click", () => {
@@ -605,7 +601,7 @@ export class Landing {
       if (joined) {
         const world = worldIn(await listWorlds(phase.client, source).catch(() => []), joined.org, joined.world);
         phase.sessions.sync(phase.client);
-        if (world) return enter(world);
+        if (world) return enter(world, { joined: true });
         noteEl.textContent = "Invitation accepted — pick the world below.";
       }
       // An invitation: asked, never redeemed on its own. Already in its world:
@@ -617,7 +613,7 @@ export class Landing {
         const pending = this.invites.pending();
         if (pending) {
           const answer = await this.askToJoin(listEl, phase, pending);
-          if (answer.world) return enter(answer.world);
+          if (answer.world) return enter(answer.world, { joined: true });
           noteEl.textContent = answer.note;
           listEl.innerHTML = `<div class="mbl-note">Loading worlds…</div>`;
         }
@@ -652,8 +648,8 @@ export class Landing {
           try {
             const token = await inviteToken(phase.client, org, this.deps.passkey());
             phase.sessions.sync(phase.client);
-            const name = this.readName();
-            const from = name === "Player" ? shortAccount(phase.accountId) : name;
+            const name = knownName() || defaults.name;
+            const from = !name || name === "Player" ? shortAccount(phase.accountId) : name;
             await navigator.clipboard.writeText(worldInviteLink(token, org, { world: current.appId, from }));
             // Each link lets one person in: say so where it is copied.
             inviteBtn.textContent = "Invite copied: single use";
@@ -736,7 +732,7 @@ export class Landing {
     w: AppInfo,
     isCurrent: boolean,
     index: number,
-    enter: (w: AppInfo) => void,
+    enter: (w: AppInfo) => Promise<void>,
     errEl: HTMLElement,
   ): HTMLElement {
     const card = document.createElement("div");
@@ -761,6 +757,7 @@ export class Landing {
       </div>
       <div class="mbl-card-menu" hidden>
         <button data-action="copy-id">Copy world ID</button>
+        ${w.org ? `<button data-action="rename">Change your name</button>` : ""}
         <button data-action="forget">Forget local data</button>
       </div>
     `;
@@ -768,7 +765,7 @@ export class Landing {
 
     card.querySelector<HTMLButtonElement>(`[data-testid="${joinTestId}"]`)!.addEventListener("click", () => {
       errEl.textContent = "";
-      enter(w);
+      void enter(w);
     });
 
     const menu = card.querySelector<HTMLElement>(".mbl-card-menu")!;
@@ -788,6 +785,19 @@ export class Landing {
       }
       menu.hidden = true;
     });
+    // The name this player shows in this world (its org), changed in place.
+    menu.querySelector("[data-action=rename]")?.addEventListener("click", async () => {
+      menu.hidden = true;
+      const org = w.org!;
+      const { name: current } = await readOrgName(phase.client, org, phase.accountId);
+      const name = await this.askName(current || knownName(), "Change your name", "Save", true);
+      if (name === null) return;
+      try {
+        await saveOrgName(phase.client, org, phase.accountId, name);
+      } catch (e) {
+        errEl.textContent = `Could not change your name: ${describeError(e)}`;
+      }
+    });
     menu.querySelector("[data-action=forget]")!.addEventListener("click", () => {
       deleteWorld(w.appId); // local block edits + player position only
       if (isCurrent) forgetWorld(phase.target, phase.accountId);
@@ -800,7 +810,7 @@ export class Landing {
   private openCreateWorldModal(
     phase: SignedIn,
     defaults: { name: string; seed: number },
-    enter: (w: EnteredWorld) => void,
+    enter: (w: EnteredWorld, opts: { name: string }) => Promise<void>,
   ): void {
     const shade = document.createElement("div");
     shade.className = "mbl-modal-shade";
@@ -815,6 +825,8 @@ export class Landing {
         <input id="mbl-world-name" data-testid="world-name-input" value="overworld" maxlength="24" />
         <label>seed</label>
         <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
+        <label>your name in this world</label>
+        <input id="mbl-self-name" data-testid="self-name-input" value="${escapeHtml(knownName() || defaults.name)}" maxlength="16" />
         <button class="mbl-btn green" data-testid="create-world-btn">Create world</button>
         <div class="mbl-error" data-testid="create-error"></div>
       </div>
@@ -834,6 +846,11 @@ export class Landing {
       if (busy) return;
       errEl.textContent = "";
       const worldName = shade.querySelector<HTMLInputElement>("#mbl-world-name")?.value.trim() || "overworld";
+      const selfName = shade.querySelector<HTMLInputElement>("#mbl-self-name")?.value.trim() ?? "";
+      if (!selfName) {
+        errEl.textContent = "Enter the name other players will see.";
+        return;
+      }
       busy = true;
       createBtn.disabled = true;
       closeBtn.disabled = true;
@@ -846,8 +863,13 @@ export class Landing {
           this.readSeed(shade, defaults.seed),
         );
         phase.sessions.sync(phase.client);
+        // The world's org holds the player's name from here on. Best effort:
+        // a refused write leaves it unset, and the next entry adopts the name
+        // remembered here instead of asking.
+        rememberLastUsedName(selfName);
+        await saveOrgName(phase.client, created.org, phase.accountId, selfName).catch(() => {});
         shade.remove();
-        enter({ appId: created.appId, name: created.name, org: created.org });
+        void enter({ appId: created.appId, name: created.name, org: created.org }, { name: selfName });
       } catch (e) {
         errEl.textContent = `Could not create world: ${describeError(e)}`;
         busy = false;
@@ -855,6 +877,65 @@ export class Landing {
         closeBtn.disabled = false;
         createBtn.textContent = "Create world";
       }
+    });
+  }
+
+  /**
+   * The name to enter a world as. A world's org that has one is used as is;
+   * one without adopts the name this browser knew (worlds from before names
+   * lived on the org), or, just joined, asks once and saves it there.
+   */
+  private async playerName(phase: SignedIn, org: string | null, joined: boolean, fallback: string): Promise<string> {
+    const known = knownName();
+    if (!org) return known || fallback || "Player";
+    const { ready, name } = await readOrgName(phase.client, org, phase.accountId);
+    const decision = decideSelfName({ orgReady: ready, orgName: name, fallbacks: joined ? [] : [known] });
+    if (decision.kind === "use") return decision.name;
+    // The org could not be read: play under the name known here, ask nobody twice.
+    if (decision.kind === "wait" && known) return known;
+    const chosen =
+      decision.kind === "adopt"
+        ? decision.name
+        : ((await this.askName((decision.kind === "ask" && decision.suggestion) || known, "Your name in this world", "Play")) ?? "Player");
+    await saveOrgName(phase.client, org, phase.accountId, chosen).catch(() => rememberLastUsedName(chosen));
+    return chosen;
+  }
+
+  /** popup: the player's name in a world. `null` when closed without one (only a `cancellable` one closes). */
+  private askName(suggestion: string, title: string, action: string, cancellable = false): Promise<string | null> {
+    return new Promise((resolve) => {
+      const shade = document.createElement("div");
+      shade.className = "mbl-modal-shade";
+      shade.dataset.testid = "name-modal";
+      shade.innerHTML = `
+        <div class="mbl-modal">
+          <div class="mbl-modal-head">
+            <h3>${escapeHtml(title)}</h3>
+            ${cancellable ? `<button class="mbl-modal-close" data-testid="name-close" aria-label="Close">✕</button>` : ""}
+          </div>
+          <label>the name other players see in this world</label>
+          <input id="mbl-self-name" data-testid="self-name-input" value="${escapeHtml(suggestion)}" maxlength="16" />
+          <button class="mbl-btn green" data-testid="name-save-btn">${escapeHtml(action)}</button>
+          <div class="mbl-error" data-testid="name-error"></div>
+        </div>
+      `;
+      this.root.appendChild(shade);
+      const input = shade.querySelector<HTMLInputElement>("#mbl-self-name")!;
+      const finish = (name: string | null) => {
+        shade.remove();
+        resolve(name);
+      };
+      const save = () => {
+        const name = input.value.trim();
+        if (name) finish(name);
+        else shade.querySelector<HTMLElement>("[data-testid=name-error]")!.textContent = "Enter a name.";
+      };
+      shade.querySelector("[data-testid=name-save-btn]")!.addEventListener("click", save);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") save();
+      });
+      shade.querySelector("[data-testid=name-close]")?.addEventListener("click", () => finish(null));
+      input.focus();
     });
   }
 }

@@ -53,6 +53,7 @@ function fakeClient() {
     listApps: vi.fn(async () => []),
     getOrg: vi.fn(async () => ({ name: "Acme", members: { [ME]: "owner" } })),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
+    setMemberMetadata: vi.fn(async () => undefined),
   };
 }
 
@@ -114,8 +115,30 @@ describe("an invitation link", () => {
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    // Joined: the company has no name for you yet, so it asks, once.
+    const input = (await screen.findByTestId("invitation-name-input")) as HTMLInputElement;
+    expect(screen.queryByText("audiences")).toBeNull();
+    fireEvent.change(input, { target: { value: "Ana Lee" } });
+    fireEvent.click(screen.getByTestId("invitation-name-save"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-2", ME, { name: "Ana Lee" }));
     expect(await screen.findByText("audiences")).toBeInTheDocument();
     expect(pendingInvite()).toBeNull();
+  });
+
+  it("joining a company that already has your name does not ask for it", async () => {
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
+    const client = fakeClient();
+    client.getOrg.mockImplementation(async () => ({
+      name: "Acme",
+      members: { [ME]: "member" },
+      memberMetadata: { [ME]: { name: "Ana" } },
+    }) as never);
+    boot(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect(await screen.findByText("audiences")).toBeInTheDocument();
+    expect(screen.queryByTestId("invitation-name")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
   it("an invited newcomer creates the account and joins in one click, and lands in the company", async () => {

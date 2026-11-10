@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -171,16 +172,12 @@ fun TeamsScreen(
     }
 
     if (creating) {
-        FormSheet(
-            title = "New team",
-            label = "Team name",
-            placeholder = "e.g. Design team",
-            action = "Create team",
-            busyAction = "Creating…",
+        NewTeamSheet(
+            initialMyName = model.lastName,
             onDismiss = { creating = false },
-        ) { name ->
+        ) { name, myName ->
             try {
-                val created = model.create(name)
+                val created = model.create(name, myName)
                 notice = created.warning
                 creating = false
                 onCreated(created.team)
@@ -202,6 +199,44 @@ fun TeamsScreen(
     }
     inviting?.let { team ->
         InviteSheet(team.name, makeLink = { model.inviteLink(team) }, onShare = onShare, onDismiss = { inviting = null })
+    }
+}
+
+/** "New team": its name, and yours in it (asked here once, used by every calendar in the team). */
+@Composable
+private fun NewTeamSheet(
+    initialMyName: String,
+    onDismiss: () -> Unit,
+    onSubmit: suspend (String, String) -> String?,
+) {
+    var name by remember { mutableStateOf("") }
+    var myName by remember { mutableStateOf(initialMyName) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    AppSheet("New team", onDismiss) {
+        TextInput(name, {
+            name = it
+            error = null
+        }, "e.g. Design team", label = "Team name")
+        TextInput(myName, {
+            myName = it
+            error = null
+        }, "e.g. Alice", label = "Your name in this team")
+        error?.let { Text(it, style = Tokens.caption.copy(color = Tokens.danger)) }
+        PrimaryButton(
+            if (busy) "Creating…" else "Create team",
+            enabled = name.isNotBlank() && myName.isNotBlank(),
+            busy = busy,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                busy = true
+                scope.launch {
+                    error = onSubmit(name, myName)
+                    busy = false
+                }
+            },
+        )
     }
 }
 

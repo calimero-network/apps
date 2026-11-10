@@ -16,7 +16,11 @@ import type { SessionDeps } from "./session";
 import { APP } from "./session";
 import { migrateStoredInvite, selectionKey } from "./teams";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The name last used for an org (`@calimero-apps/names`) is the browser's.
+  globalThis.localStorage.clear();
+});
 
 class Memory implements KeyValueStorage {
   readonly items = new Map<string, string>();
@@ -95,6 +99,8 @@ function contract() {
 function fakeClient(apps: AppInfo[] = []) {
   let session: CalimeroSession | undefined;
   const team = contract();
+  /** Each org's member metadata: where your name in it lives. */
+  const orgs: Record<string, Record<string, unknown>> = {};
   const client = {
     get session() {
       return session;
@@ -124,8 +130,12 @@ function fakeClient(apps: AppInfo[] = []) {
     events: vi.fn(async function* () {}),
     invite: vi.fn(async () => "tok-123"),
     redeemInvite: vi.fn(async () => ({})),
+    getOrg: vi.fn(async (org: string) => ({ orgId: org, memberMetadata: orgs[org] ?? {} })),
+    setMemberMetadata: vi.fn(async (org: string, account: string, meta: Record<string, unknown>) => {
+      orgs[org] = { ...orgs[org], [account]: meta };
+    }),
   };
-  return { client, team };
+  return { client, team, orgs };
 }
 
 function deps(client: ReturnType<typeof fakeClient>["client"], env: SessionDeps["env"] = DEV_ENV): SessionDeps {
@@ -161,18 +171,20 @@ describe("App", () => {
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.change(screen.getByLabelText("team name"), { target: { value: "Platform" } });
+    // Your name in the new team is asked in the same step, and required.
+    expect((screen.getByText("Start a new team") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("your name in this team"), { target: { value: "Alice" } });
     fireEvent.click(screen.getByText("Start a new team"));
-    await screen.findByText("Welcome to the team");
+    await screen.findByText("Platform");
     expect(client.createOrg).toHaveBeenCalledWith("Platform");
     expect(client.createApp).toHaveBeenCalledWith("Platform", "bundle-hash", { org: "org-1" });
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice" });
     expect(team.call).toHaveBeenCalledWith("app-new", "setTeamName", { name: "Platform" });
-    await screen.findByText("Platform");
     expect(JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice"))!)).toMatchObject({ appId: "app-new" });
 
-    fireEvent.change(screen.getByLabelText("your name"), { target: { value: "Alice" } });
-    fireEvent.click(screen.getByText("Continue"));
+    // The org's name goes to the team's contract without asking.
     await waitFor(() => expect(team.call).toHaveBeenCalledWith("app-new", "setName", { name: "Alice" }));
-    await waitFor(() => expect(screen.queryByText("Welcome to the team")).toBeNull());
+    expect(screen.queryByText("Welcome to the team")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("done"), { target: { value: "Wrote the guide" } });
     fireEvent.click(screen.getByText("Post update"));
@@ -208,6 +220,54 @@ describe("App", () => {
     fireEvent.click(screen.getByLabelText("account menu"));
     fireEvent.click(screen.getByText("Switch team"));
     await screen.findByText("Your teams");
+  });
+
+  it("never asks in a team whose org has your name, and feeds it to the team's contract", async () => {
+    const { client, team, orgs } = fakeClient([
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    orgs["org-9"] = { "acct-alice": { name: "Alice" } };
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Infra", org: "org-9" }));
+    render(<App deps={deps(client)} storage={storage} />);
+    await waitFor(() => expect(team.call).toHaveBeenCalledWith("app-1", "setName", { name: "Alice" }));
+    expect(screen.queryByText("Welcome to the team")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
+  });
+
+  it("asks once in a team whose org has no name for you, and saves it on the org", async () => {
+    const { client, team, orgs } = fakeClient([
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Infra", org: "org-9" }));
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByText("Welcome to the team");
+    fireEvent.change(screen.getByLabelText("your name"), { target: { value: "Alice" } });
+    fireEvent.click(screen.getByText("Continue"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-9", "acct-alice", { name: "Alice" }));
+    expect(team.call).toHaveBeenCalledWith("app-1", "setName", { name: "Alice" });
+    await waitFor(() => expect(screen.queryByText("Welcome to the team")).toBeNull());
+    expect(orgs["org-9"]).toEqual({ "acct-alice": { name: "Alice" } });
+  });
+
+  it("asks your name in the org right after joining it, once", async () => {
+    const { client } = fakeClient();
+    Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [] })) });
+    client.redeemInvite.mockResolvedValue({ org: "org-9" });
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9" });
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    globalThis.localStorage.setItem("calimero-names:last", "Alice");
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await screen.findByText("Your name in this team");
+    expect((screen.getByLabelText("your name") as HTMLInputElement).value).toBe("Alice");
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-9", "acct-alice", { name: "Alice" }));
+    await waitFor(() => expect(screen.queryByText("Your name in this team")).toBeNull());
   });
 
   it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {

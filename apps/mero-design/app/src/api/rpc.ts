@@ -1,5 +1,6 @@
 import { AppError, ORG_CAPABILITIES, TrapError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
 import { markOrgFor, myOrgs, orgsWithApp, otherOrgs, type AppSource, type OtherOrg } from "@calimero-apps/connect";
+import { setOrgName } from "@calimero-apps/names";
 import { getApi } from "./client";
 import { toWire } from "./meroDesign";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
@@ -314,11 +315,15 @@ export async function readTeam(org: string): Promise<TeamRecord> {
   }
 }
 
-/** Publishes the name `account` goes by across the team (org member metadata). */
+/**
+ * Publishes the name `account` goes by across the team (org member metadata),
+ * keeping the rest of its member record, and remembers it to offer when the
+ * next team asks.
+ */
 export async function setTeamName(org: string, account: string, name: string): Promise<void> {
   const { client, after } = getApi();
   try {
-    await client.setMemberMetadata(org, account, { name });
+    await setOrgName(client, org, account, name);
   } finally {
     after();
   }

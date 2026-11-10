@@ -68,6 +68,8 @@ function fakeClient() {
   let session: CalimeroSession | undefined;
   const apps: AppInfo[] = [];
   const orgs: { orgId: string; name: string; role: string }[] = [];
+  // org -> account -> member metadata, as `setMemberMetadata` leaves it.
+  const meta: Record<string, Record<string, Record<string, unknown>>> = {};
   /** The org's member defaults as the node keeps them (`setCapabilities` without `at`). */
   const defaults = new Map<string, number>();
   const metadata = new Map<string, unknown>();
@@ -75,6 +77,7 @@ function fakeClient() {
   return {
     apps,
     orgs,
+    meta,
     room,
     get session() {
       return session;
@@ -97,7 +100,7 @@ function fakeClient() {
     getOrg: vi.fn(async (org: string): Promise<Record<string, unknown>> => ({
       name: orgs.find((o) => o.orgId === org)?.name ?? "Stream",
       members: { "acct-alice": "owner" },
-      memberMetadata: {},
+      memberMetadata: meta[org] ?? {},
       defaultCapabilities: defaults.get(org) ?? DEFAULT_ORG_CAPABILITIES,
       metadata: metadata.get(org) ?? null,
     })),
@@ -137,7 +140,9 @@ function fakeClient() {
     presenceStream: vi.fn(async function* () {}),
     invite: vi.fn(async () => "tok-123"),
     redeemInvite: vi.fn(async () => ({})),
-    setMemberMetadata: vi.fn(async () => {}),
+    setMemberMetadata: vi.fn(async (org: string, account: string, m: Record<string, unknown>) => {
+      meta[org] = { ...meta[org], [account]: m };
+    }),
   };
 }
 
@@ -176,8 +181,14 @@ describe("App", () => {
     await screen.findByTestId("streams-empty");
 
     fireEvent.change(screen.getByTestId("stream-name-input"), { target: { value: "Team" } });
+    // Your name in the stream is asked with it, once.
+    expect((screen.getByTestId("create-stream") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId("stream-self-name-input"), { target: { value: "Alice" } });
     fireEvent.click(screen.getByTestId("create-stream"));
     await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Team"));
+    await waitFor(() =>
+      expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice" }),
+    );
     // Its members may create rooms: the org's default, with the owner's passkey.
     await waitFor(() =>
       expect(client.setCapabilities).toHaveBeenCalledWith("org-1", MEMBER_DEFAULTS, expect.anything()),
@@ -192,12 +203,43 @@ describe("App", () => {
         initArgs: { name: "Standup" },
       }),
     );
-    // Into the call, which joins the room's contract.
+    // Into the call, which joins the room's contract with the stream's name,
+    // without asking for it again.
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith(
         "app-1",
         "join",
-        expect.objectContaining({ username: "guest" }),
+        expect.objectContaining({ username: "Alice" }),
+      ),
+    );
+    expect(client.call).not.toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "guest" }));
+    expect((screen.getByTestId("people-dialog") as HTMLDialogElement).open).toBe(false);
+  });
+
+  it("asks once, for the stream, when a room opens in a stream with no name for you", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    client.apps.push(client.room("app-1"));
+    localStorage.setItem("calimero-names:last", "Alice from Globex");
+    // An already-member's room link: opened, not redeemed.
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
+    renderApp(client, "/streams", true);
+    fireEvent.click(await screen.findByTestId("invitation-open"));
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "guest" })),
+    );
+    await waitFor(() => expect((screen.getByTestId("people-dialog") as HTMLDialogElement).open).toBe(true));
+    const input = screen.getByTestId("username-input") as HTMLInputElement;
+    expect(input.value).toBe("Alice from Globex");
+    fireEvent.click(screen.getByTestId("username-submit"));
+    await waitFor(() =>
+      expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice from Globex" }),
+    );
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith(
+        "app-1",
+        "join",
+        expect.objectContaining({ username: "Alice from Globex" }),
       ),
     );
   });
@@ -302,10 +344,35 @@ describe("App", () => {
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-9"));
+    // Joined a stream with no name for you: asked once, then into the room
+    // with it.
+    fireEvent.change(await screen.findByTestId("invitation-name-input"), { target: { value: "Alice" } });
+    fireEvent.click(screen.getByTestId("invitation-name-save"));
     await waitFor(() =>
-      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.anything()),
+      expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice" }),
+    );
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "Alice" })),
     );
     expect(pendingInvite()).toBeNull();
+  });
+
+  it("joining a stream that already has your name does not ask for it", async () => {
+    const client = fakeClient();
+    client.apps.push(client.room("app-1"));
+    client.meta["org-1"] = { "acct-alice": { name: "Alice" } };
+    client.redeemInvite.mockImplementation(async () => {
+      client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+      return {};
+    });
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
+    renderApp(client, "/streams", true);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "Alice" })),
+    );
+    expect(screen.queryByTestId("invitation-name")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
   it("an invited newcomer creates the account and joins in one click, and lands in the room", async () => {

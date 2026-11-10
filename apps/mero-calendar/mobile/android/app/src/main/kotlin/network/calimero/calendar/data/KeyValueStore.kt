@@ -60,6 +60,7 @@ class LocalNames(
         name: String,
     ) = name.trim().takeIf { it.isNotEmpty() }?.let { store.put("mc-calendar-name-$id", it) }
 
+    /** The name this device set in a calendar before names lived on the team: only adopted now. */
     fun username(contextId: String): String? = store.get("mc-username-$contextId")?.ifBlank { null }
 
     fun setUsername(
@@ -71,4 +72,7 @@ class LocalNames(
     }
 
     fun lastUsername(): String? = store.get("mc-username-last")?.ifBlank { null }
+
+    /** The name to offer when the next team asks. */
+    fun setLastUsername(name: String) = name.trim().takeIf { it.isNotEmpty() }?.let { store.put("mc-username-last", it) }
 }

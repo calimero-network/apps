@@ -98,12 +98,18 @@ function fakeClient(
       session = undefined;
     }),
     me: vi.fn(async () => ({ orgs })),
-    getOrg: vi.fn(async () => ({ name: 'Team', members: { [ME]: 'owner' }, memberMetadata: { [ME]: { name: 'Alice' } } })),
+    getOrg: vi.fn(
+      async (): Promise<Record<string, unknown>> => ({
+        name: 'Team',
+        members: { [ME]: 'owner' },
+        memberMetadata: { [ME]: { name: 'Alice' } },
+      }),
+    ),
     listApps: vi.fn(async (filter?: { bundle?: string }) =>
       [...apps, ...foreign].filter((a) => !filter?.bundle || a.bundle === filter.bundle),
     ),
     createOrg: vi.fn(async (name: string) => {
-      orgs = [{ orgId: 'org-new', name, role: 'owner' }];
+      orgs = [...orgs, { orgId: 'org-new', name, role: 'owner' }];
       return 'org-new';
     }),
     setCapabilities: vi.fn(async () => undefined),
@@ -117,7 +123,7 @@ function fakeClient(
     presenceStream: vi.fn(async function* () {}),
     publishPresence: vi.fn(async () => undefined),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
-    setMemberMetadata: vi.fn(async () => undefined),
+    setMemberMetadata: vi.fn(async (_org: string, _account: string, _meta: unknown): Promise<void> => undefined),
   };
 }
 
@@ -234,6 +240,54 @@ describe('App', () => {
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
     expect(invites.token()).toBeNull();
+  });
+
+  it('joining a workspace that has no name for you asks it once, saves it to the workspace, then opens the spreadsheet', async () => {
+    remember();
+    localStorage.setItem('calimero-names:last', 'Ali');
+    hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
+    const client = fakeClient();
+    // Not in the workspace until the invite is redeemed.
+    let joined = false;
+    client.me.mockImplementation(async () => ({ orgs: joined ? [{ orgId: 'org-1', name: 'Team', role: 'member' }] : [] }));
+    client.redeemInvite.mockImplementation(async () => {
+      joined = true;
+      return { org: 'org-1' };
+    });
+    const meta: Record<string, unknown> = {};
+    client.getOrg.mockImplementation(async () => ({ name: 'Team', members: { [ME]: 'member' }, memberMetadata: { ...meta } }));
+    client.setMemberMetadata.mockImplementation(async (_org: string, account: string, m: unknown) => {
+      meta[account] = m;
+    });
+    client.view.mockImplementation(async (_app: string, method: string) => ({
+      index: 1,
+      result: method === 'getMembers' ? [] : (VIEWS[method] ?? []),
+    }));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    const field = (await screen.findByTestId('field-nickname')) as HTMLInputElement;
+    expect(field.value).toBe('Ali');
+    expect(client.view).not.toHaveBeenCalledWith('sheet-1', 'listSheets', {});
+    fireEvent.click(screen.getByTestId('action-join'));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-1', ME, { name: 'Ali' }));
+    await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
+    // The spreadsheet takes the workspace's name into its roster without asking.
+    await waitFor(() => expect(client.call).toHaveBeenCalledWith('sheet-1', 'join', { nickname: 'Ali' }));
+    expect(screen.queryByTestId('nickname-modal')).toBeNull();
+  });
+
+  it('opening a spreadsheet in a workspace that has your name never asks, and fills the roster silently', async () => {
+    remember();
+    const client = fakeClient();
+    client.view.mockImplementation(async (_app: string, method: string) => ({
+      index: 1,
+      result: method === 'getMembers' ? [] : (VIEWS[method] ?? []),
+    }));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByText('Q3 Budget'));
+    await waitFor(() => expect(client.call).toHaveBeenCalledWith('sheet-1', 'join', { nickname: 'Alice' }));
+    expect(screen.queryByTestId('nickname-modal')).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
   it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {

@@ -5,6 +5,8 @@ import {
   normaliseName,
   rememberName,
   rememberedName,
+  selfNameStep,
+  skipWorkspaceName,
 } from './displayName';
 
 /** A minimal in-memory Storage, and a switch to make it throw like Safari does. */
@@ -75,5 +77,36 @@ describe('rememberName / rememberedName', () => {
     stubStorage(true);
     expect(() => rememberName('Ada')).not.toThrow();
     expect(rememberedName()).toBe('');
+  });
+});
+
+describe('selfNameStep — your name, once per workspace', () => {
+  const open = (over: Partial<Parameters<typeof selfNameStep>[0]> = {}) =>
+    selfNameStep({ org: 'org-1', orgReady: true, orgName: '', rosterName: '', ...over });
+
+  it('waits until the workspace names and the roster have loaded', () => {
+    stubStorage();
+    expect(open({ orgReady: false })).toEqual({ kind: 'wait' });
+  });
+
+  it("uses the workspace's name without asking, whatever this spreadsheet's roster says", () => {
+    stubStorage();
+    expect(open({ orgName: ' Ada ', rosterName: 'Old' })).toEqual({ kind: 'use', name: 'Ada' });
+    expect(open({ orgName: 'Ada', orgReady: false })).toEqual({ kind: 'use', name: 'Ada' });
+  });
+
+  it('adopts a name the roster or this browser already had instead of asking', () => {
+    const store = stubStorage();
+    expect(open({ rosterName: 'Grace' })).toEqual({ kind: 'adopt', name: 'Grace' });
+    store.set('mero-sheets:display-name', 'Linus');
+    expect(open()).toEqual({ kind: 'adopt', name: 'Linus' });
+  });
+
+  it('asks when there is no name anywhere, and a skip holds for every spreadsheet in that workspace', () => {
+    stubStorage();
+    expect(open({ org: 'org-skip' })).toEqual({ kind: 'ask', suggestion: '' });
+    skipWorkspaceName('org-skip');
+    expect(open({ org: 'org-skip' })).toEqual({ kind: 'skipped' });
+    expect(open({ org: 'org-other' })).toEqual({ kind: 'ask', suggestion: '' });
   });
 });

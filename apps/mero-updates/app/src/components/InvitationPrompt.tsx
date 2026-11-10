@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, type NavigateFunction } from "react-router-dom";
-import { describeRedeemFailure } from "@calimero-apps/connect";
+import { describeError, describeRedeemFailure } from "@calimero-apps/connect";
+import { lastUsedName, orgMemberName } from "@calimero-apps/names";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import { setActiveAudience } from "../lib/active";
+import { getUsername, setActiveAudience } from "../lib/active";
 import {
   INVITE_REFUSED,
   alreadyMember,
@@ -11,6 +12,7 @@ import {
   inviteRefused,
   joinedOrg,
   pendingInvite,
+  setCompanyName,
   type PendingInvite,
 } from "../lib/companies";
 import { useMaybeSignedIn, useSessionApi } from "../lib/sessionContext";
@@ -35,6 +37,9 @@ import { UserPlusIcon, XIcon } from "./icons";
  * so and the token dropped: redeeming it would spend its single use, and the
  * person it was meant for could no longer join. A refused invite (unknown,
  * used, expired, revoked) is said plainly.
+ *
+ * Once joined, a company that has no name for you asks for one here, once:
+ * every audience in it then uses it without asking.
  */
 export default function InvitationPrompt() {
   const signedIn = useMaybeSignedIn();
@@ -51,6 +56,9 @@ export default function InvitationPrompt() {
   // An invite the sign-up joined with: opened, never asked about.
   const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
   const client = signedIn?.client ?? null;
+  // Joined, and asking for your name in the company before opening it.
+  const [naming, setNaming] = useState<{ org: string } | null>(null);
+  const [selfName, setSelfName] = useState("");
 
   useEffect(() => {
     const next = client ? reread(invite) : null;
@@ -94,6 +102,19 @@ export default function InvitationPrompt() {
     setError(null);
   }, []);
 
+  // Into what the invitation named; a skipped name is asked by the company's
+  // first audience instead.
+  const finish = useCallback(
+    (org: string) => {
+      if (!invite) return;
+      setNaming(null);
+      setInvite(null);
+      setError(null);
+      open(navigate, invite, org);
+    },
+    [invite, navigate],
+  );
+
   const join = useCallback(async () => {
     if (!signedIn || !invite) return;
     setBusy(true);
@@ -103,6 +124,17 @@ export default function InvitationPrompt() {
       signedIn.after();
       const org = joinedOrg(redeemed);
       dropInvite();
+      const known = org
+        ? await signedIn.client
+            .getOrg(org)
+            .then((o) => orgMemberName(o?.memberMetadata as Record<string, unknown> | undefined, signedIn.accountId))
+            .catch(() => "")
+        : "";
+      if (org && !known) {
+        setSelfName(lastUsedName() || getUsername());
+        setNaming({ org });
+        return;
+      }
       setInvite(null);
       open(navigate, invite, org);
     } catch (e) {
@@ -120,6 +152,21 @@ export default function InvitationPrompt() {
     }
   }, [signedIn, invite, navigate]);
 
+  const saveName = useCallback(async () => {
+    if (!signedIn || !naming || !selfName.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setCompanyName(signedIn.client, naming.org, signedIn.accountId, selfName);
+      signedIn.after();
+      finish(naming.org);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [signedIn, naming, selfName, finish]);
+
   const openCompany = () => {
     const org = invite?.org;
     dismiss();
@@ -131,59 +178,101 @@ export default function InvitationPrompt() {
     <dialog
       ref={dialogRef}
       className={styles.dialog}
-      onClose={() => !busy && dismiss()}
-      aria-labelledby="invitation-title"
+      onClose={() => !busy && (naming ? finish(naming.org) : dismiss())}
+      aria-labelledby={naming ? "invitation-name-title" : "invitation-title"}
       data-testid="invitation-dialog"
     >
-      <div className={styles.body}>
-        <header className={styles.head}>
-          <span className={styles.tile} aria-hidden>
-            <UserPlusIcon size={18} />
-          </span>
-          <div className={styles.headText}>
-            <h2 className={styles.title} id="invitation-title">
-              {member ? "You're already in this company" : "Join this company?"}
-            </h2>
-            <p className={styles.scope} data-testid={member ? "invitation-member" : undefined}>
-              {member
-                ? "This invitation is for a company you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
-                : invite.audience
-                  ? "Joining takes you straight into the audience you were invited to."
-                  : "Joining gives you access to the company and every audience in it."}
+      {naming ? (
+        <div className={styles.body} data-testid="invitation-name">
+          <header className={styles.head}>
+            <span className={styles.tile} aria-hidden>
+              <UserPlusIcon size={18} />
+            </span>
+            <div className={styles.headText}>
+              <h2 className={styles.title} id="invitation-name-title">
+                Your name in this company
+              </h2>
+              <p className={styles.scope}>
+                Shown to everyone in the company, in every audience — asked once.
+              </p>
+            </div>
+          </header>
+          <input
+            aria-label="Your name in this company"
+            placeholder="Your name"
+            value={selfName}
+            maxLength={64}
+            autoFocus
+            onChange={(e) => setSelfName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void saveName()}
+            data-testid="invitation-name-input"
+          />
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => void saveName()}
+            disabled={busy || !selfName.trim()}
+            data-testid="invitation-name-save"
+          >
+            {busy ? "Saving…" : "Continue"}
+          </button>
+          {error && (
+            <p className="error" role="alert">
+              {error}
             </p>
-          </div>
-          <button type="button" className={styles.close} onClick={dismiss} aria-label="Close" disabled={busy}>
-            <XIcon size={16} />
-          </button>
-        </header>
-        {member ? (
-          <button type="button" className={styles.primary} onClick={openCompany} data-testid="invitation-open">
-            Open it
-          </button>
-        ) : (
-          !refused && (
-            <button
-              type="button"
-              className={styles.primary}
-              onClick={() => void join()}
-              disabled={busy}
-              data-testid="invitation-join"
-            >
-              {busy ? "Joining…" : "Join"}
+          )}
+        </div>
+      ) : (
+        <div className={styles.body}>
+          <header className={styles.head}>
+            <span className={styles.tile} aria-hidden>
+              <UserPlusIcon size={18} />
+            </span>
+            <div className={styles.headText}>
+              <h2 className={styles.title} id="invitation-title">
+                {member ? "You're already in this company" : "Join this company?"}
+              </h2>
+              <p className={styles.scope} data-testid={member ? "invitation-member" : undefined}>
+                {member
+                  ? "This invitation is for a company you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
+                  : invite.audience
+                    ? "Joining takes you straight into the audience you were invited to."
+                    : "Joining gives you access to the company and every audience in it."}
+              </p>
+            </div>
+            <button type="button" className={styles.close} onClick={dismiss} aria-label="Close" disabled={busy}>
+              <XIcon size={16} />
             </button>
-          )
-        )}
-        {!member && (
-          <button type="button" className="secondary" onClick={dismiss} disabled={busy}>
-            {refused ? "Close" : "Not now"}
-          </button>
-        )}
-        {error && (
-          <p className="error" role="alert" data-testid="invitation-error">
-            {error}
-          </p>
-        )}
-      </div>
+          </header>
+          {member ? (
+            <button type="button" className={styles.primary} onClick={openCompany} data-testid="invitation-open">
+              Open it
+            </button>
+          ) : (
+            !refused && (
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={() => void join()}
+                disabled={busy}
+                data-testid="invitation-join"
+              >
+                {busy ? "Joining…" : "Join"}
+              </button>
+            )
+          )}
+          {!member && (
+            <button type="button" className="secondary" onClick={dismiss} disabled={busy}>
+              {refused ? "Close" : "Not now"}
+            </button>
+          )}
+          {error && (
+            <p className="error" role="alert" data-testid="invitation-error">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </dialog>
   );
 }

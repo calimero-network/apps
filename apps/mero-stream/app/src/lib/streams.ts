@@ -17,6 +17,7 @@ import {
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
 } from "@calimero-apps/connect";
+import { setOrgName } from "@calimero-apps/names";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 /**
@@ -203,16 +204,18 @@ export async function streamInfo(
 }
 
 /**
- * Publish the caller's display name for the whole stream (v1: namespace member
- * metadata via `@calimero-apps/names`), so every room shows it.
+ * Publish the caller's display name for the whole stream (org member
+ * metadata, merged with what the record holds), so every room shows it. The
+ * stream is where your name lives: asked when you create or join it, and
+ * every room's `join` is fed it.
  */
 export function publishMyName(
-  client: Pick<CalimeroClient, "setMemberMetadata">,
+  client: Pick<CalimeroClient, "getOrg" | "setMemberMetadata">,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  return client.setMemberMetadata(org, account, { name });
+  return setOrgName(client, org, account, name);
 }
 
 /** The rooms of one stream, by name. */
