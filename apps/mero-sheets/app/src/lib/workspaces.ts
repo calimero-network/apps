@@ -10,8 +10,18 @@
  * | joining a context, waiting for it to reach your node | nothing: every member of the org reaches its instances, and nothing has to replicate first |
  * | the name a person set for the whole workspace: namespace member metadata | org **member metadata** `{ name }` |
  */
-import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
-import type { AppSource, KeyValueStorage } from '@calimero-apps/connect';
+import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
+import {
+  SPENT_INVITE_COPY,
+  createInviteStore,
+  inviteLink as sharedInviteLink,
+  isSpentInvite,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite as SharedPendingInvite,
+} from '@calimero-apps/connect';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME } from '../config';
 
@@ -164,18 +174,18 @@ export async function publishWorkspaceName(
  * names the workspace the token admits to, so someone already in it (the
  * inviter opening their own link, say) is told so instead of spending the
  * token's single use.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
   sheet?: string | null,
-  location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  location: Pick<Location, 'href'> = window.location,
   org?: string | null,
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set('invite', token);
-  if (sheet) url.searchParams.set('sheet', sheet);
-  if (org) url.searchParams.set('org', org);
-  return url.toString();
+  const url = new URL(location.href);
+  return sharedInviteLink(token, { org, extra: { sheet }, root: nodeBasename(url, '/'), origin: url.origin });
 }
 
 /** A workspace invitation as a link: an org invite, approved with the inviter's passkey (412 step-up). */
@@ -197,53 +207,55 @@ export interface PendingInvite {
   org: string | null;
 }
 
-const PENDING = `${APP_NAME}:pending-invite`;
+/** This app's pending invite (`@calimero-apps/connect`), with the spreadsheet its link lands in. */
+export const invites = createInviteStore(APP_NAME, { keep: ['sheet'] });
+
+const LEGACY_PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&sheet=`) off the address bar into storage, before
- * anything renders: a person opening a link is usually not signed in yet, and
- * the token must survive the sign-up. Redeemed (and dropped) once a session
- * exists and the person says yes.
+ * Takes `?invite=` (and `&sheet=`, `&org=`) off the address bar into the
+ * store, before anything renders: a person opening a link is usually not
+ * signed in yet, and the token must survive the sign-up. Redeemed (and
+ * dropped) once a session exists and the person says yes. An invite an
+ * earlier build stored under its own key moves over first.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get('invite');
-  if (!token) return;
-  const pending: PendingInvite = { token, sheet: url.searchParams.get('sheet'), org: url.searchParams.get('org') };
-  try {
-    storage.setItem(PENDING, JSON.stringify(pending));
-  } catch {
-    return;
-  }
-  url.searchParams.delete('invite');
-  url.searchParams.delete('sheet');
-  url.searchParams.delete('org');
-  window.history.replaceState(null, '', url.toString());
+export function captureInvite(loc: Pick<Location, 'href'> = window.location): void {
+  migrateLegacyInvite();
+  invites.capture(loc, { basename: nodeBasename(new URL(loc.href), '/') });
 }
 
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
+/** Moves an invite an earlier build stored under its own key into the shared store. */
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === 'string' && parsed.token
-      ? {
-          token: parsed.token,
-          sheet: typeof parsed.sheet === 'string' ? parsed.sheet : null,
-          org: typeof parsed.org === 'string' ? parsed.org : null,
-        }
-      : null;
+    const raw = storage.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING);
+    const old = JSON.parse(raw) as Partial<PendingInvite>;
+    if (typeof old.token !== 'string' || !old.token) return;
+    into.put({
+      token: old.token,
+      org: typeof old.org === 'string' && old.org ? old.org : null,
+      team: null,
+      doc: null,
+      route: null,
+      extra: typeof old.sheet === 'string' && old.sheet ? { sheet: old.sheet } : {},
+    });
   } catch {
-    return null;
+    /* unreadable: nothing to move */
   }
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
+/** The app's view of a pending invite. */
+export function sheetsInvite(pending: SharedPendingInvite | null): PendingInvite | null {
+  return pending ? { token: pending.token, sheet: pending.extra.sheet ?? null, org: pending.org } : null;
+}
+
+export function pendingInvite(): PendingInvite | null {
+  return sheetsInvite(invites.pending());
+}
+
+export function dropInvite(): void {
+  invites.drop();
 }
 
 /** The org an invitation redeemed into, from whichever field the node named it. */
@@ -261,16 +273,16 @@ export interface AcceptedInvite {
   contextId: string | null;
 }
 
-/**
- * What to say when the node refused an invitation: it is unknown, already
- * used, expired or revoked. A 4xx can never succeed on retry, so the caller
- * drops the token; anything else (the cluster unreachable) is kept.
- */
-export const INVITE_REFUSED = 'This invite was already used or has expired. Ask the person who invited you for a new link.';
+/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
+export const INVITE_REFUSED = SPENT_INVITE_COPY;
 
-/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+/**
+ * True when `e` is the node refusing the invitation itself (see
+ * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
+ * limit or the cluster unreachable keeps it.
+ */
 export function inviteRefused(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+  return isSpentInvite(e);
 }
 
 /**

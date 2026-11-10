@@ -8,8 +8,17 @@
  * Replaces v1's signed namespace invitations, which travelled as a
  * deflate+base58 payload (`inviteCodec`) on a registry deep link.
  */
-import { CalimeroError, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
-import type { KeyValueStorage } from '@calimero-apps/connect';
+import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import {
+  SPENT_INVITE_COPY,
+  createInviteStore,
+  inviteLink as sharedInviteLink,
+  isSpentInvite,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite as SharedPendingInvite,
+} from '@calimero-apps/connect';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 export interface PendingInvite {
   token: string;
@@ -19,7 +28,7 @@ export interface PendingInvite {
   org: string | null;
 }
 
-const PENDING = 'mero-sign:pending-invite';
+const LEGACY_PENDING = 'mero-sign:pending-invite';
 
 /** An invitation into `org` as a member, approved with the inviter's passkey. */
 export function inviteToken(
@@ -35,74 +44,107 @@ export function inviteToken(
  * workspace the token admits to, so someone already in it (the inviter
  * opening their own link, say) is told so instead of spending the token's
  * single use.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
   agreement?: string | null,
-  location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  location: Pick<Location, 'href'> = window.location,
   org?: string | null,
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set('invite', token);
-  if (agreement) url.searchParams.set('agreement', agreement);
-  if (org) url.searchParams.set('org', org);
-  return url.toString();
+  const url = new URL(location.href);
+  return sharedInviteLink(token, {
+    org,
+    extra: { agreement },
+    root: nodeBasename(url, '/'),
+    origin: url.origin,
+  });
+}
+
+/** This app's pending invite (`@calimero-apps/connect`), with the agreement its link lands in. */
+export const invites = createInviteStore('mero-sign', { keep: ['agreement'] });
+
+/**
+ * Takes `?invite=` (and `&agreement=`, `&org=`) off the address bar into the
+ * store, before anything renders: a person opening a link is usually not
+ * signed in yet, and the token has to survive the passkey sign-up. An invite
+ * an earlier build stored under its own key moves over first.
+ */
+export function captureInvite(
+  loc: Pick<Location, 'href'> = window.location,
+): void {
+  migrateLegacyInvite();
+  invites.capture(loc, { basename: nodeBasename(new URL(loc.href), '/') });
+}
+
+/** Moves an invite an earlier build stored under its own key into the shared store. */
+export function migrateLegacyInvite(
+  storage: KeyValueStorage = localStorage,
+  into: InviteStore = invites,
+): void {
+  try {
+    const raw = storage.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING);
+    const old = JSON.parse(raw) as Partial<PendingInvite>;
+    if (typeof old.token !== 'string' || !old.token) return;
+    into.put({
+      token: old.token,
+      org: typeof old.org === 'string' && old.org ? old.org : null,
+      team: null,
+      doc: null,
+      route: null,
+      extra:
+        typeof old.agreement === 'string' && old.agreement
+          ? { agreement: old.agreement }
+          : {},
+    });
+  } catch {
+    /* unreadable: nothing to move */
+  }
+}
+
+/** The app's view of a pending invite. */
+export function signInvite(
+  pending: SharedPendingInvite | null,
+): PendingInvite | null {
+  return pending
+    ? {
+        token: pending.token,
+        agreement: pending.extra.agreement ?? null,
+        org: pending.org,
+      }
+    : null;
 }
 
 /**
- * Takes `?invite=` (and `&agreement=`) off the address bar into storage,
- * before anything renders: a person opening a link is usually not signed in
- * yet, and the token has to survive the passkey sign-up.
+ * The invite a sign-up from this page joined with, kept after the store
+ * dropped it: `InvitationHandlerPopup` mounts once signed in, and opens what
+ * the link named from it (nothing is redeemed again).
  */
-export function captureInvite(
-  storage: KeyValueStorage = localStorage,
-  loc: Location = window.location,
+let joinedAtSignUp: PendingInvite | null = null;
+
+/** `onJoinedAtSignUp` for `usePasskeySession`. */
+export function noteJoinedAtSignUp(
+  joined: { invite: string; org: string | null },
+  pending: SharedPendingInvite | null,
 ): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get('invite');
-  if (!token) return;
-  const pending: PendingInvite = {
-    token,
-    agreement: url.searchParams.get('agreement'),
-    org: url.searchParams.get('org'),
-  };
-  try {
-    storage.setItem(PENDING, JSON.stringify(pending));
-  } catch {
-    return;
-  }
-  url.searchParams.delete('invite');
-  url.searchParams.delete('agreement');
-  url.searchParams.delete('org');
-  window.history.replaceState(null, '', url.toString());
+  const invite = signInvite(pending);
+  joinedAtSignUp = invite
+    ? { ...invite, org: joined.org ?? invite.org }
+    : { token: joined.invite, agreement: null, org: joined.org };
 }
 
-export function pendingInvite(
-  storage: KeyValueStorage = localStorage,
-): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === 'string' && parsed.token
-      ? {
-          token: parsed.token,
-          agreement:
-            typeof parsed.agreement === 'string' ? parsed.agreement : null,
-          org: typeof parsed.org === 'string' ? parsed.org : null,
-        }
-      : null;
-  } catch {
-    return null;
-  }
+/** The pending invite, or the one a sign-up just joined with. */
+export function pendingInvite(): PendingInvite | null {
+  return signInvite(invites.pending()) ?? joinedAtSignUp;
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
+export function dropInvite(): void {
+  invites.drop();
+  joinedAtSignUp = null;
 }
 
 /** The org an invitation redeemed into, from whichever field the node named it. */
@@ -114,17 +156,16 @@ export function joinedOrg(redeemed: Record<string, unknown>): string | null {
   return null;
 }
 
-/**
- * What to say when the node refused an invitation: it is unknown, already
- * used, expired or revoked. A 4xx can never succeed on retry, so the caller
- * drops the token; anything else (the cluster unreachable) is kept.
- */
-export const INVITE_REFUSED =
-  'This invite was already used or has expired. Ask the person who invited you for a new link.';
+/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
+export const INVITE_REFUSED = SPENT_INVITE_COPY;
 
-/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+/**
+ * True when `e` is the node refusing the invitation itself (see
+ * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
+ * limit or the cluster unreachable keeps it.
+ */
 export function inviteRefused(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+  return isSpentInvite(e);
 }
 
 /**

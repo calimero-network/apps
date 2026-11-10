@@ -1,5 +1,15 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  SPENT_INVITE_COPY,
+  createInviteStore,
+  inviteLink as sharedInviteLink,
+  isSpentInvite,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite as SharedPendingInvite,
+} from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 /**
  * Streams and rooms on the component runtime.
@@ -157,19 +167,24 @@ export function inviteToken(
 
 /**
  * The link that opens this frontend with `token` to redeem, then the stream
- * (and, for a room invitation, the room) to open after.
+ * (and, for a room invitation, the room) to open after. The stream is the
+ * link's `org`, so a member is told "you're already in" without spending it.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
   target: { stream: string; room?: string; name?: string },
-  location: Pick<Location, "origin" | "pathname"> = window.location,
+  location: Pick<Location, "href"> = window.location,
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  url.searchParams.set("stream", target.stream);
-  if (target.room) url.searchParams.set("room", target.room);
-  if (target.name) url.searchParams.set("name", target.name);
-  return url.toString();
+  const url = new URL(location.href);
+  return sharedInviteLink(token, {
+    org: target.stream,
+    extra: { room: target.room, name: target.name },
+    root: nodeBasename(url, "/"),
+    origin: url.origin,
+  });
 }
 
 export interface PendingInvite {
@@ -180,67 +195,99 @@ export interface PendingInvite {
   name: string | null;
 }
 
-const PENDING = "mero-stream:pending-invite";
+/**
+ * This app's pending invite (`@calimero-apps/connect`): the stream is its
+ * `org`, the room and name its own. Links minted before the shared store said
+ * `stream`, which is kept too, so they still open what they named.
+ */
+export const invites = createInviteStore("mero-stream", { keep: ["room", "name", "stream"] });
+
+const LEGACY_PENDING = "mero-stream:pending-invite";
 
 /**
- * Take `?invite=` (and `&stream=`, `&room=`, `&name=`) off the address bar
- * into storage before anything renders: whoever opens a link is usually not
- * signed in yet, and the token has to survive the passkey sign-up.
+ * Take `?invite=` (and the stream, room and name) off the address bar into
+ * the store before anything renders: whoever opens a link is usually not
+ * signed in yet, and the token has to survive the passkey sign-up. An invite
+ * an earlier build stored under its own key moves over first.
  */
-export function captureInvite(
-  storage: KeyValueStorage = localStorage,
-  loc: Location = window.location,
-): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const pending: PendingInvite = {
-    token,
-    stream: url.searchParams.get("stream"),
-    room: url.searchParams.get("room"),
-    name: url.searchParams.get("name"),
-  };
-  try {
-    storage.setItem(PENDING, JSON.stringify(pending));
-  } catch {
-    return;
-  }
-  for (const k of ["invite", "stream", "room", "name"]) url.searchParams.delete(k);
-  window.history.replaceState(null, "", url.toString());
+export function captureInvite(loc: Pick<Location, "href"> = window.location): void {
+  migrateLegacyInvite();
+  invites.capture(loc, { basename: nodeBasename(new URL(loc.href), "/") });
 }
 
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
+/** Moves an invite an earlier build stored under its own key into the shared store. */
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
+    const raw = storage.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING);
     const p = JSON.parse(raw) as Partial<PendingInvite>;
-    if (typeof p.token !== "string") return null;
-    const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-    return { token: p.token, stream: str(p.stream), room: str(p.room), name: str(p.name) };
+    if (typeof p.token !== "string" || !p.token) return;
+    const extra: Record<string, string> = {};
+    if (typeof p.room === "string" && p.room) extra.room = p.room;
+    if (typeof p.name === "string" && p.name) extra.name = p.name;
+    into.put({
+      token: p.token,
+      org: typeof p.stream === "string" && p.stream ? p.stream : null,
+      team: null,
+      doc: null,
+      route: null,
+      extra,
+    });
   } catch {
-    return null;
+    /* unreadable: nothing to move */
   }
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
+/** The app's view of a pending invite. */
+export function streamInvite(pending: SharedPendingInvite | null): PendingInvite | null {
+  if (!pending) return null;
+  return {
+    token: pending.token,
+    stream: pending.org ?? pending.extra.stream ?? null,
+    room: pending.extra.room ?? null,
+    name: pending.extra.name ?? null,
+  };
 }
 
 /**
- * What to say when the node refused an invitation: it is unknown, already
- * used, expired or revoked. A 4xx can never succeed on retry, so the caller
- * drops the token; anything else (the cluster unreachable) is kept.
+ * The invite a sign-up from this page joined with, kept after the store
+ * dropped it, for `InvitationPrompt` to open what the link named (nothing is
+ * redeemed again).
  */
-export const INVITE_REFUSED =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
+let joinedAtSignUp: PendingInvite | null = null;
 
-/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+/** `onJoinedAtSignUp` for `usePasskeySession`. */
+export function noteJoinedAtSignUp(
+  joined: { invite: string; org: string | null },
+  pending: SharedPendingInvite | null,
+): void {
+  const invite = streamInvite(pending);
+  joinedAtSignUp = invite
+    ? { ...invite, stream: invite.stream ?? joined.org }
+    : { token: joined.invite, stream: joined.org, room: null, name: null };
+}
+
+/** The pending invite, or the one a sign-up just joined with. */
+export function pendingInvite(): PendingInvite | null {
+  return streamInvite(invites.pending()) ?? joinedAtSignUp;
+}
+
+export function dropInvite(): void {
+  invites.drop();
+  joinedAtSignUp = null;
+}
+
+/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
+export const INVITE_REFUSED = SPENT_INVITE_COPY;
+
+/**
+ * True when `e` is the node refusing the invitation itself (see
+ * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
+ * limit or the cluster unreachable keeps it.
+ */
 export function inviteRefused(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+  return isSpentInvite(e);
 }
 
 /**

@@ -2,15 +2,15 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useCalimero } from '../calimero';
-import { describeError } from '../lib/errors';
 import {
-  SPENT_INVITE,
-  dropInvite,
+  SPENT_INVITE_COPY,
+  describeRedeemFailure,
   isSpentInvite,
-  pendingInvite,
-  pendingInviteOrg,
-  signInTitle,
-} from '../lib/inviteLink';
+  memberOf,
+} from '@calimero-apps/connect';
+import { usePendingInvite } from '@calimero-apps/passkey';
+
+import { invites, signInTitle, takeJoinedAtSignUp } from '../lib/inviteLink';
 import { destinationFor } from '../lib/redeemFlow';
 import { redeemInvite } from '../lib/vaults';
 import gate from '../styles/gate.module.css';
@@ -49,39 +49,41 @@ export default function InvitationPrompt({
     after,
   } = useCalimero();
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(() => pendingInvite());
+  const pending = usePendingInvite(invites);
+  const token = pending?.token ?? null;
   const [deferred, setDeferred] = useState(false);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  // Signed up from a page holding the invite: already joined; open the team.
   useEffect(() => {
     if (!isAuthenticated || !client) return;
-    const current = pendingInvite();
-    setToken(current);
-    const org = pendingInviteOrg();
-    if (!current || !org) return;
+    const joined = takeJoinedAtSignUp();
+    if (joined) navigate(joined.org ? `/teams/${joined.org}` : '/teams');
+  }, [isAuthenticated, client, navigate]);
+
+  useEffect(() => {
+    const org = invites.pending()?.org;
+    if (!isAuthenticated || !client || !token || !org) return;
     let live = true;
     setChecking(true);
-    client
-      .me()
-      .then((me) => {
-        const orgs = (me as { orgs?: Array<{ orgId: string }> }).orgs ?? [];
-        if (!live || !orgs.some((o) => o.orgId === org)) return;
-        dropInvite();
-        setToken(null);
+    // Unknown membership (`null`): ask, as for a link that names no team.
+    void memberOf(client, org)
+      .then((member) => {
+        if (!live || !member) return;
+        invites.drop();
         setOutcome({ kind: 'member', org });
       })
-      // Unknown membership: ask, as for a link that names no team.
-      .catch(() => {})
       .finally(() => {
         if (live) setChecking(false);
       });
     return () => {
       live = false;
+      setChecking(false);
     };
-  }, [isAuthenticated, client]);
+  }, [isAuthenticated, client, token]);
 
   const join = useCallback(async () => {
     if (!client || !token) return;
@@ -89,26 +91,23 @@ export default function InvitationPrompt({
     setError(null);
     try {
       const landed = await redeemInvite({ client, after }, token);
-      dropInvite();
-      setToken(null);
+      invites.drop();
       navigate(destinationFor(landed));
     } catch (e) {
+      // Only the node's word that the invite is done drops it: a lapsed
+      // session, a rate limit or the cluster unreachable keeps it to try again.
       if (isSpentInvite(e)) {
-        dropInvite();
-        setToken(null);
+        invites.drop();
         setOutcome({ kind: 'spent' });
       } else {
-        setError(describeError(e));
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);
     }
   }, [client, token, after, navigate]);
 
-  const dismiss = useCallback(() => {
-    dropInvite();
-    setToken(null);
-  }, []);
+  const dismiss = useCallback(() => invites.drop(), []);
 
   if (outcome) {
     const done = () => {
@@ -126,7 +125,7 @@ export default function InvitationPrompt({
           <p className={gate.hint}>
             {outcome.kind === 'member'
               ? 'The invitation was for a team you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for.'
-              : SPENT_INVITE}
+              : SPENT_INVITE_COPY}
           </p>
           <div className={gate.form}>
             <button

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import LandingPage from "./pages/landing/LandingPage";
 import DesignShell from "./components/shell/DesignShell";
@@ -13,7 +13,7 @@ import SignInModal from "./components/SignInModal";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useAuth } from "./sessionContext";
 import { nodeBasename } from "./utils/servedByNode";
-import { deferInvite, inviteDeferred, pendingInvite } from "./utils/inviteLink";
+import { deferInvite, inviteDeferred, invites, joinedAtSignUpPending } from "./utils/inviteLink";
 
 /** Where a signed-out visitor was going when the guard sent them to the front door. */
 type FromState = { from?: string } | null;
@@ -42,11 +42,16 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const from = (useLocation().state as FromState)?.from;
+  // Joined at sign-up: InvitationPrompt is opening the page the link named.
+  // Held until this page unmounts, so a later render cannot redirect first.
+  const joining = useRef(false);
+  if (joinedAtSignUpPending()) joining.current = true;
   if (isLoading) return null; // the auth probe is still in flight
   // `/teams` goes on by itself to the team and board open last (TeamIndex).
   // With an invitation waiting, the page asked for comes AFTER joining
   // (InvitationPrompt goes there): opened before, it is not yours to read yet.
-  if (isAuthenticated) return <Navigate to={(pendingInvite() ? null : from) ?? "/teams"} replace />;
+  if (isAuthenticated && joining.current) return null;
+  if (isAuthenticated) return <Navigate to={(invites.token() ? null : from) ?? "/teams"} replace />;
   return <>{children}</>;
 }
 
@@ -72,7 +77,7 @@ function Landing() {
   const navigate = useNavigate();
   const [signingIn, setSigningIn] = useState(false);
   const [deferred, setDeferred] = useState(() => inviteDeferred());
-  if (!isAuthenticated && !isLoading && !deferred && pendingInvite()) {
+  if (!isAuthenticated && !isLoading && !deferred && invites.token()) {
     return (
       <InvitationPage
         onNotNow={() => {

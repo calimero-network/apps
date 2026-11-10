@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
 import type { SessionDeps } from "./api/session";
+import { invites, migrateLegacyInvite } from "./api/teams";
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock("./pages/landing/LandingPage", () => ({
@@ -80,11 +81,13 @@ function renderApp(client: ReturnType<typeof fakeClient>, path = "/") {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  invites.drop();
 });
 
 describe("an invitation link opened while signed out", () => {
   it("shows the invitation as the page, not the landing hero", async () => {
     localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
     renderApp(fakeClient());
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
     expect(screen.getByText("You're invited")).toBeTruthy();
@@ -98,36 +101,40 @@ describe("an invitation link opened while signed out", () => {
 
   it("signing in joins straight away and opens the team", async () => {
     localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("Not now shows the landing page and keeps the token", async () => {
     localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
     renderApp(fakeClient());
     fireEvent.click(await screen.findByTestId("invitation-not-now"));
     fireEvent.click(await screen.findByText("Landing sign in"));
     expect((await screen.findByTestId("signin-desc")).textContent).toContain("You've been invited");
-    expect(localStorage.getItem(PENDING)).toBe("tok-1");
+    expect(invites.token()).toBe("tok-1");
   });
 
   it("does not spend the link of a team this account is already in", async () => {
     localStorage.setItem(PENDING, "tok-1");
     localStorage.setItem(`${PENDING}-org`, "org-1");
+    migrateLegacyInvite();
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     expect(await screen.findByText("You're already in this team")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     renderApp(client);
@@ -135,6 +142,32 @@ describe("an invitation link opened while signed out", () => {
     expect((await screen.findByTestId("invitation-message")).textContent).toBe(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(invites.token()).toBeNull();
+  });
+
+  it("creating the account joins in that step and opens the page the link named (B10)", async () => {
+    window.history.replaceState(null, "", "/?invite=tok-1&to=%2Fteams%2Forg-2");
+    invites.capture(window.location);
+    window.history.replaceState(null, "", "/");
+    const client = fakeClient();
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-2"));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(invites.token()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i (B6)", async (status, code, says) => {
+    invites.put({ token: "tok-1", org: null, team: null, doc: null, route: null, extra: {} });
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    expect((await screen.findByTestId("invitation-message")).textContent).toMatch(says);
+    expect(invites.token()).toBe("tok-1");
   });
 });

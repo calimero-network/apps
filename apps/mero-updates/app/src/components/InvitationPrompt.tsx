@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, type NavigateFunction } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { describeRedeemFailure } from "@calimero-apps/connect";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { setActiveAudience } from "../lib/active";
@@ -113,7 +113,7 @@ export default function InvitationPrompt() {
         setRefused(true);
         setError(INVITE_REFUSED);
       } else {
-        setError(describeError(e));
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);

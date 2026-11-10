@@ -28,7 +28,7 @@ export default function InviteModal({
 }: {
   open: boolean;
   code: string;
-  /** The team the invitation is for, named in the link; see `ORG_PARAM`. */
+  /** The team the invitation is for, named in the link; see `invitationUrl`. */
   org?: string;
   /** What the invitation grants — "Whole team · Home" or "Opens Bank logins". */
   scope: string;

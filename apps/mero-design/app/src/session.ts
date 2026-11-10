@@ -6,7 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
-import { dropInvite, pendingInvite } from "./utils/inviteLink";
+import { invites, noteJoinedAtSignUp } from "./utils/inviteLink";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -26,16 +26,16 @@ export const LISTING: ListingProps = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app, with the
- * pending invite token: on an invite-only cluster it lets a new person sign up.
+ * pending invite: on an invite-only cluster it lets a new person sign up, and
+ * the hook drops it on sign-out, on a refusal and once a sign-up joined with it.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP, deps, {
     package: APP_PACKAGE,
-    invite: () => pendingInvite()?.token ?? null,
+    invites,
     // A sign-up from a page holding the invite joined its org in that step:
     // nothing is left to redeem (a second redeem would spend another use).
-    onJoinedAtSignUp: () => {
-      dropInvite();
-    },
+    // The invitation prompt opens the route the link was opened on.
+    onJoinedAtSignUp: noteJoinedAtSignUp,
   });
 }

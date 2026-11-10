@@ -172,7 +172,7 @@ export default function TeamsPage() {
       // there is to share: opening it (and signing in) joins the team.
       const token = await inviteToken(client, teamId, passkey());
       // The link names the team, so someone already in it is not joined again.
-      setInviteFor({ id: teamId, link: inviteLink(token, { origin: window.location.origin, pathname: appRoot() }, teamId) });
+      setInviteFor({ id: teamId, link: inviteLink(token, { href: new URL(appRoot(), window.location.origin).href }, teamId) });
     } catch (err) {
       showToast(`Failed to generate invitation: ${messageOf(err)}`);
     } finally {

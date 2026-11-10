@@ -11,6 +11,7 @@ import {
   pendingInviteOrg,
   pendingInviteRoute,
   readOrg,
+  takeJoinedAtSignUp,
 } from "../../../api/teams";
 import { useToast } from "../../../contexts/ToastContext";
 import styles from "../modals/username-modal/username-modal.module.scss";
@@ -43,6 +44,13 @@ export default function InvitationPrompt() {
   const tried = useRef<string | null>(null);
   const signedIn = api.session.status === "signed-in" ? api.session : null;
 
+  // Signed up from a page holding the invite: already joined; open what it named.
+  useEffect(() => {
+    if (!signedIn) return;
+    const to = takeJoinedAtSignUp();
+    if (to) navigate(to, { replace: true });
+  }, [signedIn, navigate]);
+
   useEffect(() => {
     if (!signedIn) return;
     const token = pendingInvite();
@@ -70,7 +78,8 @@ export default function InvitationPrompt() {
         navigate(route ?? (org ? `/teams/${org}` : "/teams"));
       } catch (err) {
         // A refusal (unknown, used, expired, revoked) can never succeed: drop
-        // it. Anything else (the cluster unreachable) is kept for a reload.
+        // it. Anything else (a lapsed session, a rate limit, the cluster
+        // unreachable) is kept for a reload.
         if (inviteRefused(err)) dropInvite();
         setOutcome({ kind: "failed", message: inviteFailure(err) });
       }

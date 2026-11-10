@@ -5,6 +5,19 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import App from "./App";
 import { APP } from "./session";
+import { invites } from "./lib/spaces";
+
+/** Hold an invite as a captured link would. */
+function hold(link: { token: string; forum?: string | null; org?: string; route?: string }) {
+  invites.put({
+    token: link.token,
+    org: link.org ?? null,
+    team: null,
+    doc: null,
+    route: link.route ?? null,
+    extra: link.forum ? { forum: link.forum } : {},
+  });
+}
 import type { SessionDeps } from "./session";
 
 // The landing page is generated and tested on its own; here it is the door.
@@ -157,17 +170,17 @@ describe("App", () => {
 
   it("asks before redeeming an invitation, then lands in the forum the link names", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: "forum-1" }));
+    hold({ token: "tok-1", forum: "forum-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     await screen.findByText("Namespaces vs contexts");
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("shows an invitation page, not the landing page, to a signed-out visitor with an invite", async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: null }));
+    hold({ token: "tok-1", forum: null });
     render(<App deps={deps(fakeClient())} />);
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
     expect(screen.getByText(/You've been invited to join the space in Mero Forum/)).toBeTruthy();
@@ -177,7 +190,7 @@ describe("App", () => {
   });
 
   it("asks to join right after signing in from the invitation page, then lands in the forum", async () => {
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: "forum-1" }));
+    hold({ token: "tok-1", forum: "forum-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
@@ -190,29 +203,55 @@ describe("App", () => {
   });
 
   it('"Not now" on the invitation page shows the landing page and keeps the invitation', async () => {
-    const pending = JSON.stringify({ token: "tok-1", forum: null });
-    localStorage.setItem(`${APP}:pending-invite`, pending);
+    hold({ token: "tok-1", forum: null });
     render(<App deps={deps(fakeClient())} />);
     fireEvent.click(await screen.findByTestId("invitation-later"));
     expect(await screen.findByText("Connect")).toBeTruthy();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe(pending);
+    expect(invites.token()).toBe("tok-1");
+  });
+
+  it("an invited newcomer who creates the account on the invitation page lands in the forum the link names (B10)", async () => {
+    window.history.replaceState(null, "", "/?invite=tok-1&forum=forum-1&org=org-1");
+    invites.capture(window.location);
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+    await screen.findByText("Namespaces vs contexts");
+    expect(window.location.pathname).toBe("/f");
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(invites.token()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+    remember();
+    hold({ token: "tok-1", forum: null });
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    expect(invites.token()).toBe("tok-1");
   });
 
   it("tells a member of the invited space they are already in it, without spending the invite", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-own", forum: null, org: "org-1" }));
+    hold({ token: "tok-own", forum: null, org: "org-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect(await screen.findByText("You're already in this space")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
     fireEvent.click(screen.getByTestId("invitation-continue"));
     await waitFor(() => expect(window.location.pathname).toBe("/spaces/org-1"));
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     remember();
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-spent", forum: null }));
+    hold({ token: "tok-spent", forum: null });
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     render(<App deps={deps(client)} />);
@@ -220,7 +259,7 @@ describe("App", () => {
     expect(
       await screen.findByText("This invite was already used or has expired. Ask the person who invited you for a new link."),
     ).toBeTruthy();
-    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("creates a post through the log, and votes with camelCase arguments", async () => {

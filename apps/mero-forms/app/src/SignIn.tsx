@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { describeError } from "@calimero-apps/connect";
-import { SignInPanel as SharedSignInPanel } from "@calimero-apps/passkey";
+import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from "@calimero-apps/connect";
+import { SignInPanel as SharedSignInPanel, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import {
-  SPENT_INVITE,
-  dropInvite,
-  isSpentInvite,
-  joinedOrg,
-  listOrgs,
-  pendingInvite,
-  type PendingInvite,
-} from "./lib/orgs";
+import type { PendingInvite } from "@calimero-apps/connect";
+import { inviteWorkspace, invites } from "./lib/orgs";
 import { setActive } from "./lib/workspaceStore";
-import { LISTING } from "./session";
+import { LISTING, takeJoinedAtSignUp } from "./session";
 import { useMaybeSignedIn, useSessionApi } from "./sessionContext";
 
 /** Opens and closes a `<dialog>` as `open` says. */
@@ -45,7 +38,7 @@ function SignInPanel({ titleId }: { titleId: string }) {
       api={api}
       appName="Mero Forms"
       joining="the workspace"
-      invited={pendingInvite() !== null}
+      invited={invites.token() !== null}
       listing={LISTING}
       titleId={titleId}
       classNames={{ text: "empty", error: "err" }}
@@ -104,7 +97,7 @@ type Outcome = { kind: "member"; invite: PendingInvite } | { kind: "spent" };
 export function InvitationHost({ onJoined, children }: { onJoined: () => void; children: ReactNode }) {
   const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
-  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const invite = usePendingInvite(invites);
   const [deferred, setDeferred] = useState(false);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -112,46 +105,44 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const client = signedIn?.client ?? null;
+  // Signed up from a page holding the invite: already joined, and the
+  // session opened the workspace the link named.
   useEffect(() => {
-    if (!client) return;
-    const current = pendingInvite();
-    if (current && api.joinedInvite === current.token) {
-      // Signed up from the invitation page with this invite: already joined.
-      dropInvite();
-      setInvite(null);
-      if (current.workspace) setActive({ appId: current.workspace, org: current.org });
-      onJoined();
-      return;
-    }
-    setInvite(current);
+    const joined = client ? takeJoinedAtSignUp() : null;
+    if (!joined) return;
+    if (joined.workspace) setActive(joined.workspace);
+    onJoined();
+  }, [client, onJoined]);
+
+  const token = invite?.token ?? null;
+  useEffect(() => {
+    const current = invites.pending();
     const org = current?.org;
-    if (!current || !org) return;
+    if (!client || !current || !org) return;
     let live = true;
     setChecking(true);
-    listOrgs(client)
-      .then((orgs) => {
-        if (!live || !orgs.some((o) => o.orgId === org)) return;
-        dropInvite();
-        setInvite(null);
+    // Unknown membership (`null`): ask, as for a link that names no org.
+    void memberOf(client, org)
+      .then((member) => {
+        if (!live || !member) return;
+        invites.drop();
         setOutcome({ kind: "member", invite: current });
       })
-      // Unknown membership: ask, as for a link that names no org.
-      .catch(() => {})
       .finally(() => {
         if (live) setChecking(false);
       });
     return () => {
       live = false;
+      setChecking(false);
     };
-    // `api.joinedInvite` is set before the session signs in, so it is current here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+  }, [client, token]);
 
   if (outcome) {
     const member = outcome.kind === "member";
     const done = () => {
-      if (outcome.kind === "member" && outcome.invite.workspace) {
-        setActive({ appId: outcome.invite.workspace, org: outcome.invite.org });
+      const workspace = outcome.kind === "member" ? inviteWorkspace(outcome.invite) : null;
+      if (outcome.kind === "member" && workspace) {
+        setActive({ appId: workspace, org: outcome.invite.org });
         onJoined();
       }
       setOutcome(null);
@@ -163,7 +154,7 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
           <p className="empty">
             {member
               ? "The invitation was for a workspace you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for."
-              : SPENT_INVITE}
+              : SPENT_INVITE_COPY}
           </p>
           <button type="button" onClick={done} data-testid="invitation-continue">
             {member ? "Open the workspace" : "Continue"}
@@ -197,8 +188,7 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
   }
 
   const dismiss = () => {
-    dropInvite();
-    setInvite(null);
+    invites.drop();
     setError(null);
   };
 
@@ -206,19 +196,19 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
-      dropInvite();
-      setInvite(null);
-      if (invite.workspace) setActive({ appId: invite.workspace, org });
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token)) ?? invite.org;
+      invites.drop();
+      const workspace = inviteWorkspace(invite);
+      if (workspace) setActive({ appId: workspace, org });
       onJoined();
     } catch (e) {
+      // Only the node's word that the invite is done drops it: a lapsed
+      // session, a rate limit or the cluster unreachable keeps it to try again.
       if (isSpentInvite(e)) {
-        dropInvite();
-        setInvite(null);
+        invites.drop();
         setOutcome({ kind: "spent" });
       } else {
-        // The cluster unreachable: the token is kept for another try.
-        setError(`The invitation could not be accepted: ${describeError(e)}`);
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);

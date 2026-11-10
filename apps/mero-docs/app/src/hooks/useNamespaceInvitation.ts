@@ -10,10 +10,16 @@
 // sign-in, once the person says yes (InvitationPrompt).
 
 import { useCallback } from 'react';
-import { CalimeroError } from '@calimero-network/mero-js';
-import { describeError } from '@calimero-apps/connect';
+import {
+  createInviteStore,
+  describeRedeemFailure,
+  inviteLink,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite as SharedPendingInvite,
+} from '@calimero-apps/connect';
 import { useMero } from '@/calimero/react';
-import { nodeUrl } from '@/lib/servedByNode';
+import { nodeBasename, nodeUrl } from '@/lib/servedByNode';
 
 export type InviteKind = 'namespace' | 'group';
 
@@ -38,86 +44,127 @@ export interface PendingInvite {
   targetName?: string;
 }
 
-const PENDING_KEY = 'mero-docs:pending-invite';
+const LEGACY_PENDING_KEY = 'mero-docs:pending-invite';
 /** "Not now" on the invitation page, for the rest of this tab. */
 const DEFERRED_KEY = 'mero-docs:invite-deferred';
 
-/** The link that opens this frontend with `token` to redeem. */
+/**
+ * This app's pending invite (`@calimero-apps/connect`). A link names the
+ * workspace (`org`) and, for a folder invite, the folder (`team`); `kind` and
+ * `name` are the app's own. Links minted before the shared store said `ws` and
+ * `folder`, which are kept too, so those still open what they named.
+ */
+export const invites = createInviteStore('mero-docs', { keep: ['kind', 'name', 'ws', 'folder'] });
+
+/**
+ * The link that opens this frontend with `token` to redeem. It stays under
+ * the served `/{version}/` root until every cluster's served-host redirect
+ * keeps the query string (core's served-redirect fix).
+ */
 export function buildInviteUrl(
   kind: InviteKind,
   token: string,
   ids: { workspace: string; folder?: string },
   name?: string,
 ): string {
-  const url = new URL(nodeUrl('/'));
-  url.searchParams.set('invite', token);
-  url.searchParams.set('kind', kind);
-  url.searchParams.set('ws', ids.workspace);
-  if (ids.folder) url.searchParams.set('folder', ids.folder);
-  if (name) url.searchParams.set('name', name);
-  return url.toString();
+  const root = new URL(nodeUrl('/'));
+  return inviteLink(token, {
+    org: ids.workspace,
+    team: ids.folder,
+    extra: { kind, name },
+    origin: root.origin,
+    root: root.pathname,
+  });
 }
 
-/** The invitation in `params`, or null when there is none. */
-export function parseInviteUrl(params: URLSearchParams): PendingInvite | null {
-  const token = params.get('invite');
-  if (!token || !token.trim()) return null;
-  const kind: InviteKind = params.get('kind') === 'group' ? 'group' : 'namespace';
-  const workspaceId = params.get('ws');
-  const folder = params.get('folder');
+/** The app's view of a pending invite: what kind, into which workspace and folder. */
+export function docsInvite(pending: SharedPendingInvite | null): PendingInvite | null {
+  if (!pending) return null;
+  const kind: InviteKind = pending.extra.kind === 'group' ? 'group' : 'namespace';
+  const workspaceId = pending.org ?? pending.extra.ws ?? null;
+  const folder = pending.team ?? pending.extra.folder ?? null;
   return {
-    token: token.trim(),
+    token: pending.token,
     kind,
     targetId: kind === 'group' ? folder : workspaceId,
     workspaceId,
-    targetName: params.get('name') ?? undefined,
+    targetName: pending.extra.name,
   };
 }
 
 /**
- * Takes an invitation off the address bar into storage before anything
+ * Takes an invitation off the address bar into the store before anything
  * renders: a person opening a link is usually not signed in yet, and the
- * token has to survive the passkey sign-in.
+ * token has to survive the passkey sign-in. A new link undoes "Not now".
  */
-export function captureInvite(storage: Storage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const invite = parseInviteUrl(url.searchParams);
-  if (!invite) return;
-  try {
-    storage.setItem(PENDING_KEY, JSON.stringify(invite));
-  } catch {
-    return;
-  }
-  dropDeferral();
-  for (const key of ['invite', 'kind', 'ws', 'folder', 'name']) url.searchParams.delete(key);
-  window.history.replaceState(window.history.state, '', url.toString());
+export function captureInvite(loc: Pick<Location, 'href'> = window.location): void {
+  migrateLegacyInvite();
+  if (invites.capture(loc, { basename: nodeBasename() })) dropDeferral();
 }
 
-export function pendingInvite(storage: Storage = localStorage): PendingInvite | null {
+/**
+ * Moves an invite an earlier build stored under its own key into the shared
+ * store, so a link opened before the upgrade still joins after it.
+ */
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    const raw = storage.getItem(PENDING_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    if (typeof parsed.token !== 'string' || !parsed.token) return null;
-    return {
-      token: parsed.token,
-      kind: parsed.kind === 'group' ? 'group' : 'namespace',
-      targetId: typeof parsed.targetId === 'string' ? parsed.targetId : null,
-      workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : null,
-      targetName: typeof parsed.targetName === 'string' ? parsed.targetName : undefined,
-    };
+    const raw = storage.getItem(LEGACY_PENDING_KEY);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING_KEY);
+    const old = JSON.parse(raw) as Partial<PendingInvite>;
+    if (typeof old.token !== 'string' || !old.token) return;
+    const kind: InviteKind = old.kind === 'group' ? 'group' : 'namespace';
+    const extra: Record<string, string> = { kind };
+    if (typeof old.targetName === 'string' && old.targetName) extra.name = old.targetName;
+    into.put({
+      token: old.token,
+      org: typeof old.workspaceId === 'string' ? old.workspaceId : null,
+      team: kind === 'group' && typeof old.targetId === 'string' ? old.targetId : null,
+      doc: null,
+      route: null,
+      extra,
+    });
   } catch {
-    return null;
+    /* unreadable: nothing to move */
   }
 }
 
-export function dropInvite(storage: Storage = localStorage): void {
-  try {
-    storage.removeItem(PENDING_KEY);
-  } catch {
-    /* nothing stored */
-  }
+export function pendingInvite(): PendingInvite | null {
+  return docsInvite(invites.pending());
+}
+
+export function dropInvite(): void {
+  invites.drop();
   dropDeferral();
+}
+
+/**
+ * Set when a sign-up joined with the page's invite, before the session is
+ * signed in: the workspace it joined and, for a folder invite, the folder.
+ * InvitationPrompt (inside the router, which the session is not) takes it
+ * once signed in and opens that; the front door waits for it.
+ */
+let joinedAtSignUp: { workspace: string | null; folder: string | null } | null = null;
+
+/** `onJoinedAtSignUp` for `usePasskeySession`: remember what the link pointed at. */
+export function noteJoinedAtSignUp({ org }: { org: string | null }, pending: SharedPendingInvite | null): void {
+  const invite = docsInvite(pending);
+  joinedAtSignUp = {
+    workspace: org ?? invite?.workspaceId ?? null,
+    folder: invite?.kind === 'group' ? invite.targetId : null,
+  };
+}
+
+/** Whether a sign-up just joined with the invite and what it named is still to open. */
+export function joinedAtSignUpPending(): boolean {
+  return joinedAtSignUp !== null;
+}
+
+/** What a sign-up that just joined with the invite should open, once; `null` when none did. */
+export function takeJoinedAtSignUp(): { workspace: string | null; folder: string | null } | null {
+  const joined = joinedAtSignUp;
+  joinedAtSignUp = null;
+  return joined;
 }
 
 /**
@@ -152,20 +199,12 @@ function dropDeferral(storage: Pick<Storage, 'removeItem'> = sessionStorage): vo
 export const inviteScope = (invite: Pick<PendingInvite, 'kind'>): 'workspace' | 'folder' =>
   invite.kind === 'namespace' ? 'workspace' : 'folder';
 
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE =
-  'This invite was already used or has expired. Ask the person who invited you for a new link.';
-
 /**
- * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer: a 4xx other than 401/429, or a
- * message that says so.
+ * What a failed redemption says: a spent invite plainly, anything else (a
+ * lapsed session, a rate limit, the cluster unreachable) as worth another try.
  */
-export function inviteRefused(cause: unknown): boolean {
-  if (cause instanceof CalimeroError) {
-    return cause.status >= 400 && cause.status < 500 && cause.status !== 401 && cause.status !== 429;
-  }
-  return /unknown invite|used|spent|redeemed|expired|revoked/i.test(describeError(cause));
+export function inviteFailure(cause: unknown): string {
+  return describeRedeemFailure(cause);
 }
 
 /** A workspace invitation link (an org invite, as a member). */

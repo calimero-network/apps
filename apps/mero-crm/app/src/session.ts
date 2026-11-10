@@ -7,7 +7,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
-import { dropInvite, pendingInvite } from "./workspaces";
+import { inviteRoute, invites } from "./workspaces";
 import { announceJoined } from "./hooks/workspacePersistence";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
@@ -27,18 +27,35 @@ export const LISTING: ListingProps = {
 };
 
 /**
+ * Where a sign-up that joined with the invite goes next: the route its link
+ * named. Set before the session is signed in; `InvitationHost` (inside the
+ * router, which this hook is not) takes it once it is.
+ */
+let joinedLanding: string | null = null;
+
+/** The route a sign-up that joined with the invite should open, once; `null` for none. */
+export function takeJoinedLanding(): string | null {
+  const route = joinedLanding;
+  joinedLanding = null;
+  return route;
+}
+
+/**
  * The shared passkey session (`@calimero-apps/passkey`) for this app, with the
- * pending invite token: on an invite-only cluster it lets a new person sign up.
+ * pending invite: on an invite-only cluster it lets a new person sign up, and
+ * the hook drops it on sign-out, on a refusal and once a sign-up joined with it.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP, deps, {
     package: APP_PACKAGE,
-    invite: () => pendingInvite(),
+    invites,
     // A sign-up from a page holding the invite joined its org in that step:
     // nothing is left to redeem (a second redeem would spend another use).
-    onJoinedAtSignUp: ({ org }) => {
-      dropInvite();
-      if (org) announceJoined(org);
+    // Open the workspace, on the page the link pointed at.
+    onJoinedAtSignUp: ({ org }, pending) => {
+      const joined = org ?? pending?.org ?? null;
+      if (joined) announceJoined(joined);
+      joinedLanding = inviteRoute(pending);
     },
   });
 }

@@ -20,7 +20,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { APP_DISPLAY_NAME } from '../config';
-import { describeError } from '../utils/errors';
+import { describeRedeemFailure } from '@calimero-apps/connect';
 import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import {
   INVITE_REFUSED,
@@ -106,13 +106,14 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
       onJoined({ namespaceId: org, contextId: invite.sheet });
     } catch (e) {
       // A refusal (unknown, used, expired, revoked) can never succeed: drop it.
-      // Anything else (the cluster unreachable) is kept for another try.
+      // Anything else (a lapsed session, a rate limit, the cluster
+      // unreachable) is kept for another try.
       if (inviteRefused(e)) {
         dropInvite();
         setRefused(true);
         setError(INVITE_REFUSED);
       } else {
-        setError(`The invitation could not be accepted: ${describeError(e)}`);
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);

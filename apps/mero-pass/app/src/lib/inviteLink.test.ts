@@ -1,15 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  captureInvite,
-  dropInvite,
   invitationFromRaw,
   invitationUrl,
-  isSpentInvite,
-  pendingInvite,
-  pendingInviteOrg,
+  invites,
+  migrateLegacyInvite,
 } from './inviteLink';
-import { CalimeroError } from '@calimero-network/mero-js';
 
 function memory() {
   const m = new Map<string, string>();
@@ -19,6 +15,11 @@ function memory() {
     removeItem: (k: string) => void m.delete(k),
   };
 }
+
+beforeEach(() => {
+  localStorage.clear();
+  invites.drop();
+});
 
 describe('invitation links', () => {
   it('carries the token in ?invite=, at the app root', () => {
@@ -47,12 +48,11 @@ describe('invitation links', () => {
 
   it('keeps a captured token until it is dropped, and clears the address bar', () => {
     window.history.replaceState(null, '', '/teams?invite=tok&x=1');
-    const storage = memory();
-    captureInvite(storage, window.location);
-    expect(pendingInvite(storage)).toBe('tok');
+    invites.capture(window.location);
+    expect(invites.token()).toBe('tok');
     expect(window.location.search).toBe('?x=1');
-    dropInvite(storage);
-    expect(pendingInvite(storage)).toBeNull();
+    invites.drop();
+    expect(invites.token()).toBeNull();
   });
 
   it('names the team in ?org= and keeps it with the token until dropped', () => {
@@ -64,24 +64,20 @@ describe('invitation links', () => {
       ),
     ).toBe('https://pass.example/?invite=tok&org=org1');
     window.history.replaceState(null, '', '/?invite=tok&org=org1');
-    const storage = memory();
-    captureInvite(storage, window.location);
-    expect(pendingInviteOrg(storage)).toBe('org1');
+    invites.capture(window.location);
+    expect(invites.pending()?.org).toBe('org1');
     expect(window.location.search).toBe('');
-    dropInvite(storage);
-    expect(pendingInviteOrg(storage)).toBeNull();
+    invites.drop();
+    expect(invites.pending()).toBeNull();
   });
 
-  it('counts a 4xx redemption as a spent invite, and a 5xx or 401 as retryable', () => {
-    expect(
-      isSpentInvite(new CalimeroError(404, 'NOT_FOUND', 'unknown invite')),
-    ).toBe(true);
-    expect(isSpentInvite(new CalimeroError(401, 'UNAUTHENTICATED', 'x'))).toBe(
-      false,
-    );
-    expect(isSpentInvite(new CalimeroError(503, 'UNAVAILABLE', 'x'))).toBe(
-      false,
-    );
-    expect(isSpentInvite(new Error('offline'))).toBe(false);
+  it('moves an invite an earlier build stored under its own keys into the shared store', () => {
+    const storage = memory();
+    storage.setItem('mero-pass:pending-invite', 'old');
+    storage.setItem('mero-pass:pending-invite-org', 'org1');
+    migrateLegacyInvite(storage);
+    expect(invites.token()).toBe('old');
+    expect(invites.pending()?.org).toBe('org1');
+    expect(storage.getItem('mero-pass:pending-invite')).toBeNull();
   });
 });

@@ -6,7 +6,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
-import { inviteLink } from "./lib/streams";
+import { dropInvite, inviteLink, migrateLegacyInvite, pendingInvite } from "./lib/streams";
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem("mero-stream:pending-invite", legacy);
+  migrateLegacyInvite();
+}
 import { APP, type SessionDeps } from "./session";
 
 class Memory implements KeyValueStorage {
@@ -44,6 +50,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  dropInvite();
 });
 
 const SESSION: CalimeroSession = {
@@ -187,14 +194,11 @@ describe("App", () => {
     const link = await screen.findByTestId("invite-link");
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
     expect(link.textContent).toContain("invite=tok-123");
-    expect(link.textContent).toContain("stream=org-1");
+    expect(link.textContent).toContain("org=org-1");
   });
 
   it("signed out with a pending invite, shows the invitation page instead of the landing page", async () => {
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(fakeClient(), "/streams/org-1");
     await screen.findByText("You're invited");
     expect(screen.getByTestId("signup-passkey")).toBeTruthy();
@@ -203,43 +207,48 @@ describe("App", () => {
   });
 
   it("\"Not now\" on the invitation page shows the landing page and keeps the token", async () => {
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(fakeClient(), "/");
     fireEvent.click(await screen.findByTestId("invitation-not-now"));
     await waitFor(() => expect(document.querySelector(".cal-lp-root")).not.toBeNull());
-    expect(localStorage.getItem("mero-stream:pending-invite")).not.toBeNull();
+    expect(pendingInvite()).not.toBeNull();
   });
 
   it("does not redeem an invite into a stream the account is already in", async () => {
     const client = fakeClient();
     client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(client, "/streams", true);
     await screen.findByTestId("invitation-member");
     expect(screen.getByText("You're already in this stream")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(client, "/streams", true);
     fireEvent.click(await screen.findByTestId("invitation-join"));
     expect((await screen.findByTestId("invitation-error")).textContent).toBe(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
+    renderApp(client, "/streams", true);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    expect(pendingInvite()?.token).toBe("tok-9");
+    expect(screen.getByTestId("invitation-join")).toBeTruthy();
   });
 
   it("redeems an opened room invitation after sign-in and opens that room", async () => {
@@ -250,10 +259,7 @@ describe("App", () => {
       client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
       return {};
     });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/");
 
     await screen.findByText("You're invited");
@@ -263,7 +269,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.anything()),
     );
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("an invited newcomer creates the account and joins in one click, and lands in the room", async () => {
@@ -276,10 +282,7 @@ describe("App", () => {
       }
       return SESSION;
     });
-    localStorage.setItem(
-      "mero-stream:pending-invite",
-      JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
-    );
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/");
 
     const create = await screen.findByTestId("signup-passkey");
@@ -292,12 +295,12 @@ describe("App", () => {
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId("invitation-prompt")).toBeNull();
-    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("builds invitation links on this frontend's own origin", () => {
     expect(
-      inviteLink("t", { stream: "o" }, { origin: "https://x.apps.calimero.network", pathname: "/" }),
-    ).toBe("https://x.apps.calimero.network/?invite=t&stream=o");
+      inviteLink("t", { stream: "o" }, { href: "https://x.apps.calimero.network/streams" }),
+    ).toBe("https://x.apps.calimero.network/?invite=t&org=o");
   });
 });

@@ -1,5 +1,15 @@
-import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, type AppSource, type KeyValueStorage } from "@calimero-apps/connect";
+import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  SPENT_INVITE_COPY,
+  createInviteStore,
+  describeRedeemFailure,
+  inviteLink as sharedInviteLink,
+  isSpentInvite,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP } from "./session";
@@ -150,29 +160,6 @@ export function inviteToken(
   return client.invite(org, "member", passkey);
 }
 
-/**
- * The link that opens this frontend with `token` to redeem.
- *
- * `org` names the team the token joins. The token itself does not say, and
- * without it the app cannot tell an invitation into a team the visitor is
- * already in: redeeming that spends the link's single use on nobody.
- */
-export function inviteLink(
-  token: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-  org?: string | null,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
-}
-
-const PENDING = `${APP}:pending-invite`;
-const PENDING_ORG = `${APP}:pending-invite-org`;
-const PENDING_ROUTE = `${APP}:pending-invite-route`;
-const DEFERRED = `${APP}:invite-deferred`;
-
 /** The landing page's own paths: a link to one of them names no destination. */
 const FRONT_DOOR = new Set(["/", "/docs", "/preview", "/login"]);
 
@@ -185,69 +172,117 @@ export function routeOf(pathname: string, base: string = nodeBasename(new URL(wi
 }
 
 /**
- * Takes `?invite=` off the address bar into storage, before anything renders: a
- * person opening a link is usually not signed in yet, and the token must
- * survive the sign-up. Redeemed (and dropped) once a session exists.
+ * The link that opens this frontend with `token` to redeem, and the page it
+ * was made on (a team, a calendar), which joining opens.
+ *
+ * `org` names the team the token joins. The token itself does not say, and
+ * without it the app cannot tell an invitation into a team the visitor is
+ * already in: redeeming that spends the link's single use on nobody.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const org = url.searchParams.get("org");
-  url.searchParams.delete("invite");
-  url.searchParams.delete("org");
-  const query = url.searchParams.toString();
-  const route = routeOf(url.pathname);
-  try {
-    storage.setItem(PENDING, token);
-    if (org) storage.setItem(PENDING_ORG, org);
-    else storage.removeItem(PENDING_ORG);
-    // A deep link (a team, a calendar) is where joining goes afterwards.
-    if (route) storage.setItem(PENDING_ROUTE, `${route}${query ? `?${query}` : ""}`);
-    else storage.removeItem(PENDING_ROUTE);
-  } catch {
-    return;
-  }
-  dropDeferral();
-  window.history.replaceState(null, "", url.toString());
+export function inviteLink(
+  token: string,
+  location: Pick<Location, "href"> = window.location,
+  org?: string | null,
+): string {
+  const url = new URL(location.href);
+  const root = nodeBasename(url, "/");
+  return sharedInviteLink(token, { org, route: routeOf(url.pathname, root), root, origin: url.origin });
 }
 
-export function pendingInvite(storage: KeyValueStorage = localStorage): string | null {
+/** This app's pending invite (`@calimero-apps/connect`), captured in `index.tsx` before React mounts. */
+export const invites = createInviteStore(APP);
+
+const LEGACY_PENDING = `${APP}:pending-invite`;
+const LEGACY_ORG = `${APP}:pending-invite-org`;
+const LEGACY_ROUTE = `${APP}:pending-invite-route`;
+const DEFERRED = `${APP}:invite-deferred`;
+
+/**
+ * Takes `?invite=` (and the team and route it names) off the address bar into
+ * the store, before anything renders: a person opening a link is usually not
+ * signed in yet, and the token must survive the sign-up. An invite an earlier
+ * build stored under its own keys moves over first; a new link undoes "Not now".
+ */
+export function captureInvite(loc: Pick<Location, "href"> = window.location): void {
+  migrateLegacyInvite();
+  if (invites.capture(loc, { basename: nodeBasename(new URL(loc.href), "/") })) dropDeferral();
+}
+
+/** Moves an invite an earlier build stored under its own keys into the shared store. */
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    return storage.getItem(PENDING);
+    const token = storage.getItem(LEGACY_PENDING);
+    if (token) {
+      const route = storage.getItem(LEGACY_ROUTE);
+      into.put({
+        token,
+        org: storage.getItem(LEGACY_ORG) || null,
+        team: null,
+        doc: null,
+        // The old record kept the route's own query; the store keeps the path.
+        route: route ? route.split("?")[0] : null,
+        extra: {},
+      });
+    }
+    for (const key of [LEGACY_PENDING, LEGACY_ORG, LEGACY_ROUTE]) storage.removeItem(key);
   } catch {
-    return null;
+    /* storage unavailable: nothing was stored */
   }
+}
+
+/** The pending invite's token, when there is one. */
+export function pendingInvite(): string | null {
+  return invites.token();
 }
 
 /** The team a pending invitation's link named (`&org=`), when it named one. */
-export function pendingInviteOrg(storage: KeyValueStorage = localStorage): string | null {
-  try {
-    return storage.getItem(PENDING_ORG) || null;
-  } catch {
-    return null;
-  }
+export function pendingInviteOrg(): string | null {
+  return invites.pending()?.org ?? null;
 }
 
 /** The route a pending invitation's link was opened on, when it was not the front door. */
-export function pendingInviteRoute(storage: KeyValueStorage = localStorage): string | null {
-  try {
-    const route = storage.getItem(PENDING_ROUTE);
-    return route && route.startsWith("/") ? route : null;
-  } catch {
-    return null;
-  }
+export function inviteRoute(invite: Pick<PendingInvite, "route"> | null): string | null {
+  const route = invite?.route ?? null;
+  return route && routeOf(route, "/") ? route : null;
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-    storage.removeItem(PENDING_ORG);
-    storage.removeItem(PENDING_ROUTE);
-  } catch {
-    /* nothing stored */
-  }
+/** The route the pending invitation's link was opened on, when it was not the front door. */
+export function pendingInviteRoute(): string | null {
+  return inviteRoute(invites.pending());
+}
+
+export function dropInvite(): void {
+  invites.drop();
   dropDeferral();
+}
+
+/**
+ * Set when a sign-up joined with the page's invite, before the session is
+ * signed in: where its link pointed. `InvitationPrompt` (inside the router,
+ * which the session is not) takes it once signed in and opens it; until then
+ * the front door does not redirect on its own.
+ */
+let joinedAtSignUp: { org: string | null; route: string | null } | null = null;
+
+/** `onJoinedAtSignUp` for `usePasskeySession`: remember what to open. */
+export function noteJoinedAtSignUp({ org }: { org: string | null }, pending: PendingInvite | null): void {
+  joinedAtSignUp = { org: org ?? pending?.org ?? null, route: inviteRoute(pending) };
+}
+
+/** Whether a sign-up just joined with the invite and what it named is still to open. */
+export function joinedAtSignUpPending(): boolean {
+  return joinedAtSignUp !== null;
+}
+
+/** Where a sign-up that just joined with the invite goes, once; `null` when none did. */
+export function takeJoinedAtSignUp(): string | null {
+  const joined = joinedAtSignUp;
+  joinedAtSignUp = null;
+  if (!joined) return null;
+  return joined.route ?? (joined.org ? `/teams/${joined.org}` : "/teams");
 }
 
 /**
@@ -279,21 +314,20 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
 }
 
 /** What to say when a token is refused for good. */
-export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
+export const SPENT_INVITE = SPENT_INVITE_COPY;
 
 /**
  * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer.
+ * revoked) rather than failing to answer: a lapsed session (401), a rate
+ * limit (429) or the cluster unreachable keeps it.
  */
 export function inviteRefused(e: unknown): boolean {
-  // 401 (the session lapsed) and 429 (slow down) say nothing about the token.
-  if (e instanceof CalimeroError) return e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429;
-  return /unknown invite|already used|expired|revoked|not found/i.test(describeError(e));
+  return isSpentInvite(e);
 }
 
 /** The plain sentence for a failed redemption. */
 export function inviteFailure(e: unknown): string {
-  return inviteRefused(e) ? SPENT_INVITE : `Could not join the team: ${describeError(e)}`;
+  return describeRedeemFailure(e);
 }
 
 /** The org an invitation redeemed into, from whichever field the node named it. */

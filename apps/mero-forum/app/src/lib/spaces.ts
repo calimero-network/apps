@@ -1,5 +1,12 @@
-import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
+import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  createInviteStore,
+  inviteLink as sharedInviteLink,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP_NAME } from "../config";
@@ -212,110 +219,49 @@ export function inviteToken(
 /**
  * The link that opens this frontend with `token` to redeem; with `forum`, the
  * joiner lands in that forum instead of on the space's forum list.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
   forum?: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
+  location: Pick<Location, "href"> = window.location,
   org?: string,
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  if (forum) url.searchParams.set("forum", forum);
+  const url = new URL(location.href);
   // The token does not say which space it is for until it is redeemed, and
   // redeeming spends it: the link names the space so the app can tell an
   // existing member "you are already in" without spending a use.
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
+  return sharedInviteLink(token, { org, extra: { forum }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
-export interface PendingInvite {
-  token: string;
-  /** The forum the link lands in, when it names one. */
-  forum: string | null;
-  /** The space (org) the link names, for the membership check before redeeming. */
-  org: string | null;
-  /** The route the link opened, relative to the router's basename. */
-  route: string | null;
+/** This app's pending invite (`@calimero-apps/connect`), with the forum its link lands in. */
+export const invites = createInviteStore(APP_NAME, { keep: ["forum"] });
+
+/** The forum a pending invite's link lands in, when it names one. */
+export function inviteForum(invite: PendingInvite | null): string | null {
+  return invite?.extra.forum ?? null;
 }
 
-const PENDING = `${APP_NAME}:pending-invite`;
+const LEGACY_PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&forum=`, `&org=`) off the address bar into storage,
- * before anything renders: a person opening a link is usually not signed in
- * yet, and the token must survive the sign-up. The route the link opened is
- * kept too, relative to the router's basename (`/{version}/` where a node
- * serves the app), so joining lands where the link pointed. Redeemed (and
- * dropped) once a session exists and the person says yes.
+ * Moves an invite an earlier build stored under its own key into the shared
+ * store, so a link opened before the upgrade still joins after it.
  */
-export function captureInvite(
-  storage: KeyValueStorage = localStorage,
-  loc: Location = window.location,
-  basename: string = nodeBasename(new URL(loc.href), "/"),
-): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const base = basename.endsWith("/") ? basename : `${basename}/`;
-  const route = url.pathname.startsWith(base) ? `/${url.pathname.slice(base.length)}` : url.pathname;
-  const pending: PendingInvite = {
-    token,
-    forum: url.searchParams.get("forum"),
-    org: url.searchParams.get("org"),
-    route,
-  };
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    storage.setItem(PENDING, JSON.stringify(pending));
-  } catch {
-    return;
-  }
-  url.searchParams.delete("invite");
-  url.searchParams.delete("forum");
-  url.searchParams.delete("org");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
+    const raw = storage.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING);
+    const old = JSON.parse(raw) as Record<string, unknown>;
     const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-    return typeof parsed.token === "string" && parsed.token
-      ? { token: parsed.token, forum: str(parsed.forum), org: str(parsed.org), route: str(parsed.route) }
-      : null;
+    const token = str(old.token);
+    if (!token) return;
+    const forum = str(old.forum);
+    into.put({ token, org: str(old.org), team: null, doc: null, route: str(old.route), extra: forum ? { forum } : {} });
   } catch {
-    return null;
+    /* unreadable: nothing to move */
   }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
-}
-
-/**
- * Whether a redemption failed because the invitation itself is spent: used,
- * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
- * network failure is worth retrying with the same token.
- */
-export function isSpentInvite(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
-}
-
-/** What the invitation screen says about a spent invitation. */
-export const SPENT_INVITE =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const key of ["org", "orgId"]) {
-    const v = redeemed[key];
-    if (typeof v === "string" && v) return v;
-  }
-  return null;
 }

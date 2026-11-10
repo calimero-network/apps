@@ -11,6 +11,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import App from './App';
 import { APP } from './session';
+import { dropInvite, migrateLegacyInvite, pendingInvite } from './lib/invites';
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem('mero-sign:pending-invite', legacy);
+  migrateLegacyInvite();
+}
 import type { SessionDeps } from './session';
 import { LIBRARY_NAME } from './lib/agreements';
 
@@ -38,6 +45,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear();
+  dropInvite();
   window.history.replaceState(null, '', '/');
 });
 afterEach(cleanup);
@@ -178,22 +186,19 @@ describe('App', () => {
     });
     fireEvent.click(screen.getByTestId('create-agreement'));
     await waitFor(() =>
-      expect(client.createApp).toHaveBeenCalledWith('NDA', 'bundle-hash', { org: 'org-1' }),
-    );
+      expect(client.createApp).toHaveBeenCalledWith('NDA', 'bundle-hash', { org: 'org-1' }));
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith('new-1', 'setup', {
         isPrivate: false,
         contextName: 'NDA',
-      }),
-    );
+      }));
     // Recorded in the private library the account already has.
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith('lib-1', 'joinSharedContext', {
         contextIdStr: 'new-1',
         sharedIdentityStr: ME,
         contextName: 'NDA',
-      }),
-    );
+      }));
   });
 
   it('opens an agreement and shows its documents in the screens’ shapes', async () => {
@@ -202,8 +207,7 @@ describe('App', () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     await waitFor(() =>
-      expect(screen.getByTestId('agreement-title').textContent).toBe('Series A'),
-    );
+      expect(screen.getByTestId('agreement-title').textContent).toBe('Series A'));
     await screen.findByText('Term sheet.pdf');
     expect(client.view).toHaveBeenCalledWith('agr-1', 'getContextDetails', {
       contextIdStr: 'agr-1',
@@ -211,10 +215,7 @@ describe('App', () => {
   });
 
   it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: null }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
     render(<App deps={deps(fakeClient())} />);
     const page = await screen.findByTestId('invitation-page');
     expect(page.textContent).toContain("You're invited");
@@ -224,10 +225,7 @@ describe('App', () => {
   });
 
   it('signing in on the invitation page goes straight to the join prompt, then into the workspace', async () => {
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: null }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-page');
@@ -239,10 +237,7 @@ describe('App', () => {
   });
 
   it('an invited newcomer creates the account and joins in one click, and lands in the agreement', async () => {
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: 'agr-1', org: 'org-1' }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: 'agr-1', org: 'org-1' }));
     const client = fakeClient();
     client.view.mockImplementation(async (_app: string, method: string) => ({
       index: 1,
@@ -264,67 +259,67 @@ describe('App', () => {
     expect(create.textContent).toBe('Create your account and join the workspace');
     fireEvent.click(create);
     await waitFor(() =>
-      expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }),
-    );
+      expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }));
     await waitFor(() =>
-      expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}),
-    );
+      expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}));
     await screen.findByTestId('agreement-title');
     expect(window.location.pathname).toBe('/agreements/agr-1');
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId('invitation-dialog')).toBeNull();
-    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: null }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
     render(<App deps={deps(fakeClient())} />);
     fireEvent.click(await screen.findByTestId('invitation-not-now'));
     await screen.findByText('Connect');
-    expect(localStorage.getItem('mero-sign:pending-invite')).not.toBeNull();
+    expect(pendingInvite()).not.toBeNull();
   });
 
   it('does not redeem an invite into a workspace the account is already in', async () => {
     remember();
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: null, org: 'org-1' }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: null, org: 'org-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-member');
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it('says plainly when the invite was already used or has expired', async () => {
     remember();
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: null }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(
-      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'),
-    );
+      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('invitation-join'));
     expect((await screen.findByTestId('invitation-error')).textContent).toBe(
       'This invite was already used or has expired. Ask the person who invited you for a new link.',
     );
-    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it.each([
+    [429, 'RATE_LIMITED'],
+    [401, 'UNAUTHENTICATED'],
+  ])('keeps the invite when redeeming answers %i (B6)', async (status, code) => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    expect((await screen.findByTestId('invitation-error')).textContent).toMatch(/could not be accepted/);
+    expect(pendingInvite()?.token).toBe('tok-1');
+    expect(screen.getByTestId('invitation-join')).toBeTruthy();
   });
 
   it('asks before redeeming an invitation, then joins the agreement the link names', async () => {
     remember();
-    localStorage.setItem(
-      'mero-sign:pending-invite',
-      JSON.stringify({ token: 'tok-1', agreement: 'agr-1' }),
-    );
+    hold(JSON.stringify({ token: 'tok-1', agreement: 'agr-1' }));
     const client = fakeClient();
     client.view.mockImplementation(async (_app: string, method: string) => ({
       index: 1,
@@ -345,9 +340,8 @@ describe('App', () => {
     fireEvent.click(await screen.findByTestId('invitation-join'));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
     await waitFor(() =>
-      expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}),
-    );
+      expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}));
     await screen.findByTestId('agreement-title');
-    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 });
