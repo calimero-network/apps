@@ -19,6 +19,20 @@ import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
 import { buildInviteUrl, invites, migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
 
+// `useInstanceRelease` as on a page a node serves from `release.href` (a
+// release's `/{version}/`), going nowhere but `release.navigate`. With no
+// `href` it reads this test's own location: development, where it never moves.
+const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+vi.mock('@calimero-apps/passkey', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-apps/passkey')>();
+  return {
+    ...actual,
+    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
+      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+const HOST = `https://${'a'.repeat(52)}.apps.calimero.network`;
+
 /** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
 function hold(legacy: string) {
   localStorage.setItem('mero-docs:pending-invite', legacy);
@@ -59,6 +73,8 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  release.href = null;
+  release.navigate.mockClear();
   invites.drop();
   window.history.replaceState(null, '', '/');
 });
@@ -453,5 +469,45 @@ describe('App on Calimero 1.0', () => {
       await waitFor(() => expect(invites.token()).toBeNull());
       expect(client.redeemInvite).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('the release the workspace runs (useInstanceRelease)', () => {
+  /** A folder of the workspace, whose registry (`reg-1`) runs `version`. */
+  function openWorkspace(version: string) {
+    const client = Object.assign(fakeClient(), {
+      getApp: vi.fn(async () => ({ appId: 'reg-1', org: 'org-1' })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: 'reg-1', package: { package: 'com.calimero.docs', version } }] })),
+    });
+    remember();
+    window.history.replaceState(null, '', '/app/org-1/f/eng');
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+
+  it('moves a served page to the frontend of the release the registry runs, and shows nothing of it meanwhile', async () => {
+    release.href = `${HOST}/1.2.0/app/org-1/f/eng`;
+    openWorkspace('1.0.0');
+    await waitFor(() => expect(release.navigate).toHaveBeenCalledWith(`${HOST}/app/reg-1/app/org-1/f/eng`), BOOT);
+    expect(release.navigate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryAllByText('Launch plan')).toHaveLength(0), BOOT);
+  });
+
+  it('stays on a served page of the release the registry runs', async () => {
+    release.href = `${HOST}/1.2.0/app/org-1/f/eng`;
+    const client = openWorkspace('1.2.0');
+    expect((await screen.findAllByText('Launch plan', {}, BOOT)).length).toBeGreaterThan(0);
+    await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledWith('org-1'), BOOT);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(release.navigate).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Launch plan').length).toBeGreaterThan(0);
+  });
+
+  it('does nothing in development', async () => {
+    const client = openWorkspace('1.0.0');
+    expect((await screen.findAllByText('Launch plan', {}, BOOT)).length).toBeGreaterThan(0);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.getApp).not.toHaveBeenCalled();
+    expect(release.navigate).not.toHaveBeenCalled();
   });
 });

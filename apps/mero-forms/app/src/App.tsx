@@ -10,8 +10,8 @@ import { InvitationHost, SignInModal } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
-import { getActive, setActive, type ActiveWorkspace } from "./lib/workspaceStore";
 import { BASE, appPath, useRoute, type Route } from "./route";
+import { useActiveWorkspace } from "./useActiveWorkspace";
 import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
@@ -110,11 +110,9 @@ function SignedInApp({
   setTheme: (t: Theme) => void;
   onLogout: () => void;
 }) {
-  const [active, setOpen] = useState<ActiveWorkspace | null>(() => getActive());
-  const open = (w: ActiveWorkspace | null) => {
-    setActive(w);
-    setOpen(w);
-  };
+  const { active, open, leaving } = useActiveWorkspace();
+  // Moving to the frontend of the release the open workspace runs.
+  if (leaving) return null;
 
   if (!active) {
     return (

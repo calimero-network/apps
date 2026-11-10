@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import { tracker } from '../tracker';
@@ -69,6 +70,8 @@ export interface UseWorkspaceReturn {
 
   repos: RepoEntry[];
   activeRepo: string | null;
+  /** The open repo runs another release: this page is moving to its frontend. */
+  leaving: boolean;
   selectRepo: (id: string) => void;
   addRepo: (name: string, repoUrl: string) => Promise<string | null>;
   addRepoError: Error | null;
@@ -193,6 +196,10 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [repos, setRepos] = useState<RepoEntry[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  // A repo is an app instance, served the frontend of the release it runs.
+  // The one picked is stored (`writeActiveRepo`), else it is the list's
+  // first, so the other release reopens it.
+  const leaving = useInstanceRelease(client, activeRepo);
   const [addRepoError, setAddRepoError] = useState<Error | null>(null);
 
   const loadRepos = useCallback(async () => {
@@ -362,6 +369,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     invite,
     repos,
     activeRepo,
+    leaving,
     selectRepo,
     addRepo,
     addRepoError,

@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import {
@@ -68,6 +69,8 @@ export interface UseWorkspaceReturn {
 
   pipelines: PipelineEntry[];
   activePipeline: string | null;
+  /** The open pipeline runs another release: this page is moving to its frontend. */
+  leaving: boolean;
   selectPipeline: (id: string) => void;
   addPipeline: (name: string, currency: string) => Promise<string | null>;
   addPipelineError: Error | null;
@@ -188,6 +191,10 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [pipelines, setPipelines] = useState<PipelineEntry[]>([]);
   const [pipelinesLoading, setPipelinesLoading] = useState(false);
   const [activePipeline, setActivePipeline] = useState<string | null>(null);
+  // A pipeline is an app instance, served the frontend of the release it runs.
+  // The one picked is stored (`writeActivePipeline`), else it is the list's
+  // first, so the other release reopens it.
+  const leaving = useInstanceRelease(client, activePipeline);
   const [addPipelineError, setAddPipelineError] = useState<Error | null>(null);
 
   const loadPipelines = useCallback(async () => {
@@ -331,6 +338,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     invite,
     pipelines,
     activePipeline,
+    leaving,
     selectPipeline,
     addPipeline,
     addPipelineError,

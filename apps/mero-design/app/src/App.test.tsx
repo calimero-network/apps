@@ -13,6 +13,20 @@ function hold(link: { token: string; org?: string; returnTo?: string }) {
 }
 import type { SessionDeps } from "./session";
 
+// `useInstanceRelease` as on a page a node serves from `release.href` (a
+// release's `/{version}/`), going nowhere but `release.navigate`. With no
+// `href` it reads this test's own location: development, where it never moves.
+const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+vi.mock("@calimero-apps/passkey", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-apps/passkey")>();
+  return {
+    ...actual,
+    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
+      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+const HOST = `https://${"a".repeat(52)}.apps.calimero.network`;
+
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock("./pages/landing/LandingPage", () => ({
   default: ({ onConnect }: { onConnect?: () => void }) => (
@@ -46,6 +60,8 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  release.href = null;
+  release.navigate.mockClear();
   window.history.replaceState(null, "", "/");
 });
 afterEach(cleanup);
@@ -314,5 +330,45 @@ describe("App", () => {
     expect((await screen.findByTestId("create-board-ask")).textContent).toMatch(/Only an owner or admin/);
     expect(screen.queryByTestId("create-project-btn")).toBeNull();
     expect(screen.queryByTestId("new-board-btn")).toBeNull();
+  });
+});
+
+describe("the release a board runs (useInstanceRelease)", () => {
+  /** The board's page, while `board-1` runs `version`. */
+  function openBoard(version: string) {
+    const client = Object.assign(fakeClient(), {
+      getApp: vi.fn(async () => ({ appId: "board-1", org: "org-1" })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: "board-1", package: { package: "com.calimero.design", version } }] })),
+    });
+    remember();
+    window.history.replaceState(null, "", "/teams/org-1/projects/board-1");
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+  const board = () => document.querySelector('[data-testid="board-pending"], [data-testid="board-empty-hint"]');
+
+  it("moves a served page to the frontend of the release the board runs, and shows nothing of it meanwhile", async () => {
+    release.href = `${HOST}/1.2.0/teams/org-1/projects/board-1`;
+    openBoard("1.0.0");
+    await waitFor(() => expect(release.navigate).toHaveBeenCalledWith(`${HOST}/app/board-1/teams/org-1/projects/board-1`));
+    expect(release.navigate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(board()).toBeNull());
+  });
+
+  it("stays on a served page of the release the board runs", async () => {
+    release.href = `${HOST}/1.2.0/teams/org-1/projects/board-1`;
+    const client = openBoard("1.2.0");
+    await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledWith("org-1"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(release.navigate).not.toHaveBeenCalled();
+    await waitFor(() => expect(board()).not.toBeNull());
+  });
+
+  it("does nothing in development", async () => {
+    const client = openBoard("1.0.0");
+    await waitFor(() => expect(board()).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.getApp).not.toHaveBeenCalled();
+    expect(release.navigate).not.toHaveBeenCalled();
   });
 });

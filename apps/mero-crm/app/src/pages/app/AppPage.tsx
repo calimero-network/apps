@@ -242,6 +242,9 @@ export default function AppPage(): React.ReactElement | null {
     </>
   );
 
+  // Moving to the frontend of the release the open pipeline runs.
+  if (ws.leaving) return null;
+
   // The workspace list has not answered yet: hold off rather than flash the
   // picker.
   if (!ws.activeNs && ws.namespacesPending) return null;
