@@ -134,9 +134,19 @@ export function dropNativeSignIn(storage: Store = sessionStorage): void {
 }
 
 /** Seals `session` to the app's key (format above). */
-export async function sealNativeSession(
+export function sealNativeSession(
   request: NativeRequest,
   session: NativeSession,
+  crypto: Crypto = globalThis.crypto,
+): Promise<string> {
+  return sealToApp(request, JSON.stringify(session), NATIVE_INFO, crypto);
+}
+
+/** `plaintext` sealed to the app's key, under HKDF info `info` (format above). */
+async function sealToApp(
+  request: NativeRequest,
+  plaintext: string,
+  info: string,
   crypto: Crypto = globalThis.crypto,
 ): Promise<string> {
   const subtle = crypto.subtle;
@@ -146,7 +156,7 @@ export async function sealNativeSession(
   const shared = await subtle.deriveBits({ name: "ECDH", public: appKey }, mine.privateKey, 256);
   const hkdf = await subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
   const aes = await subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode(NATIVE_INFO) },
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode(info) },
     hkdf,
     { name: "AES-GCM", length: 256 },
     false,
@@ -156,7 +166,7 @@ export async function sealNativeSession(
   const sealed = await subtle.encrypt(
     { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(request.state) },
     aes,
-    new TextEncoder().encode(JSON.stringify(session)),
+    new TextEncoder().encode(plaintext),
   );
   const epk = new Uint8Array(await subtle.exportKey("raw", mine.publicKey));
   const box = new Uint8Array(epk.length + iv.length + sealed.byteLength);
@@ -213,4 +223,135 @@ export async function finishNativeSignIn(options: {
   options.forgetHere();
   (options.go ?? ((url) => window.location.assign(url)))(nativeReturnUrl(options.callback, request.state, box));
   return true;
+}
+
+// ---------------------------------------------------------------- approvals
+
+/*
+ * A passkey approval for a native app (`412 CONFIRM_REQUIRED`: creating an
+ * invite, removing a member, …). The app's session is bound to this package,
+ * so the node accepts the approval only from this page's origin, and the app
+ * can't make it with a `calimero.network` passkey itself. It opens
+ * `{version}/#native-approve&state=…&key=…&challenge=…&rpId=…&allow=…`; the
+ * person approves here with their passkey, and the assertion goes back to the
+ * app's callback sealed as above, under HKDF info `calimero.native-approve.v1`.
+ *
+ * The assertion is worth something only to a holder of this account's session:
+ * the node's challenge commits to the account, the method and its arguments.
+ * The page still says it acts for the app, so a person who reached it from a
+ * link can tell.
+ */
+
+/** The fragment that marks a native approval. */
+export const NATIVE_APPROVE_FRAGMENT = "native-approve";
+/** HKDF info of an approval's box. */
+export const NATIVE_APPROVE_INFO = "calimero.native-approve.v1";
+
+/** What the app asks to be approved. */
+export interface NativeApprovalRequest extends NativeRequest {
+  /** The node's challenge, base64url. */
+  challenge: string;
+  rpId: string;
+  /** The account's passkeys (base64url credential ids); empty: any. */
+  allow: string[];
+}
+
+/** The assertion, as the node takes it (mero-js `AssertionJSON`). */
+export interface NativeAssertion {
+  credentialId: string;
+  authenticatorData: string;
+  clientDataJson: string;
+  signature: string;
+}
+
+/** What signs the challenge: mero-js `browserPasskey()` in a page. */
+export interface NativeApprover {
+  get(challenge: Uint8Array, rpId: string, allowCredentials?: string[]): Promise<NativeAssertion>;
+}
+
+let capturedApproval: NativeApprovalRequest | null = null;
+
+const RP_ID = /^[a-z0-9.-]{1,253}$/;
+
+/** `request`, if it is well formed (as {@link validRequest}, plus a challenge, an rp id and credential ids). */
+export function validApprovalRequest(
+  request: Partial<NativeApprovalRequest> | null | undefined,
+): NativeApprovalRequest | null {
+  const base = validRequest(request);
+  if (!base) return null;
+  const challenge = request?.challenge ?? "";
+  const rpId = request?.rpId ?? "";
+  const allow = request?.allow ?? [];
+  if (challenge.length < 16 || challenge.length > 512 || !B64URL.test(challenge)) return null;
+  if (!RP_ID.test(rpId)) return null;
+  if (allow.length > 64 || allow.some((id) => !id || id.length > 1024 || !B64URL.test(id))) return null;
+  return { ...base, challenge, rpId, allow };
+}
+
+/**
+ * Takes `#native-approve&…` off the address bar. Run before the router
+ * mounts. Returns the request, or `null` when the page wasn't opened for one.
+ */
+export function captureNativeApproval(
+  location: Pick<Location, "hash" | "pathname" | "search"> = window.location,
+  history: Pick<History, "replaceState"> = window.history,
+): NativeApprovalRequest | null {
+  const parts = location.hash.replace(/^#/, "").split("&");
+  if (parts[0] !== NATIVE_APPROVE_FRAGMENT) return null;
+  const params = new URLSearchParams(parts.slice(1).join("&"));
+  const allow = (params.get("allow") ?? "").split(",").filter(Boolean);
+  capturedApproval = validApprovalRequest({
+    state: params.get("state") ?? "",
+    key: params.get("key") ?? "",
+    challenge: params.get("challenge") ?? "",
+    rpId: params.get("rpId") ?? "",
+    allow,
+  });
+  history.replaceState(null, "", location.pathname + location.search);
+  return capturedApproval;
+}
+
+/** The approval this page was opened for, or `null`. */
+export function pendingNativeApproval(): NativeApprovalRequest | null {
+  return capturedApproval;
+}
+
+/**
+ * Signs the app's challenge with the person's passkey and sends the sealed
+ * assertion to the app's own `callback` (`callback#state=…&box=…`). Throws
+ * when the passkey prompt fails; the page can offer it again.
+ */
+export async function approveNative(options: {
+  approver: NativeApprover;
+  /** The app's own callback, e.g. `mero-chat://approved`. */
+  callback: string;
+  request?: NativeApprovalRequest | null;
+  go?: (url: string) => void;
+  crypto?: Crypto;
+}): Promise<boolean> {
+  const request = options.request === undefined ? capturedApproval : options.request;
+  if (!request) return false;
+  const assertion = await options.approver.get(
+    fromB64url(request.challenge),
+    request.rpId,
+    request.allow.length ? request.allow : undefined,
+  );
+  const box = await sealToApp(request, JSON.stringify({ v: 1, assertion }), NATIVE_APPROVE_INFO, options.crypto);
+  if (options.request === undefined) capturedApproval = null;
+  (options.go ?? ((url) => window.location.assign(url)))(nativeReturnUrl(options.callback, request.state, box));
+  return true;
+}
+
+/** The person declined: tell the app (`callback#state=…&cancelled=1`) so it stops waiting. */
+export function declineNative(options: {
+  callback: string;
+  request?: NativeApprovalRequest | null;
+  go?: (url: string) => void;
+}): void {
+  const request = options.request === undefined ? capturedApproval : options.request;
+  if (!request) return;
+  if (options.request === undefined) capturedApproval = null;
+  (options.go ?? ((url) => window.location.assign(url)))(
+    `${options.callback}#state=${encodeURIComponent(request.state)}&cancelled=1`,
+  );
 }

@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { finishNative, useCalimero as useMero } from "./api/calimero";
-import { pendingNativeSignIn } from "@calimero-apps/passkey/native";
+import { NATIVE_APPROVE_CALLBACK, finishNative, useCalimero as useMero } from "./api/calimero";
+import { pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
+import { NativeApproval } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { isNamespaceReady } from "./utils/session";
@@ -58,6 +60,8 @@ function App() {
     if (native) void finishNative();
   }, [native]);
   if (native) return <LoadingSpinner />;
+  // Opened by the native app to approve a change (an invite, …) with the passkey.
+  if (pendingNativeApproval()) return <NativeApproval appName="Mero Chat" callback={NATIVE_APPROVE_CALLBACK} />;
 
   return (
     <ToastProvider>

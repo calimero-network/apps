@@ -12,7 +12,7 @@ import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
 import { log } from "./utils/logger.ts";
 import { captureInvite } from "./utils/invitation.ts";
-import { captureNativeSignIn } from "@calimero-apps/passkey/native";
+import { captureNativeApproval, captureNativeSignIn } from "@calimero-apps/passkey/native";
 import { purgeLegacyIdentityDisplayNames } from "./utils/messengerName.ts";
 import { applyTheme, readStoredTheme } from "./theme/theme.ts";
 
@@ -34,6 +34,8 @@ captureInvite();
 
 // Opened by the iOS or Android app to sign in (`#native-sign-in&state=…&key=…`).
 captureNativeSignIn();
+// …or to approve a change with the passkey (`#native-approve&…`).
+captureNativeApproval();
 
 // One connection, on the target this build names: `merod local` under `vite`,
 // the Calimero Cloud cluster in a production build (`@calimero-apps/connect`).

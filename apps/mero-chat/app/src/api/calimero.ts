@@ -238,6 +238,9 @@ const NOT_CONNECTED = "Not connected yet. Please retry in a moment.";
 /** Where the native apps receive their session. */
 export const NATIVE_CALLBACK = "mero-chat://signed-in";
 
+/** Where the native apps receive a passkey approval. */
+export const NATIVE_APPROVE_CALLBACK = "mero-chat://approved";
+
 /**
  * Hands the session to the native app that opened this page and forgets it
  * here (no sign-out: that would end the app's session too).
