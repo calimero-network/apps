@@ -295,7 +295,7 @@ describe("People: an app reopened to everyone keeps out who was taken out", () =
   // out, and the matrix must not say she has it.
   async function reopened() {
     const fake = fakeOrg({ chatOpen: true });
-    const org = await fake.client.getOrg();
+    const org = await fake.client.getOrg(ORG);
     fake.client.getOrg.mockResolvedValue({
       ...org,
       teams: { "t-chat": { parent: null, members: { "acct-ana": true }, join: "everyone", removed: ["acct-cat"] } },
