@@ -9,7 +9,7 @@ import {
   type AppInfo,
   type CalimeroClient,
   type CalimeroSession,
-  type CloudEvent,
+  type NodeEvent,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
@@ -120,7 +120,7 @@ const DOC = {
 };
 
 /** An endless stream, until the hook that opened it lets go. */
-async function* idle(signal?: AbortSignal): AsyncGenerator<CloudEvent> {
+async function* idle(signal?: AbortSignal): AsyncGenerator<NodeEvent> {
   await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve()));
   yield* [];
 }

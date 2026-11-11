@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CloudEvent } from "@calimero-network/mero-js";
+import type { NodeEvent } from "@calimero-network/mero-js";
 
 import { decodeState, encodeState, presencePublisher, subscribePresence } from "./presence";
 import { withRoutes } from "@calimero-apps/connect/testing";
@@ -46,7 +46,7 @@ describe("presencePublisher", () => {
 describe("subscribePresence", () => {
   it("decodes the snapshot and each change, skipping retractions", async () => {
     const state = (v: unknown) => hex(encodeState(v));
-    async function* stream(): AsyncGenerator<CloudEvent> {
+    async function* stream(): AsyncGenerator<NodeEvent> {
       yield {
         id: "1",
         kind: "snapshot",

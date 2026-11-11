@@ -9,7 +9,7 @@
 // which `lib/rich/events.ts` already reads), and say when a stream (re)opens,
 // since nothing replays what happened while it was down.
 
-import { presenceState, type CalimeroClient, type CloudEvent } from '@calimero-network/mero-js';
+import { presenceState, type CalimeroClient, type NodeEvent } from '@calimero-network/mero-js';
 
 /** One delivered event, in the shape v1's subscription handlers read. */
 export interface SseEventData {
@@ -95,7 +95,7 @@ export class EventHub {
         const events = this.client.events(app, from, signal);
         this.setFailing(app, false);
         for (const l of this.connectListeners) l();
-        for await (const event of events as AsyncGenerator<CloudEvent>) {
+        for await (const event of events as AsyncGenerator<NodeEvent>) {
           const at = Number(event.id);
           if (Number.isFinite(at)) from = at + 1;
           const delivered: SseEventData = {
@@ -213,7 +213,7 @@ export class PresenceHub {
     const { signal } = ch.abort;
     while (!signal.aborted) {
       try {
-        for await (const event of this.client.presenceStream(app, signal) as AsyncGenerator<CloudEvent>) {
+        for await (const event of this.client.presenceStream(app, signal) as AsyncGenerator<NodeEvent>) {
           if (event.kind === 'snapshot') {
             ch.peers = new Map();
             for (const entry of Array.isArray(event.data) ? event.data : []) this.apply(ch, entry);

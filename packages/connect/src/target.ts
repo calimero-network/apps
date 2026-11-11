@@ -7,7 +7,7 @@
  * trust a mock quote.
  */
 
-import { DEFAULT_DIRECTORY, type CloudPolicy } from "@calimero-network/mero-js";
+import { DEFAULT_DIRECTORY, type NodePolicy } from "@calimero-network/mero-js";
 
 /** The nodes `merod local` starts: node i listens on 2500 + i. */
 export const LOCAL_NODES: readonly string[] = [
@@ -202,7 +202,7 @@ export function resolveTarget(env: ConnectEnv): Target {
  * for a local target only; a cloud node must run a signed mero-tee release at
  * or above the floor.
  */
-export function policyFor(target: Target): CloudPolicy {
+export function policyFor(target: Target): NodePolicy {
   return target.kind === "local"
     ? { allowMock: true }
     : { release: { minReleaseVersion: target.minReleaseVersion } };
