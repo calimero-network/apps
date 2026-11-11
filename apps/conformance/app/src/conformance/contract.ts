@@ -1,4 +1,5 @@
-import type { CalimeroClient, CallResult, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type CallResult, type PasskeyProvider } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package the matrix packs its own releases under, with a per-run suffix (`mpk.ts`). */
 export const PACKAGE = "com.calimero.conformance";
@@ -84,7 +85,7 @@ export interface Contract {
   sharedGetWriters(): Promise<string[]>;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "callConfirmed" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /** A `u64` result: a decimal string on the wire. */
 function u64(value: unknown): number {
@@ -97,15 +98,15 @@ function u64(value: unknown): number {
 /** The contract at instance `app` through `client`. */
 export function contract(client: Transport, app: string): Contract {
   const call = async <T>(method: CallName, args: Record<string, string> = {}): Promise<T> =>
-    (await client.call(app, method, args)).result as T;
+    (await client.apps.call({ app, method, args })).result as T;
   const view = async <T>(method: ViewName, args: Record<string, string> = {}): Promise<T> =>
-    (await client.view(app, method, args)).result as T;
+    (await client.apps.view({ app, method, args })).result as T;
   return {
-    set: (key, value) => client.call(app, "set", { key, value }),
+    set: (key, value) => client.apps.call({ app, method: "set", args: { key, value } }),
     confirmedSet: (key, value, passkey) =>
       passkey
-        ? client.callConfirmed(app, "confirmedSet", { key, value }, passkey)
-        : client.call(app, "confirmedSet", { key, value }),
+        ? client.apps.call({ app, method: "confirmedSet", args: { key, value } }, { confirm: passkeyConfirm(passkey) })
+        : client.apps.call({ app, method: "confirmedSet", args: { key, value } }),
     remove: (key) => call("remove", { key }),
     setUserSimple: (value) => call("setUserSimple", { value }),
     addFrozen: (value) => call("addFrozen", { value }),
