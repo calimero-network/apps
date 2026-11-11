@@ -3,12 +3,12 @@
  * instance reachable by its team. Reference code; copy into app/src/hooks/.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
+import { passkeyConfirm, type AppInfo, type PasskeyProvider } from '@calimero-network/mero-js';
+import { appTarget, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
 
 export type RoomVisibility = 'public' | 'private';
 
-type Client = Pick<CalimeroClient, 'listApps' | 'createTeam' | 'createApp' | 'setTeamMember'>;
+type Client = ClientRoutes<{ apps: 'list' | 'create'; orgs: 'teamCreate' | 'teamSetMember' }>;
 
 export function useTeamRooms(client: Client, source: AppSource, org: string | null) {
   const [rooms, setRooms] = useState<AppInfo[]>([]);
@@ -17,7 +17,7 @@ export function useTeamRooms(client: Client, source: AppSource, org: string | nu
     if (!org) return setRooms([]);
     const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
     // The node lists only the instances this account reaches.
-    setRooms((await client.listApps(filter)).filter((a) => a.org === org));
+    setRooms((await listAppInfos(client, filter)).filter((a) => a.org === org));
   }, [client, source, org]);
 
   useEffect(() => {
@@ -28,10 +28,13 @@ export function useTeamRooms(client: Client, source: AppSource, org: string | nu
   const createRoom = useCallback(
     async (name: string, visibility: RoomVisibility, members: string[], passkey: () => PasskeyProvider) => {
       if (!org) throw new Error('no organization');
-      const team = await client.createTeam(org, name, visibility === 'public' ? 'everyone' : 'invite');
-      const appId = await client.createApp(name, source, { org, access: { kind: 'team', team } });
+      const join = visibility === 'public' ? 'everyone' : 'invite';
+      const { teamId: team } = await client.orgs.teamCreate({ org, name, join });
+      const { appId } = await client.apps.create({ name, ...appTarget(source), org, access: { kind: 'team', team } });
       if (visibility === 'private') {
-        for (const account of members) await client.setTeamMember(org, team, account, passkey());
+        for (const account of members) {
+          await client.orgs.teamSetMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) });
+        }
       }
       await refresh();
       return appId;

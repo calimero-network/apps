@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { passkeyConfirm, type PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 
 import {
   displayName,
@@ -16,7 +16,7 @@ import {
 import { readLogo as defaultReadLogo } from "../logo";
 
 export interface OrgSettingsProps {
-  client: Pick<CalimeroClient, "setOrgMetadata" | "setMember" | "deleteOrg">;
+  client: ClientRoutes<{ orgs: "metadata" | "setMember" | "delete" }>;
   view: OrgView;
   account: string;
   passkey: () => PasskeyProvider;
@@ -96,7 +96,10 @@ export function OrgSettings({
 
   const transfer = (p: Person) =>
     run("transfer", async () => {
-      await client.setMember(view.org, p.account, "owner", passkey());
+      await client.orgs.setMember(
+        { org: view.org, account: p.account, role: "owner" },
+        { confirm: passkeyConfirm(passkey()) },
+      );
       setTransferring(null);
       setNotice(`${displayName(p)} owns ${orgName(view)} now. You are an admin.`);
       onChanged();
@@ -104,7 +107,7 @@ export function OrgSettings({
 
   const remove = () =>
     run("delete", async () => {
-      await client.deleteOrg(view.org, passkey());
+      await client.orgs.delete({ org: view.org }, { confirm: passkeyConfirm(passkey()) });
       setDeleting(false);
       onDeleted();
     });

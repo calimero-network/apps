@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // and a mode, as `GET /orgs/{org}` answers them, and chat run from its package.
 const PKG = "com.calimero.chat";
 
-const h = vi.hoisted(() => {
+const h = await vi.hoisted(async () => {
   type Team = {
     members: Record<string, boolean>;
     join: "everyone" | "invite";
@@ -35,7 +35,7 @@ const h = vi.hoisted(() => {
     if (apps.length === 0) return "legacy" as const;
     return apps.some((t) => t.join === "invite") ? ("shared" as const) : ("standalone" as const);
   };
-  const client = {
+  const client = (await import("@calimero-apps/connect/testing")).withRoutes({
     me: vi.fn(async () => ({
       orgs: [...state.orgs.values()].map((o) => ({ orgId: o.orgId, name: o.name, role: o.members[state.me] })),
     })),
@@ -148,7 +148,7 @@ const h = vi.hoisted(() => {
     removeMember: vi.fn(async () => ({})),
     deleteOrg: vi.fn(async () => {}),
     deleteApp: vi.fn(async () => {}),
-  };
+  });
   return { state, client };
 });
 
@@ -256,7 +256,7 @@ describe("invites name chat's app team", () => {
   it("standalone: the team is named, and the link is the workspace's", async () => {
     const { org } = await workspace();
     const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"], undefined);
+    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"]);
     expect(res.data).toEqual({ invitation: "tok-1", groupAlias: "Acme" });
   });
 
@@ -265,14 +265,14 @@ describe("invites name chat's app team", () => {
     h.state.orgs.get(org)!.teams["team-chat"]!.join = "invite";
     invalidate();
     const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"], undefined);
+    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"]);
     expect(res.data).toMatchObject({ invitation: "tok-1", chatOnly: true });
   });
 
   it("a legacy org: the org-wide invite, as before", async () => {
     const org = otherOrg("legacy");
     const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), undefined, undefined);
+    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything());
     expect(res.data?.chatOnly).toBeUndefined();
   });
 });

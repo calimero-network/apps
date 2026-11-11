@@ -18,6 +18,7 @@ import { useEffect, useRef } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { connectEvents, getClient, setOnline, useCalimero } from "./calimero";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 export interface AppEvent {
   /** The app instance (v1: context) it happened in. */
@@ -58,7 +59,7 @@ export function indexOf(id: string): number | null {
  * after a drop.
  */
 export async function streamApp(
-  client: Pick<CalimeroClient, "events" | "view">,
+  client: Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "view" }>,
   app: string,
   onEvent: (e: AppEvent) => void,
   signal: AbortSignal,
@@ -68,7 +69,7 @@ export async function streamApp(
   while (!signal.aborted) {
     try {
       if (from === null) {
-        const head = await client.view(app, "getMessageCount", {});
+        const head = await client.apps.view({ app, method: "getMessageCount", args: {} });
         from = head.index + 1;
       }
       const stream = client.events(app, from, signal);

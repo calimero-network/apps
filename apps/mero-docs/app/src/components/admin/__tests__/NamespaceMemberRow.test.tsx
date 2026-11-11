@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NamespaceMemberRow } from '../NamespaceMemberRow';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const renameToMock = vi.fn();
 const useAdminRenameMemberMock = vi.fn();
@@ -46,13 +47,13 @@ vi.mock('@/calimero/react', () => ({
     loading: false,
     error: null,
   }),
-  useGroupCapabilities: () => ({
+  useGroupCapabilities: () => (withRoutes({
     capabilities: 1,
     loading: false,
     error: null,
     refetch: vi.fn(),
     setCapabilities: vi.fn(),
-  }),
+  })),
 }));
 vi.mock('@/components/ui/confirm-dialog', async () => {
   const actual = await vi.importActual<

@@ -7,7 +7,7 @@
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import type { CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget } from "@calimero-apps/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,6 +29,7 @@ vi.mock("./pages/EditorPage", () => ({ default: () => <div data-testid="editor-p
 import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
 import { APP, type SessionDeps } from "./api/session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const HOST = `https://${"a".repeat(52)}.apps.calimero.network`;
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
@@ -39,7 +40,7 @@ const SLOW = { timeout: 10_000 };
 function openProject(version: string) {
   new SessionStore(APP, resolveTarget(DEV_ENV), localStorage).save(SESSION);
   let session: CalimeroSession | undefined;
-  const client = {
+  const client = withRoutes({
     get session() {
       return session;
     },
@@ -56,10 +57,10 @@ function openProject(version: string) {
     events: vi.fn(async function* () {}),
     getApp: vi.fn(async () => ({ appId: "proj-1", org: "org-1" })),
     appsReportAll: vi.fn(async () => ({ apps: [{ app: "proj-1", package: { package: "com.calimero.pixart", version } }] })),
-  };
+  });
   const deps: SessionDeps = {
     env: DEV_ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
   render(

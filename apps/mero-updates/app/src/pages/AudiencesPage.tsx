@@ -227,7 +227,7 @@ export default function AudiencesPage() {
       setPendingDelete(null);
       void run(`delete:${audience.contextId}`, async (onStatus) => {
         onStatus("Deleting…");
-        await client.deleteApp(audience.contextId);
+        await client.apps.delete({ app: audience.contextId });
         onStatus("Refreshing audiences…");
         await load(false);
         showToast(`Deleted \u201c${audience.name}\u201d.`);

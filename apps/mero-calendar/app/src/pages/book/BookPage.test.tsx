@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../api/sessionContext";
 import type { SessionDeps } from "../../api/session";
 import BookPage from "./BookPage";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const TOKEN = "mk_guest_key";
 const APP = "app-1";
@@ -56,12 +57,12 @@ function fakeClient() {
         throw new Error(`unexpected ${method}`);
     }
   };
-  return {
+  return withRoutes({
     session: undefined,
     useApiKey: (key: string) => keys.push(key),
     call: vi.fn(async (app: string, method: string, args?: Record<string, unknown>) => answer(app, method, args)),
     view: vi.fn(async (app: string, method: string, args?: Record<string, unknown>) => answer(app, method, args)),
-  };
+  });
 }
 
 const memory = new Map<string, string>();

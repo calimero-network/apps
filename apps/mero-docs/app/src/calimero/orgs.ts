@@ -35,18 +35,22 @@
 // them, a raw dev bundle) is legacy, as before.
 
 import {
+  passkeyConfirm,
   CalimeroError,
   NotFound,
   type AppInfo,
   type CalimeroClient,
   type PasskeyProvider,
+  type OrgMode,
 } from '@calimero-network/mero-js';
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgModeOf,
   orgWideAccess,
   removeFromApp,
@@ -56,7 +60,6 @@ import {
   type AppSource,
   type LeftApp,
 } from '@calimero-apps/connect';
-import type { OrgMode } from '@calimero-network/mero-js';
 import { CAPABILITIES } from './capabilities';
 
 export type GroupRoleName = 'Admin' | 'Member' | 'ReadOnly';
@@ -267,7 +270,7 @@ export class OrgAdmin {
   org(orgId: string, fresh = false): Promise<OrgView> {
     const hit = this.cache.get(orgId);
     if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return hit.view;
-    const view = this.client.getOrg(orgId).then((raw) => {
+    const view = this.client.orgs.get({ org: orgId }).then((raw) => {
       const parsed = parseOrg(orgId, raw);
       for (const id of Object.keys(parsed.teams)) this.teamOrg.set(id, orgId);
       return parsed;
@@ -293,14 +296,14 @@ export class OrgAdmin {
   /** The instances of this app the account reaches (the dev bundle, or the package). */
   instances(): Promise<AppInfo[]> {
     const filter = typeof this.source === 'string' ? { bundle: this.source } : { package: this.source.package };
-    return this.client.listApps(filter);
+    return listAppInfos(this.client, filter);
   }
 
   /** Every workspace this account is in: an org holding an instance of this app. */
   listNamespaces(fresh = false): Promise<Namespace[]> {
     if (fresh || !this.orgList) {
       this.orgList = (async () => {
-        const [me, apps] = await Promise.all([this.client.me(), this.instances()]);
+        const [me, apps] = await Promise.all([this.client.auth.me(), this.instances()]);
         const withApp = new Set(apps.map((a) => a.org).filter((o): o is string => !!o));
         const orgs = (record(me).orgs ?? []) as Array<{ orgId: string; name?: string; role?: string }>;
         const rows = await Promise.all(
@@ -331,7 +334,7 @@ export class OrgAdmin {
     const known = this.teamOrg.get(groupId);
     if (known) return { org: known, team: groupId };
     if (this.cache.has(groupId)) return { org: groupId, team: null };
-    const me = record(await this.client.me());
+    const me = record(await this.client.auth.me());
     const orgs = ((me.orgs ?? []) as Array<{ orgId: string }>).map((o) => o.orgId);
     if (orgs.includes(groupId)) return { org: groupId, team: null };
     for (const org of orgs) {
@@ -454,7 +457,7 @@ export class OrgAdmin {
   }
 
   async deleteNamespace(orgId: string): Promise<void> {
-    await this.client.deleteOrg(orgId, this.passkey());
+    await this.client.orgs.delete({ org: orgId }, { confirm: passkeyConfirm(this.passkey()) });
     this.changed(orgId);
   }
 
@@ -476,7 +479,10 @@ export class OrgAdmin {
   }
 
   async setDefaultCapabilities(orgId: string, input: { defaultCapabilities: number }): Promise<void> {
-    await this.client.setCapabilities(orgId, input.defaultCapabilities, this.passkey());
+    await this.client.orgs.capabilities(
+      { org: orgId, capabilities: input.defaultCapabilities },
+      { confirm: passkeyConfirm(this.passkey()) },
+    );
     this.changed(orgId);
   }
 
@@ -486,9 +492,16 @@ export class OrgAdmin {
   }
 
   async setMemberMetadata(orgId: string, account: string, metadata: unknown): Promise<void> {
-    await this.client.setMemberMetadata(orgId, account, metadata);
+    await this.client.orgs.memberMetadata({ org: orgId, account, metadata });
     this.changed(orgId);
   }
+
+  /** The org reads and writes `@calimero-apps/names` takes (`OrgNameClient`), through this admin's cache. */
+  readonly orgs = {
+    get: ({ org }: { org: string }) => this.getOrg(org),
+    memberMetadata: ({ org, account, metadata }: { org: string; account: string; metadata: unknown }) =>
+      this.setMemberMetadata(org, account, metadata),
+  };
 
   // ---------------------------------------------------------------- folders
 
@@ -498,7 +511,8 @@ export class OrgAdmin {
   ): Promise<{ groupId: string }> {
     const join = input.visibility === 'restricted' || input.visibility === 'Restricted' ? 'invite' : 'everyone';
     const parent = input.parentId && input.parentId !== orgId ? input.parentId : undefined;
-    const groupId = await this.client.createTeam(orgId, input.name || 'New folder', join, parent);
+    const groupId = (await this.client.orgs.teamCreate({ org: orgId, name: input.name || 'New folder', join, parent }))
+      .teamId;
     this.teamOrg.set(groupId, orgId);
     this.changed(orgId);
     return { groupId };
@@ -507,7 +521,7 @@ export class OrgAdmin {
   async reparentGroup(groupId: string, input: { newParentId: string }): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) throw new Error('a workspace has no parent');
-    await this.client.updateTeam(org, team, { parent: input.newParentId === org ? null : input.newParentId });
+    await this.client.orgs.teamUpdate({ org, team, parent: input.newParentId === org ? null : input.newParentId });
     this.changed(org);
   }
 
@@ -515,7 +529,7 @@ export class OrgAdmin {
     const { org, team } = await this.locate(groupId);
     if (!team) throw new Error('a workspace has no visibility');
     const join = input.subgroupVisibility.toLowerCase() === 'restricted' ? 'invite' : 'everyone';
-    await this.client.updateTeam(org, team, { join });
+    await this.client.orgs.teamUpdate({ org, team, join });
     this.changed(org);
   }
 
@@ -524,11 +538,13 @@ export class OrgAdmin {
     const { org, team } = await this.locate(groupId);
     const view = await this.org(org, true);
     if (!team) {
-      await this.client.setOrgMetadata(org, { ...view.metadata, ...(input.data ?? {}) });
+      await this.client.orgs.metadata({ org, metadata: { ...view.metadata, ...(input.data ?? {}) } });
     } else {
       const t = view.teams[team];
       if (!t) throw notFound(`group '${team}'`);
-      await this.client.updateTeam(org, team, {
+      await this.client.orgs.teamUpdate({
+        org,
+        team,
         ...(input.name !== undefined ? { name: input.name } : {}),
         metadata: { ...t.metadata, ...(input.data ?? {}) },
       });
@@ -540,7 +556,7 @@ export class OrgAdmin {
   async deleteGroup(groupId: string): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) throw new Error('delete the workspace instead');
-    await this.client.deleteTeam(org, team);
+    await this.client.orgs.teamDelete({ org, team });
     this.teamOrg.delete(team);
     this.changed(org);
   }
@@ -558,7 +574,7 @@ export class OrgAdmin {
     const access = team
       ? { kind: 'team' as const, team }
       : await orgWideAccess(this.client, org, this.source, this.passkey, PRODUCT_NAME);
-    const contextId = await this.client.createApp(name, this.source, { org, access });
+    const contextId = (await this.client.apps.create({ name, ...appTarget(this.source), org, access })).appId;
     await this.setGroupMetadata(input.groupId, {
       data: { [team ? DOCS_APP_KEY : REGISTRY_APP_KEY]: contextId },
     });
@@ -566,7 +582,7 @@ export class OrgAdmin {
   }
 
   async deleteContext(appId: string): Promise<void> {
-    await this.client.deleteApp(appId);
+    await this.client.apps.delete({ app: appId });
   }
 
   /** Nothing to sync on 1.0: every instance runs on its cluster's log. */
@@ -584,16 +600,22 @@ export class OrgAdmin {
     if (!team) {
       if (role) {
         const orgRole = role === 'Admin' ? 'admin' : role === 'ReadOnly' ? 'guest' : 'member';
-        await this.client.setMember(org, account, orgRole, this.passkey());
+        await this.client.orgs.setMember({ org, account, role: orgRole }, { confirm: passkeyConfirm(this.passkey()) });
       }
       if (capabilities !== undefined) {
-        await this.client.setCapabilities(org, capabilities, this.passkey(), { account });
+        await this.client.orgs.capabilities({ org, capabilities, account }, { confirm: passkeyConfirm(this.passkey()) });
       }
     } else {
-      await this.client.setTeamMember(org, team, account, this.passkey(), {
-        ...(role ? { role: role === 'Admin' ? 'lead' : role === 'ReadOnly' ? 'readOnly' : 'member' } : {}),
-        ...(capabilities !== undefined ? { capabilities } : {}),
-      });
+      await this.client.orgs.teamSetMember(
+        {
+          org,
+          team,
+          account,
+          ...(role ? { role: role === 'Admin' ? 'lead' : role === 'ReadOnly' ? 'readOnly' : 'member' } : {}),
+          ...(capabilities !== undefined ? { capabilities } : {}),
+        },
+        { confirm: passkeyConfirm(this.passkey()) },
+      );
     }
     this.changed(org);
   }
@@ -655,13 +677,13 @@ export class OrgAdmin {
 
   /** Whether this account is already a member of `orgId` (its `/me` org list). */
   async isOrgMember(orgId: string): Promise<boolean> {
-    const me = record(await this.client.me());
+    const me = record(await this.client.auth.me());
     return ((me.orgs ?? []) as Array<{ orgId: string }>).some((o) => o.orgId === orgId);
   }
 
   /** Redeems an invite token; answers the org it joined, when the node names it. */
   async redeemInvite(token: string): Promise<string | null> {
-    const redeemed = record(await this.client.redeemInvite(token));
+    const redeemed = record(await this.client.orgs.inviteRedeem({ token }));
     this.orgList = null;
     for (const key of ['org', 'orgId']) {
       const v = redeemed[key];
@@ -678,7 +700,11 @@ export class OrgAdmin {
   async uploadBlob(input: { data: Blob | Uint8Array; contextId: string }): Promise<{ blobId: string }> {
     const bytes =
       input.data instanceof Uint8Array ? input.data : new Uint8Array(await input.data.arrayBuffer());
-    const { id } = await this.client.uploadBlob(input.contextId, bytes);
+    const { id } = await this.client.apps.blobUpload({
+      app: input.contextId,
+      body: bytes,
+      contentType: 'application/octet-stream',
+    });
     return { blobId: id };
   }
 

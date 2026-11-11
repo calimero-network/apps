@@ -15,6 +15,7 @@ import {
   sha256Hex,
   type Owner,
 } from "./booking";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const APP = "app-1";
 const KEY = "mk_live_secret";
@@ -35,12 +36,12 @@ describe("the booking URL", () => {
 
 function owner(call = vi.fn()): Owner & { client: Record<string, ReturnType<typeof vi.fn>> } {
   return {
-    client: {
+    client: withRoutes({
       createApiKey: vi.fn(async () => ({ keyId: "key-1", key: KEY })),
       revokeApiKey: vi.fn(async () => undefined),
       call,
       view: vi.fn(async () => ({ index: 1, result: [] })),
-    },
+    }),
     app: APP,
     passkey: () => ({}) as never,
   } as never;
@@ -122,7 +123,7 @@ describe("the guest", () => {
     const call = vi.fn(async () => ({ index: 1, result: { startMs: "5", endMs: "6" } }));
     const view = vi.fn(async () => ({ index: 1, result: ["1783296000000"] }));
     const target = { app: APP, token: KEY };
-    const cal = guestCalendar({ useApiKey, call, view } as never, target);
+    const cal = guestCalendar(withRoutes({ useApiKey, call, view }) as never, target);
     expect(useApiKey).toHaveBeenCalledWith(KEY);
 
     expect(await guest.slots(cal, target, 1, 2)).toEqual([1_783_296_000_000]);

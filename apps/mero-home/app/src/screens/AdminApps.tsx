@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
   appTeamInstances,
   createAppTeam,
@@ -10,6 +10,7 @@ import {
   packageTitle,
   setMembersMayInvite,
   type AppTeamInstance,
+  type ClientRoutes,
   type MyOrg,
 } from "@calimero-apps/connect";
 
@@ -27,10 +28,11 @@ import {
 import { moveApp, moveTargets } from "../move";
 
 export interface AdminAppsProps {
-  client: Pick<
-    CalimeroClient,
-    "packages" | "scopeApps" | "setTeamDefaultCapabilities" | "updateTeam" | "getTeam" | "deleteTeam" | "postConfirmed"
-  >;
+  client: ClientRoutes<{
+    apps: "move";
+    packages: "list";
+    orgs: "appTeamsScope" | "capabilities" | "teamUpdate" | "teamGet" | "teamDelete";
+  }>;
   view: OrgView;
   /** The caller's organizations, for "Move to another organization". */
   orgs?: readonly MyOrg[];
@@ -93,9 +95,9 @@ export function AdminApps({ client, view, orgs = [], canMove = false, passkey, a
 
   useEffect(() => {
     let live = true;
-    client
-      .packages()
-      .then((list) => live && setPackages({ kind: "ready", packages: installable(list, view) }))
+    client.packages
+      .list()
+      .then(({ packages: list }) => live && setPackages({ kind: "ready", packages: installable(list, view) }))
       .catch((e) => live && setPackages({ kind: "failed", error: describeError(e) }))
       .finally(after);
     return () => {
@@ -203,7 +205,7 @@ export function AdminApps({ client, view, orgs = [], canMove = false, passkey, a
   const remove = (app: OrgApp) =>
     run(`remove-${app.package}`, async () => {
       if (!app.team) return;
-      await client.deleteTeam(view.org, app.team.teamId, passkey());
+      await client.orgs.teamDelete({ org: view.org, team: app.team.teamId }, { confirm: passkeyConfirm(passkey()) });
       setRemoving(null);
       setRemoved(app.name);
     });

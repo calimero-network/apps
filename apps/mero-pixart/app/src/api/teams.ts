@@ -2,22 +2,25 @@ import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvid
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
+  createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
-  type LeftApp,
-  createInviteStore,
-  inviteLink as sharedInviteLink,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
+  type LeftApp,
   type PendingInvite,
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
@@ -79,7 +82,7 @@ export interface ProjectEntry {
  * one.
  */
 export async function listTeams(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
+  client: ClientRoutes<{ auth: "me"; apps: "list"; orgs: "get" }>,
   source: AppSource,
 ): Promise<Team[]> {
   return (await orgsWithApp(client, source, { marked: true }))
@@ -102,7 +105,7 @@ export interface CreatedTeam {
 
 /** A new team: an org whose members may create projects and invite (a passkey step-up). */
 export async function createTeam(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
@@ -125,7 +128,8 @@ export async function createTeam(
  * caller's last app there (offer {@link leaveTeamOrg}); elsewhere the org.
  */
 export function leaveTeam(
-  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "removeTeamMember" | "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
@@ -136,7 +140,7 @@ export function leaveTeam(
 
 /** Leaves the organization altogether, every app in it. A passkey step-up. */
 export function leaveTeamOrg(
-  client: Pick<CalimeroClient, "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
@@ -150,7 +154,7 @@ export function leaveTeamOrg(
  * org; elsewhere out of the org, as before.
  */
 export function removeTeamMember(
-  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
@@ -166,12 +170,12 @@ export const isAdmin = (role: string | undefined) => role === "owner" || role ==
 
 /** The instances of this app (the dev bundle, or the package) in `org`, by name. */
 export async function listProjects(
-  client: Pick<CalimeroClient, "listApps">,
+  client: ClientRoutes<{ apps: "list" }>,
   source: AppSource,
   org: string,
 ): Promise<ProjectEntry[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  const apps: AppInfo[] = await client.listApps(filter);
+  const apps: AppInfo[] = await listAppInfos(client, filter);
   return apps
     .filter((a) => a.org === org)
     .map((a) => ({ contextId: a.appId, name: a.name, owner: a.owner }))
@@ -196,14 +200,14 @@ export const CONNECTED_PROJECT: NewDocument = { name: "Untitled", description: "
  * instance id.
  */
 export async function createProject(
-  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "create"; orgs: "get" | "appTeamsScope" }>,
   source: AppSource,
   org: string,
   doc: NewDocument,
   passkey: () => PasskeyProvider,
 ): Promise<string> {
   const options = await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME);
-  return client.createApp(doc.name, source, { ...options, initArgs: doc });
+  return client.apps.create({ name: doc.name, ...appTarget(source), ...options, initArgs: doc }).then((r) => r.appId);
 }
 
 // ── members ──────────────────────────────────────────────────────────────────
@@ -222,11 +226,11 @@ export interface OrgMembers {
 }
 
 export async function readOrg(
-  client: Pick<CalimeroClient, "getOrg">,
+  client: ClientRoutes<{ orgs: "get" }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as unknown as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as unknown as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -250,7 +254,7 @@ export async function readOrg(
  * offer when the next team asks.
  */
 export function setMyTeamName(
-  client: Pick<CalimeroClient, "setMemberMetadata" | "getOrg">,
+  client: ClientRoutes<{ orgs: "memberMetadata" | "get" }>,
   org: string,
   account: string,
   name: string,
@@ -266,7 +270,7 @@ export function setMyTeamName(
  * Mero Pixart only (an org that keeps its apps apart). Org-wide in a legacy org.
  */
 export function inviteToken(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,

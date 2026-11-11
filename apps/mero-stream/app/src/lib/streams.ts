@@ -1,4 +1,5 @@
 import {
+  passkeyConfirm,
   DEFAULT_ORG_CAPABILITIES,
   ORG_CAPABILITIES,
   type AppInfo,
@@ -6,20 +7,23 @@ import {
   type PasskeyProvider,
 } from "@calimero-network/mero-js";
 import {
-  SPENT_INVITE_COPY,
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
+  isSpentInvite,
+  listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
+  SPENT_INVITE_COPY,
   type AppInviteToken,
   type AppOrgView,
-  inviteLink as sharedInviteLink,
-  isSpentInvite,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
@@ -57,12 +61,12 @@ export interface RoomRow {
   org: string | null;
 }
 
-type Lister = Pick<CalimeroClient, "listApps">;
+type Lister = ClientRoutes<{ apps: "list" }>;
 
 /** Every room the account reaches: instances of the dev bundle, or of the package. */
 export async function listAllRooms(client: Lister, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
 interface MeOrg {
@@ -99,7 +103,7 @@ function memberCount(info: Record<string, unknown>, source: AppSource): number {
  * for another app is offered under "Connect to an existing organization".
  */
 export async function listStreams(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
+  client: ClientRoutes<{ auth: "me"; apps: "list"; orgs: "get" }>,
   source: AppSource,
 ): Promise<StreamRow[]> {
   const [orgs, apps] = await Promise.all([orgsWithApp(client, source, { marked: true }), listAllRooms(client, source)]);
@@ -111,8 +115,7 @@ export async function listStreams(
       name: (o.name ?? "").trim() || `Stream ${o.orgId.slice(0, 6)}`,
       role: String(o.role ?? "member").toLowerCase(),
       roomCount: rooms.get(o.orgId) ?? 0,
-      memberCount: await client
-        .getOrg(o.orgId)
+      memberCount: await client.orgs.get({ org: o.orgId })
         .then((info) => memberCount(info as Record<string, unknown>, source))
         .catch(() => 0),
     })),
@@ -138,7 +141,7 @@ export interface CreatedStream {
  * rooms (the org's default capabilities, a passkey step-up).
  */
 export async function createStream(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
@@ -165,8 +168,8 @@ export function membersCreateRooms(memberDefaults: number): boolean {
  * default, the other bits kept. A member an owner set capabilities for keeps
  * their own. Owner or admin only, with their passkey.
  */
-export function setMembersCreateRooms(
-  client: Pick<CalimeroClient, "setCapabilities">,
+export async function setMembersCreateRooms(
+  client: ClientRoutes<{ orgs: "capabilities" }>,
   org: string,
   memberDefaults: number,
   on: boolean,
@@ -175,7 +178,7 @@ export function setMembersCreateRooms(
   const next = on
     ? memberDefaults | ORG_CAPABILITIES.CREATE_APP
     : memberDefaults & ~ORG_CAPABILITIES.CREATE_APP;
-  return client.setCapabilities(org, next, passkey);
+  await client.orgs.capabilities({ org, capabilities: next }, { confirm: passkeyConfirm(passkey) });
 }
 
 /** A stream's name, its members, and the display names they set for it. */
@@ -193,11 +196,11 @@ export interface StreamInfo {
 }
 
 export async function streamInfo(
-  client: Pick<CalimeroClient, "getOrg">,
+  client: ClientRoutes<{ orgs: "get" }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<StreamInfo> {
-  const info = await client.getOrg(org);
+  const info = await client.orgs.get({ org });
   const pkg = sourcePackage(source);
   const members = appPeople(info as AppOrgView, pkg);
   const names: Record<string, string> = {};
@@ -234,7 +237,7 @@ export async function streamInfo(
  * every room's `join` is fed it.
  */
 export function publishMyName(
-  client: Pick<CalimeroClient, "getOrg" | "setMemberMetadata">,
+  client: ClientRoutes<{ orgs: "get" | "memberMetadata" }>,
   org: string,
   account: string,
   name: string,
@@ -260,14 +263,14 @@ export const CONNECTED_ROOM_NAME = "General";
  * in an org whose other apps have teams; organization access in a legacy org).
  */
 export async function createRoom(
-  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "create"; orgs: "get" | "appTeamsScope" }>,
   source: AppSource,
   org: string,
   name: string,
   passkey: () => PasskeyProvider = noPasskey,
 ): Promise<string> {
   const options = await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME);
-  return client.createApp(name, source, { ...options, initArgs: { name } });
+  return client.apps.create({ name, ...appTarget(source), ...options, initArgs: { name } }).then((r) => r.appId);
 }
 
 // ── Invitations ──────────────────────────────────────────────────────────────
@@ -279,7 +282,7 @@ export async function createRoom(
  * legacy org.
  */
 export function appInviteToken(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,
@@ -289,7 +292,7 @@ export function appInviteToken(
 
 /** {@link appInviteToken}'s token alone. */
 export async function inviteToken(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,
@@ -429,12 +432,12 @@ export function inviteRefused(e: unknown): boolean {
  * use, which then leaves the person it was meant for unable to join.
  */
 export async function alreadyMember(
-  client: Pick<CalimeroClient, "me">,
+  client: ClientRoutes<{ auth: "me" }>,
   invite: PendingInvite,
 ): Promise<boolean | null> {
   if (!invite.stream) return null;
   try {
-    return orgsOf(await client.me()).some((o) => o.orgId === invite.stream);
+    return orgsOf(await client.auth.me()).some((o) => o.orgId === invite.stream);
   } catch {
     return null;
   }

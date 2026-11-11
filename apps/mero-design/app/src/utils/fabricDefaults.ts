@@ -18,6 +18,8 @@ import { FabricObject } from "fabric";
  * `src/utils/fabricDefaults.test.ts` and by the geometry e2e specs.
  */
 export function applyTopLeftOrigin(): void {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the top-left origin this app draws with
   FabricObject.ownDefaults.originX = "left";
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the top-left origin this app draws with
   FabricObject.ownDefaults.originY = "top";
 }

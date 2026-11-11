@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPanel from "./AdminPanel";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const {
   mockGetGroupId,
@@ -59,7 +60,7 @@ describe("AdminPanel", () => {
     mockUseGroupAdmin.mockReset();
 
     mockGetGroupId.mockReturnValue("group-1");
-    mockUseGroupAdmin.mockReturnValue({
+    mockUseGroupAdmin.mockReturnValue(withRoutes({
       group: null,
       members: [],
       upgradeStatus: null,
@@ -79,7 +80,7 @@ describe("AdminPanel", () => {
       setSubgroupVisibility: vi.fn(),
       triggerUpgrade: vi.fn(),
       refreshUpgradeStatus: vi.fn(),
-    });
+    }));
   });
 
   it("shows non-admins the member list only, without admin controls", () => {
@@ -154,7 +155,7 @@ describe("AdminPanel", () => {
       isAdmin: true,
     });
 
-    mockUseGroupAdmin.mockImplementation(() => ({
+    mockUseGroupAdmin.mockImplementation(() => (withRoutes({
       group: null,
       members: [],
       upgradeStatus: null,
@@ -174,7 +175,7 @@ describe("AdminPanel", () => {
       setSubgroupVisibility: vi.fn(),
       triggerUpgrade: vi.fn(),
       refreshUpgradeStatus: vi.fn(),
-    }));
+    })));
 
     const view = render(
       <AdminPanel

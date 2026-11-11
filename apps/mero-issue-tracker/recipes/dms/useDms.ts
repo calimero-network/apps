@@ -3,15 +3,14 @@
  * Reference code; copy into app/src/hooks/.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { CalimeroClient } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
+import { appTarget, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
 
 export interface Dm {
   appId: string;
   other: string;
 }
 
-type Client = Pick<CalimeroClient, 'listApps' | 'getApp' | 'createApp' | 'setAppMetadata'>;
+type Client = ClientRoutes<{ apps: 'list' | 'get' | 'create' | 'metadata' }>;
 
 export function useDms(client: Client, source: AppSource, org: string | null, self: string) {
   const [dms, setDms] = useState<Dm[]>([]);
@@ -19,10 +18,11 @@ export function useDms(client: Client, source: AppSource, org: string | null, se
   const refresh = useCallback(async () => {
     if (!org) return setDms([]);
     const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
-    const apps = (await client.listApps(filter)).filter((a) => a.org === org);
+    const apps = (await listAppInfos(client, filter)).filter((a) => a.org === org);
     const out: Dm[] = [];
     for (const a of apps) {
-      const meta = (await client.getApp(a.appId)).metadata as { dm?: boolean; a?: string; b?: string } | undefined;
+      const meta = (await client.apps.get({ app: a.appId })).metadata as
+        { dm?: boolean; a?: string; b?: string } | undefined;
       if (meta?.dm && (meta.a === self || meta.b === self)) {
         out.push({ appId: a.appId, other: meta.a === self ? (meta.b as string) : (meta.a as string) });
       }
@@ -41,11 +41,13 @@ export function useDms(client: Client, source: AppSource, org: string | null, se
       const existing = dms.find((d) => d.other === other);
       if (existing) return existing.appId;
       const [a, b] = [self, other].sort() as [string, string];
-      const appId = await client.createApp(`dm:${a}:${b}`, source, {
+      const { appId } = await client.apps.create({
+        name: `dm:${a}:${b}`,
+        ...appTarget(source),
         org,
         access: { kind: 'accounts', accounts: [other] },
       });
-      await client.setAppMetadata(appId, { dm: true, a, b });
+      await client.apps.metadata({ app: appId, metadata: { dm: true, a, b } });
       await refresh();
       return appId;
     },

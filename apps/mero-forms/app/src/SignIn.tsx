@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from "@calimero-apps/connect";
+import {
+  SPENT_INVITE_COPY,
+  describeRedeemFailure,
+  isSpentInvite,
+  joinedOrg,
+  memberOf,
+  type PendingInvite,
+} from "@calimero-apps/connect";
 import { SignInPanel as SharedSignInPanel, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import type { PendingInvite } from "@calimero-apps/connect";
 import { inviteWorkspace, invites } from "./lib/orgs";
 import { setActive } from "./lib/workspaceStore";
 import { LISTING, takeJoinedAtSignUp } from "./session";
@@ -196,7 +202,7 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token)) ?? invite.org;
+      const org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token })) ?? invite.org;
       invites.drop();
       const workspace = inviteWorkspace(invite);
       if (workspace) setActive({ appId: workspace, org });

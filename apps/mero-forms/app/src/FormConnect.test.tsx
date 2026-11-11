@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormView } from "./formsApi";
 import type { Workspace } from "./useWorkspace";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const APP = "app-forms-1";
 const FORM: FormView = {
@@ -30,7 +31,7 @@ const revokeApiKey = vi.fn(async (_id: string) => {
 const passkey = { kind: "passkey" };
 
 vi.mock("./sessionContext", () => ({
-  useSignedIn: () => ({ client: { createApiKey, revokeApiKey }, passkey: () => passkey, after: () => {} }),
+  useSignedIn: () => ({ client: withRoutes({ createApiKey, revokeApiKey }), passkey: () => passkey, after: () => {} }),
 }));
 
 const { FormKeys } = await import("./FormConnect");
@@ -76,7 +77,7 @@ describe("FormKeys", () => {
     expect(calls).toEqual(["create-key", "register"]);
     expect(createApiKey).toHaveBeenCalledWith(
       expect.objectContaining({ apps: [APP], methods: ["submitResponse", "getForm"] }),
-      passkey,
+      expect.objectContaining({ confirm: expect.any(Function) }),
     );
     expect(registered).toEqual([{ account: "key-1", form_id: FORM.id, label: "Contact page" }]);
     const env = issued.querySelector("pre")!.textContent!;
@@ -106,7 +107,7 @@ describe("FormKeys", () => {
     expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     await waitFor(() => expect(calls).toEqual(["revoke-key", "forget"]));
-    expect(revokeApiKey).toHaveBeenCalledWith("key-9", passkey);
+    expect(revokeApiKey).toHaveBeenCalledWith("key-9", expect.objectContaining({ confirm: expect.any(Function) }));
     expect(forgotten).toEqual([{ account: "key-9" }]);
   });
 });

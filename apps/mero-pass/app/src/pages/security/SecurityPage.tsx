@@ -19,6 +19,7 @@ import { rememberedRecoveryKey } from '../../lib/recoveryKey';
 import { type ThemeMode, chooseTheme, useTheme } from '../../lib/theme';
 import shell from '../../styles/shell.module.css';
 import { describeError } from '../../lib/errors';
+import { passkeyConfirm } from '@calimero-network/mero-js';
 
 /** One passkey of the signed-in account (`GET /me`). */
 interface Passkey {
@@ -67,7 +68,7 @@ export default function SecurityPage() {
     setProtection(await deviceKeeper.protection().catch(() => 'none' as const));
     if (!client) return;
     try {
-      const me = (await client.me()) as {
+      const me = (await client.auth.me()) as {
         passkeys?: Array<{ id: string; label?: string | null }>;
         passkeyId?: string | null;
       };
@@ -141,7 +142,10 @@ export default function SecurityPage() {
     if (!client) return;
     setError(null);
     try {
-      await client.removePasskey(d.id, passkey());
+      await client.auth.passkeyRemove(
+        { cred: d.id },
+        { confirm: passkeyConfirm(passkey()) },
+      );
       setStatus(`Passkey ${d.label ?? d.id.slice(0, 10) + '…'} removed.`);
       await load();
     } catch (e) {

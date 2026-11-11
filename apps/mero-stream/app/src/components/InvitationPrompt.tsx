@@ -129,7 +129,10 @@ export default function InvitationPrompt() {
     setBusy(true);
     setError(null);
     try {
-      const redeemed = (await conn.client.redeemInvite(invite.token)) as { org?: unknown; orgId?: unknown } | null;
+      const redeemed = (await conn.client.orgs.inviteRedeem({ token: invite.token })) as {
+        org?: unknown;
+        orgId?: unknown;
+      } | null;
       conn.after();
       dropInvite();
       const org =

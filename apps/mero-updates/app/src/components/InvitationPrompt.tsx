@@ -120,13 +120,12 @@ export default function InvitationPrompt() {
     setBusy(true);
     setError(null);
     try {
-      const redeemed = await signedIn.client.redeemInvite(invite.token);
+      const redeemed = await signedIn.client.orgs.inviteRedeem({ token: invite.token });
       signedIn.after();
       const org = joinedOrg(redeemed);
       dropInvite();
       const known = org
-        ? await signedIn.client
-            .getOrg(org)
+        ? await signedIn.client.orgs.get({ org })
             .then((o) => orgMemberName(o?.memberMetadata as Record<string, unknown> | undefined, signedIn.accountId))
             .catch(() => "")
         : "";

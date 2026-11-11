@@ -1,11 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  CalimeroError,
-  type CalimeroClient,
-  type PasskeyProvider,
-} from '@calimero-network/mero-js';
+import { CalimeroError, type PasskeyProvider } from '@calimero-network/mero-js';
 import { resolveTarget } from '@calimero-apps/connect';
 import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from '@calimero-apps/passkey';
 
@@ -13,6 +9,7 @@ import { CalimeroProvider, useCalimero, type CalimeroDeps } from './calimero';
 import SignInPanel from './components/SignInPanel';
 import InvitationPrompt from './components/InvitationPrompt';
 import { invites } from './lib/inviteLink';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // The sign-in every component app shares (@calimero-apps/passkey): only this
 // cluster's passkeys, "no account here" as create-in-place, Sign in first for
@@ -29,7 +26,7 @@ function setup(configure?: (client: ReturnType<typeof fakeClient>) => void) {
   configure?.(client);
   const deps: CalimeroDeps = {
     env: ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => pk as unknown as PasskeyProvider,
   };
   function Status() {
@@ -46,21 +43,21 @@ function setup(configure?: (client: ReturnType<typeof fakeClient>) => void) {
 }
 
 function fakeClient() {
-  const client = {
+  const client = withRoutes({
     session: undefined as undefined | { accountId: string },
     useSession: vi.fn(),
     signOut: vi.fn(async () => {}),
     me: vi.fn(async () => ({ orgs: [{ orgId: 'org-1' }] })),
     signIn: vi.fn(async (p: PasskeyProvider) => {
       await p.get(new Uint8Array([1]), 'calimero.network');
-      client.session = { accountId: 'acct-1' };
+      (client as { session: unknown }).session = { accountId: 'acct-1' };
       return client.session;
     }),
     signUp: vi.fn(async (..._args: unknown[]) => {
-      client.session = { accountId: 'acct-new' };
+      (client as { session: unknown }).session = { accountId: 'acct-new' };
       return client.session;
     }),
-  };
+  });
   return client;
 }
 
@@ -137,7 +134,7 @@ describe('one sign-in everywhere', () => {
     const client = fakeClient();
     const deps: CalimeroDeps = {
       env: ENV,
-      makeClient: async () => client as unknown as CalimeroClient,
+      makeClient: async () => withRoutes(client),
       passkey: () => ({ create: vi.fn(), get: vi.fn() }) as unknown as PasskeyProvider,
     };
     function Where() {

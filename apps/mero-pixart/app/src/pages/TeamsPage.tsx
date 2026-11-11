@@ -24,6 +24,7 @@ import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import { legacyUsername } from "../utils/projectName";
 import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume } from "../utils/lastVisit";
 import styles from "./TeamsPage.module.css";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 /**
  * The teams this account is in: Calimero organizations (v1: namespaces of
@@ -137,7 +138,7 @@ export default function TeamsPage() {
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await client.deleteOrg(teamId, passkey());
+      await client.orgs.delete({ org: teamId }, { confirm: passkeyConfirm(passkey()) });
     } catch (err) {
       showToast(`Could not delete team: ${messageOf(err)}`);
       return;

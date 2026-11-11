@@ -22,22 +22,25 @@ vi.hoisted(() => {
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const self = "f".repeat(64);
 
-vi.mock("../api/rpc", () => ({
-  getNodeIdentity: vi.fn().mockResolvedValue({ accountId: "f".repeat(64) }),
-  listGroupMembers: vi.fn().mockResolvedValue({ members: [], teeMembers: [] }),
-  rpcCall: vi.fn().mockResolvedValue([]),
-  updateMemberRole: vi.fn(),
-  removeTeamMember: vi.fn(),
-  // The team's names are still loading: nothing re-renders the section while
-  // the field's first effects wait for their task.
-  readTeam: vi.fn(() => new Promise(() => {})),
-  setTeamName: (...a: unknown[]) => admin.setMemberMetadata(...a),
-}));
+vi.mock("../api/rpc", () =>
+  withRoutes({
+    getNodeIdentity: vi.fn().mockResolvedValue({ accountId: "f".repeat(64) }),
+    listGroupMembers: vi.fn().mockResolvedValue({ members: [], teeMembers: [] }),
+    rpcCall: vi.fn().mockResolvedValue([]),
+    updateMemberRole: vi.fn(),
+    removeTeamMember: vi.fn(),
+    // The team's names are still loading: nothing re-renders the section while
+    // the field's first effects wait for their task.
+    readTeam: vi.fn(() => new Promise(() => {})),
+    setTeamName: (...a: unknown[]) => admin.setMemberMetadata(...a),
+  }),
+);
 vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
-const admin = { setMemberMetadata: vi.fn().mockResolvedValue(undefined) };
+const admin = withRoutes({ setMemberMetadata: vi.fn().mockResolvedValue(undefined) });
 vi.mock("../contexts/ToastContext", () => ({
   useToast: () => {
     // A slow render: longer than React's 5 ms time slice.

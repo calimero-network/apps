@@ -4,10 +4,11 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const ana = "a".repeat(64);
 
-vi.mock("../api/rpc", () => ({
+vi.mock("../api/rpc", () => (withRoutes({
   getNodeIdentity: vi.fn().mockResolvedValue({ accountId: "f".repeat(64) }),
   // The project subgroup: rows carry no names.
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member" }], teeMembers: [] }),
@@ -17,7 +18,7 @@ vi.mock("../api/rpc", () => ({
   // The team's record: the names people set for the whole team.
   readTeam: (...a: unknown[]) => admin.listGroupMembers(...a),
   setTeamName: (...a: unknown[]) => admin.setMemberMetadata?.(...a),
-}));
+})));
 vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
 const admin: { listGroupMembers: (...a: unknown[]) => unknown; setMemberMetadata?: (...a: unknown[]) => unknown } = {
   listGroupMembers: (...a: unknown[]) => listTeam(...a),

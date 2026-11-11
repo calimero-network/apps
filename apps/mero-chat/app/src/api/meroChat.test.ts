@@ -11,6 +11,7 @@ vi.mock("./calimero", () => ({
 }));
 
 import { METHODS, execute, messageOut, num, u64 } from "./meroChat";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed component ABI: the contract this adapter must match. */
 const abi = JSON.parse(
@@ -20,7 +21,7 @@ const abi = JSON.parse(
 function fakeClient(answer: unknown) {
   const call = vi.fn().mockResolvedValue({ index: 7, result: answer, events: [] });
   const view = vi.fn().mockResolvedValue({ index: 7, result: answer });
-  return { call, view };
+  return withRoutes({ call, view });
 }
 
 describe("the adapter's method table", () => {
@@ -102,7 +103,7 @@ describe("execute", () => {
         timestamp: 1_700_000_000,
         files: [{ name: "f", mime_type: "text/plain", size: 3, blob_id_str: "ab".repeat(32) }],
       },
-      client,
+      withRoutes(client),
     );
     expect(client.call).toHaveBeenCalledWith("app-1", "sendMessage", {
       message: "hello",
@@ -118,12 +119,12 @@ describe("execute", () => {
 
   it("reads list_roles as [account, role] pairs", async () => {
     const client = fakeClient([["acct-a", "Admin"]]);
-    await expect(execute("app-1", "list_roles", {}, client)).resolves.toEqual([["acct-a", "Admin"]]);
+    await expect(execute("app-1", "list_roles", {}, withRoutes(client))).resolves.toEqual([["acct-a", "Admin"]]);
     expect(client.view).toHaveBeenCalledWith("app-1", "listRoles", {});
   });
 
   it("refuses a v1 method the contract does not have, as v1 did", async () => {
-    await expect(execute("app-1", "get_channels", {}, fakeClient(null))).rejects.toThrow(/Method not found/);
+    await expect(execute("app-1", "get_channels", {}, withRoutes(fakeClient(null)))).rejects.toThrow(/Method not found/);
   });
 
   it("shows the contract's own message for a refusal", async () => {
@@ -132,7 +133,7 @@ describe("execute", () => {
       new AppError("app error", { code: "Forbidden", fields: { message: "You can only edit your own messages" } }),
     );
     await expect(
-      execute("app-1", "edit_message", { message_id: "m", new_message: "x", timestamp: 1 }, client),
+      execute("app-1", "edit_message", { message_id: "m", new_message: "x", timestamp: 1 }, withRoutes(client)),
     ).rejects.toThrow("You can only edit your own messages");
   });
 });

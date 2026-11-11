@@ -6,8 +6,8 @@
  * read-back, so a change the node refused never looks like one it accepted.
  */
 import { useCallback, useMemo } from 'react';
-import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
-import { removeFromApp, type AppSource } from '@calimero-apps/connect';
+import { passkeyConfirm, type PasskeyProvider } from '@calimero-network/mero-js';
+import { removeFromApp, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
 
 import {
   ROLE_ADMIN,
@@ -62,7 +62,7 @@ export function useMemberRoles({
   after,
   source = null,
 }: {
-  client: Pick<CalimeroClient, 'setMember' | 'removeMember' | 'removeTeamMember' | 'getOrg' | 'setCapabilities'>;
+  client: ClientRoutes<{ orgs: 'setMember' | 'removeMember' | 'teamRemoveMember' | 'get' | 'capabilities' }>;
   org: string | null;
   self: string;
   state: OrgMembers | null;
@@ -96,12 +96,17 @@ export function useMemberRoles({
 
   const setRole = useCallback(
     (account: string, role: WorkspaceRole) =>
-      write((o) => client.setMember(o, account, role === ROLE_ADMIN ? 'admin' : 'member', passkey())),
+      write((o) =>
+        client.orgs.setMember(
+          { org: o, account, role: role === ROLE_ADMIN ? 'admin' : 'member' },
+          { confirm: passkeyConfirm(passkey()) },
+        ),
+      ),
     [client, passkey, write],
   );
   const setCapabilities = useCallback(
     (account: string, capabilities: number) =>
-      write((o) => client.setCapabilities(o, capabilities, passkey(), { account })),
+      write((o) => client.orgs.capabilities({ org: o, capabilities, account }, { confirm: passkeyConfirm(passkey()) })),
     [client, passkey, write],
   );
   const removeMember = useCallback(
@@ -109,7 +114,13 @@ export function useMemberRoles({
     [client, passkey, write, source],
   );
   const repairDefaultCapabilities = useCallback(
-    () => write((o) => client.setCapabilities(o, repairedDefault(defaultCapabilities), passkey())),
+    () =>
+      write((o) =>
+        client.orgs.capabilities(
+          { org: o, capabilities: repairedDefault(defaultCapabilities) },
+          { confirm: passkeyConfirm(passkey()) },
+        ),
+      ),
     [client, passkey, write, defaultCapabilities],
   );
 

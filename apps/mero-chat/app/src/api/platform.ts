@@ -20,18 +20,20 @@
  * needs all of that, so the first steps are kept as a **pending channel**
  * here and the instance is created when the context is.
  */
-import type { AppInfo, CalimeroClient, OrgMode } from "@calimero-network/mero-js";
+import { passkeyConfirm, type AppInfo, type CalimeroClient, type OrgMode } from "@calimero-network/mero-js";
 import {
   adoptAppTeam,
   appInvite,
   appPeople,
+  appTarget,
   appTeamIdIn,
   appTeamMembers,
   createAppOrg,
   leaveApp,
   leaveOrg,
-  orgWideAccess,
+  listAppInfos,
   orgsWithApp,
+  orgWideAccess,
   otherOrgs,
   removeFromApp,
   type AppInviteToken,
@@ -142,7 +144,7 @@ function asAccess(value: unknown): Access {
 
 export function getAppRecord(app: string): Promise<AppRecord> {
   return cached(`app:${app}`, async () => {
-    const raw = (await run((c) => c.getApp(app))) as Record<string, unknown>;
+    const raw = (await run((c) => c.apps.get({ app }))) as Record<string, unknown>;
     const metadata = raw.metadata && typeof raw.metadata === "object" ? (raw.metadata as Record<string, unknown>) : null;
     return {
       appId: String(raw.appId ?? app),
@@ -157,7 +159,7 @@ export function getAppRecord(app: string): Promise<AppRecord> {
 
 export function getOrgRecord(org: string): Promise<OrgRecord> {
   return cached(`org:${org}`, async () => {
-    const raw = (await run((c) => c.getOrg(org))) as unknown as Record<string, unknown>;
+    const raw = (await run((c) => c.orgs.get({ org }))) as unknown as Record<string, unknown>;
     const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
     return {
       orgId: String(raw.orgId ?? org),
@@ -276,7 +278,7 @@ async function openAccess(org: string): Promise<Access> {
 
 /** The orgs this account is in (`/me`). */
 export async function myOrgs(): Promise<Array<{ orgId: string; name: string; role: string }>> {
-  const me = (await run((c) => c.me())) as { orgs?: Array<{ orgId: string; name: string; role: string }> };
+  const me = (await run((c) => c.auth.me())) as { orgs?: Array<{ orgId: string; name: string; role: string }> };
   return me.orgs ?? [];
 }
 
@@ -298,7 +300,7 @@ export function otherChatOrgs(): Promise<OtherOrg[]> {
 export function listChatApps(): Promise<AppInfo[]> {
   const source = chatSource();
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  return cached(`apps:${JSON.stringify(filter)}`, () => run((c) => c.listApps(filter)));
+  return cached(`apps:${JSON.stringify(filter)}`, () => run((c) => listAppInfos(c, filter)));
 }
 
 /** Whether `id` is an org this account is in (else it is read as an app). */
@@ -350,7 +352,7 @@ export function visibilityOf(access: Access): Visibility {
 
 /** Sets a channel's access: open (the org) or restricted to `accounts` (besides its owner). */
 export async function setAppAccess(app: string, access: Access): Promise<void> {
-  await run((c) => c.setAccess(app, access as unknown as Record<string, unknown>));
+  await run((c) => c.apps.access({ app, access }));
   invalidate(app);
 }
 
@@ -429,11 +431,7 @@ export async function createChatApp(
       ? await openAccess(org)
       : { kind: "accounts", accounts: pending?.accounts ?? [] };
   const appId = await run((c) =>
-    c.createApp(title, chatSource(), {
-      org,
-      access: access as unknown as Record<string, unknown>,
-      initArgs: initArgsFrom(initializationParams),
-    }),
+    c.apps.create({ name: title, ...appTarget(chatSource()), org, access, initArgs: initArgsFrom(initializationParams) }).then((r) => r.appId),
   );
   if (pending) pending.appId = appId;
   invalidate();
@@ -462,12 +460,14 @@ export async function createOrg(name: string, capabilities?: number): Promise<st
 }
 
 export async function setCapabilities(org: string, capabilities: number, account?: string): Promise<void> {
-  await run((c) => c.setCapabilities(org, capabilities, passkey(), account ? { account } : {}));
+  await run((c) =>
+    c.orgs.capabilities({ org, capabilities, ...(account ? { account } : {}) }, { confirm: passkeyConfirm(passkey()) }),
+  );
   invalidate(org);
 }
 
 export async function setMemberRole(org: string, account: string, role: "admin" | "member" | "guest"): Promise<void> {
-  await run((c) => c.setMember(org, account, role, passkey()));
+  await run((c) => c.orgs.setMember({ org, account, role }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
 }
 
@@ -476,7 +476,7 @@ export async function setMemberRole(org: string, account: string, role: "admin" 
 export async function addToChat(org: string, account: string): Promise<void> {
   const team = chatTeamId(await getOrgRecord(org));
   if (!team) return;
-  await run((c) => c.setTeamMember(org, team, account, passkey()));
+  await run((c) => c.orgs.teamSetMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
 }
 
@@ -527,18 +527,18 @@ export async function leaveChatOrg(org: string): Promise<void> {
 }
 
 export async function deleteOrg(org: string): Promise<void> {
-  await run((c) => c.deleteOrg(org, passkey()));
+  await run((c) => c.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) }));
   invalidate();
 }
 
 export async function setMemberName(org: string, account: string, name: string): Promise<void> {
-  await run((c) => c.setMemberMetadata(org, account, { name }));
+  await run((c) => c.orgs.memberMetadata({ org, account, metadata: { name } }));
   invalidate(org);
 }
 
 export async function setOrgName(org: string, name: string): Promise<void> {
   const current = await getOrgRecord(org).catch(() => null);
-  await run((c) => c.setOrgMetadata(org, { ...(current?.metadata ?? {}), name }));
+  await run((c) => c.orgs.metadata({ org, metadata: { ...(current?.metadata ?? {}), name } }));
   invalidate(org);
 }
 
@@ -554,7 +554,7 @@ export function inviteToken(org: string): Promise<AppInviteToken> {
 
 /** Redeems an invite token; answers the org it joined. */
 export async function redeemInvite(token: string): Promise<string | null> {
-  const redeemed = (await run((c) => c.redeemInvite(token))) as Record<string, unknown>;
+  const redeemed = (await run((c) => c.orgs.inviteRedeem({ token }))) as Record<string, unknown>;
   invalidate();
   for (const key of ["org", "orgId"]) {
     const v = redeemed[key];

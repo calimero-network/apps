@@ -2,6 +2,7 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormView, ResponseView } from "./formsApi";
 import type { Workspace } from "./useWorkspace";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /**
  * The hand-off with a mocked CalimeroClient: the signed-in account reaches a
@@ -35,11 +36,11 @@ const answer = (app: string, method: string, args: unknown) => {
   return Promise.resolve({ index: 1, result, events: [] });
 };
 
-const client = {
+const client = withRoutes({
   call: vi.fn(answer),
   view: vi.fn(answer),
   listApps: vi.fn(async () => [{ appId: PIPELINE, name: "Sales", owner: "o", org: "org", bundle: "b", package: "com.calimero.mero-crm", version: "1" }]),
-};
+});
 
 const signedIn = { client, after: () => {} };
 vi.mock("./sessionContext", () => ({ useSignedIn: () => signedIn }));

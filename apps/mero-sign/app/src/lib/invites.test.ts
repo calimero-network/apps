@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 import {
   captureInvite,
@@ -21,8 +22,8 @@ describe('invitations', () => {
   it('are org invites to the workspace, as a member, approved with a passkey', async () => {
     const invite = vi.fn(async () => 'tok');
     const passkey = { create: vi.fn(), get: vi.fn() };
-    expect(await inviteToken({ invite } as never, 'org-1', passkey)).toBe('tok');
-    expect(invite).toHaveBeenCalledWith('org-1', 'member', passkey);
+    expect(await inviteToken(withRoutes({ invite }) as never, 'org-1', passkey)).toBe('tok');
+    expect(invite).toHaveBeenCalledWith('org-1', 'member', expect.objectContaining({ confirm: expect.any(Function) }));
   });
 
   it('travel as this frontend’s own URL at its root, naming the agreement when there is one', () => {

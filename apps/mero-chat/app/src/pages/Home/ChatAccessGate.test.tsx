@@ -22,7 +22,7 @@ vi.mock("../../api/calimero", () => ({
   getAccountId: () => "acct-me",
   chatSource: () => ({ package: "com.calimero.chat" }),
   passkey: () => ({}),
-  getClient: () => ({
+  getClient: () => (withRoutes({
     getOrg: async () => {
       if (!h.org) throw Object.assign(new Error("404"), { status: 404 });
       return structuredClone(h.org);
@@ -30,7 +30,7 @@ vi.mock("../../api/calimero", () => ({
     me: async () => ({ orgs: h.org ? [{ orgId: "org-1", name: "Acme", role: "member" }] : [] }),
     listApps: async () =>
       h.apps.map((a) => ({ ...a, name: "general", owner: "acct-ana", bundle: "b", package: "com.calimero.chat", version: null })),
-  }),
+  })),
 }));
 vi.mock("../../constants/config", () => ({
   getGroupId: () => "org-1",
@@ -40,6 +40,7 @@ vi.mock("../../utils/session", () => ({ clearNamespaceReady: vi.fn() }));
 
 import { invalidate } from "../../api/platform";
 import ChatAccessGate from "./ChatAccessGate";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const chatTeam = (members: Record<string, boolean>, join: "everyone" | "invite", removed: string[] = []) => ({
   parent: null,

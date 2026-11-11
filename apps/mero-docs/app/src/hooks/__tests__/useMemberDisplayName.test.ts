@@ -11,7 +11,16 @@ const setMemberMetadataFn = vi.fn();
 vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({ mero: null }),
-  useLive: () => ({ admin: { setMemberMetadata: setMemberMetadataFn } }),
+  // OrgAdmin as `@calimero-apps/names` reaches it (`orgs.memberMetadata`), recorded in its own order.
+  useLive: () => ({
+    admin: {
+      setMemberMetadata: setMemberMetadataFn,
+      orgs: {
+        memberMetadata: ({ org, account, metadata }: { org: string; account: string; metadata: unknown }) =>
+          setMemberMetadataFn(org, account, metadata),
+      },
+    },
+  }),
   useMemberMetadata: (...args: unknown[]) => memberMetadataMock(...args),
   useSetMemberMetadata: () => ({
     setMemberMetadata: setMemberMetadataFn,
