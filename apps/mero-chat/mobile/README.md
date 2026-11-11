@@ -6,7 +6,7 @@ contract (`../logic`, package `com.calimero.chat`).
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at a commit, by SPM revision in `ios/project.yml` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
 Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
 To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).
