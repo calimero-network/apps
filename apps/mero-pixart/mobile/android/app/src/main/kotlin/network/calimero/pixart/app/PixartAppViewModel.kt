@@ -8,6 +8,7 @@ import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CalimeroClientOptions
 import com.calimero.mero.CalimeroConnectOptions
 import com.calimero.mero.CloudPolicy
+import com.calimero.mero.ConsentResult
 import com.calimero.mero.PasskeyProvider
 import com.calimero.mero.SoftPasskey
 import com.calimero.mero.app.MeroAppBackend
@@ -124,7 +125,7 @@ class PixartAppViewModel(
                 } else {
                     val started = s.requestConsent(context, build(s.callbackUrl), confirm)
                     s.consentResult.value?.takeIf { it.requestId == started.requestId }
-                        ?: runCatching { s.client.consentResult(started.requestId) }.getOrNull()
+                        ?: runCatching { s.client.fetchConsentResult(started.requestId) }.getOrNull()
                 }
             },
         )
@@ -321,3 +322,7 @@ class PixartAppViewModel(
         private fun devRpId(host: String): String = if (host == "10.0.2.2" || host == "127.0.0.1") "localhost" else host
     }
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }
