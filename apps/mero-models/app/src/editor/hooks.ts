@@ -224,7 +224,7 @@ export function usePresence(contextId: string, name: string): {
       last = Date.now();
       seq = Math.max(seq + 1, Date.now() * 1000);
       void client.apps
-        .presencePublish({ app: contextId, seq, state: presenceState(encodeSlice(slice.current)) as unknown as string })
+        .presencePublish({ app: contextId, seq, state: presenceState(encodeSlice(slice.current)) })
         .catch(() => undefined);
     };
     publish.current = () => {
@@ -239,7 +239,7 @@ export function usePresence(contextId: string, name: string): {
       publish.current = () => {};
       seq = Math.max(seq + 1, Date.now() * 1000);
       void client.apps
-        .presencePublish({ app: contextId, seq, state: presenceState(null) as unknown as string })
+        .presencePublish({ app: contextId, seq, state: presenceState(null) })
         .catch(() => undefined);
     };
   }, [scene.client, contextId]);

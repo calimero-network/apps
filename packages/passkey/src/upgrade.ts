@@ -48,7 +48,6 @@ import {
   ORG_CAPABILITIES,
   type AppsReport,
   type CalimeroClient,
-  type ConsentResult,
   type ReportedApp,
 } from "@calimero-network/mero-js";
 import {
@@ -428,8 +427,7 @@ export async function finishUpgrade(
   let status: UpgradeReturn["status"] = "unknown";
   if (Date.now() - pending.at < PENDING_TTL_MS) {
     try {
-      // The document types the consent result as an open object.
-      status = ((await client.consent.pageResult({ request: back.requestId })) as unknown as ConsentResult).status;
+      status = (await client.consent.pageResult({ request: back.requestId })).status;
     } catch {
       status = "unknown";
     }
