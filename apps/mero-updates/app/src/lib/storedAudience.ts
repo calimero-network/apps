@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { clearActiveAudience, getContextId } from "./active";
 import { useMaybeSignedIn } from "./sessionContext";
+import { listAppInfos } from "@calimero-apps/connect";
 
 /**
  * Whether the remembered audience can be opened.
@@ -42,8 +43,7 @@ export function useStoredAudience(): StoredAudience {
     if (!ask || !client || !source || !stored) return;
     let cancelled = false;
     const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-    client
-      .listApps(filter)
+    listAppInfos(client, filter)
       .then((apps) => apps.map((a) => a.appId))
       // Unreachable: keep it and let the shell report the error, rather than
       // forgetting a choice over a network blip.

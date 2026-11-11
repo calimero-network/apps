@@ -20,13 +20,16 @@ import {
 } from '@calimero-network/mero-js';
 import {
   appPeople,
+  appTarget,
   createAppOrg,
   isAppOnly,
+  listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
   type AppOrgView,
   type AppSource,
+  type ClientRoutes,
 } from '@calimero-apps/connect';
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
@@ -60,12 +63,12 @@ export function displayName(
 
 /** The instances of this app (the dev bundle, or the package) the account reaches. */
 export async function listInstances(
-  client: Pick<CalimeroClient, 'listApps'>,
+  client: ClientRoutes<{ apps: 'list' }>,
   source: AppSource,
 ): Promise<AppInfo[]> {
   const filter =
     typeof source === 'string' ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
 // ── workspaces ───────────────────────────────────────────────────────────────
@@ -86,7 +89,7 @@ export interface WorkspaceRow {
  * another app is offered under "Connect to an existing organization" instead.
  */
 export async function listWorkspaces(
-  client: Pick<CalimeroClient, 'me' | 'listApps' | 'getOrg'>,
+  client: ClientRoutes<{ auth: 'me'; apps: 'list'; orgs: 'get' }>,
   source: AppSource,
 ): Promise<WorkspaceRow[]> {
   const [orgs, apps] = await Promise.all([
@@ -126,7 +129,7 @@ export const MEMBER_DEFAULTS =
  * its owner and admins can create agreements and invite.
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
+  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
   name: string,
   passkey: () => PasskeyProvider,
   onStatus: StatusFn = noop,
@@ -160,11 +163,11 @@ export interface OrgMembers {
 }
 
 export async function readMembers(
-  client: Pick<CalimeroClient, 'getOrg'>,
+  client: ClientRoutes<{ orgs: 'get' }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -184,12 +187,12 @@ export async function readMembers(
 
 /** Publishes the name `account` goes by across the workspace (org member metadata). */
 export async function publishWorkspaceName(
-  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+  client: ClientRoutes<{ orgs: 'memberMetadata' }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.setMemberMetadata(org, account, { name });
+  await client.orgs.memberMetadata({ org, account, metadata: { name } });
 }
 
 // ── the private signature library ────────────────────────────────────────────
@@ -199,7 +202,7 @@ export async function publishWorkspaceName(
  * owns outside any org, created and set up on first use.
  */
 export async function ensurePrivateLibrary(
-  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
   source: AppSource,
   accountId: string,
   after: () => void = () => {},
@@ -215,7 +218,7 @@ export async function ensurePrivateLibrary(
     }
     return found.appId;
   }
-  const appId = await client.createApp(LIBRARY_NAME, source);
+  const appId = (await client.apps.create({ name: LIBRARY_NAME, ...appTarget(source) })).appId;
   await new MeroSignApp(client, appId, after).setup({
     is_private: true,
     context_name: 'default',
@@ -241,7 +244,7 @@ export interface AgreementRow {
 
 /** The agreements in workspace `org`, by name. */
 export async function listAgreements(
-  client: Pick<CalimeroClient, 'listApps'> & Transport,
+  client: ClientRoutes<{ apps: 'list' }> & Transport,
   source: AppSource,
   org: string,
   accountId: string,
@@ -277,7 +280,8 @@ export const CONNECTED_AGREEMENT_NAME = 'Untitled agreement';
  * Answers the instance id.
  */
 export async function createAgreement(
-  client: Pick<CalimeroClient, 'createApp' | 'listApps' | 'call' | 'view' | 'getOrg' | 'scopeApps' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> &
+    ClientRoutes<{ apps: 'create' | 'list' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   opts: {
     source: AppSource;
     org: string;
@@ -292,11 +296,13 @@ export async function createAgreement(
   onStatus('Creating the agreement…');
   // On Mero Sign's team (made first, by an owner or admin, in an org whose
   // other apps have teams), or organization access in a legacy org.
-  const appId = await client.createApp(
-    opts.name,
-    opts.source,
-    await orgInstanceOptions(client, opts.org, opts.source, opts.passkey ?? noPasskey, PRODUCT_NAME),
-  );
+  const appId = (
+    await client.apps.create({
+      name: opts.name,
+      ...appTarget(opts.source),
+      ...(await orgInstanceOptions(client, opts.org, opts.source, opts.passkey ?? noPasskey, PRODUCT_NAME)),
+    })
+  ).appId;
   onStatus('Preparing its documents…');
   await new MeroSignApp(client, appId, after).setup({
     is_private: false,
@@ -308,7 +314,7 @@ export async function createAgreement(
 
 /** Records a joined agreement in the private library; best-effort. */
 export async function recordInLibrary(
-  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
   source: AppSource,
   accountId: string,
   appId: string,
@@ -336,7 +342,7 @@ export async function recordInLibrary(
  * removed, is refused by the contract and gets its sentence.
  */
 export async function enterAgreement(
-  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
   opts: { source: AppSource; appId: string; accountId: string; name: string },
   after: () => void = () => {},
 ): Promise<string> {

@@ -8,6 +8,7 @@ import { PRODUCT_NAME, isAdmin, readOrg, removeTeamMember } from "../../api/team
 import { useToast } from "../../contexts/ToastContext";
 import { CloseIcon, ShieldIcon, UserIcon } from "../../components/common/icons/Icons";
 import styles from "./teams.module.scss";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 interface Props {
   teamId: string;
@@ -97,7 +98,10 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
     }
     setBusy(row.account);
     try {
-      await client.setMember(teamId, row.account, next, passkey());
+      await client.orgs.setMember(
+        { org: teamId, account: row.account, role: next },
+        { confirm: passkeyConfirm(passkey()) },
+      );
       showToast(
         next === "admin"
           ? `${display(row)} can now manage members and delete calendars.`

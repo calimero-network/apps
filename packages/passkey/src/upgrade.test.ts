@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import type { AppsReport, ReportedApp } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 
@@ -10,6 +11,7 @@ import {
   startUpgrade,
   upgradeDismissed,
   upgradeOffer,
+  upgradeCopy,
   upgradeOffers,
   upgradeReturnTo,
   watchUpgrades,
@@ -69,8 +71,15 @@ function org(role: string | null, caps?: number, teams: Record<string, unknown> 
   };
 }
 
-function fakeClient(over: Partial<Record<keyof UpgradeClient, unknown>> = {}) {
-  return {
+/**
+ * The calls these helpers make, by the names they had before the generated
+ * methods, each answering with the arguments in that order; the client the
+ * helpers get routes its generated methods to them.
+ */
+type Calls = "session" | "getApp" | "appsReportAll" | "getOrg" | "me" | "requestConsent" | "consentResult";
+
+function fakeClient(over: Partial<Record<Calls, unknown>> = {}) {
+  const m = {
     session: { accountId: ME },
     getApp: vi.fn(async (app: string) => ({ appId: app, owner: "acct-boss", org: "org-1", access: { kind: "org" } })),
     appsReportAll: vi.fn(async () => report([reported({ app: "app-1" })])),
@@ -79,7 +88,17 @@ function fakeClient(over: Partial<Record<keyof UpgradeClient, unknown>> = {}) {
     requestConsent: vi.fn(async () => ({ requestId: "req-1", url: "https://node.example/consent/req-1", expiresAt: 9e9 })),
     consentResult: vi.fn(async () => ({ requestId: "req-1", kind: "upgrade", status: "approved", decidedAt: 1 })),
     ...over,
-  } as unknown as UpgradeClient & Record<string, ReturnType<typeof vi.fn>>;
+  } as Record<string, Mock<(...args: unknown[]) => unknown>>;
+  const routes = {
+    apps: { get: ({ app }: { app: string }) => m.getApp!(app) },
+    orgs: { get: ({ org: id }: { org: string }) => m.getOrg!(id) },
+    auth: { me: () => m.me!() },
+    consent: {
+      pageCreate: ({ body }: { body: unknown }) => m.requestConsent!(body),
+      pageResult: ({ request }: { request: string }) => m.consentResult!(request),
+    },
+  };
+  return Object.assign(routes, m) as unknown as UpgradeClient & Record<string, ReturnType<typeof vi.fn>>;
 }
 
 describe("upgradeOffer", () => {
@@ -90,10 +109,78 @@ describe("upgradeOffer", () => {
       name: "Team store",
       current: "1.0.0",
       latest: "1.2.0",
+      reachable: true,
+      blocked: null,
       heldBy: "owner",
       canUpgrade: true,
     });
     expect(client.appsReportAll).toHaveBeenCalledWith("org-1");
+  });
+
+  it("offers the newest release the node says it can reach, and why the latest is not it", async () => {
+    const blocked = {
+      version: "1.2.0",
+      reason: "runtime",
+      message: "com.calimero.kv@1.2.0 needs runtime 1.0.0 or newer, and node 4 runs 0.9.0",
+      minRuntimeVersion: "1.0.0",
+      nodes: [{ node: 4, runtime: "0.9.0" }],
+    };
+    const client = fakeClient({
+      getOrg: vi.fn(async () => org("owner")),
+      appsReportAll: vi.fn(async () =>
+        report([reported({ app: "app-1", latestReachable: "1.1.0", latestBlocked: blocked } as Partial<ReportedApp> & { app: string })]),
+      ),
+    });
+    const offer = await upgradeOffer(client, "app-1");
+    expect(offer).toMatchObject({
+      latest: "1.1.0",
+      reachable: true,
+      blocked: { version: "1.2.0", reason: "runtime", message: blocked.message },
+      canUpgrade: true,
+    });
+    expect(upgradeCopy(offer!, "KV Store")).toBe(
+      "Version 1.1.0 of KV Store is available (you run 1.0.0). Version 1.2.0 cannot be installed yet: " +
+        "the servers that hold this app run an older Calimero release than it needs.",
+    );
+  });
+
+  it("a reachable release older than every listed one is still the offer", async () => {
+    // The node lists the newest 16; the one it can reach may be older than all of them.
+    const client = fakeClient({
+      getOrg: vi.fn(async () => org("owner")),
+      appsReportAll: vi.fn(async () =>
+        report([
+          reported({
+            app: "app-1",
+            availableVersions: ["1.5.0", "1.6.0"],
+            latestReachable: "1.1.0",
+            latestBlocked: { version: "1.6.0", reason: "runtime", message: "m" },
+          } as Partial<ReportedApp> & { app: string }),
+        ]),
+      ),
+    });
+    expect(await upgradeOffer(client, "app-1")).toMatchObject({ latest: "1.1.0", reachable: true });
+  });
+
+  it("when no newer release is reachable: says which and why, and offers no update", async () => {
+    const client = fakeClient({
+      getOrg: vi.fn(async () => org("owner")),
+      appsReportAll: vi.fn(async () =>
+        report([
+          reported({
+            app: "app-1",
+            latestReachable: null,
+            latestBlocked: { version: "1.2.0", reason: "runtime", message: "m" },
+          } as Partial<ReportedApp> & { app: string }),
+        ]),
+      ),
+    });
+    const offer = await upgradeOffer(client, "app-1");
+    expect(offer).toMatchObject({ latest: "1.2.0", reachable: false, canUpgrade: true });
+    expect(upgradeCopy(offer!, "KV Store")).toBe(
+      "Version 1.2.0 of KV Store is out (you run 1.0.0), but it cannot be installed yet: " +
+        "the servers that hold this app run an older Calimero release than it needs.",
+    );
   });
 
   it("an admin may upgrade too", async () => {
@@ -328,13 +415,42 @@ describe("renderUpgradePrompt", () => {
     const later = vi.fn();
     const el = renderUpgradePrompt(
       document.body,
-      { app: "app-1", name: "Team store", current: "1.0.0", latest: "1.2.0", heldBy: "owner", canUpgrade: true },
+      { app: "app-1", name: "Team store", current: "1.0.0", latest: "1.2.0", reachable: true, blocked: null, heldBy: "owner", canUpgrade: true },
       { appName: "KV Store", onUpdate: update, onLater: later },
     );
     expect(el.textContent).toContain("Version 1.2.0 of KV Store is available (you run 1.0.0).");
     expect(el.getAttribute("role")).toBe("region");
     (el.querySelector("[data-testid=upgrade-update]") as HTMLElement).click();
     expect(update).toHaveBeenCalled();
+    (el.querySelector("[data-testid=upgrade-later]") as HTMLElement).click();
+    expect(later).toHaveBeenCalled();
+  });
+});
+
+describe("renderUpgradePrompt, nothing reachable", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("explains, offers no Update, and OK dismisses", () => {
+    const later = vi.fn();
+    const el = renderUpgradePrompt(
+      document.body,
+      {
+        app: "app-1",
+        name: "Team store",
+        current: "1.0.0",
+        latest: "1.2.0",
+        reachable: false,
+        blocked: { version: "1.2.0", reason: "authority", message: "m" },
+        heldBy: "owner",
+        canUpgrade: true,
+      },
+      { appName: "KV Store", onUpdate: vi.fn(), onLater: later },
+    );
+    expect(el.textContent).toContain("cannot be installed yet: its publisher would take over its updates.");
+    expect(el.querySelector("[data-testid=upgrade-update]")).toBeNull();
+    expect(el.getAttribute("aria-label")).toBe("Update not possible yet");
     (el.querySelector("[data-testid=upgrade-later]") as HTMLElement).click();
     expect(later).toHaveBeenCalled();
   });
@@ -367,6 +483,26 @@ describe("watchUpgrades", () => {
     await flush();
     await flush();
     expect(document.querySelector("[data-testid=upgrade-prompt]")).toBeNull();
+    again();
+  });
+
+  it("when none is reachable, explains; dismissing that does not hide the update once it can be taken", async () => {
+    const stuck = { latestReachable: null, latestBlocked: { version: "1.2.0", reason: "runtime", message: "m" } };
+    const clientWith = (extra: object) =>
+      fakeClient({
+        me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", role: "owner" }] })),
+        appsReportAll: vi.fn(async (scope: string | null) =>
+          scope === null ? report([]) : report([reported({ app: "app-1", ...extra } as Partial<ReportedApp> & { app: string })]),
+        ),
+      });
+    const stop = watchUpgrades({ client: clientWith(stuck), package: PKG, appName: "KV Store", storage, href: "https://kv/1.0.0/" });
+    await vi.waitFor(() => expect(document.querySelector("[data-testid=upgrade-prompt]")).not.toBeNull());
+    expect(document.querySelector("[data-testid=upgrade-update]")).toBeNull();
+    (document.querySelector("[data-testid=upgrade-later]") as HTMLElement).click();
+    stop();
+    // The node's runtime catches up: 1.2.0 is reachable now, and offered.
+    const again = watchUpgrades({ client: clientWith({}), package: PKG, appName: "KV Store", storage, href: "https://kv/1.0.0/" });
+    await vi.waitFor(() => expect(document.querySelector("[data-testid=upgrade-update]")).not.toBeNull());
     again();
   });
 

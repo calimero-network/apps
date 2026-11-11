@@ -7,6 +7,7 @@
 import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const ME = 'a'.repeat(64);
 const BOB = 'b'.repeat(64);
@@ -28,7 +29,7 @@ vi.mock('./appContext', () => ({
       selfIdentity: ME,
       activeNs: 'ns-1',
       leaveWorkspace,
-      roles: {
+      roles: withRoutes({
         roles,
         orgRoles: roles,
         overrides: new Map(),
@@ -40,7 +41,7 @@ vi.mock('./appContext', () => ({
         setCapabilities: vi.fn(),
         removeMember: vi.fn(),
         repairDefaultCapabilities: vi.fn(),
-      },
+      }),
     },
   }),
 }));

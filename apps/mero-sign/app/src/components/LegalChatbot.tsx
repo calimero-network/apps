@@ -348,6 +348,7 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                // eslint-disable-next-line @typescript-eslint/no-deprecated -- React's `onKeyPress`, kept as it was
                 onKeyPress={handleKeyPress}
                 placeholder="Ask a legal question about the document..."
                 className={`flex-1 px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${

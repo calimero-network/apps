@@ -1,7 +1,7 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import type { LensHost } from "./lens/lens";
 import { identitiesOf } from "./collector";
 import type { OtherApps } from "./otherApps";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * What a lens runs against on the cluster: the event's app's own reads, who
@@ -17,7 +17,7 @@ import type { OtherApps } from "./otherApps";
 const NAMES_FRESH_MS = 60_000;
 
 /** The slice of the client this needs. */
-export type NamesClient = Pick<CalimeroClient, "getOrg">;
+export type NamesClient = ClientRoutes<{ orgs: "get" }>;
 
 /** `{ account: name }` from an organization as `getOrg` answers it. */
 export function memberNamesOf(org: Record<string, unknown> | null): Map<string, string> {
@@ -48,8 +48,7 @@ export function clusterLensHosts(
   const namesIn = (org: string): Promise<Map<string, string>> => {
     const hit = names.get(org);
     if (hit && now() - hit.at < NAMES_FRESH_MS) return hit.names;
-    const read = client
-      .getOrg(org)
+    const read = client.orgs.get({ org })
       .then((o) => memberNamesOf(o as Record<string, unknown>))
       .catch(() => new Map<string, string>());
     names.set(org, { names: read, at: now() });

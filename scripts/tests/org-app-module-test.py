@@ -41,6 +41,11 @@ flags("an invite naming teams", 'await this.client.invite(org, "member", this.pa
 flags("remove from the org", "await client.removeMember(o, account, passkey());", ["removeMember"])
 flags("leave the org (remove yourself)", "await conn.client.removeMember(org, self, passkey());", ["removeMember"])
 flags("remove from a team", "await c.removeTeamMember(org, team, account, passkey());", ["removeTeamMember"])
+flags("the generated org create", "const { orgId } = await client.orgs.create({ name });", ["orgs.create"])
+flags("the generated scope", "await c.orgs.appTeamsScope({ org, apps }, { confirm });", ["orgs.appTeamsScope"])
+flags("the generated invite", "const { token } = await client.orgs.inviteCreate({ org, role: 'member', teams: [] }, o);", ["orgs.inviteCreate"])
+flags("the generated removes", "await client.orgs.removeMember({ org, account }, o); await client.orgs.teamRemoveMember({ org, team, account }, o);", ["orgs.removeMember", "orgs.teamRemoveMember"])
+flags("other generated org methods", "await client.orgs.get({ org }); await client.apps.create({ name, org });", [])
 flags("the app-team helpers", "await createAppTeam(c, org, pkg, p); await inviteToApp(c, org, pkg, { passkey });", ["createAppTeam", "inviteToApp"])
 flags("ensureAppTeam", "const t = await ensureAppTeam(client, org, PKG, passkey);", ["ensureAppTeam"])
 flags(

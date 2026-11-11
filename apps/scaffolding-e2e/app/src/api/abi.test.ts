@@ -6,6 +6,7 @@ import { setConnection } from "../lib/calimero";
 import { METHODS } from "./abi";
 import * as api from "./kvStore";
 import { camel, fromWire, rpcRaw, toWireArgs } from "./rpc";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../../logic/res/abi.json"), "utf8")) as {
@@ -66,7 +67,7 @@ describe("the frontend covers the contract", () => {
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
     setConnection({
-      client: { call: vi.fn(record), view: vi.fn(record) } as never,
+      client: withRoutes({ call: vi.fn(record), view: vi.fn(record) }) as never,
       appId: "app-1",
       org: null,
       accountId: "acct",
@@ -107,7 +108,7 @@ describe("rpc", () => {
     const call = vi.fn().mockResolvedValue({ index: 2, result: null, events: [] });
     const view = vi.fn().mockRejectedValue(Object.assign(new Error("NotFound"), { appCode: "NotFound", fields: { key: "k" } }));
     const after = vi.fn();
-    setConnection({ client: { call, view } as never, appId: "app-1", org: null, accountId: "a", after });
+    setConnection({ client: withRoutes({ call, view }) as never, appId: "app-1", org: null, accountId: "a", after });
 
     expect(await rpcRaw("set", { key: "k", value: "v" })).toEqual({ result: { output: null } });
     expect(call).toHaveBeenCalledWith("app-1", "set", { key: "k", value: "v" });
@@ -123,7 +124,7 @@ describe("rpc", () => {
       index: 1,
       result: [{ id: "f", name: "a.txt", blobId: "ab", size: "12", mimeType: "text/plain", uploadedBy: "acct", uploadedAt: "1700" }],
     });
-    setConnection({ client: { call: vi.fn(), view } as never, appId: "app-1", org: null, accountId: "a", after: () => {} });
+    setConnection({ client: withRoutes({ call: vi.fn(), view }) as never, appId: "app-1", org: null, accountId: "a", after: () => {} });
     const res = await api.listFiles();
     expect(res.result?.output).toEqual([
       { id: "f", name: "a.txt", blob_id: "ab", size: 12, mime_type: "text/plain", uploaded_by: "acct", uploaded_at: 1700 },

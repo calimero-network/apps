@@ -6,7 +6,7 @@
  * CalimeroClient; the landing page is generated and tested on its own.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget } from "@calimero-apps/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +15,7 @@ import { APP, type SessionDeps } from "./session";
 import { SessionProvider } from "./sessionContext";
 import { inviteLink, invites, migrateLegacyInvite } from "./lib/orgs";
 import { getActive } from "./lib/workspaceStore";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
@@ -24,7 +25,7 @@ const hold = (token: string, org: string | null = null) =>
 
 function fakeClient(opts: { signedIn?: boolean; inviteOnly?: boolean } = {}) {
   let session: CalimeroSession | undefined = opts.signedIn ? SESSION : undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -40,22 +41,22 @@ function fakeClient(opts: { signedIn?: boolean; inviteOnly?: boolean } = {}) {
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
     // What core's `GET /sign-up` answers on an invite-only cluster.
     ...(opts.inviteOnly
-      ? {
+      ? withRoutes({
           signUpPolicy: vi.fn(async () => ({
             policy: "invite",
             orgInvites: true,
             signUpInvites: true,
             inviteRequired: true,
           })),
-        }
+        })
       : {}),
-  };
+  });
 }
 
 function renderHost(client: ReturnType<typeof fakeClient>, onJoined = vi.fn()) {
   const deps: SessionDeps = {
     env: DEV_ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
   render(

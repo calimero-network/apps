@@ -14,9 +14,9 @@ All of them target **Calimero 1.0**: contracts on the component SDK
 | v1 | Calimero 1.0 |
 |---|---|
 | namespace (workspace) | organization |
-| context (room, repo) | app instance (`createApp(name, source, { org, access })`) |
+| context (room, repo) | app instance (`client.apps.create({ name, ...appTarget(source), org, access })`) |
 | subgroup with visibility | team (`join: 'everyone'` open, `'invite'` restricted) and app access `{ kind: 'team', team }` |
-| context metadata | app metadata (`setAppMetadata`, `getApp(app).metadata`) |
+| context metadata | app metadata (`client.apps.metadata`, `client.apps.get({ app }).metadata`) |
 | `AuthoredVector`, `Authored<IndexedMap>` | a `Table` with an `author` field, checked against `env::caller()` |
 | `GCounter` / `PNCounter` | `Counter` (one log orders every write: nothing to merge) |
 

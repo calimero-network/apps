@@ -46,11 +46,13 @@ function safeLocalStorage(): Storage | null {
   }
 }
 
-/** The slice of mero-js's `CalimeroClient` that writes your name to an org. */
+/** The slice of mero-js's `CalimeroClient` that writes your name to an org (its generated `orgs` methods). */
 export interface OrgNameClient {
-  setMemberMetadata(org: string, account: string, metadata: Record<string, unknown>): Promise<unknown>;
-  // Loose on purpose: mero-js's `OrgInfo` does not declare `memberMetadata`.
-  getOrg?(org: string): Promise<unknown>;
+  readonly orgs: {
+    memberMetadata(args: { org: string; account: string; metadata: Record<string, unknown> }): Promise<unknown>;
+    // Loose on purpose: the org's answer is read for `memberMetadata` only.
+    get?(args: { org: string }): Promise<unknown>;
+  };
 }
 
 /** `account`'s name in an org's `memberMetadata` map, or "". */
@@ -75,12 +77,14 @@ export async function setOrgName(client: OrgNameClient, org: string, account: st
   const clean = name.trim();
   if (!clean || !org || !account) return;
   let current: Record<string, unknown> = {};
-  if (client.getOrg) {
-    const o = (await client.getOrg(org).catch(() => null)) as { memberMetadata?: Record<string, unknown> | null } | null;
+  if (client.orgs.get) {
+    const o = (await client.orgs.get({ org }).catch(() => null)) as {
+      memberMetadata?: Record<string, unknown> | null;
+    } | null;
     const meta = o?.memberMetadata?.[account];
     if (meta && typeof meta === "object") current = meta as Record<string, unknown>;
   }
-  await client.setMemberMetadata(org, account, { ...current, name: clean });
+  await client.orgs.memberMetadata({ org, account, metadata: { ...current, name: clean } });
   rememberLastUsedName(clean);
 }
 

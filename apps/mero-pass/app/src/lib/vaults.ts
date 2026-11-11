@@ -26,6 +26,7 @@
 // teams, a node without them, a raw dev bundle) is legacy, as before.
 
 import {
+  passkeyConfirm,
   ORG_CAPABILITIES,
   type AppInfo,
   type CalimeroClient,
@@ -34,9 +35,11 @@ import {
 import {
   appInvite,
   appPeople,
+  appTarget,
   appTeamIdIn,
   createAppOrg,
   isAppOnly,
+  listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
@@ -44,6 +47,7 @@ import {
   type AppInviteToken,
   type AppOrgView,
   type AppSource,
+  type ClientRoutes,
 } from '@calimero-apps/connect';
 import {
   VaultSession,
@@ -112,10 +116,10 @@ export interface OrgView {
 }
 
 export async function readOrg(
-  client: Pick<CalimeroClient, 'getOrg'>,
+  client: ClientRoutes<{ orgs: 'get' }>,
   org: string,
 ): Promise<OrgView> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   return {
     name: typeof o.name === 'string' ? o.name : '',
     members: (o.members ?? {}) as Record<string, string>,
@@ -176,7 +180,7 @@ export async function listInstances(
     typeof conn.source === 'string'
       ? { bundle: conn.source }
       : { package: conn.source.package };
-  return conn.client.listApps(filter);
+  return listAppInfos(conn.client, filter);
 }
 
 /**
@@ -272,7 +276,7 @@ async function teamOf(
   appId: string,
 ): Promise<string | null> {
   try {
-    const app = (await client.getApp(appId)) as {
+    const app = (await client.apps.get({ app: appId })) as {
       access?: { kind?: string; team?: string };
     };
     return app.access?.kind === 'team' && app.access.team
@@ -331,26 +335,19 @@ export async function createVault(
   onStatus: StatusFn = noop,
 ): Promise<{ contextId: string }> {
   try {
-    let access: Record<string, unknown> | undefined;
+    let access: { kind: 'team'; team: string } | undefined;
     if (opts.restricted) {
       onStatus('Creating the vault’s invite-only team…');
-      const team = await conn.client.createTeam(
-        opts.namespaceId,
-        opts.name,
-        'invite',
-      );
+      const team = (await conn.client.orgs.teamCreate({ org: opts.namespaceId, name: opts.name, join: 'invite' }))
+        .teamId;
       access = { kind: 'team', team };
     }
     onStatus('Creating the vault…');
     // An open vault is on Mero Pass's team (made first, by an owner or admin,
     // in an org whose other apps have teams), or org access in a legacy org.
-    const contextId = await conn.client.createApp(
-      opts.name,
-      conn.source,
-      access
+    const contextId = (await conn.client.apps.create({ name: opts.name, ...appTarget(conn.source), ...(access
         ? { org: opts.namespaceId, access }
-        : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME),
-    );
+        : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME)) })).appId;
     onStatus('Naming it…');
     await meroPass(conn.client, contextId, conn.after).renameVault(opts.name);
     return { contextId };
@@ -371,7 +368,7 @@ export async function createPersonalVault(
   const { orgId: namespaceId } = await createAppOrg(conn.client, 'Private', conn.source, conn.passkey, {
     mark: false,
   });
-  await conn.client.setOrgMetadata(namespaceId, PERSONAL);
+  await conn.client.orgs.metadata({ org: namespaceId, metadata: PERSONAL });
   const { contextId } = await createVault(
     conn,
     { namespaceId, name: 'Private', restricted: false },
@@ -506,7 +503,7 @@ export async function redeemInvite(
   token: string,
 ): Promise<Redeemed> {
   try {
-    const org = joinedOrg(await conn.client.redeemInvite(token.trim()));
+    const org = joinedOrg(await conn.client.orgs.inviteRedeem({ token: token.trim() }));
     if (org) await publishOwnName(conn.client, org);
     return org ? { kind: 'team', namespaceId: org } : { kind: 'joined' };
   } finally {
@@ -588,11 +585,9 @@ export async function setMemberRole(
   opts: { namespaceId: string; accountId: string; role: TeamRole },
 ): Promise<void> {
   try {
-    await conn.client.setMember(
-      opts.namespaceId,
-      opts.accountId,
-      opts.role,
-      conn.passkey(),
+    await conn.client.orgs.setMember(
+      { org: opts.namespaceId, account: opts.accountId, role: opts.role },
+      { confirm: passkeyConfirm(conn.passkey()) },
     );
   } finally {
     conn.after?.();
@@ -611,7 +606,7 @@ export async function removeTeamMember(
 ): Promise<'app' | 'org'> {
   try {
     const vaultTeams = new Set<string>();
-    if (isAppOnly((await conn.client.getOrg(opts.namespaceId)) as AppOrgView, sourcePackage(conn.source))) {
+    if (isAppOnly((await conn.client.orgs.get({ org: opts.namespaceId })) as AppOrgView, sourcePackage(conn.source))) {
       for (const app of (await listInstances(conn)).filter((a) => a.org === opts.namespaceId)) {
         const team = await teamOf(conn.client, app.appId);
         if (team) vaultTeams.add(team);
@@ -627,7 +622,7 @@ export async function removeTeamMember(
 
 /** Whether the org keeps its apps apart and Mero Pass has its team there (invites and Remove are Mero Pass's only). */
 export async function passOnly(conn: Pick<Conn, 'client' | 'source'>, namespaceId: string): Promise<boolean> {
-  return isAppOnly((await conn.client.getOrg(namespaceId)) as AppOrgView, sourcePackage(conn.source));
+  return isAppOnly((await conn.client.orgs.get({ org: namespaceId })) as AppOrgView, sourcePackage(conn.source));
 }
 
 /** Your display name in every org you are in, where none is set yet. */
@@ -640,9 +635,9 @@ export async function publishMyName(
   if (!name.trim()) return;
   const view = await readOrg(conn.client, namespaceId);
   if (memberName(view, accountId)) return;
-  await conn.client.setMemberMetadata(namespaceId, accountId, {
+  await conn.client.orgs.memberMetadata({ org: namespaceId, account: accountId, metadata: {
     name: name.trim(),
-  });
+  } });
 }
 
 /**
@@ -650,11 +645,11 @@ export async function publishMyName(
  * teammates see a name rather than an id. Best effort: a failure leaves the id.
  */
 async function publishOwnName(
-  client: Pick<CalimeroClient, 'me' | 'getOrg' | 'setMemberMetadata'>,
+  client: ClientRoutes<{ auth: 'me'; orgs: 'get' | 'memberMetadata' }>,
   org: string,
 ): Promise<void> {
   try {
-    const me = (await client.me()) as { accountId?: string; name?: string };
+    const me = (await client.auth.me()) as { accountId?: string; name?: string };
     if (me.accountId && me.name)
       await publishMyName(
         { client: client as CalimeroClient },

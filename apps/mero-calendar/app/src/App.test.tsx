@@ -3,7 +3,7 @@
  * page; signing in joins at once and opens the team.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type CalimeroSession } from "@calimero-network/mero-js";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +11,7 @@ import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
 import type { SessionDeps } from "./api/session";
 import { invites, migrateLegacyInvite } from "./api/teams";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock("./pages/landing/LandingPage", () => ({
@@ -35,7 +36,7 @@ const PENDING = "mero-calendar:pending-invite";
 
 function fakeClient() {
   let session: CalimeroSession | undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -57,13 +58,13 @@ function fakeClient() {
     getOrg: vi.fn(async () => ({ name: "Team", members: { [ME]: "owner" }, memberMetadata: {} })),
     redeemInvite: vi.fn(async (): Promise<Record<string, unknown>> => ({ org: "org-1" })),
     setMemberMetadata: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" },
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

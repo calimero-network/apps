@@ -1,4 +1,5 @@
-import type { CalimeroClient, SignUpPolicy } from "@calimero-network/mero-js";
+import type { SignUpPolicy } from "@calimero-network/mero-js";
+import type { ClientRoutes } from "./routes";
 
 /**
  * Whether this page can create an account on the cluster:
@@ -23,14 +24,15 @@ const POLICIES = new Set(["open", "invite", "closed"]);
 /**
  * The cluster's sign-up policy (`GET /sign-up`, no session needed), or `null`
  * when it cannot be read: a node too old to have the route (`404`), a client
- * without `signUpPolicy`, an answer that is not a policy, or any failure.
+ * without `deployments.signUpPublic`, an answer that is not a policy, or any failure.
  */
 export async function readSignUpPolicy(
-  client: Partial<Pick<CalimeroClient, "signUpPolicy">>,
+  client: Partial<ClientRoutes<{ deployments: "signUpPublic" }>>,
 ): Promise<SignUpPolicy | null> {
-  if (typeof client.signUpPolicy !== "function") return null;
+  const read = client.deployments?.signUpPublic;
+  if (typeof read !== "function") return null;
   try {
-    const policy = await client.signUpPolicy();
+    const policy: SignUpPolicy = await read.call(client.deployments);
     return policy && POLICIES.has(policy.policy) ? policy : null;
   } catch {
     return null;

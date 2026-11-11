@@ -9,7 +9,7 @@
  * slice is sent again every few seconds while the hook is mounted.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CalimeroClient, PresenceEntry } from "@calimero-network/mero-js";
+import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
 
 import { getAccountId, getClient } from "./calimero";
 
@@ -54,8 +54,12 @@ export function useEphemeral<T>(app: string | null): Ephemeral<T> {
         return;
       }
       seq.current += 1;
-      client
-        .publishPresence(app, seq.current, value === null ? null : encode(value))
+      client.apps
+        .presencePublish({
+          app,
+          seq: seq.current,
+          state: presenceState(value === null ? null : encode(value)),
+        })
         .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
     },
     [app],

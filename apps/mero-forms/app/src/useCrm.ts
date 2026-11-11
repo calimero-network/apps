@@ -5,6 +5,7 @@ import { crmPayload, existingContact } from "./lib/crm";
 import { findPipelines, type Pipeline } from "./lib/pipelines";
 import { useSignedIn } from "./sessionContext";
 import type { Workspace } from "./useWorkspace";
+import { listAppInfos } from "@calimero-apps/connect";
 
 export type { Pipeline } from "./lib/pipelines";
 
@@ -40,7 +41,7 @@ export function usePipelines(
     findPipelines(
       {
         listInstances: async () =>
-          (await client.listApps({ package: CRM_PACKAGE })).map((a) => ({ appId: a.appId, name: a.name })),
+          (await listAppInfos(client, { package: CRM_PACKAGE })).map((a) => ({ appId: a.appId, name: a.name })),
         stagesOf: (appId) => new CrmClient(client, appId, after).listStages(),
       },
       extraKey ? extraKey.split(",") : [],

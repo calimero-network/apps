@@ -13,7 +13,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { basename } from "node:path";
 
-import { CalimeroClient, type CloudEvent } from "@calimero-network/mero-js";
+import { CalimeroClient, passkeyConfirm, type CloudEvent } from "@calimero-network/mero-js";
 
 import { LOCAL_NODES, localClient, signUp, type Person } from "./cluster.ts";
 import { accounts, check, substitute, unsupported, type OrgSpec, type Outcome, type Step } from "./scenario.ts";
@@ -79,14 +79,16 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
     people.set(name, await signUp(`${name}-${run}`, nodes[i % nodes.length] as string, nodes));
   }
   const owner = people.get("owner") as Person;
-  const orgId = await owner.client.createOrg(`e2e ${run}`);
+  const orgId = (await owner.client.orgs.create({ name: `e2e ${run}` })).orgId;
   for (const name of names) {
     const role = roleOf(org, name);
     if (!role) continue;
-    const token = await owner.client.invite(orgId, role, owner.passkey);
-    await (people.get(name) as Person).client.redeemInvite(token);
+    const token = (
+      await owner.client.orgs.inviteCreate({ org: orgId, role, teams: [] }, { confirm: passkeyConfirm(owner.passkey) })
+    ).token;
+    await (people.get(name) as Person).client.orgs.inviteRedeem({ token });
   }
-  const app = await owner.client.createApp(`e2e-${run}`, bundle, { org: orgId });
+  const app = (await owner.client.apps.create({ name: `e2e-${run}`, bundle, org: orgId })).appId;
 
   const listeners = new Map<string, Listener>();
   for (const [name, person] of people) listeners.set(name, listen(person.client, app));
@@ -105,7 +107,10 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
         let outcome: Outcome;
         if (step.op === "removeMember") {
           const who = typeof step.args === "string" ? step.args : String(args);
-          await owner.client.removeMember(orgId, accountOf(who), owner.passkey);
+          await owner.client.orgs.removeMember(
+            { org: orgId, account: accountOf(who) },
+            { confirm: passkeyConfirm(owner.passkey) },
+          );
           outcome = { ok: true, value: null };
         } else {
           const as = step.as ?? "owner";
@@ -116,10 +121,10 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
           try {
             const value =
               step.op === "view"
-                ? (await client.view(app, method, args)).result
+                ? (await client.apps.view({ app, method, args })).result
                 : step.confirmed && person
-                  ? (await client.callConfirmed(app, method, args, person.passkey)).result
-                  : (await client.call(app, method, args)).result;
+                  ? (await client.apps.call({ app, method, args }, { confirm: passkeyConfirm(person.passkey) })).result
+                  : (await client.apps.call({ app, method, args })).result;
             outcome = { ok: true, value };
           } catch (error) {
             outcome = { ok: false, error };

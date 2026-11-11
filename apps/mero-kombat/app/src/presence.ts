@@ -1,4 +1,5 @@
-import type { CalimeroClient, PresenceEntry } from "@calimero-network/mero-js";
+import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Movement over the node's ephemeral presence channel (`/apps/{app}/presence`):
@@ -27,7 +28,7 @@ export function decodeState<T>(hex: string | null | undefined): T | null {
   }
 }
 
-type PresenceClient = Pick<CalimeroClient, "publishPresence" | "presenceStream">;
+type PresenceClient = Pick<CalimeroClient, "presenceStream"> & ClientRoutes<{ apps: "presencePublish" }>;
 
 /**
  * Fire-and-forget publishing: one request in flight, and only the newest
@@ -46,8 +47,8 @@ export function presencePublisher(client: PresenceClient, app: string, onSent: (
     inFlight = true;
     seq += 1;
     onSent();
-    client
-      .publishPresence(app, seq, encodeState(value))
+    client.apps
+      .presencePublish({ app, seq, state: presenceState(encodeState(value)) })
       .catch(() => {
         /* a dropped frame is replaced 66 ms later */
       })

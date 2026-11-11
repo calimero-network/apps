@@ -28,6 +28,7 @@ import {
 import { INVITATION_STORAGE_KEY } from "../utils/invitation";
 import { joinedAwaitingName } from "../utils/enterWorkspace";
 import { getGroupId } from "../constants/config";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 describe("signIn", () => {
   // The node's answer to a passkey it has no account for (one made before
@@ -74,16 +75,16 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
   };
 
   async function unknownPasskeyOn(policy: SignUpPolicy) {
-    const client = {
+    const client = withRoutes({
       session: undefined as undefined | { accountId: string },
       signIn: vi.fn(async () =>
         Promise.reject(new LoginRequired("unknown passkey")),
       ),
       signUp: vi.fn(async () => ({ accountId: "acct-new" })),
       signUpPolicy: vi.fn(async () => policy),
-    };
+    });
     __setForTests(
-      client as unknown as CalimeroClient,
+      withRoutes(client),
       null,
       () => ({}) as PasskeyProvider,
     );
@@ -263,7 +264,7 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
       create: vi.fn(async () => ({}) as never),
       get: vi.fn(async (..._args: unknown[]) => ({ credentialId: "cred-here" }) as never),
     };
-    const client = {
+    const client = withRoutes({
       session: undefined as undefined | { accountId: string },
       signIn: vi.fn(async (p: PasskeyProvider) => {
         await p.get(new Uint8Array([1]), "calimero.network");
@@ -273,8 +274,8 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
       signOut: vi.fn(async () => {}),
       signUpPolicy: vi.fn(async () => OPEN),
       me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }] })),
-    };
-    __setForTests(client as unknown as CalimeroClient, null, () => pk as unknown as PasskeyProvider);
+    });
+    __setForTests(withRoutes(client), null, () => pk as unknown as PasskeyProvider);
     return { pk, client, hook: renderHook(() => useCalimero()) };
   }
 
@@ -333,7 +334,7 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
 
 describe("a new version of the chat (@calimero-apps/passkey/upgrade)", () => {
   function reportingClient(role: string, upgradesHeldBy = "owner") {
-    return {
+    return withRoutes({
       session: { accountId: "acct-me" },
       signOut: vi.fn(async () => {}),
       me: vi.fn(async () => ({ accountId: "acct-me", orgs: [{ orgId: "org-1", role }] })),
@@ -358,12 +359,12 @@ describe("a new version of the chat (@calimero-apps/passkey/upgrade)", () => {
             ]
           : [],
       })),
-    };
+    });
   }
   const upgradePrompt = () => document.querySelector("[data-testid=upgrade-prompt]");
 
   it("offers the organization's owner the update once signed in, and takes it away at sign-out", async () => {
-    __setForTests(reportingClient("owner") as unknown as CalimeroClient, "acct-me");
+    __setForTests(withRoutes(reportingClient("owner")), "acct-me");
     await waitFor(() => expect(upgradePrompt()).not.toBeNull());
     expect(upgradePrompt()!.textContent).toContain("Version 2.1.0 of Mero Chat is available (you run 2.0.0).");
     await act(() => signOut());
@@ -377,7 +378,7 @@ describe("a new version of the chat (@calimero-apps/passkey/upgrade)", () => {
       ["owner", "operator"],
     ] as const) {
       const client = reportingClient(role, holder);
-      __setForTests(client as unknown as CalimeroClient, "acct-me");
+      __setForTests(withRoutes(client), "acct-me");
       await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledTimes(2));
       await new Promise((r) => setTimeout(r, 0));
       await new Promise((r) => setTimeout(r, 0));

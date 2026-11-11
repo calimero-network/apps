@@ -37,7 +37,7 @@ export interface UseFugueTitleOptions {
 
 export interface UseFugueTitleResult {
   title: string;
-  inputRef: React.MutableRefObject<HTMLInputElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
   /** Undo and redo shortcuts, taken from the browser's own input history. */

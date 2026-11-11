@@ -33,7 +33,7 @@ export class CrmClient {
 
   private async run<T>(kind: "call" | "view", method: string, args: Raw = {}): Promise<T> {
     try {
-      return (await this.client[kind](this.app, method, args)).result as T;
+      return (await this.client.apps[kind]({ app: this.app, method, args })).result as T;
     } catch (e) {
       throw asError(e);
     } finally {

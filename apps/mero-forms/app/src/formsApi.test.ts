@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CALLS, FormsClient, VIEWS, toFormView, toResponseView } from "./formsApi";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +60,7 @@ describe("the adapter covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: {}, events: [] });
     };
-    const f = new FormsClient({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const f = new FormsClient(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     const field = { id: "a", kind: "text", label: "A", help: "", required: false, options: [] };
     const link = { context_id: "", stage_id: "", name_field: "", email_field: "", phone_field: "", organization_field: "", title_field: "" };
     await Promise.all([
@@ -129,7 +130,7 @@ describe("the adapter", () => {
   it("sends camelCase arguments, a captcha pass's expiry as a decimal string", async () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: "r9", events: [] });
     const after = vi.fn();
-    const f = new FormsClient({ call, view: vi.fn() }, "app-1", after);
+    const f = new FormsClient(withRoutes({ call, view: vi.fn() }), "app-1", after);
     await f.submitViaLink({
       link: "l1",
       answers: [{ field_id: "email", values: ["a@b.co"] }],
@@ -147,7 +148,7 @@ describe("the adapter", () => {
 
   it("turns a contract refusal into an Error carrying v1's message", async () => {
     const refusal = Object.assign(new Error("APP_ERROR"), { appCode: "Refused", fields: { message: "this form is closed" } });
-    const f = new FormsClient({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }, "a");
+    const f = new FormsClient(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), "a");
     await expect(f.submitResponse({ form_id: "f", answers: [], source: "" })).rejects.toThrow("this form is closed");
   });
 });

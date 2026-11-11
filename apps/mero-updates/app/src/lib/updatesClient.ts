@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The contract (`logic/src/lib.rs`) by method, in the shapes the screens were
@@ -341,7 +341,7 @@ export function toWire(value: unknown): unknown {
   return out;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * One audience (an app instance) through the signed-in client. `after` runs
@@ -357,7 +357,7 @@ export class UpdatesClient {
 
   private async call<T>(method: Call, args: object = {}): Promise<T> {
     try {
-      const { result } = await this.client.call(this.appId, method, toWire(args));
+      const { result } = await this.client.apps.call({ app: this.appId, method, args: toWire(args) });
       return fromWire<T>(result);
     } finally {
       this.after();
@@ -366,7 +366,7 @@ export class UpdatesClient {
 
   private async view<T>(method: View, args: object = {}): Promise<T> {
     try {
-      const { result } = await this.client.view(this.appId, method, toWire(args));
+      const { result } = await this.client.apps.view({ app: this.appId, method, args: toWire(args) });
       return fromWire<T>(result);
     } finally {
       this.after();

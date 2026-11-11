@@ -20,6 +20,7 @@ import {
 
 import { PasskeySignIn, type PasskeySignInApi } from "./PasskeySignIn";
 import { isPasskeyCancel, usePasskeySession, type SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function memoryStorage(): KeyValueStorage {
   const m = new Map<string, string>();
@@ -53,7 +54,7 @@ function fakeClient(over: Partial<Record<string, unknown>> = {}) {
     useSession: vi.fn(),
     ...over,
   };
-  return client;
+  return withRoutes(client);
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
@@ -87,7 +88,7 @@ describe("usePasskeySession", () => {
       () =>
         new Promise<void>((resolve) => {
           finishLogout = () => {
-            client.session = null;
+            (client as { session: unknown }).session = null;
             resolve();
           };
         }),

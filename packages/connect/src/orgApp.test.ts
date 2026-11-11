@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
+import type { CalimeroClient, CalimeroSession, MethodOptions, PasskeyProvider } from "@calimero-network/mero-js";
 
 import { NoAppTeamError } from "./appTeams";
 import { orgCluster } from "./testing";
@@ -52,30 +52,29 @@ function cluster(view: View, me = "me") {
     if (apps.length === 0) return "legacy" as const;
     return apps.some((t) => t.join === "invite") ? ("shared" as const) : ("standalone" as const);
   };
-  return {
-    view,
-    session: { accountId: me } as CalimeroSession,
-    createOrg: vi.fn(async (_name: string) => "org"),
-    getOrg: vi.fn(async (_org: string) => ({
+  const orgs = {
+    create: vi.fn(async (_args: { name: string }) => ({ orgId: "org" })),
+    get: vi.fn(async (_args: { org: string }) => ({
       releaseApprovers: [],
       publishes: [],
       newWorkStopped: null,
       ...structuredClone(view),
       mode: modeOf(),
     })),
-    setOrgMetadata: vi.fn(async (_org: string, metadata: unknown) => {
+    metadata: vi.fn(async ({ metadata }: { org: string; metadata: unknown }) => {
       view.metadata = metadata;
+      return {};
     }),
-    setCapabilities: vi.fn(async (_org: string, _caps: number, _p: PasskeyProvider, _o?: object) => undefined),
-    scopeApps: vi.fn(
-      async (_org: string, _p: PasskeyProvider, body: { apps?: Array<{ package: string }>; shared?: boolean } = {}) => {
+    capabilities: vi.fn(async (_args: { org: string; capabilities: number }, _options?: MethodOptions) => ({})),
+    appTeamsScope: vi.fn(
+      async (body: { org: string; apps?: Array<{ package: string }>; shared?: boolean }, _options?: MethodOptions) => {
         const pkg = body.apps![0]!.package;
         view.teams["team-new"] = appTeam(pkg, "everyone", { [me]: true });
         if (body.shared) for (const t of Object.values(view.teams)) if (!t.parent && t.metadata) t.join = "invite";
         return { mode: modeOf() ?? "standalone", teams: [{ package: pkg, teamId: "team-new", created: true, apps: [], added: 0 }] };
       },
     ),
-    listAppTeams: vi.fn(async (_org: string) => {
+    appTeamList: vi.fn(async (_args: { org: string }) => {
       if (view.mode === undefined) throw Object.assign(new Error("no route"), { status: 404 });
       return {
         mode: modeOf()!,
@@ -93,13 +92,22 @@ function cluster(view: View, me = "me") {
           })),
       };
     }),
-    invite: vi.fn(async (..._args: unknown[]) => "tok-1"),
-    removeMember: vi.fn(async (_org: string, _account: string, _p: PasskeyProvider) => ({})),
-    removeTeamMember: vi.fn(async (_org: string, team: string, account: string, _p: PasskeyProvider) => {
-      delete view.teams[team]!.members[account];
-    }),
+    inviteCreate: vi.fn(async (_args: { org: string }, _options?: MethodOptions) => ({ token: "tok-1" })),
+    removeMember: vi.fn(async (_args: { org: string; account: string }, _options?: MethodOptions) => ({})),
+    teamRemoveMember: vi.fn(
+      async ({ team, account }: { org: string; team: string; account: string }, _options?: MethodOptions) => {
+        delete view.teams[team]!.members[account];
+        return {};
+      },
+    ),
   };
+  const c = { view, session: { accountId: me } as CalimeroSession, orgs };
+  // The mocks answer only what the org-app module reads, so the client's types are asserted.
+  return c as typeof c & Pick<CalimeroClient, "orgs">;
 }
+
+/** The per-call options of a step-up answered with the passkey. */
+const CONFIRMED = { confirm: expect.any(Function) };
 
 const legacy = (): View => ({ members: { me: "owner", bob: "member" }, mode: "legacy", teams: {} });
 const standalone = (): View => ({
@@ -151,16 +159,16 @@ describe("creating a workspace", () => {
     const c = cluster(legacy());
     const made = await createAppOrg(c, "Acme", SOURCE, () => passkey, { capabilities: 7 });
     expect(made).toEqual({ orgId: "org", teamId: "team-new", capabilitiesError: null });
-    expect(c.setOrgMetadata).toHaveBeenCalledWith("org", { createdFor: PKG });
-    expect(c.setCapabilities).toHaveBeenCalledWith("org", 7, passkey);
-    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: false });
+    expect(c.orgs.metadata).toHaveBeenCalledWith({ org: "org", metadata: { createdFor: PKG } });
+    expect(c.orgs.capabilities).toHaveBeenCalledWith({ org: "org", capabilities: 7 }, CONFIRMED);
+    expect(c.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: false }, CONFIRMED);
     expect(c.view.teams["team-new"]!.join).toBe("everyone");
   });
 
   it("declined defaults and a declined team still leave the org (a legacy one)", async () => {
     const c = cluster(legacy());
-    c.setCapabilities.mockRejectedValueOnce(new Error("declined"));
-    c.scopeApps.mockRejectedValueOnce(new Error("declined"));
+    c.orgs.capabilities.mockRejectedValueOnce(new Error("declined"));
+    c.orgs.appTeamsScope.mockRejectedValueOnce(new Error("declined"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const made = await createAppOrg(c, "Acme", SOURCE, passkey, { capabilities: 7 });
     warn.mockRestore();
@@ -172,18 +180,18 @@ describe("creating a workspace", () => {
   it("a raw bundle: no team asked for", async () => {
     const c = cluster(legacy());
     expect((await createAppOrg(c, "Acme", "bundle-hash", passkey)).teamId).toBeNull();
-    expect(c.scopeApps).not.toHaveBeenCalled();
-    expect(c.setCapabilities).not.toHaveBeenCalled();
+    expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
+    expect(c.orgs.capabilities).not.toHaveBeenCalled();
   });
 
   it("adoptAppTeam passes `shared` explicitly: closed only in an org that is shared already", async () => {
     const open = cluster({ ...standalone(), teams: { "team-chat": appTeam("com.calimero.chat", "everyone") } });
     await adoptAppTeam(open, "org", SOURCE, passkey);
-    expect(open.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: false });
+    expect(open.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: false }, CONFIRMED);
     expect(open.view.teams["team-chat"]!.join).toBe("everyone");
     const closed = cluster({ ...shared(), teams: { "team-chat": appTeam("com.calimero.chat", "invite") } });
     await adoptAppTeam(closed, "org", SOURCE, passkey);
-    expect(closed.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: true });
+    expect(closed.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: true }, CONFIRMED);
   });
 });
 
@@ -199,17 +207,17 @@ describe("adding the app to an org (orgWideAccess)", () => {
       kind: "org",
     });
     expect(await orgWideAccess(cluster(standalone()), "org", "bundle-hash", passkey, "Mero CRM")).toEqual({ kind: "org" });
-    expect(old.scopeApps).not.toHaveBeenCalled();
+    expect(old.orgs.appTeamsScope).not.toHaveBeenCalled();
   });
 
   it("an admin of an org whose other apps have teams: open in a standalone org, closed in a shared one", async () => {
     const open = cluster({ members: { me: "admin" }, mode: "standalone", teams: { c: appTeam("com.calimero.chat", "everyone") } });
     expect(await orgWideAccess(open, "org", SOURCE, passkey, "Mero CRM")).toEqual({ kind: "team", team: "team-new" });
-    expect(open.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: false });
+    expect(open.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: false }, CONFIRMED);
     expect(open.view.teams.c!.join).toBe("everyone");
     const closed = cluster({ members: { me: "admin" }, mode: "shared", teams: { c: appTeam("com.calimero.chat", "invite") } });
     await orgWideAccess(closed, "org", SOURCE, passkey, "Mero CRM");
-    expect(closed.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: PKG }], shared: true });
+    expect(closed.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: true }, CONFIRMED);
   });
 
   it("orgInstanceOptions: `{ org }` alone for organization access, as before app teams", async () => {
@@ -225,7 +233,7 @@ describe("adding the app to an org (orgWideAccess)", () => {
     const err = await orgWideAccess(c, "org", SOURCE, passkey, "Mero CRM").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AppTeamAdminError);
     expect((err as Error).message).toMatch(/owners and admins can add Mero CRM/);
-    expect(c.scopeApps).not.toHaveBeenCalled();
+    expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
   });
 });
 
@@ -233,10 +241,10 @@ describe("invites", () => {
   it("name the app's team; appOnly only in a shared org", async () => {
     const open = cluster(standalone());
     expect(await appInvite(open, "org", SOURCE, passkey)).toEqual({ token: "tok-1", appOnly: false });
-    expect(open.invite).toHaveBeenCalledWith("org", "member", passkey, ["team-crm"], undefined);
+    expect(open.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: ["team-crm"] }, CONFIRMED);
     const apart = cluster(shared());
     expect(await appInvite(apart, "org", SOURCE, () => passkey, { teams: ["vault"] })).toEqual({ token: "tok-1", appOnly: true });
-    expect(apart.invite).toHaveBeenCalledWith("org", "member", passkey, ["team-crm", "vault"], undefined);
+    expect(apart.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: ["team-crm", "vault"] }, CONFIRMED);
   });
 
   it("a legacy org, an older node and a raw bundle: the org-wide invite", async () => {
@@ -247,23 +255,26 @@ describe("invites", () => {
     ] as const) {
       const c = cluster(structuredClone(view) as View);
       expect(await appInvite(c, "org", source, passkey)).toEqual({ token: "tok-1", appOnly: false });
-      expect(c.invite.mock.calls[0]!.slice(3).filter((x) => x !== undefined)).toEqual([]);
+      expect(c.orgs.inviteCreate.mock.calls[0]![0]).toEqual({ org: "org", role: "member", teams: [] });
     }
   });
 
   it("carries the invite's validity and uses, in every mode", async () => {
     const apart = cluster(shared());
     await appInvite(apart, "org", SOURCE, passkey, { teams: ["vault"], ttlSecs: 60, uses: 2 });
-    expect(apart.invite).toHaveBeenCalledWith("org", "member", passkey, ["team-crm", "vault"], { ttlSecs: 60, uses: 2 });
+    expect(apart.orgs.inviteCreate).toHaveBeenCalledWith(
+      { org: "org", role: "member", teams: ["team-crm", "vault"], ttlSecs: 60, uses: 2 },
+      CONFIRMED,
+    );
     const raw = cluster(legacy());
     await appInvite(raw, "org", "bundle-hash", passkey, { ttlSecs: 60 });
-    expect(raw.invite).toHaveBeenCalledWith("org", "member", passkey, undefined, { ttlSecs: 60 });
+    expect(raw.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: [], ttlSecs: 60 }, CONFIRMED);
   });
 
   it("an org with app teams but none for this app: refused, never widened to the org", async () => {
     const c = cluster({ ...shared(), teams: { "team-chat": appTeam("com.calimero.chat", "invite") } });
     await expect(appInvite(c, "org", SOURCE, passkey)).rejects.toBeInstanceOf(NoAppTeamError);
-    expect(c.invite).not.toHaveBeenCalled();
+    expect(c.orgs.inviteCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -273,14 +284,15 @@ describe("remove", () => {
     view.teams.vault = { parent: null, members: { bob: false }, join: "invite", removed: [] };
     view.teams.other = { parent: null, members: { bob: false }, join: "invite", removed: [] };
     const c = cluster(view);
-    c.removeTeamMember.mockImplementation(async (_o, team) => {
+    c.orgs.teamRemoveMember.mockImplementation(async ({ team }) => {
       if (team === "other") throw new Error("not yours");
+      return {};
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(await removeFromApp(c, "org", SOURCE, "bob", passkey, { privateTeams: () => ["vault", "other"] })).toBe("app");
     warn.mockRestore();
-    expect(c.removeTeamMember.mock.calls.map((x) => x[1])).toEqual(["team-crm", "vault", "other"]);
-    expect(c.removeMember).not.toHaveBeenCalled();
+    expect(c.orgs.teamRemoveMember.mock.calls.map((x) => x[0].team)).toEqual(["team-crm", "vault", "other"]);
+    expect(c.orgs.removeMember).not.toHaveBeenCalled();
   });
 
   it("standalone, legacy and a raw bundle: out of the organization, as before", async () => {
@@ -291,8 +303,8 @@ describe("remove", () => {
     ] as const) {
       const c = cluster(structuredClone(view) as View);
       expect(await removeFromApp(c, "org", source, "bob", passkey)).toBe("org");
-      expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
-      expect(c.removeTeamMember).not.toHaveBeenCalled();
+      expect(c.orgs.removeMember).toHaveBeenCalledWith({ org: "org", account: "bob" }, CONFIRMED);
+      expect(c.orgs.teamRemoveMember).not.toHaveBeenCalled();
     }
   });
 });
@@ -303,9 +315,9 @@ describe("a private list", () => {
     view.teams.folder = { parent: null, members: { bob: false }, join: "invite", removed: [] };
     const c = cluster(view);
     await removeFromPrivateTeam(c, "org", "folder", "bob", passkey);
-    expect(c.removeTeamMember).toHaveBeenCalledWith("org", "folder", "bob", passkey);
+    expect(c.orgs.teamRemoveMember).toHaveBeenCalledWith({ org: "org", team: "folder", account: "bob" }, CONFIRMED);
     await expect(removeFromPrivateTeam(c, "org", "team-crm", "bob", passkey)).rejects.toThrow(/removeFromApp/);
-    expect(c.removeTeamMember).toHaveBeenCalledTimes(1);
+    expect(c.orgs.teamRemoveMember).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -313,8 +325,8 @@ describe("leave", () => {
   it("a shared org: this app's team only; lastApp when it was the person's last app there", async () => {
     const c = cluster(shared(), "bob");
     expect(await leaveApp(c, "org", SOURCE, passkey)).toEqual({ left: "app", lastApp: true });
-    expect(c.removeTeamMember).toHaveBeenCalledWith("org", "team-crm", "bob", passkey);
-    expect(c.removeMember).not.toHaveBeenCalled();
+    expect(c.orgs.teamRemoveMember).toHaveBeenCalledWith({ org: "org", team: "team-crm", account: "bob" }, CONFIRMED);
+    expect(c.orgs.removeMember).not.toHaveBeenCalled();
 
     const view = shared();
     view.teams["team-chat"]!.members.bob = false;
@@ -326,7 +338,7 @@ describe("leave", () => {
     for (const view of [standalone(), legacy()]) {
       const c = cluster(view, "bob");
       expect(await leaveApp(c, "org", SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
-      expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
+      expect(c.orgs.removeMember).toHaveBeenCalledWith({ org: "org", account: "bob" }, CONFIRMED);
     }
   });
 
@@ -335,14 +347,14 @@ describe("leave", () => {
     (c as { session?: unknown }).session = undefined;
     expect(await leaveApp(c, "org", SOURCE, passkey, { self: "bob" })).toEqual({ left: "app", lastApp: true });
     await leaveOrg(c, "org", passkey, "bob");
-    expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
+    expect(c.orgs.removeMember).toHaveBeenCalledWith({ org: "org", account: "bob" }, CONFIRMED);
     await expect(leaveOrg(c, "org", passkey)).rejects.toThrow(/Sign in/);
   });
 
   it("leaveOrg takes the account out of the organization", async () => {
     const c = cluster(shared(), "bob");
     await leaveOrg(c, "org", passkey);
-    expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
+    expect(c.orgs.removeMember).toHaveBeenCalledWith({ org: "org", account: "bob" }, CONFIRMED);
   });
 });
 

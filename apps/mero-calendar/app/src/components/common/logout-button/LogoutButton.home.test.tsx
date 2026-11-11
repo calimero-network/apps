@@ -13,18 +13,19 @@ const state = vi.hoisted(() => ({ api: null as unknown }));
 vi.mock("../../../api/sessionContext", () => ({ useSessionApi: () => ({ api: state.api }) }));
 
 import LogoutButton from "./LogoutButton";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 afterEach(cleanup);
 
 function signedIn(role: string, mode: string, home = true) {
-  const client = {
+  const client = withRoutes({
     package: vi.fn(async (pkg: string) => {
       if (!home) throw new Error("no such package");
       return { package: pkg, latest: "0.3.0", versions: [{ version: "0.3.0" }] };
     }),
     me: vi.fn(async () => ({ orgs: [{ orgId: "team-1", name: "Acme", role }] })),
     getOrg: vi.fn(async () => ({ orgId: "team-1", mode })),
-  } as unknown as CalimeroClient;
+  }) as unknown as CalimeroClient;
   state.api = {
     session: {
       status: "signed-in",

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import type { PasskeyProvider } from '@calimero-network/mero-js';
 import { OrgAdmin, parseOrg, teamMembers } from '../orgs';
 import { foldersOf } from '@/lib/coreFolders';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // An org as `GET /orgs/{org}` answers it: alice owns it, bob is a member,
 // gus a guest; "eng" is open under the org, "secret" restricted under eng,
@@ -23,7 +24,7 @@ const RAW = {
 
 function fakeClient() {
   const created: Record<string, unknown> = {};
-  return {
+  return withRoutes({
     me: vi.fn(async () => ({ orgs: [{ orgId: 'org-1', name: 'Acme', role: 'owner' }, { orgId: 'org-2', name: 'Other' }] })),
     getOrg: vi.fn(async (org: string) =>
       org === 'org-1' ? { ...RAW, teams: { ...RAW.teams, ...created } } : { orgId: org, name: 'Other', members: {}, teams: {} },
@@ -43,12 +44,12 @@ function fakeClient() {
     invite: vi.fn(async () => 'inv_token'),
     redeemInvite: vi.fn(async () => ({ orgId: 'org-1' })),
     uploadBlob: vi.fn(async () => ({ blobId: 'b58', id: 'a'.repeat(64), size: 3 })),
-  };
+  });
 }
 
 const passkey = {} as PasskeyProvider;
 function admin(client = fakeClient()) {
-  return { client, admin: new OrgAdmin(client as unknown as CalimeroClient, 'alice', () => passkey, 'bundle-hash') };
+  return { client, admin: new OrgAdmin(withRoutes(client), 'alice', () => passkey, 'bundle-hash') };
 }
 
 describe('teamMembers', () => {
@@ -143,17 +144,17 @@ describe('OrgAdmin', () => {
   it('writes folder roles as team rows, approved with the passkey', async () => {
     const { admin: a, client } = admin();
     await a.updateMemberRole('secret', 'dan', { role: 'ReadOnly' });
-    expect(client.setTeamMember).toHaveBeenCalledWith('org-1', 'secret', 'dan', passkey, { role: 'readOnly' });
+    expect(client.setTeamMember).toHaveBeenCalledWith('org-1', 'secret', 'dan', expect.objectContaining({ confirm: expect.any(Function) }), { role: 'readOnly' });
     await a.addGroupMembers('secret', { members: [{ identity: 'eve', role: 'Member' }] });
-    expect(client.setTeamMember).toHaveBeenCalledWith('org-1', 'secret', 'eve', passkey, { role: 'member', capabilities: 4 });
+    expect(client.setTeamMember).toHaveBeenCalledWith('org-1', 'secret', 'eve', expect.objectContaining({ confirm: expect.any(Function) }), { role: 'member', capabilities: 4 });
     await a.setMemberCapabilities('org-1', 'bob', { capabilities: 0 });
-    expect(client.setCapabilities).toHaveBeenCalledWith('org-1', 0, passkey, { account: 'bob' });
+    expect(client.setCapabilities).toHaveBeenCalledWith('org-1', 0, expect.objectContaining({ confirm: expect.any(Function) }), { account: 'bob' });
   });
 
   it('invites to a folder with an org invite naming its team', async () => {
     const { admin: a, client } = admin();
     expect(await a.createGroupInvitation('secret')).toEqual({ token: 'inv_token', namespaceId: 'org-1' });
-    expect(client.invite).toHaveBeenCalledWith('org-1', 'member', passkey, ['secret']);
+    expect(client.invite).toHaveBeenCalledWith('org-1', 'member', expect.objectContaining({ confirm: expect.any(Function) }), ['secret']);
     expect(await a.redeemInvite('inv_token')).toBe('org-1');
   });
 

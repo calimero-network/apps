@@ -1,4 +1,5 @@
-import type { CalimeroClient, PresenceEntry } from "@calimero-network/mero-js";
+import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The node's ephemeral presence channel (`/apps/{app}/presence`), as a lossy
@@ -13,7 +14,7 @@ import type { CalimeroClient, PresenceEntry } from "@calimero-network/mero-js";
  * as a pipe; it is unchanged.
  */
 
-type PresenceClient = Pick<CalimeroClient, "publishPresence" | "presenceStream">;
+type PresenceClient = Pick<CalimeroClient, "presenceStream"> & ClientRoutes<{ apps: "presencePublish" }>;
 
 export function toHex(bytes: Uint8Array): string {
   let out = "";
@@ -40,7 +41,7 @@ export function presencePublisher(client: PresenceClient, app: string) {
   let seq = 0;
   return (state: Uint8Array): Promise<void> => {
     seq = Math.max(seq + 1, Date.now() * 1000);
-    return client.publishPresence(app, seq, state);
+    return client.apps.presencePublish({ app, seq, state: presenceState(state) }).then(() => undefined);
   };
 }
 

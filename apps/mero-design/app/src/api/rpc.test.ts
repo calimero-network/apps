@@ -13,11 +13,12 @@ import {
   rpcCall,
   uploadBlob,
 } from "./rpc";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function bind(client: Partial<Record<keyof CalimeroClient, unknown>>) {
   const after = vi.fn();
   bindApi({
-    client: client as unknown as CalimeroClient,
+    client: withRoutes(client),
     accountId: "acct-me",
     source: "bundle-hash",
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
@@ -37,7 +38,7 @@ describe("rpcCall", () => {
   it("sends a call through the log and a view to a node, on the component's wire", async () => {
     const call = vi.fn().mockResolvedValue({ index: 2, result: "e1", events: [] });
     const view = vi.fn().mockResolvedValue({ index: 2, result: "admin" });
-    const after = bind({ call, view });
+    const after = bind(withRoutes({ call, view }));
     await rpcCall("board-1", "set_layer_index", { id: "e1", index: 0, updated_at: 9 });
     expect(call).toHaveBeenCalledWith("board-1", "setLayerIndex", { id: "e1", index: 0, updatedAt: "9" });
     expect(await rpcCall("board-1", "my_role", {})).toBe("admin");
@@ -63,51 +64,51 @@ describe("rpcCall", () => {
       code: "Forbidden",
       fields: { message: "view-only: editor or admin access is required to modify this board" },
     });
-    bind({ call: vi.fn().mockRejectedValue(refusal) });
+    bind(withRoutes({ call: vi.fn().mockRejectedValue(refusal) }));
     await expect(rpcCall("board-1", "delete_element", { id: "e" })).rejects.toThrow(/^view-only/);
   });
 });
 
 describe("teams and boards", () => {
   it("lists the account's organizations holding boards as teams", async () => {
-    bind({
+    bind(withRoutes({
       me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "org-1", name: "Design", role: "member" }] }),
       listApps: vi.fn().mockResolvedValue([{ appId: "b1", name: "Board", owner: "x", org: "org-1", bundle: "bundle-hash" }]),
-    });
+    }));
     expect(await listTeams()).toEqual([{ namespaceId: "org-1", name: "Design", role: "member" }]);
   });
 
   // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
   it("leaves out an org made for another app, which only connecting offers", async () => {
     const blocks = { appId: "w1", name: "overworld", owner: "x", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks" };
-    bind({
+    bind(withRoutes({
       me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] }),
       listApps: vi.fn(async (f?: { bundle?: string }) => [blocks].filter((a) => !f?.bundle || a.bundle === f.bundle)),
       getOrg: vi.fn().mockResolvedValue({ members: { x: "owner" }, metadata: null }),
-    });
+    }));
     expect(await listTeams()).toEqual([]);
     expect((await listOtherTeams()).map((o) => [o.orgId, o.label])).toEqual([["ow", "Mero Blocks: overworld"]]);
   });
 
   it("lists a team made here before it holds a board", async () => {
-    bind({
+    bind(withRoutes({
       me: vi.fn().mockResolvedValue({ orgs: [{ orgId: "org-9", name: "New", role: "owner" }] }),
       listApps: vi.fn().mockResolvedValue([]),
       getOrg: vi.fn().mockResolvedValue({ members: {}, metadata: { createdFor: "bundle-hash" } }),
-    });
+    }));
     expect(await listTeams()).toEqual([{ namespaceId: "org-9", name: "New", role: "owner" }]);
   });
 
   it("creates a team whose members may create boards and invite", async () => {
     const createOrg = vi.fn().mockResolvedValue("org-9");
     const setCapabilities = vi.fn().mockResolvedValue(undefined);
-    bind({ createOrg, setCapabilities });
+    bind(withRoutes({ createOrg, setCapabilities }));
     expect(await createTeam("Design")).toEqual({ namespaceId: "org-9" });
     expect(setCapabilities).toHaveBeenCalledWith("org-9", expect.any(Number), expect.anything());
   });
 
   it("keeps the team when members could not be given the defaults, and says so", async () => {
-    bind({ createOrg: vi.fn().mockResolvedValue("org-9"), setCapabilities: vi.fn().mockRejectedValue(new Error("no")) });
+    bind(withRoutes({ createOrg: vi.fn().mockResolvedValue("org-9"), setCapabilities: vi.fn().mockRejectedValue(new Error("no")) }));
     const made = await createTeam("Design");
     expect(made.namespaceId).toBe("org-9");
     expect(made.warning).toMatch(/will not be able to create boards/);
@@ -127,20 +128,20 @@ describe("teams and boards", () => {
   it("creates a board in the team and names it on the contract", async () => {
     const createApp = vi.fn().mockResolvedValue("board-9");
     const call = vi.fn().mockResolvedValue({ index: 1, result: null, events: [] });
-    bind({ createApp, call });
+    bind(withRoutes({ createApp, call }));
     expect(await createBoard("org-1", "Landing")).toBe("board-9");
     expect(createApp).toHaveBeenCalledWith("Landing", "bundle-hash", { org: "org-1" });
     expect(call).toHaveBeenCalledWith("board-9", "updateBoard", { name: "Landing", description: "" });
   });
 
   it("reads the team's members with the two roles the screens show", async () => {
-    bind({
+    bind(withRoutes({
       getOrg: vi.fn().mockResolvedValue({
         name: "Design",
         members: { a: "owner", b: "admin", c: "member", d: "guest" },
         memberMetadata: { c: { name: "Cy" } },
       }),
-    });
+    }));
     expect((await listGroupMembers("org-1")).members).toEqual([
       { identity: "a", role: "Admin", owner: true },
       { identity: "b", role: "Admin" },

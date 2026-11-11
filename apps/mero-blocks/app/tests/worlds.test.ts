@@ -17,6 +17,7 @@ import {
   worldInviteLink,
   worldSource,
 } from "../src/net/worlds";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function memory(): KeyValueStorage {
   const data = new Map<string, string>();
@@ -47,16 +48,16 @@ describe("worlds are app instances", () => {
 
   it("are listed by bundle or package, by name", async () => {
     const listApps = vi.fn(async () => [app("2", "b", null), app("1", "a", null)]);
-    expect((await listWorlds({ listApps }, "abc")).map((w) => w.name)).toEqual(["a", "b"]);
+    expect((await listWorlds(withRoutes({ listApps }), "abc")).map((w) => w.name)).toEqual(["a", "b"]);
     expect(listApps).toHaveBeenLastCalledWith({ bundle: "abc" });
-    await listWorlds({ listApps }, { package: "p" });
+    await listWorlds(withRoutes({ listApps }), { package: "p" });
     expect(listApps).toHaveBeenLastCalledWith({ package: "p" });
   });
 
   it("are created in an organization of their own, with the init arguments", async () => {
     const createOrg = vi.fn(async () => "org-1");
     const createApp = vi.fn(async () => "app-1");
-    const made = await createWorld({ createOrg, createApp }, "abc", "overworld", 1337, 1700000000);
+    const made = await createWorld(withRoutes({ createOrg, createApp }), "abc", "overworld", 1337, 1700000000);
     expect(made).toEqual({ appId: "app-1", org: "org-1", name: "overworld" });
     expect(createOrg).toHaveBeenCalledWith("overworld");
     expect(createApp).toHaveBeenCalledWith("overworld", "abc", {
@@ -105,21 +106,21 @@ describe("invitations are org invites", () => {
       listApps: vi.fn(async () => [app("1", "a", "org-1"), app("2", "b", "org-2"), app("3", "c", "org-2")]),
     };
     const s = holding("tok1");
-    expect((await redeemPendingInvite(client, "abc", s))?.appId).toBe("2");
+    expect((await redeemPendingInvite(withRoutes(client), "abc", s))?.appId).toBe("2");
     expect(client.redeemInvite).toHaveBeenCalledWith("tok1");
     expect(s.token()).toBeNull();
 
     const named = holding("tok2", "org-2", { world: "3" });
-    expect((await redeemPendingInvite(client, "abc", named))?.appId).toBe("3");
+    expect((await redeemPendingInvite(withRoutes(client), "abc", named))?.appId).toBe("3");
   });
 
   it("are not spent by a player already in the world they name", async () => {
     const listApps = vi.fn(async () => [app("1", "a", "org-1")]);
     const mine = holding("tok1", "org-1");
-    expect((await alreadyInInvitedWorld({ listApps }, "abc", mine))?.appId).toBe("1");
+    expect((await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", mine))?.appId).toBe("1");
     expect(mine.token()).toBeNull();
     const theirs = holding("tok2", "org-9");
-    expect(await alreadyInInvitedWorld({ listApps }, "abc", theirs)).toBeNull();
+    expect(await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", theirs)).toBeNull();
     expect(theirs.token()).toBe("tok2");
   });
 
@@ -127,7 +128,7 @@ describe("invitations are org invites", () => {
     const refusing = (e: unknown) => ({ redeemInvite: vi.fn(async () => Promise.reject(e)), listApps: vi.fn(async () => []) });
     const spent = holding("tok1");
     await expect(
-      redeemPendingInvite(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed")), "abc", spent),
+      redeemPendingInvite(withRoutes(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"))), "abc", spent),
     ).rejects.toThrow();
     expect(spent.token()).toBeNull();
 
@@ -139,14 +140,14 @@ describe("invitations are org invites", () => {
       new TypeError("Failed to fetch"),
     ]) {
       const kept = holding("tok1");
-      await expect(redeemPendingInvite(refusing(e), "abc", kept)).rejects.toBe(e);
+      await expect(redeemPendingInvite(withRoutes(refusing(e)), "abc", kept)).rejects.toBe(e);
       expect(kept.token()).toBe("tok1");
     }
   });
 
   it("do nothing without one", async () => {
     const client = { redeemInvite: vi.fn(), listApps: vi.fn(async () => []) };
-    expect(await redeemPendingInvite(client, "abc", store())).toBeNull();
+    expect(await redeemPendingInvite(withRoutes(client), "abc", store())).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 

@@ -1,6 +1,8 @@
 import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
-type EventClient = Pick<CalimeroClient, "events" | "view">;
+type EventClient = Pick<CalimeroClient, "events"> &
+  ClientRoutes<{ apps: "view" }>;
 
 /**
  * Calls `onEvent(kind)` for every event the room emits from now on, until the
@@ -19,7 +21,11 @@ export function subscribeEvents(
   const abort = new AbortController();
   void (async () => {
     try {
-      const { index } = await client.view(app, "getStats", {});
+      const { index } = await client.apps.view({
+        app,
+        method: "getStats",
+        args: {},
+      });
       for await (const event of client.events(app, index + 1, abort.signal)) {
         onEvent(event.kind, event.data);
       }

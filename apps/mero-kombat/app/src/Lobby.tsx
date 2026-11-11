@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { askAnOwnerCopy, canCreateIn, type AppSource } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
 
 import { createArena, listArenas } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
@@ -26,7 +26,7 @@ export function Lobby({
   onOpen,
   after,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg" | "getOrg" | "session">;
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "list" | "create"; orgs: "create" | "get" }>;
   source: AppSource;
   onOpen: (arena: OpenArena) => void;
   /** Runs after each request (keeps the stored session current). */

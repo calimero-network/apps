@@ -15,6 +15,7 @@ import {
 } from '../lib/invites';
 import { errorMessage, setContextId } from '../lib/node';
 import styles from '../pages/app/AgreementsPage.module.css';
+import { listAppInfos } from '@calimero-apps/connect';
 
 /**
  * "Join this workspace?" for an invitation that arrived as a link
@@ -110,7 +111,7 @@ export default function InvitationHandlerPopup() {
         org = joined.org;
       } else {
         setStatus('Joining the workspace…');
-        org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+        org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token }));
         dropInvite();
         // Joined: a failure from here on is retried without redeeming again.
         setJoined({ org });
@@ -118,7 +119,7 @@ export default function InvitationHandlerPopup() {
       if (org) setActiveWorkspace(org);
       if (invite.agreement) {
         setStatus('Recording you as a participant so you can sign.');
-        const apps = await signedIn.client.listApps().catch(() => []);
+        const apps = await listAppInfos(signedIn.client).catch(() => []);
         const name =
           apps.find((a) => a.appId === invite.agreement)?.name ?? 'Agreement';
         await enterAgreement(

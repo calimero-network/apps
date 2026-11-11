@@ -8,6 +8,7 @@ import { LINK_METHODS, publicLinkUrl, sha256Hex } from "./lib/publicLink";
 import { BASE } from "./route";
 import { useSignedIn } from "./sessionContext";
 import { useRead, type Workspace } from "./useWorkspace";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 /**
  * A form's public links: anyone with one answers the form in their browser,
@@ -77,13 +78,13 @@ export function PublicLinks({
       setMade(null);
       setCopied(false);
       const name = label.trim();
-      const key = await client.createApiKey(
+      const key = await client.auth.apikeyCreate(
         {
           label: (name ? `Mero Forms link · ${name}` : "Mero Forms link").slice(0, 128),
           apps: [appId],
           methods: [...LINK_METHODS],
         },
-        passkey(),
+        { confirm: passkeyConfirm(passkey()) },
       );
       after();
       try {

@@ -11,8 +11,12 @@
  *   `GET /orgs/{org}/apps` (an organization's, for its members). A session
  *   opened on an app's frontend is bound to its package and reads that
  *   package's apps only. Per app: the release it runs (`package.version`),
- *   the newer releases it may move to (`availableVersions`, oldest first),
- *   and who holds its upgrades (`upgradesHeldBy`): `operator` where the
+ *   the newer releases it may see (`availableVersions`, oldest first), the
+ *   newest of them an upgrade would take now (`latestReachable`, `null`
+ *   when none would) and, when the newest is not that one, why
+ *   (`latestBlocked`: a replica's node runs an older runtime than its
+ *   `minRuntimeVersion`, or it would give the owner's upgrades to the
+ *   publisher), and who holds its upgrades (`upgradesHeldBy`): `operator` where the
  *   cluster's governance gives app upgrades to the operator, else what the
  *   package's signed manifest declares, `owner` or `publisher`.
  * - Who may upgrade an owner-held instance (core's `SystemState::may_upgrade`):
@@ -39,6 +43,13 @@
  * at once (`/app/{app}/`, with the route and query), and that page says the
  * update is done. A frontend-only release (the same WASM) is an upgrade the
  * holder approves like any other: the report lists it in `availableVersions`.
+ *
+ * Upgrades are code only, so an instance several releases behind moves to the
+ * newest it can reach in one upgrade: the offer is `latestReachable`, not
+ * merely the newest release, and says why a newer one is out of reach. When
+ * none is reachable, the prompt explains and offers no update. A node from
+ * before `latestReachable` (core 1.0.0-rc.15 and earlier) is offered the
+ * newest, as before.
  */
 import {
   compareVersions,
@@ -50,10 +61,30 @@ import {
   type CalimeroClient,
   type ReportedApp,
 } from "@calimero-network/mero-js";
-import { describeError, instanceReleaseUrl, servedRelease, type KeyValueStorage } from "@calimero-apps/connect";
+import {
+  describeError,
+  instanceReleaseUrl,
+  servedRelease,
+  type ClientRoutes,
+  type KeyValueStorage,
+} from "@calimero-apps/connect";
 
 /** Who holds an instance's upgrades, as core's report says (`upgradesHeldBy`). */
 export type UpgradeHolder = "owner" | "publisher" | "operator";
+
+/** Why the newest release is out of an instance's reach now, as core's report says (`latestBlocked`). */
+export interface UpgradeBlocked {
+  /** The newest release, which it cannot move to now. */
+  version: string;
+  /**
+   * `runtime`: a node holding the instance runs an older runtime than the
+   * release needs; `authority`: the release would hand the instance's
+   * upgrades to its publisher. Anything else a newer node says is kept as is.
+   */
+  reason: string;
+  /** The node's own words. */
+  message: string;
+}
 
 /** A newer release an instance may move to, and whether this account may move it. */
 export interface UpgradeOffer {
@@ -63,8 +94,15 @@ export interface UpgradeOffer {
   name: string | null;
   /** The release it runs. */
   current: string;
-  /** The newest release it may move to. */
+  /**
+   * The release the offer moves it to: the newest it can reach now. When
+   * `reachable` is false, the newest it may see, which it cannot move to yet.
+   */
   latest: string;
+  /** Whether an upgrade to `latest` would be taken now. */
+  reachable: boolean;
+  /** Why the newest release is not `latest` (or, unreachable, not yet possible), when the node says. */
+  blocked: UpgradeBlocked | null;
   heldBy: UpgradeHolder;
   /**
    * This account may upgrade it: held by the owner side, and the account is
@@ -75,10 +113,10 @@ export interface UpgradeOffer {
 }
 
 /** The part of the client the offer uses. */
-export type UpgradeClient = Pick<
-  CalimeroClient,
-  "getApp" | "appsReportAll" | "getOrg" | "me" | "requestConsent" | "consentResult"
-> & { readonly session?: { accountId: string } | null };
+export type UpgradeClient = Pick<CalimeroClient, "appsReportAll"> &
+  ClientRoutes<{ apps: "get"; orgs: "get"; auth: "me"; consent: "pageCreate" | "pageResult" }> & {
+    readonly session?: { accountId: string } | null;
+  };
 
 // ---------------------------------------------------------------- who may upgrade
 
@@ -126,12 +164,27 @@ function accountOf(client: UpgradeClient, accountId?: string): string | null {
   return accountId ?? client.session?.accountId ?? null;
 }
 
+/** Core's `latestBlocked`, when the entry carries one that reads. */
+function blockedIn(entry: ReportedApp): UpgradeBlocked | null {
+  const b = rec((entry as { latestBlocked?: unknown }).latestBlocked);
+  const version = str(b.version);
+  if (!version) return null;
+  return { version, reason: str(b.reason) ?? "unknown", message: str(b.message) ?? "" };
+}
+
 /** The offer an entry of a report makes, before asking whether this account may take it. */
 function offerIn(entry: ReportedApp, report: AppsReport): Omit<UpgradeOffer, "canUpgrade"> | null {
   const current = entry.package?.version;
   const available = entry.availableVersions ?? [];
-  const latest = available[available.length - 1];
-  if (!current || !latest || compareVersions(latest, current) <= 0) return null;
+  const newest = available[available.length - 1];
+  if (!current || !newest || compareVersions(newest, current) <= 0) return null;
+  // Absent from a node before core named it: the newest, as before.
+  const named = (entry as { latestReachable?: unknown }).latestReachable;
+  const reach = named === undefined ? newest : str(named);
+  const target = reach !== null && compareVersions(reach, current) > 0 ? reach : null;
+  const reachable = target !== null;
+  const latest = target ?? newest;
+  const blocked = blockedIn(entry);
   // `publisher` is on the wire though mero-js's type says `owner | operator`.
   const said = entry.upgradesHeldBy as string;
   const heldBy: UpgradeHolder | null =
@@ -141,7 +194,7 @@ function offerIn(entry: ReportedApp, report: AppsReport): Omit<UpgradeOffer, "ca
         ? said
         : null;
   if (heldBy === null) return null;
-  return { app: entry.app, name: entry.name ?? null, current, latest, heldBy };
+  return { app: entry.app, name: entry.name ?? null, current, latest, reachable, blocked, heldBy };
 }
 
 /**
@@ -167,12 +220,12 @@ async function mayUpgrade(
     if (role && (ROLE_RANK[role] ?? 0) >= ROLE_RANK.admin!) return true;
     let org = orgs.get(orgId);
     if (!org) {
-      org = client.getOrg(orgId).catch(() => null);
+      org = client.orgs.get({ org: orgId }).catch(() => null);
       orgs.set(orgId, org);
     }
     if (managesApps(await org, account, team)) return true;
     // The instance's own owner (a member who created it).
-    const app = rec(await client.getApp(entry.app));
+    const app = rec(await client.apps.get({ app: entry.app }));
     return str(app.owner) === account;
   } catch {
     return false;
@@ -191,7 +244,7 @@ export async function upgradeOffer(
 ): Promise<UpgradeOffer | null> {
   const account = accountOf(client, options.accountId);
   try {
-    const app = rec(await client.getApp(appId));
+    const app = rec(await client.apps.get({ app: appId }));
     const report = await client.appsReportAll(str(app.org));
     const entry = report.apps.find((a) => a.app === appId);
     const offer = entry ? offerIn(entry, report) : null;
@@ -211,7 +264,7 @@ export async function upgradeOffers(
   client: UpgradeClient,
   options: { package: string; accountId?: string },
 ): Promise<UpgradeOffer[]> {
-  const me = rec(await client.me());
+  const me = rec(await client.auth.me());
   const account = accountOf(client, options.accountId) ?? str(me.accountId);
   const roles = new Map<string, string | null>();
   for (const o of Array.isArray(me.orgs) ? me.orgs : []) {
@@ -360,13 +413,13 @@ export interface StartUpgradeOptions {
  * refuses, or answers a code that is not its request's.
  */
 export async function startUpgrade(
-  client: Pick<UpgradeClient, "requestConsent">,
+  client: ClientRoutes<{ consent: "pageCreate" }>,
   appId: string,
   version: string,
   returnTo: string,
   options: StartUpgradeOptions = {},
 ): Promise<void> {
-  const started = await client.requestConsent(upgradeConsent(appId, version, returnTo));
+  const started = await client.consent.pageCreate({ body: upgradeConsent(appId, version, returnTo) });
   if (started.code && globalThis.crypto?.subtle && started.code !== (await confirmationCode(started.requestId))) {
     throw new Error("The node's answer did not match its request; nothing was opened.");
   }
@@ -404,7 +457,7 @@ export interface UpgradeReturn {
  * other page, including a consent this module did not start.
  */
 export async function finishUpgrade(
-  client: Pick<UpgradeClient, "consentResult">,
+  client: ClientRoutes<{ consent: "pageResult" }>,
   href: string,
   storage: KeyValueStorage | undefined = defaultStorage(),
 ): Promise<UpgradeReturn | null> {
@@ -421,7 +474,7 @@ export async function finishUpgrade(
   let status: UpgradeReturn["status"] = "unknown";
   if (Date.now() - pending.at < PENDING_TTL_MS) {
     try {
-      status = (await client.consentResult(back.requestId)).status;
+      status = (await client.consent.pageResult({ request: back.requestId })).status;
     } catch {
       status = "unknown";
     }
@@ -440,10 +493,41 @@ export interface UpgradePromptHandlers {
   onLater(): void;
 }
 
-/** "Version 1.2.0 of KV Store is available (you run 1.0.0)." */
+/** Why a release is out of reach, in a clause. */
+function blockedCopy(b: UpgradeBlocked): string {
+  switch (b.reason) {
+    case "runtime":
+      return "the servers that hold this app run an older Calimero release than it needs";
+    case "authority":
+      return "its publisher would take over its updates";
+    default:
+      return b.message || "the node does not take it";
+  }
+}
+
+/**
+ * "Version 1.2.0 of KV Store is available (you run 1.0.0)." When a newer one
+ * is out of reach, why; when none is reachable, that it cannot be installed yet.
+ */
 export function upgradeCopy(offer: UpgradeOffer, appName: string, showInstance = false): string {
   const which = showInstance && offer.name ? ` for “${offer.name}”` : "";
-  return `Version ${offer.latest} of ${appName} is available${which} (you run ${offer.current}).`;
+  if (!offer.reachable) {
+    const why = offer.blocked ? `: ${blockedCopy(offer.blocked)}` : "";
+    return `Version ${offer.latest} of ${appName} is out${which} (you run ${offer.current}), but it cannot be installed yet${why}.`;
+  }
+  const said = `Version ${offer.latest} of ${appName} is available${which} (you run ${offer.current}).`;
+  const b = offer.blocked;
+  if (!b || b.version === offer.latest) return said;
+  return `${said} Version ${b.version} cannot be installed yet: ${blockedCopy(b)}.`;
+}
+
+/**
+ * The version "Not now" is remembered for: the release offered, or, for an
+ * offer that cannot be taken yet, that release as not reachable, so the
+ * prompt comes back once it can be.
+ */
+function dismissedAs(offer: UpgradeOffer): string {
+  return offer.reachable ? offer.latest : `unreachable:${offer.latest}`;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string, testId?: string) {
@@ -462,16 +546,20 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 export function renderUpgradePrompt(container: HTMLElement, offer: UpgradeOffer, handlers: UpgradePromptHandlers): HTMLElement {
   const root = el("aside", "cp-upgrade", undefined, "upgrade-prompt");
   root.setAttribute("role", "region");
-  root.setAttribute("aria-label", "Update available");
+  root.setAttribute("aria-label", offer.reachable ? "Update available" : "Update not possible yet");
   root.append(el("p", "cp-upgrade__text", upgradeCopy(offer, handlers.appName, handlers.showInstance)));
   const actions = el("div", "cp-upgrade__actions");
-  const update = el("button", "cp-upgrade__primary", "Update", "upgrade-update");
-  update.type = "button";
-  update.addEventListener("click", () => handlers.onUpdate());
-  const later = el("button", "cp-upgrade__link", "Not now", "upgrade-later");
+  // An offer that cannot be taken yet only explains: there is nothing to approve.
+  if (offer.reachable) {
+    const update = el("button", "cp-upgrade__primary", "Update", "upgrade-update");
+    update.type = "button";
+    update.addEventListener("click", () => handlers.onUpdate());
+    actions.append(update);
+  }
+  const later = el("button", "cp-upgrade__link", offer.reachable ? "Not now" : "OK", "upgrade-later");
   later.type = "button";
   later.addEventListener("click", () => handlers.onLater());
-  actions.append(update, later);
+  actions.append(later);
   root.append(actions);
   container.append(root);
   return root;
@@ -554,8 +642,9 @@ function checkOnce(client: UpgradeClient, pkg: string, accountId?: string): Prom
 /**
  * For a signed-in session: once, say what came back from an upgrade's consent
  * page if the person is just back from one, and otherwise offer the newest
- * release of one instance of `package` this account may upgrade, unless
- * "Not now" was said to that version. Shows nothing to anyone who may not
+ * release one instance of `package` this account may upgrade can reach,
+ * unless "Not now" was said to that version, or, when none can be reached
+ * yet, say why. Shows nothing to anyone who may not
  * upgrade, nothing for publisher- or operator-held upgrades, and nothing when
  * a read fails. Returns the function that takes it away (sign-out, unmount).
  */
@@ -588,7 +677,7 @@ export function watchUpgrades(options: WatchUpgradesOptions): () => void {
       appName: appName(),
       showInstance: several,
       onLater: () => {
-        dismissUpgrade(storage, offer.app, offer.latest);
+        dismissUpgrade(storage, offer.app, dismissedAs(offer));
         take();
       },
       onUpdate: () => {
@@ -664,7 +753,9 @@ export function watchUpgrades(options: WatchUpgradesOptions): () => void {
         (o) => o.canUpgrade && o.heldBy === "owner",
       );
       if (!live) return;
-      const offer = offers.find((o) => !upgradeDismissed(storage, o.app, o.latest));
+      // One that can be taken first; else one that explains why none can.
+      const open = offers.filter((o) => !upgradeDismissed(storage, o.app, dismissedAs(o)));
+      const offer = open.find((o) => o.reachable) ?? open[0];
       if (offer && !shownFor(pkg)) show(offer, offers.length > 1);
     } catch {
       // No offer is better than a wrong one.

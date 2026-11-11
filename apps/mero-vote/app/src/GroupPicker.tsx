@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import type { AppSource } from "@calimero-apps/connect";
+import type { AppInfo } from "@calimero-network/mero-js";
+import type { AppSource, ClientRoutes } from "@calimero-apps/connect";
 import { createGroup, listGroups } from "./groups";
 import { errText } from "./useMeroVote";
 import { BoxIcon, ChevronRightIcon, PlusIcon, RefreshIcon } from "./icons";
@@ -19,7 +19,7 @@ export function GroupPicker({
   onOpen,
   after,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg">;
+  client: ClientRoutes<{ apps: "list" | "create"; orgs: "create" }>;
   source: AppSource;
   onOpen: (group: OpenedGroup) => void;
   /** Runs after each request (keeps the stored session current). */

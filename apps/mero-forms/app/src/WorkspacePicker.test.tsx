@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const MARKETING = { appId: "app-1", name: "Marketing", owner: "o", org: "org-1", bundle: "b", package: null, version: null };
 const ME = { orgs: [{ orgId: "org-1", name: "Acme", role: "owner" }] };
-const client = {
+const client = withRoutes({
   session: { accountId: "acct-me" },
   me: vi.fn(async (): Promise<Record<string, unknown>> => ME),
   getOrg: vi.fn(async (_org: string): Promise<Record<string, unknown>> => ({ members: { "acct-me": "owner" } })),
@@ -12,7 +13,7 @@ const client = {
   createApp: vi.fn(async () => "app-2"),
   call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
   view: vi.fn(),
-};
+});
 const signedIn = { client, source: "bundle-hash", after: () => {} };
 vi.mock("./sessionContext", () => ({ useSignedIn: () => signedIn }));
 

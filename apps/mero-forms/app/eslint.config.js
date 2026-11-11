@@ -27,4 +27,29 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // mero-js's deprecated wrappers (`client.getOrg(...)`, `client.invite(...)`,
+    // ...) fail lint: the app calls the generated methods (`client.orgs.get({ org })`,
+    // ...). Tests are left out (their fakes may keep the wrapper names).
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.{ts,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // The deprecations this app had before the mero-js migration stay allowed by
+      // name; anything newly deprecated (mero-js's wrappers first) fails.
+      "@typescript-eslint/no-deprecated": [
+        "error",
+        {
+          allow: [
+            { from: "lib", name: ["platform"] },
+          ],
+        },
+      ],
+    },
+  },
 );

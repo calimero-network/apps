@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({
-  uploadBlob: vi.fn(),
-  downloadBlob: vi.fn(),
-  deleteBlob: vi.fn(),
-}));
+const h = await vi.hoisted(async () =>
+  (await import("@calimero-apps/connect/testing")).withRoutes({
+    uploadBlob: vi.fn(),
+    downloadBlob: vi.fn(),
+    deleteBlob: vi.fn(),
+  }),
+);
 
 vi.mock("./calimero", () => ({
   after: () => {},

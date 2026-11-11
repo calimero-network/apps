@@ -44,7 +44,7 @@ export function useSse(
       while (!ctl.signal.aborted) {
         try {
           // Where the board is now: the stream starts after it.
-          const { index } = await client.view(contextId, "getBoard", {});
+          const { index } = await client.apps.view({ app: contextId, method: "getBoard", args: {} });
           if (!first) onReconnectRef.current?.();
           first = false;
           for await (const ev of client.events(contextId, index + 1, ctl.signal)) {

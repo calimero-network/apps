@@ -15,6 +15,7 @@ export {
   type ConnectOptions,
   type Target,
 } from "./target";
+export type { ClientRoutes } from "./routes";
 export { APPS_DOMAIN, CLOUD_DEPLOY, appClusterLabel, appLabel, appUrl } from "./appHost";
 export {
   SessionStore,
@@ -75,6 +76,8 @@ export {
 export {
   CREATED_FOR,
   appFilter,
+  appTarget,
+  listAppInfos,
   appKey,
   appTeamsLabel,
   holdingsLabel,

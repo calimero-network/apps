@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appSource,
   askAnOwnerCopy,
   canCreateIn,
   describeError,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -30,11 +31,11 @@ type Tab = "standup" | "week" | "decisions" | "invite";
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
 
 /** What reads and writes your name in a team's org (member metadata `{ name }`). */
-type OrgClient = Pick<CalimeroClient, "getOrg" | "setMemberMetadata">;
+type OrgClient = ClientRoutes<{ orgs: "get" | "memberMetadata" }>;
 
 /** Your name in `org`'s member metadata, or "". */
 async function readOrgName(client: OrgClient, org: string, account: string): Promise<string> {
-  const o = (await client.getOrg(org)) as { memberMetadata?: Record<string, unknown> | null };
+  const o = (await client.orgs.get({ org })) as { memberMetadata?: Record<string, unknown> | null };
   return orgMemberName(o.memberMetadata, account);
 }
 

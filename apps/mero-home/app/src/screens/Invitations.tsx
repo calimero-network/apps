@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CalimeroClient, OrgInvite, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, inviteLink, inviteToApp } from "@calimero-apps/connect";
+import { passkeyConfirm, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, inviteLink, inviteToApp, type ClientRoutes } from "@calimero-apps/connect";
 
 import { inviteRoot } from "../invites";
 import { TTL_CHOICES, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../home";
@@ -8,7 +8,7 @@ import { TTL_CHOICES, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabe
 type Pending = { kind: "loading" } | { kind: "ready"; invites: OrgInvite[] } | { kind: "failed"; error: string };
 
 export interface InvitationsProps {
-  client: Pick<CalimeroClient, "listAppTeams" | "invite" | "listInvites" | "revokeInvite">;
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" | "inviteList" | "inviteRevoke" }>;
   view: OrgView;
   account: string;
   passkey: () => PasskeyProvider;
@@ -39,7 +39,8 @@ export function Invitations({ client, view, account, passkey, after, root = invi
 
   const refresh = useCallback(async () => {
     try {
-      const list = await client.listInvites(view.org);
+      // The document lets an invite carry the `owner` role; mero-js's `OrgInvite` does not.
+      const list = (await client.orgs.inviteList({ org: view.org })).invites as OrgInvite[];
       setPending({ kind: "ready", invites: [...list].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)) });
     } catch (e) {
       setPending({ kind: "failed", error: describeError(e) });
@@ -90,7 +91,7 @@ export function Invitations({ client, view, account, passkey, after, root = invi
     setRevoking(key);
     setError(null);
     try {
-      await client.revokeInvite(view.org, key, passkey());
+      await client.orgs.inviteRevoke({ org: view.org, key }, { confirm: passkeyConfirm(passkey()) });
       await refresh();
     } catch (e) {
       setError(describeError(e));

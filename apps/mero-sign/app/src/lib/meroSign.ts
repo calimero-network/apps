@@ -18,7 +18,6 @@
  * (`client.view`). `after` runs after every request: it keeps the stored
  * session current (refresh tokens are single-use).
  */
-import type { CalimeroClient } from '@calimero-network/mero-js';
 
 import {
   DocumentStatus,
@@ -29,6 +28,7 @@ import {
   type DocumentInfo,
   type SignatureRecord,
 } from '../api/clientApi';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 /** The calls (logged writes) the contract has, besides `init`. */
 export const CALLS = [
@@ -67,7 +67,7 @@ export const VIEWS = [
   'searchDocumentByEmbedding',
 ] as const;
 
-export type Transport = Pick<CalimeroClient, 'call' | 'view'>;
+export type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
 
 // ── wire shapes ──────────────────────────────────────────────────────────────
 
@@ -221,7 +221,7 @@ export class MeroSignApp {
 
   private async call<T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> {
     try {
-      return (await this.transport.call(this.appId, method, args)).result as T;
+      return (await this.transport.apps.call({ app: this.appId, method, args })).result as T;
     } finally {
       this.after();
     }
@@ -229,7 +229,7 @@ export class MeroSignApp {
 
   private async view<T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> {
     try {
-      return (await this.transport.view(this.appId, method, args)).result as T;
+      return (await this.transport.apps.view({ app: this.appId, method, args })).result as T;
     } finally {
       this.after();
     }

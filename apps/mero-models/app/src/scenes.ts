@@ -1,8 +1,11 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  appTarget,
   createInviteStore,
+  listAppInfos,
   targetKey,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type Target,
@@ -19,9 +22,9 @@ import type { OpenedScene } from "./scene";
  */
 
 /** The scenes this account reaches: instances of the dev bundle, or of the package. */
-export async function listScenes(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listScenes(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  const apps = await client.listApps(filter);
+  const apps = await listAppInfos(client, filter);
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
@@ -36,24 +39,26 @@ export function studiosOf(scenes: AppInfo[]): string[] {
  * invited. Answers what the studio opens.
  */
 export async function createScene(
-  client: Pick<CalimeroClient, "createApp" | "createOrg">,
+  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
   source: AppSource,
   name: string,
   org: string | null = null,
 ): Promise<OpenedScene> {
   const sceneName = name.trim() || "Untitled scene";
-  const inOrg = org ?? (await client.createOrg(sceneName));
-  const appId = await client.createApp(sceneName, source, { org: inOrg });
+  const inOrg = org ?? (await client.orgs.create({ name: sceneName })).orgId;
+  const appId = (await client.apps.create({ name: sceneName, ...appTarget(source), org: inOrg })).appId;
   return { appId, name: sceneName, org: inOrg };
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
 export function inviteToken(
-  client: Pick<CalimeroClient, "invite">,
+  client: ClientRoutes<{ orgs: "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  return client.invite(org, "member", passkey);
+  return client.orgs
+    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
+    .then((r) => r.token);
 }
 
 /**

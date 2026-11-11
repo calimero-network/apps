@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { passkeyConfirm, type PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 
 import {
   accessCell,
@@ -44,7 +44,7 @@ const SEAT_TEXT: Record<Seat, string> = {
 };
 
 export interface PeopleProps {
-  client: Pick<CalimeroClient, "getTeam" | "removeMember" | "setTeamMember" | "removeTeamMember">;
+  client: ClientRoutes<{ orgs: "teamGet" | "removeMember" | "teamSetMember" | "teamRemoveMember" }>;
   view: OrgView;
   account: string;
   passkey: () => PasskeyProvider;
@@ -149,7 +149,7 @@ export function People({ client, view, account, passkey, after, onChanged }: Peo
     setBusy(true);
     setError(null);
     try {
-      await client.removeMember(view.org, p.account, passkey());
+      await client.orgs.removeMember({ org: view.org, account: p.account }, { confirm: passkeyConfirm(passkey()) });
       setNotice(`${displayName(p)} was removed from ${view.name} and from every app in it.`);
       setRemoving(null);
       onChanged();

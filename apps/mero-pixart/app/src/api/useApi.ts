@@ -54,7 +54,11 @@ export function useApi(): Api {
     async function uploadBlob(data: ArrayBuffer | Uint8Array, contextId: string): Promise<{ blobId: string }> {
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       try {
-        const res = await client.uploadBlob(contextId, bytes);
+        const res = await client.apps.blobUpload({
+          app: contextId,
+          body: bytes,
+          contentType: "application/octet-stream",
+        });
         return { blobId: res.id };
       } finally {
         after();

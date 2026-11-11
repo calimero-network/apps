@@ -220,8 +220,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
       return;
     }
     let live = true;
-    void client
-      .listApps({})
+    void client.apps.list({}).then((r) => r.apps)
       .then(
         (apps) => apps.find((a) => a.appId === pendingTable) ?? null,
         () => null,

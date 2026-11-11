@@ -167,6 +167,7 @@ export function isSubmitShortcut(e: { key: string; metaKey: boolean; ctrlKey: bo
 }
 
 export const SUBMIT_HINT =
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the DOM's `navigator.platform`, still the only check every browser answers
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘ Enter"
     : "Ctrl Enter";

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CALLS, VIEWS, meroPass } from './meroPass';
 import { vaultApiFor } from './vaultApi';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(
@@ -31,7 +32,10 @@ describe('the client covers the contract', () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const p = meroPass({ call: vi.fn(record), view: vi.fn(record) }, 'app-1');
+    const p = meroPass(
+      withRoutes({ call: vi.fn(record), view: vi.fn(record) }),
+      'app-1',
+    );
     await Promise.all([
       p.vaultInfo(),
       p.vaultName(),
@@ -107,7 +111,7 @@ describe('vaultApiFor', () => {
       return { index: 1, result: results[method] };
     });
     const call = vi.fn(async () => ({ index: 1, result: 2, events: [] }));
-    const api = vaultApiFor(meroPass({ call, view }, 'app'));
+    const api = vaultApiFor(meroPass(withRoutes({ call, view }), 'app'));
 
     expect(await api.listSecrets()).toEqual([
       {

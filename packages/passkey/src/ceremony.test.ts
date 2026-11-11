@@ -12,6 +12,7 @@ import {
   signUpInviteHere,
 } from "./ceremony";
 import { SIGN_UP_NOT_FINISHED } from "./signUpFlow";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const TARGET: Target = { kind: "local", nodes: ["http://127.0.0.1:2428"] };
 
@@ -78,7 +79,7 @@ describe("the shared ceremony", () => {
       signUp: vi.fn(async () => ({ accountId: "acct-new" })),
       me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }] })),
     };
-    const made = await signUpHere(client as unknown as CalimeroClient, TARGET, pk(), {
+    const made = await signUpHere(withRoutes(client), TARGET, pk(), {
       invite: "tok",
       policy: policy("open"),
       join: true,
@@ -92,7 +93,7 @@ describe("the shared ceremony", () => {
       signUp: vi.fn(async () => ({ accountId: "acct-new", org: "org-said" })),
       me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }, { orgId: "org-2" }] })),
     };
-    const made = await signUpHere(client as unknown as CalimeroClient, TARGET, pk(), {
+    const made = await signUpHere(withRoutes(client), TARGET, pk(), {
       invite: "tok",
       policy: policy("open"),
       join: true,
@@ -108,7 +109,7 @@ describe("the shared ceremony", () => {
       me: vi.fn(),
       setMemberMetadata: vi.fn(async () => {}),
     };
-    const c = client as unknown as CalimeroClient;
+    const c = withRoutes(client);
     const opts = { invite: "tok", policy: policy("open"), join: true, nameInOrg: true, storage: memory() };
     // Not asked (the default): an app that names people per org itself keeps asking.
     await signUpHere(c, TARGET, pk(), { ...opts, nameInOrg: false, name: "Eve" });

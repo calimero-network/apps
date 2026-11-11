@@ -9,6 +9,7 @@ import { APP_NAME } from "./lib/config";
 import { SessionProvider } from "./lib/sessionContext";
 import type { SessionDeps } from "./lib/session";
 import { dropInvite, migrateLegacyInvite, pendingInvite } from "./lib/companies";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
 function hold(legacy: string) {
@@ -31,7 +32,7 @@ const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-1" };
 
 function fakeClient() {
   let session: CalimeroSession | undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -54,13 +55,13 @@ function fakeClient() {
     getOrg: vi.fn(async () => ({ name: "Acme", members: { [ME]: "owner" } })),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
     setMemberMetadata: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }
