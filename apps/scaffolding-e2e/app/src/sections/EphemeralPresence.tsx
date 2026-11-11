@@ -126,11 +126,11 @@ export function EphemeralPresence() {
       const state: Presence = { label, cursor: Number(cursor) || 0, at: Date.now() };
       seqRef.current += 1;
       const bytes = retract ? null : new TextEncoder().encode(JSON.stringify(state));
-      // `null` retracts; the document types `state` as a string only.
+      // `null` retracts.
       await conn.client.apps.presencePublish({
         app: appId,
         seq: seqRef.current,
-        state: presenceState(bytes) as unknown as string,
+        state: presenceState(bytes),
       });
       // Resolves with no value — report what was actually sent.
       setSetResult(retract ? { retracted: true, seq: seqRef.current } : { sent: state, seq: seqRef.current, hex: toHex(new TextEncoder().encode(JSON.stringify(state))).slice(0, 32) + "…" });

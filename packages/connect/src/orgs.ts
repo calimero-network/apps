@@ -78,8 +78,7 @@ export async function listAppInfos(
   filter: { package?: string; bundle?: string } = {},
 ): Promise<AppInfo[]> {
   const { apps } = await client.apps.list({ package: filter.package || undefined, bundle: filter.bundle || undefined });
-  // The document's `App` has no `package` or `version`, which the node's answer (`AppInfo`) carries.
-  return apps as unknown as AppInfo[];
+  return apps;
 }
 
 /** Every organization the account is in (`/me`), by name. */
