@@ -238,9 +238,14 @@ catalog:
 # listInvites, revokeInvite, setTeamDefaultCapabilities, and `mode` on getOrg.
 # A node without those routes answers them 404; @calimero-apps/connect's
 # app-team helpers fall back to the org routes there.
+# The generated method groups (mero-js#358: `client.apps.call(...)`,
+# `client.orgs.inviteCreate(..., { confirm })`, ...) replace the deprecated
+# wrappers; every component package lints `@typescript-eslint/no-deprecated`.
+# TEMPORARY: pinned to the unreleased #358 build until it is published. Switch
+# this back to the published version before merging.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.16.0
+    "@calimero-network/mero-js": github:calimero-network/mero-js#62d45febb259d6d5896f16d2f142c27832ffdd87
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
