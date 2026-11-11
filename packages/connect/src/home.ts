@@ -107,7 +107,8 @@ export function findHome(
   const key = `${origin} ${pkg}`;
   const known = asks.get(key);
   if (known) return known;
-  const asked = client.packages.get({ package: pkg })
+  const asked = client.packages
+    .get({ package: pkg })
     .then((info): HomeLocation | null => {
       if (!info || info.package !== pkg) return null;
       const latest = typeof info.latest === "string" && info.latest ? info.latest : null;

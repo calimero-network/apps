@@ -22,14 +22,20 @@ const unknownPasskey = () => new LoginRequired("unknown passkey");
 
 describe("readSignUpPolicy", () => {
   it("reads the cluster's policy", async () => {
-    expect(await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => INVITE as never) } })).toEqual(INVITE);
+    expect(await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => INVITE as never) } })).toEqual(
+      INVITE,
+    );
   });
 
   it("is null (unknown, never blocking) on a node without GET /sign-up or any failure", async () => {
     const notFound = new CalimeroError(404, "NOT_FOUND", "no route");
-    expect(await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => Promise.reject(notFound)) } })).toBeNull();
+    expect(
+      await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => Promise.reject(notFound)) } }),
+    ).toBeNull();
     expect(await readSignUpPolicy({})).toBeNull();
-    expect(await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => ({ policy: "weird" }) as never) } })).toBeNull();
+    expect(
+      await readSignUpPolicy({ deployments: { signUpPublic: vi.fn(async () => ({ policy: "weird" }) as never) } }),
+    ).toBeNull();
   });
 });
 

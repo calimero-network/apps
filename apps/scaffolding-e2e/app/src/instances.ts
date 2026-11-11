@@ -47,7 +47,10 @@ export async function inviteToken(
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  const { token } = await client.orgs.inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) });
+  const { token } = await client.orgs.inviteCreate(
+    { org, role: "member", teams: [] },
+    { confirm: passkeyConfirm(passkey) },
+  );
   return token;
 }
 

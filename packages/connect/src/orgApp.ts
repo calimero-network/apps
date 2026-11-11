@@ -170,7 +170,10 @@ export async function createAppOrg(
   let capabilitiesError: unknown = null;
   if (options.capabilities !== undefined) {
     try {
-      await client.orgs.capabilities({ org: orgId, capabilities: options.capabilities }, { confirm: passkeyConfirm(provider(passkey)) });
+      await client.orgs.capabilities(
+        { org: orgId, capabilities: options.capabilities },
+        { confirm: passkeyConfirm(provider(passkey)) },
+      );
     } catch (e) {
       capabilitiesError = e ?? new Error("member defaults not set");
     }
@@ -324,9 +327,11 @@ export async function removeFromApp(
   }
   for (const sub of options.privateTeams?.(view) ?? []) {
     if (sub === team || !(account in (view.teams?.[sub]?.members ?? {}))) continue;
-    await client.orgs.teamRemoveMember({ org, team: sub, account }, { confirm: passkeyConfirm(provider(passkey)) }).catch((e: unknown) => {
-      console.warn(`removeFromApp: ${sub} still lists ${account}`, e);
-    });
+    await client.orgs
+      .teamRemoveMember({ org, team: sub, account }, { confirm: passkeyConfirm(provider(passkey)) })
+      .catch((e: unknown) => {
+        console.warn(`removeFromApp: ${sub} still lists ${account}`, e);
+      });
   }
   return "app";
 }
@@ -368,7 +373,8 @@ export interface LeftApp {
  * In standalone and legacy orgs it is leaving the organization, as before.
  */
 export async function leaveApp(
-  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,

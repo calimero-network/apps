@@ -19,7 +19,11 @@ export async function uploadBlobToNode(file: File): Promise<string> {
   const conn = getConnection();
   if (!conn) throw new Error("No app instance open");
   try {
-    const { blobId } = await conn.client.apps.blobUpload({ app: conn.appId, body: new Uint8Array(await file.arrayBuffer()), contentType: 'application/octet-stream' });
+    const { blobId } = await conn.client.apps.blobUpload({
+      app: conn.appId,
+      body: new Uint8Array(await file.arrayBuffer()),
+      contentType: "application/octet-stream",
+    });
     if (!blobId) throw new Error("No blobId in the upload's answer");
     return blobId;
   } catch (err) {

@@ -62,7 +62,12 @@ function need(app: string | undefined): string {
 async function upload(app: string, wasm: string | undefined): Promise<string> {
   const path = wasm ?? buildComponent(app);
   const deployer = await signUp(`deployer-${Date.now().toString(36)}`, LOCAL_NODES[0] as string);
-  const bundle = (await deployer.client.packages.bundlePut({ body: new Uint8Array(readFileSync(path)), contentType: 'application/wasm' })).hash;
+  const bundle = (
+    await deployer.client.packages.bundlePut({
+      body: new Uint8Array(readFileSync(path)),
+      contentType: "application/wasm",
+    })
+  ).hash;
   console.log(`• uploaded ${relative(ROOT, path)} as bundle ${bundle}`);
   return bundle;
 }
