@@ -19,6 +19,8 @@ struct WorkspacePicker: View {
     @State private var step: Step = .select
     @State private var selectedId: String?
     @State private var text = ""
+    /// Your name in the workspace being created.
+    @State private var yourName = ""
     @State private var working = false
 
     var body: some View {
@@ -157,7 +159,7 @@ struct WorkspacePicker: View {
     // MARK: Name
 
     @ViewBuilder private func nameStep(_ workspace: Workspace) -> some View {
-        title("Join \(workspace.name)", sub: "Choose a display name to use in this server.")
+        title("Join \(workspace.name)", sub: "Choose the name people see in this workspace. Each workspace has its own.")
         Theme.label("Your name", size: 10.9, opacity: 35).padding(.bottom, 8)
         TextField("e.g. Alice", text: $text)
             .textFieldStyle(ChatFieldStyle())
@@ -175,7 +177,7 @@ struct WorkspacePicker: View {
     private func saveName(_ workspace: Workspace) {
         let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        session.displayName = String(name.prefix(50))
+        session.setName(name, in: workspace.id)
         onEnter(workspace)
     }
 
@@ -200,14 +202,25 @@ struct WorkspacePicker: View {
         .font(Theme.font(12))
         .foregroundStyle(Theme.badInk)
         .padding(.top, 6)
+        Theme.label("Your name", size: 10.9, opacity: 35).padding(.top, 14).padding(.bottom, 8)
+        TextField("e.g. Alice", text: $yourName)
+            .textFieldStyle(ChatFieldStyle())
+            .textInputAutocapitalization(.words)
+            .accessibilityIdentifier("createDisplayNameField")
         Button {
             Task {
                 working = true
-                let created = await model.create(name: text)
+                let username = yourName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let created = await model.create(name: text, username: username)
                 working = false
-                if created {
+                if let created {
+                    session.setName(username, in: created)
                     text = ""
-                    go(.select)
+                    if let workspace = model.workspaces.first(where: { $0.id == created }) {
+                        onEnter(workspace)
+                    } else {
+                        go(.select)
+                    }
                 }
             }
         } label: {
@@ -217,7 +230,9 @@ struct WorkspacePicker: View {
             }
         }
         .buttonStyle(InkButtonStyle())
-        .disabled(working || text.trimmingCharacters(in: .whitespaces).isEmpty || text.utf8.count > 64)
+        .disabled(
+            working || text.trimmingCharacters(in: .whitespaces).isEmpty || text.utf8.count > 64
+                || yourName.trimmingCharacters(in: .whitespaces).isEmpty)
         .padding(.top, 20)
         .accessibilityIdentifier("createButton")
         backButton
@@ -237,15 +252,33 @@ struct WorkspacePicker: View {
         Button {
             Task {
                 working = true
-                let joined = await model.join(invitation: text) != nil
-                if joined {
+                let invitation = ChatInvitation.parse(text)
+                let joined = await model.join(invitation: text)
+                if let joined {
                     await session.didJoinWorkspace()
-                    await model.load()
+                    // The listing can lag the join for a moment.
+                    for attempt in 0..<4 {
+                        await model.load()
+                        if model.workspaces.contains(where: { $0.id == joined }) { break }
+                        if attempt < 3 { try? await Task.sleep(nanoseconds: 1_000_000_000) }
+                    }
                 }
                 working = false
-                if joined {
+                if let joined {
                     text = ""
-                    go(.select)
+                    // Your name in the workspace you just joined, as on the web.
+                    let workspace =
+                        model.workspaces.first(where: { $0.id == joined })
+                        ?? session.applicationId.map {
+                            Workspace(
+                                id: joined, name: invitation?.workspaceName ?? ChatIdentity.short(joined),
+                                applicationId: $0)
+                        }
+                    if let workspace {
+                        go(.name(workspace))
+                    } else {
+                        go(.select)
+                    }
                 }
             }
         } label: {
@@ -305,15 +338,21 @@ struct WorkspacePicker: View {
     private func go(_ next: Step) {
         model.errorText = nil
         if case .join(let prefill) = next { text = prefill } else if next != .select { text = "" }
-        if case .name = next { text = session.displayName }
+        if case .name(let workspace) = next {
+            let mine = session.name(in: workspace.id)
+            text = mine.isEmpty ? session.lastUsedName : mine
+        }
+        if case .create = next { yourName = session.lastUsedName }
         step = next
     }
 
+    /// Switching never asks for a name: it is asked when you create or join a
+    /// workspace. One without a name saved on this phone takes the name you
+    /// last used (your profile in its channels still wins).
     private func enter(_ workspace: Workspace) {
-        if session.displayName.trimmingCharacters(in: .whitespaces).isEmpty {
-            go(.name(workspace))
-        } else {
-            onEnter(workspace)
+        if session.name(in: workspace.id).isEmpty, !session.lastUsedName.isEmpty {
+            session.setName(session.lastUsedName, in: workspace.id)
         }
+        onEnter(workspace)
     }
 }

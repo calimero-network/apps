@@ -41,6 +41,17 @@ struct ChatInvitation: Sendable {
     /// The shareable link.
     func link() throws -> String { try invitation.link(slug: ChatConstants.packageName) }
 
+    /// The web app's link (`generateInvitationUrl`): `{origin}/?invite=inv_…&org=<org>`.
+    /// The origin's root moves on to its newest release with the query kept.
+    func webLink(origin: URL) -> String {
+        var parts = URLComponents(url: origin, resolvingAgainstBaseURL: false) ?? URLComponents()
+        parts.path = "/"
+        parts.queryItems =
+            [URLQueryItem(name: "invite", value: invitation.token)]
+            + (namespaceId.isEmpty ? [] : [URLQueryItem(name: "org", value: namespaceId)])
+        return parts.url?.absoluteString ?? origin.absoluteString
+    }
+
     // MARK: Decoding
 
     /// Parse a pasted link, a deep link or a bare token. `nil` when nothing in
@@ -52,7 +63,7 @@ struct ChatInvitation: Sendable {
             return parsed
         }
         return webToken(input).map {
-            ChatInvitation(invitation: OrgInvitation(namespaceId: "", token: $0), workspaceName: nil)
+            ChatInvitation(invitation: OrgInvitation(namespaceId: webOrg(input) ?? "", token: $0), workspaceName: nil)
         }
     }
 
@@ -67,6 +78,15 @@ struct ChatInvitation: Sendable {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-."))
         guard trimmed.hasPrefix("inv_"), trimmed.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
         return trimmed
+    }
+
+    /// The workspace a web app link names (`&org=`), when it names one.
+    static func webOrg(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmed), components.scheme != nil else { return nil }
+        let org = components.queryItems?.first(where: { $0.name == "org" })?.value?
+            .trimmingCharacters(in: .whitespaces)
+        return org?.isEmpty == false ? org : nil
     }
 
     /// Parse the decoded payload JSON.

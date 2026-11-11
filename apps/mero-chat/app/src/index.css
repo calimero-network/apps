@@ -40,6 +40,8 @@
   --font-body: var(--glass-font);
   --font-heading: var(--glass-font);
   --font-secondary: var(--glass-font);
+  /* The shared passkey control and "new version" card (passkey.css). */
+  --passkey-font: var(--glass-font);
   color-scheme: light;
 }
 

@@ -1,3 +1,4 @@
+import MeroKit
 import MeroKitUI
 import SwiftUI
 
@@ -70,7 +71,6 @@ struct SignedInView: View {
     @ObservedObject var session: SessionModel
     let backend: CloudChatBackend
     @StateObject private var workspaces: WorkspacesModel
-    @AppStorage("mero-chat:workspace") private var workspaceId = ""
     @State private var picking = false
 
     init(session: SessionModel, backend: CloudChatBackend) {
@@ -80,13 +80,14 @@ struct SignedInView: View {
             wrappedValue: WorkspacesModel(
                 backend: backend,
                 applicationId: { [weak session] in session?.applicationId },
-                displayName: { [weak session] in session?.displayName ?? "" }))
+                webOrigin: AppHost.origin(package: ChatConstants.packageName, cluster: AppConfig.cluster)))
     }
 
     var body: some View {
         Group {
-            if !picking, !session.displayName.isEmpty,
-                let workspace = workspaces.workspaces.first(where: { $0.id == workspaceId })
+            // Names are asked on create and join only, never on entering.
+            if !picking,
+                let workspace = workspaces.workspaces.first(where: { $0.id == session.workspaceId })
             {
                 ChatShell(
                     session: session, backend: backend, workspaces: workspaces, workspace: workspace,
@@ -95,7 +96,7 @@ struct SignedInView: View {
                 .id(workspace.id)
             } else {
                 WorkspacePicker(session: session, model: workspaces) { workspace in
-                    workspaceId = workspace.id
+                    session.workspaceId = workspace.id
                     picking = false
                 }
             }

@@ -432,3 +432,26 @@
   outline: 2px solid var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
   outline-offset: 2px;
 }
+
+/* The page a native app opens for a passkey approval (NativeApproval.tsx). */
+.cp-approve {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+.cp-approve__card {
+  width: 100%;
+  max-width: 380px;
+  display: grid;
+  gap: 14px;
+  text-align: center;
+}
+.cp-approve__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--_ink);
+}

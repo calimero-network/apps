@@ -72,7 +72,7 @@ final class ScreenSnapshotTests: XCTestCase {
         let backend = SnapshotBackend()
         let channels = ChannelsModel(workspace: SnapshotData.workspace, backend: backend, displayName: { "Ada Mensah" })
         await channels.load()
-        let workspaces = WorkspacesModel(backend: backend, applicationId: { nil }, displayName: { "Ada Mensah" })
+        let workspaces = WorkspacesModel(backend: backend, applicationId: { nil })
         await workspaces.load()
         XCTAssertFalse(channels.channels.isEmpty)
         return (channels, workspaces)

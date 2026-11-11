@@ -102,10 +102,7 @@ final class LiveAccount {
         let backend = CloudChatBackend(
             app: app,
             privateTeams: { org in
-                guard let answer = try? await cloud.orgs.get(org: org), let json = try? MeroJSON.decode(JSONValue.self, from: MeroJSON.encode(answer)) else {
-                    return []
-                }
-                let info = OrgInfo(json: json)
+                guard let info = try? await cloud.getOrg(org) else { return [] }
                 return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
             })
         return LiveAccount(label: label, accountId: account, client: client, backend: backend)

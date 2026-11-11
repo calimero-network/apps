@@ -29,7 +29,7 @@ struct ChatShell: View {
         _channels = StateObject(
             wrappedValue: ChannelsModel(
                 workspace: workspace, backend: backend,
-                displayName: { [weak session] in session?.displayName ?? "" }))
+                displayName: { [weak session] in session?.name(in: workspace.id) ?? "" }))
     }
 
     var body: some View {
@@ -72,6 +72,11 @@ struct ChatShell: View {
             }
         }
         .animation(.easeOut(duration: 0.3), value: sidebarOpen)
+        // The channel list, browsing, a dialog, another channel: the keyboard goes.
+        .hidesKeyboard(when: sidebarOpen)
+        .hidesKeyboard(when: browsing)
+        .hidesKeyboard(when: dialog != nil)
+        .hidesKeyboard(when: current?.id)
         .task { await channels.load() }
     }
 

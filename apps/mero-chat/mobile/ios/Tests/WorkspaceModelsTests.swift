@@ -7,7 +7,7 @@ final class WorkspaceModelsTests: XCTestCase {
     private let otherApp = String(repeating: "0f", count: 32)
 
     private func workspacesModel(_ backend: FakeChatBackend, appId: String? = nil) -> WorkspacesModel {
-        WorkspacesModel(backend: backend, applicationId: { appId }, displayName: { "alice" })
+        WorkspacesModel(backend: backend, applicationId: { appId })
     }
 
     // MARK: Workspaces
@@ -43,7 +43,7 @@ final class WorkspaceModelsTests: XCTestCase {
         backend.workspaces = [Workspace(id: id, name: "Team", applicationId: chatApp)]
         let model = workspacesModel(backend, appId: chatApp)
 
-        let ok = await model.create(name: "  Team ")
+        let ok = await model.create(name: "  Team ", username: "alice") != nil
 
         XCTAssertTrue(ok)
         XCTAssertEqual(
@@ -67,14 +67,14 @@ final class WorkspaceModelsTests: XCTestCase {
         backend.founded = FoundedWorkspace(
             namespaceId: backend.founded.namespaceId, haEnabled: false, haError: "link the account to a cloud user")
         let model = workspacesModel(backend, appId: chatApp)
-        await model.create(name: "Team")
+        await model.create(name: "Team", username: "alice")
         XCTAssertTrue(model.notice?.contains("link the account to a cloud user") ?? false, model.notice ?? "")
     }
 
     func testANameOverTheCapIsRefusedBeforeAnythingIsSent() async {
         let backend = FakeChatBackend()
         let model = workspacesModel(backend)
-        let ok = await model.create(name: String(repeating: "é", count: 33))
+        let ok = await model.create(name: String(repeating: "é", count: 33), username: "alice") != nil
         XCTAssertFalse(ok)
         XCTAssertNotNil(model.errorText)
         XCTAssertTrue(backend.log.isEmpty)
