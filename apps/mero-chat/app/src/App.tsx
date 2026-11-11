@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { NATIVE_APPROVE_CALLBACK, finishNative, useCalimero as useMero } from "./api/calimero";
 import { pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { NativeApproval } from "@calimero-apps/passkey";
-import "@calimero-apps/passkey/passkey.css";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { isNamespaceReady } from "./utils/session";
