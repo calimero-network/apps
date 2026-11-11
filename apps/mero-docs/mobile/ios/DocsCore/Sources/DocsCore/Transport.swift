@@ -54,7 +54,9 @@ public struct DocsDirectory: Sendable {
     /// Every folder of `workspaceId` this account sees.
     public func folders(workspaceId: String) async throws -> [Folder] {
         if let cloud = backend as? CalimeroAppBackend {
-            let org = try await cloud.client.getOrg(workspaceId)
+            let client = cloud.client
+            let answer = try await client.orgs.get(org: workspaceId)
+            let org = OrgInfo(json: try MeroJSON.decode(JSONValue.self, from: MeroJSON.encode(answer)))
             return Self.folders(of: org)
         }
         return try await walk(workspaceId)
@@ -63,7 +65,9 @@ public struct DocsDirectory: Sendable {
     /// The docs instance of one folder, when a link did not carry it.
     public func docsApp(workspaceId: String, folderId: String) async throws -> String? {
         if let cloud = backend as? CalimeroAppBackend {
-            let org = try await cloud.client.getOrg(workspaceId)
+            let client = cloud.client
+            let answer = try await client.orgs.get(org: workspaceId)
+            let org = OrgInfo(json: try MeroJSON.decode(JSONValue.self, from: MeroJSON.encode(answer)))
             return org.teams[folderId].flatMap(Self.docsApp)
         }
         return try await backend.listContexts(groupId: folderId).first

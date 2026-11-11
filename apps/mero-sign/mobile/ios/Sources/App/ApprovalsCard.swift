@@ -18,7 +18,9 @@ extension ApprovalsModel {
                 else { return nil }
                 // The page's return (handled by the session) answers at once; else ask the node.
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
-                return try? await session.client.cloud?.consentResult(started.requestId)
+                guard let cloud = session.client.cloud else { return nil }
+                let id = started.requestId
+                return try? await MeroJSON.decode(ConsentResult.self, from: MeroJSON.encode(cloud.consent.pageResult(request: id)))
             })
     }
 }

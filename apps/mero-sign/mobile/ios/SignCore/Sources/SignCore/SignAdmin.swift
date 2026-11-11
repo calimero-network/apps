@@ -65,7 +65,7 @@ public struct ClientSignAdmin: SignAdmin {
     private var isBundle: Bool { Hex.is32(applicationId) }
 
     public func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String {
-        let blob = try await signedIn().uploadBlob(contextId, data, contentType: contentType)
+        let blob = try await signedIn().apps.blobUpload(app: contextId, body: data, contentType: contentType)
         let id = SignIds.blobHex(blob.id)
         guard !id.isEmpty else { throw SignModelError.message("Your cluster returned a blob id this app can't use.") }
         return id
@@ -77,15 +77,18 @@ public struct ClientSignAdmin: SignAdmin {
 
     public func instances() async throws -> [SignInstance] {
         let client = try signedIn()
-        let apps =
-            isBundle
-            ? try await client.listApps(bundle: applicationId) : try await client.listApps(package: applicationId)
+        let bundle: String? = isBundle ? applicationId : nil
+        let package: String? = isBundle ? nil : applicationId
+        let listed = try await client.apps.list(package: package, bundle: bundle).apps
+        let apps = try MeroJSON.decode([AppInfo].self, from: MeroJSON.encode(listed))
         return apps.map { SignInstance(appId: $0.appId, name: $0.name, owner: $0.owner, org: $0.org) }
     }
 
     public func createInstance(name: String, org: String?) async throws -> String {
-        let source: AppSource = isBundle ? .bundle(applicationId) : .package(applicationId)
-        return try await signedIn().createApp(name, bundle: source, org: org)
+        let client = try signedIn()
+        let bundle: String? = isBundle ? applicationId : nil
+        let package: String? = isBundle ? nil : applicationId
+        return try await client.apps.create(name: name, bundle: bundle, package: package, org: org).appId
     }
 
     public func memberName(namespaceId: String, account: String) async throws -> String? {

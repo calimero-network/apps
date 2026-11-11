@@ -11,8 +11,8 @@ let package = Package(
         .library(name: "BlocksCore", targets: ["BlocksCore"]),
     ],
     dependencies: [
-        // swift-sdk release v0.5.0; keep it equal to the version in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
+        // swift-sdk release v0.7.0; keep it equal to the version in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.7.0"),
     ],
     targets: [
         // Generated/BlocksClient.swift comes from ../../../logic/res/abi.json

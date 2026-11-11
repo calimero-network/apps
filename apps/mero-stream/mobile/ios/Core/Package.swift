@@ -13,11 +13,11 @@ let package = Package(
         .library(name: "StreamCore", targets: ["StreamCore"])
     ],
     dependencies: [
-        // swift-sdk v0.5.0 (Calimero 1.0). Keep it equal to the exactVersion
+        // swift-sdk v0.7.0 (Calimero 1.0). Keep it equal to the exactVersion
         // in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "0.5.0")
+            exact: "0.7.0")
     ],
     targets: [
         .target(

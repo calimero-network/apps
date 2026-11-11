@@ -17,10 +17,10 @@ let package = Package(
         .library(name: "SignCore", targets: ["SignCore"]),
     ],
     dependencies: [
-        // swift-sdk v0.5.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        // swift-sdk v0.7.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "0.5.0"),
+            exact: "0.7.0"),
     ],
     targets: [
         .target(

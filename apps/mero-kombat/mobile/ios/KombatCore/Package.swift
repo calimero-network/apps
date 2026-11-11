@@ -12,8 +12,8 @@ let package = Package(
         .library(name: "KombatCore", targets: ["KombatCore"]),
     ],
     dependencies: [
-        // swift-sdk release v0.5.0 (Calimero 1.0); keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
+        // swift-sdk release v0.7.0 (Calimero 1.0); keep it equal to ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.7.0"),
     ],
     targets: [
         // Sources/KombatCore/Contract/KombatClient.swift is typed by hand from the component ABI
