@@ -17,7 +17,7 @@ let package = Package(
         // swift-sdk release v0.5.0 (Calimero 1.0).
         // Keep it equal to ../project.yml.
         // Unreleased swift-sdk 1.0 (calimero-network/swift-sdk#91): back to exact: once 1.0.0 is tagged.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "b53834b5020d6748042925ce5f16aad68ad93180"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "6ab4b9ebd526ff29db011f0d35a00d03084d45e7"),
     ],
     targets: [
         .target(

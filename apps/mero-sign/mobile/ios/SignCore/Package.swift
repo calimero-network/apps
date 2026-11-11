@@ -21,7 +21,7 @@ let package = Package(
         // Unreleased swift-sdk 1.0 (calimero-network/swift-sdk#91): back to exact: once 1.0.0 is tagged.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "b53834b5020d6748042925ce5f16aad68ad93180"),
+            revision: "6ab4b9ebd526ff29db011f0d35a00d03084d45e7"),
     ],
     targets: [
         .target(
