@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CalimeroError, type CalimeroClient } from '@calimero-network/mero-js';
+import { CalimeroError } from '@calimero-network/mero-js';
 
 import { type Calimero, CalimeroContext } from './calimero';
 import InvitationPrompt from './components/InvitationPrompt';
@@ -10,6 +10,7 @@ import SignInDialog from './components/SignInDialog';
 import TeamsPage from './pages/teams/TeamsPage';
 import { MEMBER_DEFAULTS, PERSONAL } from './lib/vaults';
 import { invites } from './lib/inviteLink';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** Hold `token` as the pending invite, as a captured link would. */
 function hold(token: string, org: string | null = null) {
@@ -20,7 +21,7 @@ function hold(token: string, org: string | null = null) {
 // send when someone presses a button.
 
 function fakeClient() {
-  return {
+  return withRoutes({
     me: vi.fn(async () => ({
       accountId: 'me',
       name: 'Me',
@@ -69,7 +70,7 @@ function fakeClient() {
     setCapabilities: vi.fn(async () => {}),
     setMemberMetadata: vi.fn(async () => {}),
     redeemInvite: vi.fn(async () => ({ org: 'org1' })),
-  };
+  });
 }
 
 function calimero(
@@ -78,7 +79,7 @@ function calimero(
 ): Calimero {
   return {
     status: client ? 'signed-in' : 'signed-out',
-    client: client as unknown as CalimeroClient,
+    client: (client ? withRoutes(client) : null) as never,
     target: { kind: 'local', nodes: ['http://127.0.0.1:2501'] } as never,
     accountId: client ? 'me' : null,
     source: 'bundle-hash',
@@ -155,7 +156,7 @@ describe('TeamsPage', () => {
     expect(client.setCapabilities).toHaveBeenCalledWith(
       'org9',
       MEMBER_DEFAULTS,
-      {},
+      expect.objectContaining({ confirm: expect.any(Function) }),
     );
   });
 });

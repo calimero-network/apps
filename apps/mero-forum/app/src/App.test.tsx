@@ -19,6 +19,7 @@ function hold(link: { token: string; forum?: string | null; org?: string; route?
   });
 }
 import type { SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
@@ -98,7 +99,7 @@ const POST = {
 
 function fakeClient() {
   let session: CalimeroSession | undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -132,13 +133,13 @@ function fakeClient() {
     events: vi.fn(async function* () {}),
     redeemInvite: vi.fn(async () => ({ org: "org-1" })),
     setMemberMetadata: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }
@@ -317,10 +318,10 @@ describe("the release the open forum runs (useInstanceRelease)", () => {
   /** The remembered forum's feed, while `forum-1` runs `version`. */
   function openForum(version: string) {
     remember(FORUM);
-    const client = Object.assign(fakeClient(), {
+    const client = Object.assign(fakeClient(), withRoutes({
       getApp: vi.fn(async () => ({ appId: "forum-1", org: "org-1" })),
       appsReportAll: vi.fn(async () => ({ apps: [{ app: "forum-1", package: { package: "com.calimero.forum", version } }] })),
-    });
+    }));
     window.history.replaceState(null, "", "/f");
     render(<App deps={deps(client)} />);
     return client;

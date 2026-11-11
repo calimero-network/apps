@@ -34,6 +34,7 @@ import {
   type PasskeySessionOptions,
   type SessionDeps,
 } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const LISTING = { name: "Test App", description: "A test.", package: "com.example.test", dir: "test", dev: true };
 const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
@@ -76,7 +77,7 @@ function fakeClient(
     redeemInvite: vi.fn(async () => ({ org: "org-1" })),
     useSession: vi.fn(),
   };
-  return client;
+  return withRoutes(client);
 }
 
 function deps(client: ReturnType<typeof fakeClient>, storage = memoryStorage()): SessionDeps {

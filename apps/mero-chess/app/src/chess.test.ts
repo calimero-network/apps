@@ -4,6 +4,7 @@ import { AppError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, chess, messageOf, toGameSummary, toTableView, type WireTableView } from "./chess";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -56,7 +57,7 @@ describe("the client covers the contract", () => {
       const result = method === "table" ? WIRE : method === "history" ? [] : null;
       return Promise.resolve({ index: 1, result, events: [] });
     };
-    const c = chess({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const c = chess(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     await Promise.all([
       c.table(),
       c.history(),
@@ -91,7 +92,7 @@ describe("chess", () => {
     const call = vi.fn().mockResolvedValue({ index: 7, result: "e4", events: [] });
     const view = vi.fn().mockResolvedValue({ index: 9, result: WIRE });
     const after = vi.fn();
-    const c = chess({ call, view }, "app-1", after, () => 1_700_000_000_123.7);
+    const c = chess(withRoutes({ call, view }), "app-1", after, () => 1_700_000_000_123.7);
 
     expect(await c.play("e2e4")).toBe("e4");
     expect(call).toHaveBeenCalledWith("app-1", "play", { uci: "e2e4", now: "1700000000123" });
@@ -105,7 +106,7 @@ describe("chess", () => {
   it("runs `after` when a request fails too, and words the refusal like v1", async () => {
     const after = vi.fn();
     const refusal = new AppError("refused", { code: "NotYourMove", fields: {} });
-    const c = chess({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }, "a", after);
+    const c = chess(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), "a", after);
     await expect(c.play("e2e4")).rejects.toBe(refusal);
     expect(after).toHaveBeenCalledTimes(1);
     expect(messageOf(refusal)).toBe("it is not your move");

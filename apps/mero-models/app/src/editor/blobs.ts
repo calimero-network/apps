@@ -1,5 +1,6 @@
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { MAX_BLOB_BYTES } from "./model";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Blobs: where meshes and textures actually live.
@@ -29,7 +30,7 @@ export function tooLarge(bytes: number): string | null {
 
 /** The app's blobs through a signed-in `CalimeroClient`. */
 export function clientTransport(
-  client: Pick<CalimeroClient, "uploadBlob" | "downloadBlob">,
+  client: Pick<CalimeroClient, "downloadBlob"> & ClientRoutes<{ apps: "blobUpload" }>,
   after: () => void = () => {},
 ): BlobTransport {
   return {
@@ -37,7 +38,7 @@ export function clientTransport(
       const refusal = tooLarge(data.byteLength);
       if (refusal) throw new Error(refusal);
       try {
-        const res = await client.uploadBlob(appId, data);
+        const res = await client.apps.blobUpload({ app: appId, body: data, contentType: "application/octet-stream" });
         // The contract takes the hex id (64 lowercase digits), not the base58 one.
         if (!res?.id) throw new Error("the node accepted the upload but returned no blob id");
         return { blobId: res.id.toLowerCase(), size: res.size ?? data.byteLength };

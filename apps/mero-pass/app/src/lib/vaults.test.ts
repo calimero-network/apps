@@ -15,6 +15,7 @@ import {
   redeemInvite,
   vaultAudience,
 } from './vaults';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** A fake `CalimeroClient` over one org with an open and an invite-only vault. */
 function fakeClient(overrides: Record<string, unknown> = {}) {
@@ -71,7 +72,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
       version: null,
     },
   ];
-  const client = {
+  const client = withRoutes({
     me: vi.fn(async () => ({
       accountId: 'me',
       name: 'Me',
@@ -98,7 +99,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     invite: vi.fn(async () => 'token'),
     redeemInvite: vi.fn(async () => ({ org: 'org1' })),
     ...overrides,
-  };
+  });
   return client as typeof client & CalimeroClient;
 }
 
@@ -135,7 +136,7 @@ describe('teams and vaults on orgs and app instances', () => {
   it('leaves out an org made for another app, and keeps a team made here before it holds a vault', async () => {
     const meta: Record<string, unknown> = {};
     const base = fakeClient();
-    const client = fakeClient({
+    const client = fakeClient(withRoutes({
       me: vi.fn(async () => ({
         orgs: [
           { orgId: 'org1', name: 'Acme', role: 'owner' },
@@ -154,7 +155,7 @@ describe('teams and vaults on orgs and app instances', () => {
       setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
         meta[org] = m;
       }),
-    } as never);
+    }) as never);
     expect((await listTeams({ client, source: 'b' })).map((t) => t.namespaceId)).toEqual(['org1']);
     await createTeam({ client, source: 'b', passkey }, 'Fresh');
     expect((await listTeams({ client, source: 'b' })).map((t) => t.namespaceId)).toEqual(['org1', 'org9']);
@@ -194,7 +195,7 @@ describe('teams and vaults on orgs and app instances', () => {
     expect(client.setCapabilities).toHaveBeenCalledWith(
       'org9',
       MEMBER_DEFAULTS,
-      {},
+      expect.objectContaining({ confirm: expect.any(Function) }),
     );
     expect(client.setMemberMetadata).toHaveBeenCalledWith('org9', 'me', {
       name: 'Me',
@@ -296,7 +297,7 @@ describe('teams and vaults on orgs and app instances', () => {
       { client, source: 'b', passkey },
       { namespaceId: 'org1', team: 't1', validForSecs: 60 },
     );
-    expect(client.invite).toHaveBeenCalledWith('org1', 'member', {}, ['t1'], {
+    expect(client.invite).toHaveBeenCalledWith('org1', 'member', expect.objectContaining({ confirm: expect.any(Function) }), ['t1'], {
       ttlSecs: 60,
     });
     await mintVaultInvite(
@@ -306,7 +307,7 @@ describe('teams and vaults on orgs and app instances', () => {
     expect(client.invite).toHaveBeenLastCalledWith(
       'org1',
       'member',
-      {},
+      expect.objectContaining({ confirm: expect.any(Function) }),
       undefined,
       { ttlSecs: 86400 },
     );

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import type { AppSource } from "@calimero-apps/connect";
+import type { AppInfo } from "@calimero-network/mero-js";
+import type { AppSource, ClientRoutes } from "@calimero-apps/connect";
 
 import { messageOf } from "./chess";
 import { Piece } from "./pieces";
@@ -25,7 +25,7 @@ export function Lobby({
   onOpen,
   after,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg">;
+  client: ClientRoutes<{ apps: "list" | "create"; orgs: "create" }>;
   source: AppSource;
   onOpen: (table: OpenTable) => void;
   /** Runs after each request (keeps the stored session current). */

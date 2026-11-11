@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import type { PasskeyProvider } from "@calimero-network/mero-js";
 
 import { arenaInviteLink, inviteToken } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
 import { messageOf } from "./kombat";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Mint a shareable invitation to this arena.
@@ -21,7 +22,7 @@ export function InviteCard({
   passkey,
   after,
 }: {
-  client: Pick<CalimeroClient, "invite">;
+  client: ClientRoutes<{ orgs: "inviteCreate" }>;
   arena: OpenArena;
   passkey: () => PasskeyProvider;
   after: () => void;

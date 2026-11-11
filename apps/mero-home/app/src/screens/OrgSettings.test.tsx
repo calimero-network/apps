@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isLogo, loadOrg, orgProfile, setOrgProfile, transferCandidates, typedMatches } from "../home";
 import { ORG, fakeOrg, passkey, type FakeOrgOptions } from "../test/fakeOrg";
 import { OrgSettings } from "./OrgSettings";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 afterEach(cleanup);
 
@@ -123,9 +124,9 @@ describe("profile helpers", () => {
   });
 
   it("refuses a name over 64 characters or a logo that is not one", async () => {
-    const client = { setOrgMetadata: vi.fn(async () => undefined) };
-    await expect(setOrgProfile(client, ORG, {}, { name: "x".repeat(65), logo: null })).rejects.toThrow("64");
-    await expect(setOrgProfile(client, ORG, {}, { name: null, logo: "data:text/html;base64,AA==" })).rejects.toThrow("logo");
+    const client = withRoutes({ setOrgMetadata: vi.fn(async () => undefined) });
+    await expect(setOrgProfile(withRoutes(client), ORG, {}, { name: "x".repeat(65), logo: null })).rejects.toThrow("64");
+    await expect(setOrgProfile(withRoutes(client), ORG, {}, { name: null, logo: "data:text/html;base64,AA==" })).rejects.toThrow("logo");
     expect(client.setOrgMetadata).not.toHaveBeenCalled();
   });
 

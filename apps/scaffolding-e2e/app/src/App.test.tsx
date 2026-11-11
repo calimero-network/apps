@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { migrateStoredInvite, selectionKey } from "./instances";
 import { APP, type SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 afterEach(cleanup);
 
@@ -35,7 +36,7 @@ const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
 
 function fakeClient(apps: AppInfo[] = []) {
   let session: CalimeroSession | undefined;
-  return {
+  return withRoutes({
     nodeUrl: "http://127.0.0.1:2501",
     get session() {
       return session;
@@ -64,7 +65,7 @@ function fakeClient(apps: AppInfo[] = []) {
     view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: method === "len" ? "3" : {} })),
     invite: vi.fn(async () => "tok-123"),
     redeemInvite: vi.fn(async () => ({})),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = DEV_ENV): SessionDeps {

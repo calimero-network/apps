@@ -58,7 +58,7 @@ export class ContextApiDataSource implements NodeApi {
   /** Deletes the instance (its owner, or an admin of its org). */
   async deleteContext(props: DeleteContextProps): ApiResponse<string> {
     try {
-      await run((c) => c.deleteApp(props.contextId));
+      await run((c) => c.apps.delete({ app: props.contextId }));
       invalidate();
       return { data: props.contextId, error: null };
     } catch (error) {

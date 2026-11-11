@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CALLS, VIEWS, tracker } from './tracker';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, '../../logic/res/abi.json'), 'utf8')) as {
@@ -49,7 +50,7 @@ describe('the client covers the contract', () => {
             : null;
       return Promise.resolve({ index: 1, result, events: [] });
     };
-    const t = tracker({ call: vi.fn(record), view: vi.fn(record) }, 'app-1');
+    const t = tracker(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), 'app-1');
     await Promise.all([
       t.setRepoUrl('https://x'),
       t.getRepoInfo(),
@@ -92,7 +93,7 @@ describe('tracker', () => {
             }
           : [{ status: 'Open', count: '3' }],
     }));
-    const t = tracker({ call: vi.fn(), view }, 'app-1');
+    const t = tracker(withRoutes({ call: vi.fn(), view }), 'app-1');
     const detail = await t.getIssue('issue-1-aa');
     expect(detail.issue.resolution_criteria).toBe('rc');
     expect(detail.issue.created_by).toBe('acct-a');
@@ -112,7 +113,7 @@ describe('tracker', () => {
   it('routes calls through the log and runs `after` even when one fails', async () => {
     const call = vi.fn().mockResolvedValueOnce({ index: 3, result: 'issue-9', events: [] }).mockRejectedValueOnce(new Error('boom'));
     const after = vi.fn();
-    const t = tracker({ call, view: vi.fn() }, 'app-1', after);
+    const t = tracker(withRoutes({ call, view: vi.fn() }), 'app-1', after);
     expect(
       await t.createIssue({ title: 't', summary: 's', impact: 'i', repro: 'r', resolutionCriteria: 'rc', priority: 'low', labels: ['x'] }),
     ).toBe('issue-9');

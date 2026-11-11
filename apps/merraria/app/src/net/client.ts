@@ -5,13 +5,14 @@ import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { indexOf, toGameEvent, type GameEvent } from "./events";
 import { bindExec, merraria, type Exec, type WorldMeta } from "./merraria";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 export type { WorldMeta } from "./merraria";
 
 /** How long to wait before re-opening a dropped event stream. */
 export const RECONNECT_MS = 1_000;
 
-type Client = Pick<CalimeroClient, "call" | "view" | "events">;
+type Client = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>;
 
 export class GameClient {
   /** The highest log index any answer or event has shown: where a stream resumes. */

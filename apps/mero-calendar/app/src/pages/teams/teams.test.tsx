@@ -7,7 +7,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ME = "acct-me";
-const client = {
+const client = withRoutes({
   session: { accountId: ME },
   me: vi.fn(),
   createOrg: vi.fn(),
@@ -20,7 +20,7 @@ const client = {
   getOrg: vi.fn(),
   createApp: vi.fn(),
   deleteApp: vi.fn(),
-};
+});
 
 // Stable, as the real hook's value is (memoized per session).
 const signedIn = {
@@ -42,6 +42,7 @@ import TeamCalendarsPage from "./TeamCalendarsPage";
 import { MEMBER_DEFAULTS } from "../../api/teams";
 import { CalimeroError } from "@calimero-network/mero-js";
 import { askAnOwnerCopy } from "@calimero-apps/connect";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function renderAt(path: string) {
   return render(

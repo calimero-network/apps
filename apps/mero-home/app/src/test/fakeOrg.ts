@@ -4,9 +4,9 @@ import {
   NotFound,
   type AppInfo,
   type AppTeam,
-  type CalimeroClient,
   type OrgInvite,
 } from "@calimero-network/mero-js";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /**
  * A fake client over one organization, `acme`: Chat (closed, shared), Blocks
@@ -203,7 +203,19 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     setMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
     deleteOrg: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
   };
-  return { client, asClient: client as unknown as CalimeroClient, me };
+  // Core's move route as Home calls it (`client.apps.move`), answered by the
+  // raw-route mocks above: the probe through `post`, a move through `postConfirmed`.
+  const appRoutes = {
+    move: (args: { app: string; toOrg: string; bringMembers?: boolean }, options?: { confirm?: unknown }) => {
+      const path = `apps/${encodeURIComponent(args.app)}/move`;
+      const { app: _app, ...body } = args;
+      const confirmed = client.postConfirmed as (...a: unknown[]) => Promise<unknown>;
+      const plain = client.post as (...a: unknown[]) => Promise<unknown>;
+      return options?.confirm ? confirmed(path, body, options) : plain(path, body);
+    },
+  };
+  Object.defineProperty(client, "apps", { value: appRoutes, enumerable: false });
+  return { client, asClient: withRoutes(client), me };
 }
 
 export const passkey = () => ({ create: vi.fn(), get: vi.fn() }) as never;

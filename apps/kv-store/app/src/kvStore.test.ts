@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, kvStore } from "./kvStore";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -28,7 +29,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const kv = kvStore({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const kv = kvStore(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     await Promise.all([
       kv.set("k", "v"),
       kv.updateIfExists("k", "v"),
@@ -53,7 +54,7 @@ describe("kvStore", () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: true, events: [] });
     const view = vi.fn().mockResolvedValue({ index: 3, result: "2" });
     const after = vi.fn();
-    const kv = kvStore({ call, view }, "app-1", after);
+    const kv = kvStore(withRoutes({ call, view }), "app-1", after);
 
     expect(await kv.updateIfExists("k", "v")).toBe(true);
     expect(call).toHaveBeenCalledWith("app-1", "updateIfExists", { key: "k", value: "v" });
@@ -64,7 +65,7 @@ describe("kvStore", () => {
 
   it("runs `after` when a request fails too", async () => {
     const after = vi.fn();
-    const kv = kvStore({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }, "a", after);
+    const kv = kvStore(withRoutes({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }), "a", after);
     await expect(kv.getResult("x")).rejects.toThrow("boom");
     expect(after).toHaveBeenCalledTimes(1);
   });

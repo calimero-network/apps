@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, inviteLink } from "@calimero-apps/connect";
+import type { PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, inviteLink, type ClientRoutes } from "@calimero-apps/connect";
 import { inviteRoot, inviteToken } from "./scenes";
 
 /**
@@ -16,7 +16,7 @@ export function InviteCard({
   passkey,
   after = () => {},
 }: {
-  client: Pick<CalimeroClient, "invite">;
+  client: ClientRoutes<{ orgs: "inviteCreate" }>;
   org: string | null;
   passkey: () => PasskeyProvider;
   after?: () => void;

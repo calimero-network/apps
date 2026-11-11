@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CloudEvent } from "@calimero-network/mero-js";
 
 import { decodeState, encodeState, presencePublisher, subscribePresence } from "./presence";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -26,7 +27,7 @@ describe("presencePublisher", () => {
       () => new Promise<void>((resolve) => releases.push(resolve)),
     );
     const sent = vi.fn();
-    const send = presencePublisher({ publishPresence, presenceStream: vi.fn() }, "app-1", sent);
+    const send = presencePublisher(withRoutes({ publishPresence, presenceStream: vi.fn() }), "app-1", sent);
     send({ n: 1 });
     send({ n: 2 });
     send({ n: 3 });
@@ -55,7 +56,7 @@ describe("subscribePresence", () => {
       yield { id: "3", kind: "presence", data: { account: "b", device: "d2", state: state({ seat: "p2", n: 4 }) } };
     }
     const seen: unknown[] = [];
-    const stop = subscribePresence({ publishPresence: vi.fn(), presenceStream: vi.fn(stream) }, "app-1", (v) =>
+    const stop = subscribePresence(withRoutes({ publishPresence: vi.fn(), presenceStream: vi.fn(stream) }), "app-1", (v) =>
       seen.push(v),
     );
     await vi.waitFor(() => expect(seen).toHaveLength(2));

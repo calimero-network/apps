@@ -161,11 +161,15 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: packages/connect, passkey and merod-local (typecheck, test)
+      - name: packages/connect, passkey and merod-local (typecheck, lint, test)
         run: |
           pnpm --filter @calimero-apps/connect --filter @calimero-apps/passkey --filter @calimero-apps/merod-local typecheck
+          pnpm --filter @calimero-apps/connect --filter @calimero-apps/passkey --filter @calimero-apps/merod-local lint
           pnpm --filter @calimero-apps/connect --filter @calimero-apps/passkey --filter @calimero-apps/merod-local test
           node packages/merod-local/src/cli.ts
+      # Lint here is one rule, `no-deprecated`: mero-js's retired wrappers fail it.
+      - name: packages/names and e2e/cross-app (lint)
+        run: pnpm --filter @calimero-apps/names --filter @calimero-apps/cross-app-e2e lint
 
   rust:
     name: Rust (${{ matrix.app }})

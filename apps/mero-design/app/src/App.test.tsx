@@ -12,6 +12,7 @@ function hold(link: { token: string; org?: string; returnTo?: string }) {
   invites.put({ token: link.token, org: link.org ?? null, team: null, doc: null, route: link.returnTo ?? null, extra: {} });
 }
 import type { SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
@@ -83,7 +84,7 @@ const ELSEWHERE: AppInfo = { ...BOARD, appId: "board-2", name: "Another team's b
 
 function fakeClient() {
   let session: CalimeroSession | undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -119,13 +120,13 @@ function fakeClient() {
     setMemberMetadata: vi.fn(async () => undefined),
     createOrg: vi.fn(async () => "org-new"),
     setCapabilities: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }
@@ -336,10 +337,10 @@ describe("App", () => {
 describe("the release a board runs (useInstanceRelease)", () => {
   /** The board's page, while `board-1` runs `version`. */
   function openBoard(version: string) {
-    const client = Object.assign(fakeClient(), {
+    const client = Object.assign(fakeClient(), withRoutes({
       getApp: vi.fn(async () => ({ appId: "board-1", org: "org-1" })),
       appsReportAll: vi.fn(async () => ({ apps: [{ app: "board-1", package: { package: "com.calimero.design", version } }] })),
-    });
+    }));
     remember();
     window.history.replaceState(null, "", "/teams/org-1/projects/board-1");
     render(<App deps={deps(client)} />);

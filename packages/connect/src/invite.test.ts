@@ -249,9 +249,9 @@ describe("createInviteStore", () => {
 describe("memberOf / joinedOrg", () => {
   it("answers membership from the account's orgs, null when it cannot tell", async () => {
     const me = vi.fn(async () => ({ orgs: [{ orgId: "o1" }] }));
-    expect(await memberOf({ me } as never, "o1")).toBe(true);
-    expect(await memberOf({ me } as never, "o2")).toBe(false);
-    expect(await memberOf({ me: async () => Promise.reject(new TypeError("offline")) } as never, "o1")).toBeNull();
+    expect(await memberOf({ auth: { me } } as never, "o1")).toBe(true);
+    expect(await memberOf({ auth: { me } } as never, "o2")).toBe(false);
+    expect(await memberOf({ auth: { me: async () => Promise.reject(new TypeError("offline")) } } as never, "o1")).toBeNull();
   });
 
   it("reads the org a redemption joined, whichever field the node used", () => {
@@ -297,13 +297,13 @@ describe("mayCreateIn / canCreateIn: CREATE_APP the way core's Org::may decides 
 
   it("asks the node for the org as the signed-in account; null when it cannot tell", async () => {
     const getOrg = vi.fn(async () => org);
-    expect(await canCreateIn({ getOrg, session: { accountId: "granted" } } as never, "o")).toBe(true);
-    expect(getOrg).toHaveBeenCalledWith("o");
-    expect(await canCreateIn({ getOrg, session: { accountId: "member" } } as never, "o", "sub")).toBe(true);
-    expect(await canCreateIn({ getOrg, session: { accountId: "member" } } as never, "o")).toBe(false);
-    expect(await canCreateIn({ getOrg, session: null } as never, "o")).toBeNull();
+    expect(await canCreateIn({ orgs: { get: getOrg }, session: { accountId: "granted" } } as never, "o")).toBe(true);
+    expect(getOrg).toHaveBeenCalledWith({ org: "o" });
+    expect(await canCreateIn({ orgs: { get: getOrg }, session: { accountId: "member" } } as never, "o", "sub")).toBe(true);
+    expect(await canCreateIn({ orgs: { get: getOrg }, session: { accountId: "member" } } as never, "o")).toBe(false);
+    expect(await canCreateIn({ orgs: { get: getOrg }, session: null } as never, "o")).toBeNull();
     expect(
-      await canCreateIn({ getOrg: async () => Promise.reject(new TypeError("offline")), session: { accountId: "m" } } as never, "o"),
+      await canCreateIn({ orgs: { get: async () => Promise.reject(new TypeError("offline")) }, session: { accountId: "m" } } as never, "o"),
     ).toBeNull();
   });
 });

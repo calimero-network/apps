@@ -61,7 +61,13 @@ import {
   type CalimeroClient,
   type ReportedApp,
 } from "@calimero-network/mero-js";
-import { describeError, instanceReleaseUrl, servedRelease, type KeyValueStorage } from "@calimero-apps/connect";
+import {
+  describeError,
+  instanceReleaseUrl,
+  servedRelease,
+  type ClientRoutes,
+  type KeyValueStorage,
+} from "@calimero-apps/connect";
 
 /** Who holds an instance's upgrades, as core's report says (`upgradesHeldBy`). */
 export type UpgradeHolder = "owner" | "publisher" | "operator";
@@ -107,10 +113,10 @@ export interface UpgradeOffer {
 }
 
 /** The part of the client the offer uses. */
-export type UpgradeClient = Pick<
-  CalimeroClient,
-  "getApp" | "appsReportAll" | "getOrg" | "me" | "requestConsent" | "consentResult"
-> & { readonly session?: { accountId: string } | null };
+export type UpgradeClient = Pick<CalimeroClient, "appsReportAll"> &
+  ClientRoutes<{ apps: "get"; orgs: "get"; auth: "me"; consent: "pageCreate" | "pageResult" }> & {
+    readonly session?: { accountId: string } | null;
+  };
 
 // ---------------------------------------------------------------- who may upgrade
 
@@ -214,12 +220,12 @@ async function mayUpgrade(
     if (role && (ROLE_RANK[role] ?? 0) >= ROLE_RANK.admin!) return true;
     let org = orgs.get(orgId);
     if (!org) {
-      org = client.getOrg(orgId).catch(() => null);
+      org = client.orgs.get({ org: orgId }).catch(() => null);
       orgs.set(orgId, org);
     }
     if (managesApps(await org, account, team)) return true;
     // The instance's own owner (a member who created it).
-    const app = rec(await client.getApp(entry.app));
+    const app = rec(await client.apps.get({ app: entry.app }));
     return str(app.owner) === account;
   } catch {
     return false;
@@ -238,7 +244,7 @@ export async function upgradeOffer(
 ): Promise<UpgradeOffer | null> {
   const account = accountOf(client, options.accountId);
   try {
-    const app = rec(await client.getApp(appId));
+    const app = rec(await client.apps.get({ app: appId }));
     const report = await client.appsReportAll(str(app.org));
     const entry = report.apps.find((a) => a.app === appId);
     const offer = entry ? offerIn(entry, report) : null;
@@ -258,7 +264,7 @@ export async function upgradeOffers(
   client: UpgradeClient,
   options: { package: string; accountId?: string },
 ): Promise<UpgradeOffer[]> {
-  const me = rec(await client.me());
+  const me = rec(await client.auth.me());
   const account = accountOf(client, options.accountId) ?? str(me.accountId);
   const roles = new Map<string, string | null>();
   for (const o of Array.isArray(me.orgs) ? me.orgs : []) {
@@ -407,13 +413,13 @@ export interface StartUpgradeOptions {
  * refuses, or answers a code that is not its request's.
  */
 export async function startUpgrade(
-  client: Pick<UpgradeClient, "requestConsent">,
+  client: ClientRoutes<{ consent: "pageCreate" }>,
   appId: string,
   version: string,
   returnTo: string,
   options: StartUpgradeOptions = {},
 ): Promise<void> {
-  const started = await client.requestConsent(upgradeConsent(appId, version, returnTo));
+  const started = await client.consent.pageCreate({ body: upgradeConsent(appId, version, returnTo) });
   if (started.code && globalThis.crypto?.subtle && started.code !== (await confirmationCode(started.requestId))) {
     throw new Error("The node's answer did not match its request; nothing was opened.");
   }
@@ -451,7 +457,7 @@ export interface UpgradeReturn {
  * other page, including a consent this module did not start.
  */
 export async function finishUpgrade(
-  client: Pick<UpgradeClient, "consentResult">,
+  client: ClientRoutes<{ consent: "pageResult" }>,
   href: string,
   storage: KeyValueStorage | undefined = defaultStorage(),
 ): Promise<UpgradeReturn | null> {
@@ -468,7 +474,7 @@ export async function finishUpgrade(
   let status: UpgradeReturn["status"] = "unknown";
   if (Date.now() - pending.at < PENDING_TTL_MS) {
     try {
-      status = (await client.consentResult(back.requestId)).status;
+      status = (await client.consent.pageResult({ request: back.requestId })).status;
     } catch {
       status = "unknown";
     }

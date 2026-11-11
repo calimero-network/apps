@@ -381,6 +381,7 @@ export function useDocs(
       void refetchRef.current();
     }, 1000);
   }, []);
+  // eslint-disable-next-line deprecation/deprecation -- this app's own alias, which its tests mock; not a mero-js call
   useDocEvents(contextId, onDocsEvent);
   // Clear any pending debounced refetch on unmount / context change so a
   // late timer can't fire a refetch against a torn-down client.

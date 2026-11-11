@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { chess, messageOf, type Chess, type GameSummary, type TableView } from "./chess";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** Where a player's chosen display name lives between visits. */
 const NAME_KEY = "mero-chess:name";
@@ -25,7 +26,7 @@ export function rememberName(name: string): void {
 
 /** Where a table lives: the signed-in client and the app instance. */
 export interface TableConn {
-  client: Pick<CalimeroClient, "call" | "view" | "events">;
+  client: Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>;
   appId: string;
   /** Runs after every request (keeps the stored session current). */
   after?: () => void;

@@ -36,6 +36,7 @@ import {
   UserPlusIcon,
 } from "../components/icons";
 import styles from "./CompaniesPage.module.css";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 /**
  * Companies = ORGANIZATIONS. Each holds audiences (instances of this app),
@@ -169,7 +170,7 @@ export default function CompaniesPage() {
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the deletion with your passkey…");
-        await client.deleteOrg(ns.namespaceId, passkey());
+        await client.orgs.delete({ org: ns.namespaceId }, { confirm: passkeyConfirm(passkey()) });
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);

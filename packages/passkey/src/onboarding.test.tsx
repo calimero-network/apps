@@ -24,6 +24,7 @@ import {
   type JoinedAtSignUp,
   type SessionDeps,
 } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const LISTING = { name: "Test App", description: "A test.", package: "com.example.test", dir: "test", dev: true };
 const DEV_ENV = { DEV: true };
@@ -72,7 +73,7 @@ function fakeClient(over: Partial<Record<string, unknown>> = {}, policy: SignUpP
     useSession: vi.fn(),
     ...over,
   };
-  return client;
+  return withRoutes(client);
 }
 
 function passkey(): PasskeyProvider & { create: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {

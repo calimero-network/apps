@@ -82,6 +82,7 @@ import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
 import { normaliseName, selfNameStep, skipWorkspaceName } from '../../lib/displayName';
 import { forgetLastWorkspace } from '../../lib/lastWorkspace';
+import { passkeyConfirm } from '@calimero-network/mero-js';
 
 
 export default function AppPage() {
@@ -2072,7 +2073,10 @@ export default function AppPage() {
             if (!ws.namespaceId) return;
             // A passkey step-up: the cluster asks the admin to approve it.
             try {
-              await client.setMember(ws.namespaceId, account, role as 'guest' | 'member' | 'admin', passkey());
+              await client.orgs.setMember(
+                { org: ws.namespaceId, account, role: role as 'guest' | 'member' | 'admin' },
+                { confirm: passkeyConfirm(passkey()) },
+              );
             } finally {
               after();
             }

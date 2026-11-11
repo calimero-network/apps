@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, standup, type StandupClient } from "./standup";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -52,7 +53,7 @@ describe("the client covers the contract", () => {
       sent.set(method, { kind, params: Object.keys(args as object).sort() });
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    await Promise.all(everyMethod(standup({ call: vi.fn(record("call")), view: vi.fn(record("view")) }, "app-1")));
+    await Promise.all(everyMethod(standup(withRoutes({ call: vi.fn(record("call")), view: vi.fn(record("view")) }), "app-1")));
     for (const [name, method] of Object.entries(abi.methods)) {
       if (method.kind === "init") continue;
       expect(sent.get(name), name).toEqual({ kind: method.kind, params: method.params.map(([p]) => p).sort() });
@@ -100,7 +101,7 @@ describe("standup", () => {
             : { days: [{ day: "2026-10-13", updates: 2, blocked: 1 }], nextCursor: null };
       return { index: 1, result };
     });
-    const c = standup({ call: vi.fn(), view }, "app-1");
+    const c = standup(withRoutes({ call: vi.fn(), view }), "app-1");
 
     const day = await c.getDay({ day: "2026-10-13" });
     expect(day.updates[0]).toEqual({
@@ -143,7 +144,7 @@ describe("standup", () => {
   it("routes writes through the log, sends camelCase arguments, and runs `after` even on failure", async () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: "abc", events: [] });
     const after = vi.fn();
-    const c = standup({ call, view: vi.fn().mockRejectedValue(new Error("boom")) }, "app-1", after);
+    const c = standup(withRoutes({ call, view: vi.fn().mockRejectedValue(new Error("boom")) }), "app-1", after);
     expect(
       await c.logDecision({
         title: "t",

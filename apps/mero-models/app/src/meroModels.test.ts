@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CALLS, MeroModelsClient, VIEWS, type Environment, type MeshRef, type TextureRef } from "./meroModels";
 import { clientTransport, tooLarge } from "./editor/blobs";
 import { MAX_BLOB_BYTES, makeObject } from "./editor/model";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -56,7 +57,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const c = new MeroModelsClient({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const c = new MeroModelsClient(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     const now = 1;
     await Promise.all([
       c.getScene(),
@@ -93,7 +94,7 @@ describe("MeroModelsClient", () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: ["a"], events: [] });
     const view = vi.fn().mockResolvedValue({ index: 3, result: [] });
     const after = vi.fn();
-    const c = new MeroModelsClient({ call, view }, "app-1", after);
+    const c = new MeroModelsClient(withRoutes({ call, view }), "app-1", after);
     const cube = { ...makeObject("cube", []), id: "a" };
 
     expect(await c.putObjects({ objects: [cube], now: 1727000000000.7 })).toEqual(["a"]);
@@ -106,7 +107,7 @@ describe("MeroModelsClient", () => {
   it("runs `after` when a request fails too", async () => {
     const after = vi.fn();
     const c = new MeroModelsClient(
-      { call: vi.fn().mockRejectedValue(new Error("422 Forbidden")), view: vi.fn() },
+      withRoutes({ call: vi.fn().mockRejectedValue(new Error("422 Forbidden")), view: vi.fn() }),
       "app-1",
       after,
     );
@@ -119,7 +120,7 @@ describe("blobs", () => {
   it("uploads to the scene and names the blob by its lowercase hex id", async () => {
     const uploadBlob = vi.fn().mockResolvedValue({ blobId: "base58", id: "AB".repeat(32), size: 3 });
     const downloadBlob = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
-    const t = clientTransport({ uploadBlob, downloadBlob });
+    const t = clientTransport(withRoutes({ uploadBlob, downloadBlob }));
     expect(await t.upload(new Uint8Array(3), "app-1")).toEqual({ blobId: "ab".repeat(32), size: 3 });
     expect(uploadBlob).toHaveBeenCalledWith("app-1", new Uint8Array(3));
     expect(new Uint8Array(await t.download("ab".repeat(32), "app-1"))).toEqual(new Uint8Array([1, 2, 3]));
@@ -130,7 +131,7 @@ describe("blobs", () => {
     expect(tooLarge(MAX_BLOB_BYTES)).toBeNull();
     expect(tooLarge(MAX_BLOB_BYTES + 1)).toContain("at most 47.25 MiB");
     const uploadBlob = vi.fn();
-    const t = clientTransport({ uploadBlob, downloadBlob: vi.fn() });
+    const t = clientTransport(withRoutes({ uploadBlob, downloadBlob: vi.fn() }));
     await expect(t.upload(new Uint8Array(MAX_BLOB_BYTES + 1), "app-1")).rejects.toThrow("47.25 MiB");
     expect(uploadBlob).not.toHaveBeenCalled();
   });

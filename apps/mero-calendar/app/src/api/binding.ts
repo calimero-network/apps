@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The calendar the data layer talks to, for the code that cannot use hooks:
@@ -7,7 +7,7 @@ import type { CalimeroClient } from "@calimero-network/mero-js";
  * instance here (v1 did the same with `setContextId()` and the node session).
  */
 export interface Binding {
-  client: Pick<CalimeroClient, "call" | "view"> | null;
+  client: ClientRoutes<{ apps: "call" | "view" }> | null;
   /** The open calendar: an app instance id. */
   app: string;
   /** Runs after every request: keeps a refreshed session stored. */

@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The forum contract, typed (no client is generated from a component ABI yet),
@@ -139,7 +139,7 @@ export function toCommentView(c: WireComment): CommentView {
   };
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * The forum at app instance `app`, with v1's generated client's method names
@@ -155,7 +155,7 @@ export class ForumClient {
 
   private async call<T>(method: (typeof CALLS)[number], args: Record<string, unknown>): Promise<T> {
     try {
-      return (await this.client.call(this.app, method, args)).result as T;
+      return (await this.client.apps.call({ app: this.app, method, args })).result as T;
     } finally {
       this.after();
     }
@@ -163,7 +163,7 @@ export class ForumClient {
 
   private async view<T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> {
     try {
-      return (await this.client.view(this.app, method, args)).result as T;
+      return (await this.client.apps.view({ app: this.app, method, args })).result as T;
     } finally {
       this.after();
     }

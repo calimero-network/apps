@@ -1,4 +1,5 @@
-import { AppError, type CalimeroClient } from "@calimero-network/mero-js";
+import { AppError } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The calendar contract (`logic/`), typed, and the one adapter that turns its
@@ -290,7 +291,7 @@ export interface Calendar {
   cancelBooking(token: string): Promise<null>;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /** Only the fields an update names: the contract refuses unknown keys, and null means "unchanged". */
 function updateArgs(update: EventUpdate): Raw {
@@ -320,14 +321,14 @@ function eventArgs(event: EventFields): Raw {
 export function calendar(client: Transport, app: string, after: () => void = () => {}): Calendar {
   const call = async <T>(method: (typeof CALLS)[number], args: Raw = {}): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: (typeof VIEWS)[number], args: Raw = {}): Promise<T> => {
     try {
-      return (await client.view(app, method, args)).result as T;
+      return (await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

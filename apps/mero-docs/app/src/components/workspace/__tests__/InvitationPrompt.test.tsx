@@ -4,17 +4,18 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InvitationPrompt } from '../InvitationPrompt';
 import { migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // Joining is where a workspace asks your name: once, only when the org has
 // none for you, and saved to the org before the workspace opens.
-const admin = {
+const admin = withRoutes({
   self: 'me',
   isOrgMember: vi.fn(),
   redeemInvite: vi.fn(),
   getMemberMetadata: vi.fn(),
   getOrg: vi.fn(),
   setMemberMetadata: vi.fn(),
-};
+});
 vi.mock('@/calimero/react', () => ({
   useMero: () => ({ admin, isAuthenticated: true }),
 }));

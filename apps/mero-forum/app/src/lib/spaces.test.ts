@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSpace, inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
 import { decideStoredForum } from "./storedForum";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function memoryStorage() {
   const m = new Map<string, string>();
@@ -21,7 +22,7 @@ const APPS = [
 
 describe("spaces and forums", () => {
   it("lists the account's orgs with their forum and member counts", async () => {
-    const client = {
+    const client = withRoutes({
       me: vi.fn().mockResolvedValue({
         orgs: [
           { orgId: "o2", name: "Beta", role: "member" },
@@ -33,7 +34,7 @@ describe("spaces and forums", () => {
         name: org,
         members: org === "o1" ? { ana: "owner", bob: "member" } : { ana: "member" },
       })),
-    };
+    });
     const rows = await listSpaces(client as never, "bundle-hash");
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
     expect(rows).toEqual([
@@ -43,7 +44,7 @@ describe("spaces and forums", () => {
   });
 
   it("lists one org's forums by name, from the package in production", async () => {
-    const client = { listApps: vi.fn().mockResolvedValue(APPS) };
+    const client = withRoutes({ listApps: vi.fn().mockResolvedValue(APPS) });
     const rows = await listForums(client as never, { package: "com.calimero.mero-forum" }, "o1");
     expect(client.listApps).toHaveBeenCalledWith({ package: "com.calimero.mero-forum" });
     expect(rows.map((r) => [r.name, r.forumId, r.owner])).toEqual([
@@ -53,13 +54,13 @@ describe("spaces and forums", () => {
   });
 
   it("reads names from member metadata", async () => {
-    const client = {
+    const client = withRoutes({
       getOrg: vi.fn().mockResolvedValue({
         name: "S",
         members: { a: "owner", b: "guest" },
         memberMetadata: { a: { name: " Ana " }, b: { name: "" }, c: null },
       }),
-    };
+    });
     const m = await readMembers(client as never, "o1");
     expect([...m.roles]).toEqual([
       ["a", "owner"],
@@ -123,7 +124,7 @@ describe("an org made for another app", () => {
   // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
   function client(metadata: Record<string, unknown> = {}) {
     const blocks = { appId: "w1", name: "overworld", owner: "ana", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null };
-    return {
+    return withRoutes({
       me: vi.fn().mockResolvedValue({
         orgs: [
           { orgId: "ow", name: "overworld", role: "owner" },
@@ -138,7 +139,7 @@ describe("an org made for another app", () => {
       setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
         metadata[org] = m;
       }),
-    };
+    });
   }
 
   it("is not a space; a space made here is, before it holds a forum", async () => {

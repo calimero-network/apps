@@ -20,6 +20,7 @@ function hold(legacy: string) {
 }
 import type { SessionDeps } from './session';
 import { LIBRARY_NAME } from './lib/agreements';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock('./pages/landing/LandingPage', () => ({
@@ -101,7 +102,7 @@ const DOC = {
 function fakeClient() {
   let session: CalimeroSession | undefined;
   let next = 0;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -145,13 +146,13 @@ function fakeClient() {
                   : null,
     })),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

@@ -9,7 +9,7 @@
  * closed tab leaves.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CalimeroClient, PresenceEntry } from '@calimero-network/mero-js';
+import { presenceState, type CalimeroClient, type PresenceEntry } from '@calimero-network/mero-js';
 
 import { useMaybeSignedIn } from '../sessionContext';
 import type { Rect } from '../spreadsheet/refs';
@@ -115,7 +115,7 @@ export function useSheetPresence(
       if (!client || !contextId) return;
       seq.current += 1;
       const state = next.d === undefined ? null : new TextEncoder().encode(JSON.stringify(next));
-      client.publishPresence(contextId, seq.current, state).catch((err: unknown) => {
+      client.apps.presencePublish({ app: contextId, seq: seq.current, state: presenceState(state) }).catch((err: unknown) => {
         console.warn('[presence] publish failed', err);
       });
     },

@@ -26,41 +26,53 @@ function fakeClient(opts: { role?: string; account?: string | null } = {}) {
   };
   return {
     session: opts.account === null ? null : { accountId: opts.account ?? "acct-me" },
-    me: async () => ({
-      orgs: [
-        { orgId: "team", name: "Team", role: "owner" },
-        { orgId: "overworld", name: "overworld", role: opts.role ?? "owner" },
-        { orgId: "empty", name: "Empty", role: "admin" },
-      ],
-    }),
-    listApps: async (filter: { package?: string; bundle?: string } = {}) =>
-      apps.filter((a) => (!filter.package || a.package === filter.package) && (!filter.bundle || a.bundle === filter.bundle)),
-    getOrg: async (org: string) => {
-      const o = orgs[org];
-      if (!o) throw new Error("404");
-      return o;
+    auth: {
+      me: async () => ({
+        orgs: [
+          { orgId: "team", name: "Team", role: "owner" },
+          { orgId: "overworld", name: "overworld", role: opts.role ?? "owner" },
+          { orgId: "empty", name: "Empty", role: "admin" },
+        ],
+      }),
     },
-  } as never;
+    apps: {
+      list: async (filter: { package?: string; bundle?: string } = {}) => ({
+        apps: apps.filter((a) => (!filter.package || a.package === filter.package) && (!filter.bundle || a.bundle === filter.bundle)),
+      }),
+    },
+    orgs: {
+      get: async ({ org }: { org: string }) => {
+        const o = orgs[org];
+        if (!o) throw new Error("404");
+        return o;
+      },
+    } as Record<string, unknown>,
+  };
+}
+
+/** {@link fakeClient} as the client the helpers take (it answers only what they read). */
+function asClient(fake: unknown): never {
+  return fake as never;
 }
 
 describe("orgsWithApp: only the organizations holding this app", () => {
   it("leaves out an organization that holds only another app", async () => {
-    const orgs = await orgsWithApp(fakeClient(), CHAT);
+    const orgs = await orgsWithApp(asClient(fakeClient()), CHAT);
     expect(orgs.map((o) => o.orgId)).toEqual(["team"]);
   });
 
   it("filters by the bundle in development", async () => {
-    expect((await orgsWithApp(fakeClient(), "b-com.calimero.mero-blocks")).map((o) => o.orgId)).toEqual(["overworld"]);
+    expect((await orgsWithApp(asClient(fakeClient()), "b-com.calimero.mero-blocks")).map((o) => o.orgId)).toEqual(["overworld"]);
   });
 
   it("is empty for an app no organization of the account holds", async () => {
-    expect(await orgsWithApp(fakeClient(), { package: "com.calimero.mero-sheets" })).toEqual([]);
+    expect(await orgsWithApp(asClient(fakeClient()), { package: "com.calimero.mero-sheets" })).toEqual([]);
   });
 });
 
 describe("otherOrgs: the explicit connect choice", () => {
   it("lists the other organizations with what they hold", async () => {
-    const others = await otherOrgs(fakeClient(), CHAT);
+    const others = await otherOrgs(asClient(fakeClient()), CHAT);
     expect(others.map((o) => [o.orgId, o.label, o.canCreate])).toEqual([
       ["empty", "No apps yet", true],
       ["overworld", "Mero Blocks: overworld", true],
@@ -68,14 +80,14 @@ describe("otherOrgs: the explicit connect choice", () => {
   });
 
   it("leaves out an organization where the account may not create apps, unless asked", async () => {
-    const client = fakeClient({ role: "guest" });
+    const client = asClient(fakeClient({ role: "guest" }));
     expect((await otherOrgs(client, CHAT)).map((o) => o.orgId)).toEqual(["empty"]);
     const all = await otherOrgs(client, CHAT, { includeNotAllowed: true });
     expect(all.find((o) => o.orgId === "overworld")?.canCreate).toBe(false);
   });
 
   it("keeps an organization whose rights cannot be told (the node decides)", async () => {
-    const others = await otherOrgs(fakeClient({ account: null }), CHAT);
+    const others = await otherOrgs(asClient(fakeClient({ account: null })), CHAT);
     expect(others.map((o) => [o.orgId, o.canCreate])).toEqual([
       ["empty", null],
       ["overworld", null],
@@ -84,8 +96,9 @@ describe("otherOrgs: the explicit connect choice", () => {
 });
 
 describe("otherOrgs: labels from app teams (core#4890)", () => {
-  function withTeams(listAppTeams: (org: string) => Promise<unknown>) {
-    return Object.assign(fakeClient(), { listAppTeams }) as never;
+  function withTeams(appTeamList: (org: string) => Promise<unknown>) {
+    const c = fakeClient();
+    return asClient({ ...c, orgs: { ...c.orgs, appTeamList: ({ org }: { org: string }) => appTeamList(org) } });
   }
 
   it("names an org's apps from its app teams, so closed apps are not 'No apps yet'", async () => {
@@ -113,10 +126,13 @@ describe("otherOrgs: labels from app teams (core#4890)", () => {
   it("only an owner or admin may add this app to an org that has app teams (core#4890)", async () => {
     const shared = { mode: "shared", appTeams: [{ package: "com.calimero.mero-blocks", teamId: "t", name: "Blocks", join: "invite", memberCount: 1, defaultCapabilities: null, member: true, manages: false }] };
     // A member granted CREATE_APP org-wide: enough in a legacy org, not once it has app teams.
-    const client = Object.assign(fakeClient({ role: "member" }), {
-      getOrg: async () => ({ members: { "acct-me": "member" }, capabilities: { "acct-me": 1 } }),
-      listAppTeams: async () => shared,
-    }) as never;
+    const client = asClient({
+      ...fakeClient({ role: "member" }),
+      orgs: {
+        get: async () => ({ members: { "acct-me": "member" }, capabilities: { "acct-me": 1 } }),
+        appTeamList: async () => shared,
+      },
+    });
     const all = await otherOrgs(client, CHAT, { includeNotAllowed: true });
     expect(all.find((o) => o.orgId === "overworld")?.canCreate).toBe(false);
     // The admin of `empty` still may.
@@ -161,7 +177,7 @@ describe("labels", () => {
   });
 
   it("myOrgs sorts by name and drops malformed rows", async () => {
-    const client = { me: async () => ({ orgs: [{ orgId: "b", name: "B" }, { name: "x" }, { orgId: "a", name: "A", role: "owner" }] }) };
+    const client = { auth: { me: async () => ({ orgs: [{ orgId: "b", name: "B" }, { name: "x" }, { orgId: "a", name: "A", role: "owner" }] }) } };
     expect(await myOrgs(client as never)).toEqual([
       { orgId: "a", name: "A", role: "owner" },
       { orgId: "b", name: "B", role: "member" },
@@ -172,15 +188,18 @@ describe("labels", () => {
 describe("organizations made for an app before it holds an instance", () => {
   function client() {
     const metadata: Record<string, unknown> = { empty: { theme: "dark" } };
-    const base = fakeClient() as unknown as Record<string, unknown>;
+    const base = fakeClient();
     return {
       ...base,
-      getOrg: async (org: string) => ({
-        ...(await (base.getOrg as (o: string) => Promise<Record<string, unknown>>)(org)),
-        metadata: metadata[org] ?? null,
-      }),
-      setOrgMetadata: async (org: string, m: unknown) => {
-        metadata[org] = m;
+      orgs: {
+        get: async ({ org }: { org: string }) => ({
+          ...(await (base.orgs.get as (a: { org: string }) => Promise<Record<string, unknown>>)({ org })),
+          metadata: metadata[org] ?? null,
+        }),
+        metadata: async ({ org, metadata: m }: { org: string; metadata: unknown }) => {
+          metadata[org] = m;
+          return {};
+        },
       },
       metadata,
     };

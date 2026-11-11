@@ -3,6 +3,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FolderSharingPanel } from '../FolderSharingPanel';
 import { CAPABILITIES } from '@/constants/config';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
@@ -53,13 +54,13 @@ vi.mock('@/calimero/react', () => ({
       getMemberCapabilities,
     },
   }),
-  useGroupCapabilities: () => ({
+  useGroupCapabilities: () => (withRoutes({
     capabilities: 0,
     loading: false,
     error: null,
     refetch: vi.fn(),
     setCapabilities: vi.fn(),
-  }),
+  })),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({

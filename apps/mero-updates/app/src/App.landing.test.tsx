@@ -13,18 +13,18 @@ function hold(legacy: string) {
 // this browser remembers, but only once the account's instances of this app
 // include it (it can name one deleted, left, or another account's).
 
-const h = vi.hoisted(() => {
+const h = await vi.hoisted(async () => {
   const state = {
     status: "signed-in" as "connecting" | "signed-out" | "signed-in",
     apps: [] as string[],
     pending: null as Promise<void> | null,
   };
-  const client = {
+  const client = (await import("@calimero-apps/connect/testing")).withRoutes({
     listApps: vi.fn(async () => {
       if (state.pending) await state.pending;
       return state.apps.map((appId) => ({ appId, name: appId, org: "org-1" }));
     }),
-  };
+  });
   return { state, client };
 });
 

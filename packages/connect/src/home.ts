@@ -16,10 +16,11 @@
  * run it there; and in a shared org (each app lists its own people) every
  * member, whose "who is in which app" lives in Home and not in any one app.
  */
-import type { CalimeroClient, OrgMode } from "@calimero-network/mero-js";
+import type { OrgMode } from "@calimero-network/mero-js";
 
 import { appClusterLabel, appLabel } from "./appHost";
 import type { Target } from "./target";
+import type { ClientRoutes } from "./routes";
 
 /** Calimero Home's package id (`apps/mero-home/logic/Cargo.toml`). */
 export const HOME_PACKAGE = "com.calimero.mero-home";
@@ -93,7 +94,7 @@ const found = new WeakMap<object, Map<string, Promise<HomeLocation | null>>>();
  * nothing, or fails). Asked once per client: the answer is kept for the session.
  */
 export function findHome(
-  client: Pick<CalimeroClient, "package">,
+  client: ClientRoutes<{ packages: "get" }>,
   target: Target | null | undefined,
   options: FindHomeOptions = {},
 ): Promise<HomeLocation | null> {
@@ -106,8 +107,8 @@ export function findHome(
   const key = `${origin} ${pkg}`;
   const known = asks.get(key);
   if (known) return known;
-  const asked = client
-    .package(pkg)
+  const asked = client.packages
+    .get({ package: pkg })
     .then((info): HomeLocation | null => {
       if (!info || info.package !== pkg) return null;
       const latest = typeof info.latest === "string" && info.latest ? info.latest : null;
@@ -141,11 +142,11 @@ export function showsHomeLink(viewer: HomeLinkViewer): boolean {
 
 /** The account's role and the org's mode, or `null` when they cannot be read. */
 export async function homeLinkViewer(
-  client: Pick<CalimeroClient, "me" | "getOrg">,
+  client: ClientRoutes<{ auth: "me"; orgs: "get" }>,
   org: string,
 ): Promise<HomeLinkViewer | null> {
   try {
-    const [me, view] = await Promise.all([client.me(), client.getOrg(org).catch(() => null)]);
+    const [me, view] = await Promise.all([client.auth.me(), client.orgs.get({ org }).catch(() => null)]);
     const orgs = (me as { orgs?: Array<{ orgId?: unknown; role?: unknown }> }).orgs ?? [];
     const mine = orgs.find((o) => o.orgId === org);
     const role = typeof mine?.role === "string" ? mine.role : null;
@@ -165,7 +166,7 @@ export async function homeLinkViewer(
  * one Home serves for it ({@link showsHomeLink}).
  */
 export async function homeLinkFor(
-  client: Pick<CalimeroClient, "package" | "me" | "getOrg">,
+  client: ClientRoutes<{ packages: "get"; auth: "me"; orgs: "get" }>,
   target: Target | null | undefined,
   org: string | null | undefined,
   options: FindHomeOptions = {},

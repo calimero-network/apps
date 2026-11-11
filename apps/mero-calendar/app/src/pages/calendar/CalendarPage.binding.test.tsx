@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getBinding, resetBinding } from "../../api/binding";
 
 const ME = "acct-me";
-const client = { getOrg: vi.fn(), setMemberMetadata: vi.fn() };
+const client = withRoutes({ getOrg: vi.fn(), setMemberMetadata: vi.fn() });
 const signedIn = { client, accountId: ME, passkey: () => ({}), after: () => {}, targetKey: "local:test" };
 
 /** Every data-layer call, with the calendar bound when it ran. */
@@ -52,6 +52,7 @@ vi.mock("../../hooks", () => ({
 }));
 
 import CalendarPage from "./index";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function renderCalendar() {
   return render(

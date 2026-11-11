@@ -3,6 +3,7 @@ import { describeError, type Target } from '@calimero-apps/connect';
 
 import { useSignedIn } from '../sessionContext';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
+import { passkeyConfirm } from '@calimero-network/mero-js';
 
 /** The env lines the MCP server (`mcp/`) needs for this cluster and workspace. */
 export function mcpEnv(target: Target, key: string, workspace: string, bundle?: string): string {
@@ -45,7 +46,10 @@ export default function AgentKeyModal({ workspace, onClose }: { workspace: strin
     setBusy(true);
     setError(null);
     try {
-      const { key } = await client.createApiKey({ label: 'mero-issue-tracker-mcp' }, passkey());
+      const { key } = await client.auth.apikeyCreate(
+        { label: 'mero-issue-tracker-mcp' },
+        { confirm: passkeyConfirm(passkey()) },
+      );
       setEnv(mcpEnv(target, key, workspace, typeof source === 'string' ? source : undefined));
     } catch (e) {
       setError(describeError(e));

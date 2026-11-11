@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import abi from '../../../../logic/res/abi.json';
 import { DOCS_METHODS, DocsClient, REGISTRY_METHODS, RegistryClient } from '../docsApi';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 type Method = { kind: string; params: [string, string][] };
 const methods = (abi as unknown as { methods: Record<string, Method> }).methods;
@@ -8,7 +9,7 @@ const methods = (abi as unknown as { methods: Record<string, Method> }).methods;
 /** A transport that records what each adapter method sends. */
 function recorder(result: unknown = null) {
   const sent: Array<{ kind: 'call' | 'view'; method: string; args: Record<string, unknown> }> = [];
-  const transport = {
+  const transport = withRoutes({
     call: vi.fn(async (_app: string, method: string, args: Record<string, unknown>) => {
       sent.push({ kind: 'call', method, args });
       return { index: 1, result, events: [] };
@@ -17,7 +18,7 @@ function recorder(result: unknown = null) {
       sent.push({ kind: 'view', method, args });
       return { index: 1, result };
     }),
-  };
+  });
   return { transport, sent };
 }
 
@@ -91,8 +92,8 @@ describe('docsApi against the committed ABI', () => {
     '%s sends exactly the ABI parameter names, as a view or a call as the ABI says',
     async (name) => {
       const { transport, sent } = recorder([]);
-      const docs = new DocsClient(transport, 'app');
-      const registry = new RegistryClient(transport, 'app');
+      const docs = new DocsClient(withRoutes(transport), 'app');
+      const registry = new RegistryClient(withRoutes(transport), 'app');
       const target = (name in DocsClient.prototype ? docs : registry) as unknown as Record<
         string,
         (args?: unknown) => Promise<unknown>
@@ -119,7 +120,7 @@ describe('docsApi results', () => {
       updatedBy: 'bob',
       canDelete: true,
     });
-    const doc = await new DocsClient(transport, 'app').getDoc({ id: 'd' });
+    const doc = await new DocsClient(withRoutes(transport), 'app').getDoc({ id: 'd' });
     expect(doc).toEqual({
       id: 'd',
       title: 'T',
@@ -135,7 +136,7 @@ describe('docsApi results', () => {
 
   it('renames anchorPos and drops an absent attributes key from the ops it sends', async () => {
     const { transport, sent } = recorder({ applied: true, token: 't', text: 'a', anchor: 'x', anchorPos: 1, ids: [] });
-    const out = await new DocsClient(transport, 'app').titleApplyDeltaOn({
+    const out = await new DocsClient(withRoutes(transport), 'app').titleApplyDeltaOn({
       doc: 'd',
       base: '',
       ops: [{ insert: 'a', attributes: null }, { retain: 1, attributes: { bold: 'true' } }, { delete: 1 }],
@@ -147,7 +148,7 @@ describe('docsApi results', () => {
 
   it('reads counts and search totals from decimal strings', async () => {
     const { transport } = recorder({ hits: [], total: '12', nextCursor: 20 });
-    const page = await new DocsClient(transport, 'app').searchDocs({
+    const page = await new DocsClient(withRoutes(transport), 'app').searchDocs({
       query: 'q',
       include_archived: false,
       cursor: null,

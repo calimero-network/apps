@@ -156,12 +156,14 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
     setError(null);
     const route = inviteRoute(pending);
     try {
-      const org = joinedOrg(await client.redeemInvite(token)) ?? pendingOrg;
+      const org = joinedOrg(await client.orgs.inviteRedeem({ token })) ?? pendingOrg;
       invites.drop();
       // Your name in the workspace: asked now, once, unless it already has one
       // (a rejoin). Unknown (the read failed): asked too; the gate prefills it.
       if (org) {
-        const o = (await client.getOrg(org).catch(() => null)) as { memberMetadata?: Record<string, unknown> } | null;
+        const o = (await client.orgs.get({ org }).catch(() => null)) as {
+          memberMetadata?: Record<string, unknown>;
+        } | null;
         if (!orgMemberName(o?.memberMetadata, signedIn.accountId)) {
           setNaming({ org, route });
           return;

@@ -98,8 +98,8 @@ export async function rpcRaw<T = unknown>(
   const args = toWireArgs(spec, argsJson);
   try {
     const answer = spec?.view
-      ? await conn.client.view(conn.appId, name, args)
-      : await conn.client.call(conn.appId, name, args);
+      ? await conn.client.apps.view({ app: conn.appId, method: name, args })
+      : await conn.client.apps.call({ app: conn.appId, method: name, args });
     return { result: { output: fromWire(spec, answer.result) as T } };
   } catch (e) {
     return { error: errorEnvelope(e) };

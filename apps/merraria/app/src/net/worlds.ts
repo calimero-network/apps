@@ -6,13 +6,16 @@
 // inviter's passkey and redeemed by whoever opens the link, after signing in
 // and saying Join.
 
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  appTarget,
   createInviteStore,
   inviteLink,
   isSpentInvite,
   joinedOrg,
+  listAppInfos,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -26,9 +29,9 @@ import { APP } from "./session";
 export type World = Pick<AppInfo, "appId" | "name" | "org">;
 
 /** The worlds this account reaches: of the dev bundle, or of the package. */
-export async function listWorlds(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<World[]> {
+export async function listWorlds(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<World[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  const apps = await client.listApps(filter);
+  const apps = await listAppInfos(client, filter);
   return [...apps]
     .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId))
     .map(({ appId, name, org }) => ({ appId, name, org }));
@@ -40,15 +43,15 @@ export async function listWorlds(client: Pick<CalimeroClient, "listApps">, sourc
  * instance's owner) may run.
  */
 export async function createWorld(
-  client: Pick<CalimeroClient, "createApp" | "createOrg" | "call" | "view">,
+  client: ClientRoutes<{ apps: "create" | "call" | "view"; orgs: "create" }>,
   source: AppSource,
   name: string,
   seed: number,
   after: () => void = () => {},
 ): Promise<World> {
-  const org = await client.createOrg(name);
+  const org = (await client.orgs.create({ name })).orgId;
   after();
-  const appId = await client.createApp(name, source, { org });
+  const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
   after();
   await merraria(bindExec(client, appId, after)).createWorld(name, seed);
   return { appId, name, org };
@@ -56,11 +59,13 @@ export async function createWorld(
 
 /** An invitation into the world's org as a member, approved with the inviter's passkey (412 step-up). */
 export function inviteToken(
-  client: Pick<CalimeroClient, "invite">,
+  client: ClientRoutes<{ orgs: "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  return client.invite(org, "member", passkey);
+  return client.orgs
+    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
+    .then((r) => r.token);
 }
 
 /** The link parameter naming the world an invite opens. */
@@ -153,7 +158,7 @@ export function worldIn(worlds: World[], org: string | null, named?: string | nu
  * `null` when the link names no org (or world) the account reaches.
  */
 export async function alreadyInInvitedWorld(
-  client: Pick<CalimeroClient, "listApps">,
+  client: ClientRoutes<{ apps: "list" }>,
   source: AppSource,
   store: InviteStore = invites,
 ): Promise<World | null> {
@@ -176,7 +181,7 @@ export async function alreadyInInvitedWorld(
  * (`describeRedeemFailure`).
  */
 export async function redeemPendingInvite(
-  client: Pick<CalimeroClient, "redeemInvite" | "listApps">,
+  client: ClientRoutes<{ orgs: "inviteRedeem"; apps: "list" }>,
   source: AppSource,
   store: InviteStore = invites,
 ): Promise<World | null> {
@@ -184,7 +189,7 @@ export async function redeemPendingInvite(
   if (!invite) return null;
   let answer: unknown;
   try {
-    answer = await client.redeemInvite(invite.token);
+    answer = await client.orgs.inviteRedeem({ token: invite.token });
   } catch (e) {
     if (isSpentInvite(e)) store.drop();
     throw e;

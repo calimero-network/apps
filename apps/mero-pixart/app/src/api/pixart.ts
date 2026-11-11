@@ -1,5 +1,5 @@
-import { AppError, type CalimeroClient } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { AppError } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 
 import abi from "../../../logic/res/abi.json";
 
@@ -94,7 +94,7 @@ export function isView(method: string): boolean {
 
 /** Call or view `name` (v1 or component name) on the document `app`. */
 export async function invoke<T>(
-  client: Pick<CalimeroClient, "call" | "view">,
+  client: ClientRoutes<{ apps: "call" | "view" }>,
   app: string,
   name: string,
   args: Record<string, unknown> = {},
@@ -102,7 +102,9 @@ export async function invoke<T>(
   const method = methodOf(name);
   const wire = toWire(method, args);
   try {
-    const res = isView(method) ? await client.view(app, method, wire) : await client.call(app, method, wire);
+    const res = isView(method)
+      ? await client.apps.view({ app, method, args: wire })
+      : await client.apps.call({ app, method, args: wire });
     return res.result as T;
   } catch (err) {
     throw Object.assign(new Error(messageOf(err)), { cause: err });

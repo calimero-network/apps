@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import type { PasskeyProvider } from "@calimero-network/mero-js";
 
 import { messageOf } from "./chess";
 import type { OpenTable } from "./TablePage";
 import { inviteToken, tableInviteLink } from "./tables";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Mint a shareable invitation to this table.
@@ -22,7 +23,7 @@ export function InviteCard({
   after,
   from,
 }: {
-  client: Pick<CalimeroClient, "invite">;
+  client: ClientRoutes<{ orgs: "inviteCreate" }>;
   table: OpenTable;
   /** The inviter as the invitee is told: "Join {from}'s game as ...?". */
   from?: string | null;

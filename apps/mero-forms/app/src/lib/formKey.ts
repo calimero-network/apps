@@ -1,4 +1,5 @@
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type PasskeyProvider } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * A website form's key: a core API key of the admin's account, limited to
@@ -27,32 +28,34 @@ export interface IssuedKey {
 
 /** Create the key: a passkey step-up. */
 export async function createFormKey(
-  client: Pick<CalimeroClient, "createApiKey">,
+  client: ClientRoutes<{ auth: "apikeyCreate" }>,
   appId: string,
   label: string,
   passkey: PasskeyProvider,
 ): Promise<IssuedKey> {
-  const created = await client.createApiKey(
+  const created = await client.auth.apikeyCreate(
     {
       label: `Mero Forms key: ${label}`.slice(0, 128),
       apps: [appId],
       methods: [...FORM_KEY_METHODS],
       ttlSecs: MAX_KEY_SECS,
     },
-    passkey,
+    { confirm: passkeyConfirm(passkey) },
   );
   return { keyId: created.keyId, key: created.key };
 }
 
 /** Revoke a key; one already gone is fine. */
 export async function revokeKey(
-  client: Pick<CalimeroClient, "revokeApiKey">,
+  client: ClientRoutes<{ auth: "apikeyRevoke" }>,
   keyId: string,
   passkey: PasskeyProvider,
 ): Promise<void> {
-  await client.revokeApiKey(keyId, passkey).catch((err: { status?: number }) => {
-    if (err?.status !== 404) throw err;
-  });
+  await client.auth
+    .apikeyRevoke({ key: keyId }, { confirm: passkeyConfirm(passkey) })
+    .catch((err: { status?: number }) => {
+      if (err?.status !== 404) throw err;
+    });
 }
 
 /**

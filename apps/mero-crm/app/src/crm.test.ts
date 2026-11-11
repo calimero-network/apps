@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CALLS, VIEWS, crm } from './crm';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, '../../logic/res/abi.json'), 'utf8')) as {
@@ -61,7 +62,7 @@ function client(answers: Record<string, unknown> = {}) {
     sent.set(method, args as Record<string, unknown>);
     return Promise.resolve({ index: 1, result: answers[method] ?? (method.startsWith('list') ? [] : null), events: [] });
   };
-  return { sent, transport: { call: vi.fn(record), view: vi.fn(record) } };
+  return { sent, transport: withRoutes({ call: vi.fn(record), view: vi.fn(record) }) };
 }
 
 describe('the client covers the contract', () => {
@@ -76,7 +77,7 @@ describe('the client covers the contract', () => {
       getDeal: { deal: WIRE_DEAL, contact: null, activities: [], notes: [] },
       getSettings: { currency: 'USD', rotting_days: 14 },
     });
-    const c = crm(transport, 'app-1');
+    const c = crm(withRoutes(transport), 'app-1');
     await Promise.all([
       c.getSettings(),
       c.setCurrency({ currency: 'EUR' }),
@@ -119,7 +120,7 @@ describe('the client covers the contract', () => {
 
   it('sends u64 arguments as decimal strings', async () => {
     const { sent, transport } = client();
-    const c = crm(transport, 'app-1');
+    const c = crm(withRoutes(transport), 'app-1');
     await c.createDeal({
       title: 't', value: 24000, organization: '', contact_id: null, stage_id: 's', owner: null,
       expected_close: 1893456000000, source: '',
@@ -135,7 +136,7 @@ describe('the client covers the contract', () => {
       listActivities: [WIRE_ACTIVITY],
       listContacts: [{ id: 'c', name: 'Ada', email: '', phone: '', organization: '', job_title: '', open_deals: 1, won_value: '7', created_by: 'a', created_at: '3' }],
     });
-    const c = crm(transport, 'app-1');
+    const c = crm(withRoutes(transport), 'app-1');
     const [deal] = await c.listDeals({ status: null, stage_id: null, owner: null });
     expect(deal.value).toBe(24000);
     expect(deal.expected_close).toBe(1893456000000);
@@ -152,10 +153,10 @@ describe('the client covers the contract', () => {
 
   it('runs `after` after every request, failed ones too', async () => {
     const after = vi.fn();
-    const transport = {
+    const transport = withRoutes({
       call: vi.fn(() => Promise.reject(new Error('boom'))),
       view: vi.fn(() => Promise.resolve({ index: 1, result: [], events: [] })),
-    };
+    });
     const c = crm(transport as never, 'app-1', after);
     await c.listStages();
     await expect(c.markWon({ deal_id: 'd' })).rejects.toThrow('boom');

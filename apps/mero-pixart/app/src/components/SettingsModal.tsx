@@ -12,6 +12,7 @@ import { truncateMiddle } from "../utils/format";
 import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
 import styles from "./SettingsModal.module.css";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 interface Props {
   type: "team" | "project";
@@ -169,7 +170,10 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
     }
     setBusyMember(identity);
     try {
-      await client.setMember(teamId!, identity, next, passkey());
+      await client.orgs.setMember(
+        { org: teamId!, account: identity, role: next },
+        { confirm: passkeyConfirm(passkey()) },
+      );
       showToast(
         next === "admin"
           ? "Member promoted to admin: they manage the team and edit every document."

@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import App from './App';
 import { APP, type SessionDeps } from './session';
 import { invites, migrateLegacyInvite } from './lib/workspaces';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
 function hold(legacy: string) {
@@ -79,7 +80,7 @@ function fakeClient(
   let session: CalimeroSession | undefined;
   let apps: AppInfo[] = opts.sheets ?? (orgs.length ? [BUDGET] : []);
   const foreign = opts.foreign ?? [];
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -124,13 +125,13 @@ function fakeClient(
     publishPresence: vi.fn(async () => undefined),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
     setMemberMetadata: vi.fn(async (_org: string, _account: string, _meta: unknown): Promise<void> => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

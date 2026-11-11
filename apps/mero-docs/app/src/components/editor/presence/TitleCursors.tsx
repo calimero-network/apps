@@ -14,7 +14,7 @@ interface Box {
 interface Props {
   carets: TitleCaret[];
   text: string;
-  inputRef: React.MutableRefObject<HTMLInputElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
 /** Text width in the input's own font, or null when measurement is unavailable. */

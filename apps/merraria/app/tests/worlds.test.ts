@@ -15,6 +15,7 @@ import {
   worldInviteLink,
   writeCurrentWorld,
 } from "../src/net/worlds";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function memory() {
   const m = new Map<string, string>();
@@ -38,12 +39,12 @@ const app = (appId: string, name: string, org: string | null = null) => ({
 describe("listWorlds", () => {
   it("lists by bundle in dev and by package in production, by name", async () => {
     const listApps = vi.fn().mockResolvedValue([app("2", "beta", "org"), app("1", "alpha")]);
-    expect(await listWorlds({ listApps }, "bundle-hash")).toEqual([
+    expect(await listWorlds(withRoutes({ listApps }), "bundle-hash")).toEqual([
       { appId: "1", name: "alpha", org: null },
       { appId: "2", name: "beta", org: "org" },
     ]);
     expect(listApps).toHaveBeenLastCalledWith({ bundle: "bundle-hash" });
-    await listWorlds({ listApps }, { package: "com.calimero.merraria" });
+    await listWorlds(withRoutes({ listApps }), { package: "com.calimero.merraria" });
     expect(listApps).toHaveBeenLastCalledWith({ package: "com.calimero.merraria" });
   });
 });
@@ -57,7 +58,7 @@ describe("createWorld", () => {
       call: vi.fn(async (_a: string, method: string, _args?: unknown) => (order.push(method), { index: 1, result: null, events: [] })),
       view: vi.fn(),
     };
-    const world = await createWorld(client, "bundle", "surface", 42);
+    const world = await createWorld(withRoutes(client), "bundle", "surface", 42);
     expect(world).toEqual({ appId: "app-1", name: "surface", org: "org-1" });
     expect(order).toEqual(["org", "app", "createWorld"]);
     expect(client.createApp).toHaveBeenCalledWith("surface", "bundle", { org: "org-1" });
@@ -97,18 +98,18 @@ describe("invitations", () => {
       listApps: vi.fn(async () => [app("1", "a", "org-1"), app("2", "b", "org-2"), app("3", "c", "org-2")] as AppInfo[]),
     };
     const s = holding("tok1");
-    expect((await redeemPendingInvite(client, "abc", s))?.appId).toBe("2");
+    expect((await redeemPendingInvite(withRoutes(client), "abc", s))?.appId).toBe("2");
     expect(s.token()).toBeNull();
-    expect((await redeemPendingInvite(client, "abc", holding("tok2", "org-2", { world: "3" })))?.appId).toBe("3");
+    expect((await redeemPendingInvite(withRoutes(client), "abc", holding("tok2", "org-2", { world: "3" })))?.appId).toBe("3");
   });
 
   it("are not spent by a player already in the world they name", async () => {
     const listApps = vi.fn(async () => [app("1", "a", "org-1")] as AppInfo[]);
     const mine = holding("tok1", "org-1");
-    expect((await alreadyInInvitedWorld({ listApps }, "abc", mine))?.appId).toBe("1");
+    expect((await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", mine))?.appId).toBe("1");
     expect(mine.token()).toBeNull();
     const theirs = holding("tok2", "org-9");
-    expect(await alreadyInInvitedWorld({ listApps }, "abc", theirs)).toBeNull();
+    expect(await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", theirs)).toBeNull();
     expect(theirs.token()).toBe("tok2");
   });
 
@@ -116,7 +117,7 @@ describe("invitations", () => {
     const refusing = (e: unknown) => ({ redeemInvite: vi.fn(async () => Promise.reject(e)), listApps: vi.fn(async () => []) });
     const spent = holding("tok1");
     await expect(
-      redeemPendingInvite(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed")), "abc", spent),
+      redeemPendingInvite(withRoutes(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"))), "abc", spent),
     ).rejects.toThrow();
     expect(spent.token()).toBeNull();
     // A lapsed session, a rate limit, the cluster or the network down: kept (B6).
@@ -127,7 +128,7 @@ describe("invitations", () => {
       new TypeError("Failed to fetch"),
     ]) {
       const kept = holding("tok1");
-      await expect(redeemPendingInvite(refusing(e), "abc", kept)).rejects.toBe(e);
+      await expect(redeemPendingInvite(withRoutes(refusing(e)), "abc", kept)).rejects.toBe(e);
       expect(kept.token()).toBe("tok1");
     }
   });

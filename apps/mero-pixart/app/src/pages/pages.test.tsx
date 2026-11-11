@@ -7,7 +7,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ME = "acct-me";
-const client = {
+const client = withRoutes({
   me: vi.fn(),
   createOrg: vi.fn(),
   setCapabilities: vi.fn(),
@@ -21,7 +21,7 @@ const client = {
   deleteApp: vi.fn(),
   view: vi.fn(),
   call: vi.fn(),
-};
+});
 
 // Stable, as the real hook's value is (memoized per session).
 const signedIn = {
@@ -42,6 +42,7 @@ vi.mock("../api/sessionContext", () => ({
 import TeamsPage from "./TeamsPage";
 import ProjectsPage from "./ProjectsPage";
 import { ToastProvider } from "../contexts/ToastContext";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function renderAt(path: string) {
   return render(

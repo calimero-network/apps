@@ -173,7 +173,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedInClient.redeemInvite(token)) ?? pending?.org ?? null;
+      const org = joinedOrg(await signedInClient.orgs.inviteRedeem({ token })) ?? pending?.org ?? null;
       const route = inviteRoute(pending, org);
       invites.drop();
       // Your name in the team, asked once, here: never again on its projects.

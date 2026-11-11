@@ -12,21 +12,24 @@
  */
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
-  SPENT_INVITE_COPY,
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
+  isSpentInvite,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgInstanceOptions,
   removeFromApp,
   sourcePackage,
+  SPENT_INVITE_COPY,
   type AppOrgView,
-  inviteLink as sharedInviteLink,
-  isSpentInvite,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type LeftApp,
@@ -54,15 +57,15 @@ interface MeOrgs {
 }
 
 /** Every org this account is in. */
-export async function listOrgs(client: Pick<CalimeroClient, 'me'>): Promise<WorkspaceOrg[]> {
-  const me = (await client.me()) as MeOrgs;
+export async function listOrgs(client: ClientRoutes<{ auth: 'me' }>): Promise<WorkspaceOrg[]> {
+  const me = (await client.auth.me()) as MeOrgs;
   return (me.orgs ?? []).map((o) => ({ orgId: o.orgId, name: o.name, role: o.role }));
 }
 
 /** The instances of this app (the dev bundle, or the package) the account reaches. */
-export async function listInstances(client: Pick<CalimeroClient, 'listApps'>, source: AppSource): Promise<AppInfo[]> {
+export async function listInstances(client: ClientRoutes<{ apps: 'list' }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
 /**
@@ -115,7 +118,7 @@ export const MEMBER_DEFAULTS =
  * create and invite) and `warning` says so.
  */
 export async function ensureWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
+  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
   opts: { existing: string | null; name: string; passkey: () => PasskeyProvider; source?: AppSource | null },
   onStatus: StatusFn = noop,
 ): Promise<{ orgId: string; warning: string | null }> {
@@ -141,7 +144,7 @@ export async function ensureWorkspace(
  * other apps have teams; organization access in a legacy org). Answers its id.
  */
 export async function createSpreadsheet(
-  client: Pick<CalimeroClient, 'createApp' | 'getOrg' | 'scopeApps' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ apps: 'create'; orgs: 'get' | 'appTeamsScope' }>,
   source: AppSource,
   org: string,
   name: string,
@@ -149,7 +152,13 @@ export async function createSpreadsheet(
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus('Creating the spreadsheet…');
-  return client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, APP_DISPLAY_NAME));
+  return client.apps
+    .create({
+      name,
+      ...appTarget(source),
+      ...(await orgInstanceOptions(client, org, source, passkey, APP_DISPLAY_NAME)),
+    })
+    .then((r) => r.appId);
 }
 
 /**
@@ -158,7 +167,7 @@ export async function createSpreadsheet(
  * the org; elsewhere out of the org, as before.
  */
 export function removeFromWorkspace(
-  client: Pick<CalimeroClient, 'getOrg' | 'removeTeamMember' | 'removeMember'>,
+  client: ClientRoutes<{ orgs: 'get' | 'teamRemoveMember' | 'removeMember' }>,
   org: string,
   source: AppSource | null,
   account: string,
@@ -174,7 +183,8 @@ export function removeFromWorkspace(
  * elsewhere the organization, as before.
  */
 export function leaveWorkspace(
-  client: Pick<CalimeroClient, 'getOrg' | 'listAppTeams' | 'removeTeamMember' | 'removeMember' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> &
+    ClientRoutes<{ orgs: 'get' | 'appTeamList' | 'teamRemoveMember' | 'removeMember' }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
@@ -185,7 +195,7 @@ export function leaveWorkspace(
 
 /** The signed-in account leaves the organization altogether, every app in it. A passkey step-up. */
 export function leaveWorkspaceOrg(
-  client: Pick<CalimeroClient, 'removeMember' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ orgs: 'removeMember' }>,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
@@ -208,11 +218,11 @@ export interface OrgMembers {
 }
 
 export async function readMembers(
-  client: Pick<CalimeroClient, 'getOrg'>,
+  client: ClientRoutes<{ orgs: 'get' }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -235,7 +245,7 @@ export async function readMembers(
  * spreadsheet in it reads.
  */
 export async function publishWorkspaceName(
-  client: Pick<CalimeroClient, 'setMemberMetadata' | 'getOrg'>,
+  client: ClientRoutes<{ orgs: 'memberMetadata' | 'get' }>,
   org: string,
   account: string,
   name: string,
@@ -271,7 +281,7 @@ export function inviteLink(
  * when it gives Mero Sheets only (an org that keeps its apps apart).
  */
 export async function mintInvite(
-  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
   opts: { org: string; sheet: string | null; passkey: () => PasskeyProvider; source?: AppSource | null },
   onStatus: StatusFn = noop,
 ): Promise<{ link: string; appOnly: boolean }> {
@@ -372,7 +382,7 @@ export function inviteRefused(e: unknown): boolean {
  * told (an older link). Redeeming as an existing member spends the token's
  * single use, which then leaves the person it was meant for unable to join.
  */
-export async function alreadyMember(client: Pick<CalimeroClient, 'me'>, invite: PendingInvite): Promise<boolean | null> {
+export async function alreadyMember(client: ClientRoutes<{ auth: 'me' }>, invite: PendingInvite): Promise<boolean | null> {
   if (!invite.org) return null;
   try {
     return (await listOrgs(client)).some((o) => o.orgId === invite.org);

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CalimeroError, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
+import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
@@ -8,6 +8,7 @@ import type { SessionDeps } from './session';
 import { APP } from './session';
 import { readActiveNs, writeActiveNs } from './hooks/workspacePersistence';
 import { invites } from './workspaces';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
@@ -59,7 +60,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     getRepoInfo: { repoUrl: 'https://github.com/acme/app' },
     getIssue: { issue: ISSUE, comments: [] },
   };
-  const client = {
+  const client = withRoutes({
     get session() {
       return session;
     },
@@ -98,14 +99,14 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     invite: vi.fn(async () => 'tok-123'),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
     setMemberMetadata: vi.fn(async () => {}),
-  };
+  });
   return client;
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
 }
@@ -417,10 +418,10 @@ describe('App', () => {
 describe('the release the open repo runs (useInstanceRelease)', () => {
   /** Signed in, in the remembered workspace, whose first repo runs `version`. */
   function openRepo(version: string) {
-    const client = Object.assign(fakeClient({ signedIn: true }), {
+    const client = Object.assign(fakeClient({ signedIn: true }), withRoutes({
       getApp: vi.fn(async () => ({ appId: 'app-1', org: 'org-1' })),
       appsReportAll: vi.fn(async () => ({ apps: [{ app: 'app-1', package: { package: 'com.calimero.issue-tracker', version } }] })),
-    });
+    }));
     storeSession();
     writeActiveNs('org-1');
     window.history.replaceState(null, '', '/issue-tracker');

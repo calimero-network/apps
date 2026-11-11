@@ -16,7 +16,7 @@
 // `docsApi.test.ts` checks the method lists and parameter names against the
 // committed `logic/res/abi.json`.
 
-import type { CalimeroClient } from '@calimero-network/mero-js';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 // ---------------------------------------------------------------- shapes
 
@@ -127,7 +127,7 @@ export interface ViewDto {
 
 // ---------------------------------------------------------------- wire
 
-type Transport = Pick<CalimeroClient, 'call' | 'view'>;
+type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
 
 /** Milliseconds (a decimal string) as v1's nanoseconds. */
 export function msToNs(ms: unknown): number {
@@ -188,11 +188,11 @@ abstract class Instance {
   }
 
   protected async view<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await this.transport.view(this.appId, method, args)).result as T;
+    return (await this.transport.apps.view({ app: this.appId, method, args })).result as T;
   }
 
   protected async call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await this.transport.call(this.appId, method, args)).result as T;
+    return (await this.transport.apps.call({ app: this.appId, method, args })).result as T;
   }
 }
 

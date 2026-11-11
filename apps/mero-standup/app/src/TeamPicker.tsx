@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { describeError, type AppSource } from "@calimero-apps/connect";
+import type { AppInfo } from "@calimero-network/mero-js";
+import { describeError, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { standup } from "./standup";
 import { createTeam, listTeams } from "./teams";
 
-type PickerClient = Pick<
-  CalimeroClient,
-  "listApps" | "createApp" | "createOrg" | "call" | "view" | "getOrg" | "setMemberMetadata"
->;
+type PickerClient = ClientRoutes<{
+  apps: "list" | "create" | "call" | "view";
+  orgs: "create" | "get" | "memberMetadata";
+}>;
 
 /**
  * v1's context picker: the teams this account reaches (app instances of this

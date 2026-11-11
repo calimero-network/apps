@@ -1,25 +1,28 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  SPENT_INVITE_COPY,
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
+  isSpentInvite,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgInstanceOptions,
-  removeFromApp,
   orgsWithApp,
+  removeFromApp,
   sourcePackage,
+  SPENT_INVITE_COPY,
   type AppInviteToken,
   type AppOrgView,
-  type LeftApp,
-  inviteLink as sharedInviteLink,
-  isSpentInvite,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
+  type LeftApp,
   type PendingInvite as SharedPendingInvite,
 } from "@calimero-apps/connect";
 import { setOrgName } from "@calimero-apps/names";
@@ -75,8 +78,8 @@ function filterOf(source: AppSource): { bundle: string } | { package: string } {
 }
 
 /** Every instance of this app (the dev bundle, or the package) the account can see. */
-async function allAudiences(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
-  return client.listApps(filterOf(source));
+async function allAudiences(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
+  return listAppInfos(client, filterOf(source));
 }
 
 /**
@@ -85,14 +88,14 @@ async function allAudiences(client: Pick<CalimeroClient, "listApps">, source: Ap
  * "Connect to an existing organization" instead.
  */
 export async function listCompanies(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
+  client: ClientRoutes<{ auth: "me"; apps: "list"; orgs: "get" }>,
   source: AppSource,
 ): Promise<NamespaceRow[]> {
   const orgs = await orgsWithApp(client, source, { marked: true });
   const apps = await allAudiences(client, source);
   const rows = await Promise.all(
     orgs.map(async (o) => {
-      const org = await client.getOrg(o.orgId).catch(() => null);
+      const org = await client.orgs.get({ org: o.orgId }).catch(() => null);
       return {
         namespaceId: o.orgId,
         name: o.name,
@@ -107,7 +110,7 @@ export async function listCompanies(
 }
 
 export async function listAudiences(
-  client: Pick<CalimeroClient, "listApps">,
+  client: ClientRoutes<{ apps: "list" }>,
   source: AppSource,
   org: string,
 ): Promise<AudienceRow[]> {
@@ -133,7 +136,7 @@ export interface CreatedCompany {
 
 /** A new company: an org whose members may start audiences and invite (a passkey step-up). */
 export async function createCompany(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
@@ -157,7 +160,8 @@ export async function createCompany(
  * organization, as before.
  */
 export function leaveCompany(
-  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "removeTeamMember" | "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
@@ -168,7 +172,7 @@ export function leaveCompany(
 
 /** Leaves the organization altogether, every app in it. A passkey step-up. */
 export function leaveCompanyOrg(
-  client: Pick<CalimeroClient, "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
@@ -183,7 +187,7 @@ export function leaveCompanyOrg(
  * before. Answers which it was.
  */
 export function removeFromCompany(
-  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
@@ -202,13 +206,15 @@ export const CONNECTED_AUDIENCE_NAME = "Everyone";
  * is its first admin.
  */
 export async function createAudience(
-  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "create"; orgs: "get" | "appTeamsScope" }>,
   source: AppSource,
   org: string,
   name: string,
   passkey: () => PasskeyProvider = noPasskey,
 ): Promise<string> {
-  return client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
+  return client.apps
+    .create({ name, ...appTarget(source), ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)) })
+    .then((r) => r.appId);
 }
 
 /** The company's name, member roles and member names. */
@@ -225,11 +231,11 @@ export interface CompanyInfo {
 }
 
 export async function readCompany(
-  client: Pick<CalimeroClient, "getOrg">,
+  client: ClientRoutes<{ orgs: "get" }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<CompanyInfo> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -252,7 +258,7 @@ export async function readCompany(
  * with what the record holds). Throws when the node refuses.
  */
 export function setCompanyName(
-  client: Pick<CalimeroClient, "getOrg" | "setMemberMetadata">,
+  client: ClientRoutes<{ orgs: "get" | "memberMetadata" }>,
   org: string,
   account: string,
   name: string,
@@ -272,7 +278,7 @@ export const isAdminRole = (role: string | undefined) => role === "owner" || rol
  * legacy org.
  */
 export function mintInvite(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,
@@ -404,12 +410,12 @@ export function inviteRefused(e: unknown): boolean {
  * use, which then leaves the person it was meant for unable to join.
  */
 export async function alreadyMember(
-  client: Pick<CalimeroClient, "me">,
+  client: ClientRoutes<{ auth: "me" }>,
   invite: PendingInvite,
 ): Promise<boolean | null> {
   if (!invite.org) return null;
   try {
-    const me = (await client.me()) as MeOrgs;
+    const me = (await client.auth.me()) as MeOrgs;
     return (me.orgs ?? []).some((o) => o.orgId === invite.org);
   } catch {
     return null;

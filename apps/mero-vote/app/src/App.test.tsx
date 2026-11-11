@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -15,6 +15,7 @@ import { App } from "./App";
 import { migrateStoredInvite, selectionKey } from "./groups";
 import type { SessionDeps } from "./session";
 import { APP } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 afterEach(cleanup);
 
@@ -89,7 +90,7 @@ function fakeClient(apps: AppInfo[] = []) {
 function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = DEV_ENV): SessionDeps {
   return {
     env,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

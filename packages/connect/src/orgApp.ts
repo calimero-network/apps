@@ -23,12 +23,13 @@
  * already, where it is closed like the others; `shared` is always passed,
  * because core closes every team on its own once an org holds two.
  */
-import type { CalimeroClient, OrgMode, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type CalimeroClient, type OrgMode, type PasskeyProvider } from "@calimero-network/mero-js";
 
 import { appTeamMembers, appTeams, createAppTeam, inviteToApp } from "./appTeams";
 import type { OrgAccessView, OrgTeamView } from "./invite";
 import { markOrgFor } from "./orgs";
 import type { AppSource } from "./target";
+import type { ClientRoutes } from "./routes";
 
 /** A passkey provider, or what makes one per prompt (`passkey()` in most apps). */
 export type PasskeyLike = PasskeyProvider | (() => PasskeyProvider);
@@ -122,14 +123,14 @@ export function appOnlyInviteNote(appName: string): string {
  * a raw bundle. Throws what the node answers (declined, an older node).
  */
 export async function adoptAppTeam(
-  client: Pick<CalimeroClient, "getOrg" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "get" | "appTeamsScope" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
 ): Promise<string | null> {
   const pkg = sourcePackage(source);
   if (!pkg) return null;
-  const view = (await client.getOrg(org)) as AppOrgView;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
   const made = await createAppTeam(client, org, pkg, provider(passkey), { shared: orgModeOf(view) === "shared" });
   return made.teamId;
 }
@@ -158,18 +159,21 @@ export interface CreatedAppOrg {
  * routes, a raw bundle) the org is a legacy one, as every org was before.
  */
 export async function createAppOrg(
-  client: Pick<CalimeroClient, "createOrg" | "getOrg" | "setOrgMetadata" | "setCapabilities" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "create" | "get" | "metadata" | "capabilities" | "appTeamsScope" }>,
   name: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
   options: CreateAppOrgOptions = {},
 ): Promise<CreatedAppOrg> {
-  const orgId = await client.createOrg(name);
+  const orgId = (await client.orgs.create({ name })).orgId;
   if (source && options.mark !== false) await markOrgFor(client, orgId, source);
   let capabilitiesError: unknown = null;
   if (options.capabilities !== undefined) {
     try {
-      await client.setCapabilities(orgId, options.capabilities, provider(passkey));
+      await client.orgs.capabilities(
+        { org: orgId, capabilities: options.capabilities },
+        { confirm: passkeyConfirm(provider(passkey)) },
+      );
     } catch (e) {
       capabilitiesError = e ?? new Error("member defaults not set");
     }
@@ -207,7 +211,7 @@ export type OrgWideAccess = { kind: "team"; team: string } | { kind: "org" };
  * Calimero Home, never forced from an app.
  */
 export async function orgWideAccess(
-  client: Pick<CalimeroClient, "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "appTeamsScope" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
@@ -215,7 +219,7 @@ export async function orgWideAccess(
 ): Promise<OrgWideAccess> {
   const pkg = sourcePackage(source);
   if (!pkg) return { kind: "org" };
-  const view = (await client.getOrg(org)) as AppOrgView;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
   const team = appTeamIdIn(view, pkg);
   if (team) return { kind: "team", team };
   if (!moded(orgModeOf(view))) return { kind: "org" };
@@ -232,7 +236,7 @@ export async function orgWideAccess(
  * an org instance `org` access by default), so a legacy org is unchanged.
  */
 export async function orgInstanceOptions(
-  client: Pick<CalimeroClient, "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "appTeamsScope" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
@@ -259,7 +263,7 @@ export interface AppInviteToken {
  * refused (`NoAppTeamError`) rather than widened to the whole org. `teams` adds more (a private vault's or folder's team).
  */
 export async function appInvite(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
@@ -269,16 +273,11 @@ export async function appInvite(
   const extra: { ttlSecs?: number; uses?: number } = {};
   if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
   if (options.uses !== undefined) extra.uses = options.uses;
-  const hasExtra = Object.keys(extra).length > 0;
   if (!pkg) {
-    // Only the arguments there are, as the org-wide invite was always sent.
-    const teams = options.teams?.length ? options.teams : undefined;
-    const p = provider(passkey);
-    const token = hasExtra
-      ? await client.invite(org, "member", p, teams, extra)
-      : teams
-        ? await client.invite(org, "member", p, teams)
-        : await client.invite(org, "member", p);
+    const { token } = await client.orgs.inviteCreate(
+      { org, role: "member", teams: options.teams ?? [], ...extra },
+      { confirm: passkeyConfirm(provider(passkey)) },
+    );
     return { token, appOnly: false };
   }
   const made = await inviteToApp(client, org, pkg, {
@@ -309,7 +308,7 @@ export interface RemoveFromAppOptions {
  * organization, as before. Answers which it was.
  */
 export async function removeFromApp(
-  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null | undefined,
   account: string,
@@ -317,20 +316,22 @@ export async function removeFromApp(
   options: RemoveFromAppOptions = {},
 ): Promise<"app" | "org"> {
   const pkg = sourcePackage(source);
-  const view = pkg ? ((await client.getOrg(org)) as AppOrgView) : null;
+  const view = pkg ? ((await client.orgs.get({ org })) as AppOrgView) : null;
   const team = view && isAppOnly(view, pkg) ? appTeamIdIn(view, pkg) : null;
   if (!view || !team) {
-    await client.removeMember(org, account, provider(passkey));
+    await client.orgs.removeMember({ org, account }, { confirm: passkeyConfirm(provider(passkey)) });
     return "org";
   }
   if (account in (view.teams?.[team]?.members ?? {})) {
-    await client.removeTeamMember(org, team, account, provider(passkey));
+    await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
   }
   for (const sub of options.privateTeams?.(view) ?? []) {
     if (sub === team || !(account in (view.teams?.[sub]?.members ?? {}))) continue;
-    await client.removeTeamMember(org, sub, account, provider(passkey)).catch((e: unknown) => {
-      console.warn(`removeFromApp: ${sub} still lists ${account}`, e);
-    });
+    await client.orgs
+      .teamRemoveMember({ org, team: sub, account }, { confirm: passkeyConfirm(provider(passkey)) })
+      .catch((e: unknown) => {
+        console.warn(`removeFromApp: ${sub} still lists ${account}`, e);
+      });
   }
   return "app";
 }
@@ -342,18 +343,18 @@ export async function removeFromApp(
  * org's mode.
  */
 export async function removeFromPrivateTeam(
-  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember">,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" }>,
   org: string,
   team: string,
   account: string,
   passkey: PasskeyLike,
 ): Promise<void> {
-  const view = (await client.getOrg(org)) as AppOrgView;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
   const meta = view.teams?.[team]?.metadata as { app?: { package?: unknown } } | null | undefined;
   if (!view.teams?.[team]?.parent && meta?.app?.package) {
     throw new Error("an app's team is left through removeFromApp, which knows the organization's mode");
   }
-  await client.removeTeamMember(org, team, account, provider(passkey));
+  await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
 }
 
 /** What {@link leaveApp} did. */
@@ -372,7 +373,8 @@ export interface LeftApp {
  * In standalone and legacy orgs it is leaving the organization, as before.
  */
 export async function leaveApp(
-  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "removeTeamMember" | "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
@@ -390,11 +392,11 @@ export async function leaveApp(
 
 /** The signed-in account leaves `org` altogether (every app in it). */
 export async function leaveOrg(
-  client: Pick<CalimeroClient, "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
   org: string,
   passkey: PasskeyLike,
   self: string | undefined = client.session?.accountId,
 ): Promise<void> {
   if (!self) throw new Error("Sign in to leave.");
-  await client.removeMember(org, self, provider(passkey));
+  await client.orgs.removeMember({ org, account: self }, { confirm: passkeyConfirm(provider(passkey)) });
 }

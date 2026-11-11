@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { askAnOwnerCopy, canCreateIn, describeError, type AppSource } from "@calimero-apps/connect";
+import {
+  askAnOwnerCopy,
+  canCreateIn,
+  describeError,
+  type AppSource,
+  type ClientRoutes,
+} from "@calimero-apps/connect";
 import type { OpenedScene } from "./scene";
 import { createScene, listScenes, studiosOf } from "./scenes";
 import { IconCube, IconPlus } from "./ui/icons";
@@ -20,7 +26,7 @@ export function ScenePicker({
   after,
   children,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg" | "getOrg" | "session">;
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "list" | "create"; orgs: "create" | "get" }>;
   source: AppSource;
   onOpen: (scene: OpenedScene) => void;
   /** Runs after each request (keeps the stored session current). */

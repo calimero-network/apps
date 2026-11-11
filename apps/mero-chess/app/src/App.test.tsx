@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -15,6 +15,7 @@ import { App } from "./App";
 import type { SeatView, WireTableView } from "./chess";
 import { APP, type SessionDeps } from "./session";
 import { migrateStoredInvite, selectionKey } from "./tables";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 class Memory implements KeyValueStorage {
   readonly items = new Map<string, string>();
@@ -100,7 +101,7 @@ function fakeClient(apps: AppInfo[] = [], view: WireTableView = tableView()) {
 function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = DEV_ENV): SessionDeps {
   return {
     env,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

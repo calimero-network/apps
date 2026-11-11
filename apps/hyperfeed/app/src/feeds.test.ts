@@ -13,6 +13,7 @@ import {
   suggestName,
 } from "./feeds";
 import type { AppInfo } from "@calimero-network/mero-js";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 describe("feeds on the cluster", () => {
   it("lists the dev bundle's instances, or the package's, by name", async () => {
@@ -26,8 +27,8 @@ describe("feeds on the cluster", () => {
         ] as AppInfo[];
       },
     };
-    expect((await listFeeds(client, "bundle-1")).map((f) => f.appId)).toEqual(["a", "b"]);
-    await listFeeds(client, { package: "com.calimero.hyperfeed" });
+    expect((await listFeeds(withRoutes(client), "bundle-1")).map((f) => f.appId)).toEqual(["a", "b"]);
+    await listFeeds(withRoutes(client), { package: "com.calimero.hyperfeed" });
     expect(asked).toEqual([{ bundle: "bundle-1" }, { package: "com.calimero.hyperfeed" }]);
   });
 
@@ -40,14 +41,14 @@ describe("feeds on the cluster", () => {
         return "feed-1";
       },
     };
-    expect(await createFeed(client, "bundle-1", "  Work ")).toBe("feed-1");
+    expect(await createFeed(withRoutes(client), "bundle-1", "  Work ")).toBe("feed-1");
     expect(calls).toEqual(['org Work', 'app Work "bundle-1" org-1']);
-    await expect(createFeed(client, "bundle-1", " ")).rejects.toThrow("Give the feed a name.");
+    await expect(createFeed(withRoutes(client), "bundle-1", " ")).rejects.toThrow("Give the feed a name.");
   });
 
   it("deletes a feed's app instance", async () => {
     const gone: string[] = [];
-    await deleteFeed({ deleteApp: async (id: string) => void gone.push(id) }, "feed-1");
+    await deleteFeed(withRoutes({ deleteApp: async (id: string) => void gone.push(id) }), "feed-1");
     expect(gone).toEqual(["feed-1"]);
   });
 });
@@ -107,7 +108,7 @@ describe("feed names", () => {
   it("reads each feed's name: a rename in its metadata, else the one it was made with", async () => {
     const c = client({ f1: { name: "Work" } });
     expect(
-      await readFeedNames(c, [
+      await readFeedNames(withRoutes(c), [
         { appId: "f1", name: "My feed" },
         { appId: "f2", name: "Home" },
         { appId: "f3", name: "" },
@@ -117,8 +118,8 @@ describe("feed names", () => {
 
   it("renames a feed in its metadata, keeping the rest", async () => {
     const c = client({ f2: { icon: "x" } });
-    await renameFeed(c, "f2", "  Home ");
+    await renameFeed(withRoutes(c), "f2", "  Home ");
     expect(c.set).toEqual(['f2 {"icon":"x","name":"Home"}']);
-    await expect(renameFeed(c, "f2", "")).rejects.toThrow("Give the feed a name.");
+    await expect(renameFeed(withRoutes(c), "f2", "")).rejects.toThrow("Give the feed a name.");
   });
 });

@@ -71,8 +71,8 @@ function RequireStream({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!room || verifiedRooms.has(room) || !client) return;
     let cancelled = false;
-    client
-      .getApp(room)
+    client.apps
+      .get({ app: room })
       .then(() => {
         verifiedRooms.add(room);
         if (!cancelled) setExists(true);

@@ -37,7 +37,7 @@ export interface TitleBinding {
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
-  inputRef: React.MutableRefObject<HTMLInputElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   carets: TitleCaret[];
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import {
+  type ClientRoutes,
   SPENT_INVITE_COPY,
   describeRedeemFailure,
   isSpentInvite,
@@ -238,7 +238,7 @@ export interface InvitationClosed {
 }
 
 export interface JoinInvitationProps {
-  client: Pick<CalimeroClient, "me" | "redeemInvite">;
+  client: ClientRoutes<{ auth: "me"; orgs: "inviteRedeem" }>;
   token: string;
   /** The org the link named, when it named one: a member of it is told so instead of spending a use. */
   org: string | null;
@@ -324,7 +324,7 @@ export function JoinInvitation({
     setBusy(true);
     setError(null);
     try {
-      const redeemed = await client.redeemInvite(token);
+      const redeemed = await client.orgs.inviteRedeem({ token });
       drop();
       onJoined({ org: joinedOrg(redeemed) ?? org });
     } catch (e) {

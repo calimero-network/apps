@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 import { standup, type StandupClient } from "./standup";
 
 /**
@@ -11,7 +11,7 @@ import { standup, type StandupClient } from "./standup";
 const POLL_MS = 30_000;
 
 /** The slice of the client the team needs: methods, and the app's event stream. */
-export type TeamTransport = Pick<CalimeroClient, "call" | "view" | "events">;
+export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * The typed client bound to one team (an app instance), plus a `version` that

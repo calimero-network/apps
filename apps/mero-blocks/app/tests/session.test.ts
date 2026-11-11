@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import type { CalimeroSession } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 
 import { connect, describeTarget, deviceLabel, signIn, signOut, signUp, type SessionDeps } from "../src/net/session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function memory(): KeyValueStorage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -44,7 +45,7 @@ function deps(env: SessionDeps["env"], storage = memory(), client = fakeClient()
     env,
     storage,
     client,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({}) as never,
   };
 }

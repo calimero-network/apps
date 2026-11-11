@@ -23,16 +23,18 @@
 import {
   appTeams,
   appUrl,
+  listAppInfos,
   membersMayInvite,
   packageTitle,
+  type ClientRoutes,
 } from "@calimero-apps/connect";
-import type {
-  AppInfo,
-  AppTeam,
-  CalimeroClient,
-  OrgInvite,
-  OrgMode,
-  PasskeyProvider,
+import {
+  passkeyConfirm,
+  type AppInfo,
+  type AppTeam,
+  type OrgInvite,
+  type OrgMode,
+  type PasskeyProvider,
 } from "@calimero-network/mero-js";
 
 /** Home's own package: one first-party package every cluster serves. */
@@ -136,14 +138,14 @@ export interface OrgView {
  * is listed once under it; one without is a legacy app, open to everyone.
  */
 export async function loadOrg(
-  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "listApps">,
+  client: ClientRoutes<{ orgs: "get" | "appTeamList"; apps: "list" }>,
   org: string,
   account: string,
 ): Promise<OrgView> {
   const [info, teams, reached] = await Promise.all([
-    client.getOrg(org),
+    client.orgs.get({ org }),
     appTeams(client, org),
-    client.listApps().catch(() => [] as AppInfo[]),
+    listAppInfos(client).catch(() => [] as AppInfo[]),
   ]);
   const inOrg = reached.filter((a) => a.org === org);
   const orgTeams = asObject(info.teams);
@@ -249,7 +251,7 @@ export type Rosters = Map<string, Map<string, "lead" | "member" | "readOnly">>;
  * left out rather than failing the screen.
  */
 export async function loadRosters(
-  client: Pick<CalimeroClient, "getTeam">,
+  client: ClientRoutes<{ orgs: "teamGet" }>,
   org: string,
   apps: readonly OrgApp[],
 ): Promise<Rosters> {
@@ -258,7 +260,7 @@ export async function loadRosters(
     apps.map(async (a) => {
       if (!a.team || a.team.join === "everyone") return;
       try {
-        const t = await client.getTeam(org, a.team.teamId);
+        const t = await client.orgs.teamGet({ org, team: a.team.teamId });
         rosters.set(a.team.teamId, new Map(t.members.map((m) => [m.account, m.role])));
       } catch {
         /* not readable by this caller: the column says so */
@@ -326,7 +328,7 @@ export function seatsFor(person: Pick<Person, "role">): Seat[] {
  * say), approved with the caller's passkey.
  */
 export async function setSeat(
-  client: Pick<CalimeroClient, "setTeamMember" | "removeTeamMember">,
+  client: ClientRoutes<{ orgs: "teamSetMember" | "teamRemoveMember" }>,
   org: string,
   team: string,
   account: string,
@@ -334,10 +336,10 @@ export async function setSeat(
   passkey: PasskeyProvider,
 ): Promise<void> {
   if (seat === "none") {
-    await client.removeTeamMember(org, team, account, passkey);
+    await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey) });
     return;
   }
-  await client.setTeamMember(org, team, account, passkey, { role: seat });
+  await client.orgs.teamSetMember({ org, team, account, role: seat }, { confirm: passkeyConfirm(passkey) });
 }
 
 /** An invite's teams by app name, for the pending list: "Chat, Blocks", or "Organization only". */
@@ -422,7 +424,7 @@ export function orgName(view: Pick<OrgView, "name" | "profile">): string {
  * `null` clears one.
  */
 export async function setOrgProfile(
-  client: Pick<CalimeroClient, "setOrgMetadata">,
+  client: ClientRoutes<{ orgs: "metadata" }>,
   org: string,
   current: Record<string, unknown>,
   profile: OrgProfile,
@@ -435,7 +437,7 @@ export async function setOrgProfile(
   else delete next.displayName;
   if (profile.logo) next.logo = profile.logo;
   else delete next.logo;
-  await client.setOrgMetadata(org, next);
+  await client.orgs.metadata({ org, metadata: next });
   return next;
 }
 

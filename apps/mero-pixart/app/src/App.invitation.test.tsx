@@ -6,7 +6,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { CalimeroError, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget } from "@calimero-apps/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,7 @@ import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
 import { APP, type SessionDeps } from "./api/session";
 import { invites } from "./api/teams";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
@@ -25,7 +26,7 @@ const SLOW = { timeout: 10_000 };
 
 function fakeClient(opts: { signedIn?: boolean } = {}) {
   let session: CalimeroSession | undefined = opts.signedIn ? SESSION : undefined;
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -45,13 +46,13 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     events: vi.fn(async function* () {}),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
     setMemberMetadata: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function renderApp(client: ReturnType<typeof fakeClient>) {
   const deps: SessionDeps = {
     env: DEV_ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
   return render(
