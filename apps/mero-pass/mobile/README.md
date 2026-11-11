@@ -9,7 +9,7 @@ byte-compatible with the web's crypto.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0`, composite build |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `0.4.0`, composite build |
 
 Both pins are SDK releases. To bump them, change `exactVersion:` in `ios/project.yml` and `exact:` in
 `ios/PassCore/Package.swift` to the new release (and refresh `ios/PassCore/Package.resolved`), and set

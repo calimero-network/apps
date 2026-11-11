@@ -8,7 +8,7 @@ Symbols, mapped one to one) and flows.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `v0.2.0` (not on Maven Central) |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `0.4.0` (not on Maven Central) |
 
 The pins are the SDKs' Calimero 1.0 releases (`ios/project.yml`, `ios/Core/Package.swift`,
 `ios/Core/Package.resolved`, `android/kotlin-sdk.ref`).

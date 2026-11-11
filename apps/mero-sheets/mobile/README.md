@@ -9,7 +9,7 @@ change a single cell's value.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` (Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `v0.2.0` (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `0.4.0` (Calimero 1.0) |
 
 The pins are SDK releases; bump them together in
 `ios/project.yml` + `ios/Core/Package.swift` and `android/kotlin-sdk.ref`.
