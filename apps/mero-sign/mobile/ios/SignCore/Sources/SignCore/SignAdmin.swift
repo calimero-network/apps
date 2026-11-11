@@ -65,7 +65,7 @@ public struct ClientSignAdmin: SignAdmin {
     private var isBundle: Bool { Hex.is32(applicationId) }
 
     public func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String {
-        let blob = try await signedIn().uploadBlob(contextId, data, contentType: contentType)
+        let blob = try await signedIn().apps.blobUpload(app: contextId, body: data, contentType: contentType)
         let id = SignIds.blobHex(blob.id)
         guard !id.isEmpty else { throw SignModelError.message("Your cluster returned a blob id this app can't use.") }
         return id
@@ -79,9 +79,7 @@ public struct ClientSignAdmin: SignAdmin {
         let client = try signedIn()
         let bundle: String? = isBundle ? applicationId : nil
         let package: String? = isBundle ? nil : applicationId
-        let apps = try await client.answer(as: AppListing.self) {
-            try await client.apps.list(package: package, bundle: bundle)
-        }.apps
+        let apps = try MeroJSON.convert(try await client.apps.list(package: package, bundle: bundle).apps, to: [AppInfo].self)
         return apps.map { SignInstance(appId: $0.appId, name: $0.name, owner: $0.owner, org: $0.org) }
     }
 
@@ -89,21 +87,10 @@ public struct ClientSignAdmin: SignAdmin {
         let client = try signedIn()
         let bundle: String? = isBundle ? applicationId : nil
         let package: String? = isBundle ? nil : applicationId
-        let created = try await client.answerJSON {
-            try await client.apps.create(name: name, bundle: bundle, package: package, org: org)
-        }
-        guard let appId = created["appId"]?.stringValue else {
-            throw SignModelError.message("The cluster created no app.")
-        }
-        return appId
+        return try await client.apps.create(name: name, bundle: bundle, package: package, org: org).appId
     }
 
     public func memberName(namespaceId: String, account: String) async throws -> String? {
         try await backend.listMembers(groupId: namespaceId).first { SignIds.same($0.identity, account) }?.name
     }
-}
-
-/// `GET /apps`' answer, read as MeroKit's ``AppInfo``.
-private struct AppListing: Decodable {
-    let apps: [AppInfo]
 }
