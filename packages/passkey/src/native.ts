@@ -355,3 +355,40 @@ export function declineNative(options: {
     `${options.callback}#state=${encodeURIComponent(request.state)}&cancelled=1`,
   );
 }
+
+// ---------------------------------------------------------------- consent returns
+
+/*
+ * The node's consent page (an app upgrade, a node release) sends the person
+ * back only to the requesting app's own frontend origin, over https, so a
+ * native app can't name its own scheme as `returnTo`. It names this page with
+ * `?native-consent=1` instead, and the page passes the result on to the app:
+ * `callback?request_id=…&result=…`. Both values are re-read from the node by
+ * the app; nothing here is trusted.
+ */
+
+/** The query flag that marks a consent page's return for a native app. */
+export const NATIVE_CONSENT_PARAM = "native-consent";
+
+const REQUEST_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const RESULTS = new Set(["approved", "declined"]);
+
+/**
+ * When the consent page sent the person back here for a native app, send them
+ * on to the app's `callback` and say so (the page then renders nothing).
+ */
+export function bounceNativeConsent(
+  location: Pick<Location, "search"> = window.location,
+  callback: string,
+  go: (url: string) => void = (url) => window.location.replace(url),
+): boolean {
+  const params = new URLSearchParams(location.search);
+  if (params.get(NATIVE_CONSENT_PARAM) !== "1") return false;
+  const id = params.get("request_id") ?? "";
+  const result = params.get("result") ?? "";
+  const query = REQUEST_ID.test(id)
+    ? `request_id=${encodeURIComponent(id)}${RESULTS.has(result) ? `&result=${result}` : ""}`
+    : "";
+  go(query ? `${callback}?${query}` : callback);
+  return true;
+}

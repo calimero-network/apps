@@ -1,6 +1,7 @@
 // @vitest-environment node
 import {
   NATIVE_APPROVE_INFO,
+  bounceNativeConsent,
   NATIVE_INFO,
   approveNative,
   captureNativeApproval,
@@ -232,5 +233,32 @@ describe("native approval", () => {
     declineNative({ callback: "mero-chat://approved", go: (url) => (went = url) });
     expect(went).toBe(`mero-chat://approved#state=${STATE}&cancelled=1`);
     expect(pendingNativeApproval()).toBeNull();
+  });
+});
+
+describe("native consent return", () => {
+  it("passes the consent page's answer on to the app", () => {
+    let went = "";
+    const bounced = bounceNativeConsent(
+      { search: "?native-consent=1&request_id=req_abc-1&result=approved" },
+      "mero-chat://consent",
+      (url) => (went = url),
+    );
+    expect(bounced).toBe(true);
+    expect(went).toBe("mero-chat://consent?request_id=req_abc-1&result=approved");
+  });
+
+  it("drops anything that isn't a request id or a result", () => {
+    let went = "";
+    bounceNativeConsent({ search: "?native-consent=1&request_id=<x>&result=pwned" }, "mero-chat://consent", (url) => (went = url));
+    expect(went).toBe("mero-chat://consent");
+    bounceNativeConsent({ search: "?native-consent=1&request_id=r1&result=pwned" }, "mero-chat://consent", (url) => (went = url));
+    expect(went).toBe("mero-chat://consent?request_id=r1");
+  });
+
+  it("leaves an ordinary page alone", () => {
+    expect(bounceNativeConsent({ search: "?request_id=r1&result=approved" }, "mero-chat://consent", () => {
+      throw new Error("must not navigate");
+    })).toBe(false);
   });
 });

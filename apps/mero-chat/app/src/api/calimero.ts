@@ -241,6 +241,9 @@ export const NATIVE_CALLBACK = "mero-chat://signed-in";
 /** Where the native apps receive a passkey approval. */
 export const NATIVE_APPROVE_CALLBACK = "mero-chat://approved";
 
+/** Where the native apps receive the node's consent page result (`?native-consent=1`). */
+export const NATIVE_CONSENT_CALLBACK = "mero-chat://consent";
+
 /**
  * Hands the session to the native app that opened this page and forgets it
  * here (no sign-out: that would end the app's session too).

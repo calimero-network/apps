@@ -97,4 +97,16 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertFalse(approved)
         XCTAssertNil(model.error)
     }
+
+    func testARefusedRequestSaysWhy() async throws {
+        let model = ApprovalsModel(
+            packageName: ChatConstants.packageName, appName: "Mero Chat",
+            fetch: { org in try Self.pending(org: org ?? "org1") },
+            consent: { _, _ in nil },
+            failure: { "returnTo must be the requesting app's own frontend origin" })
+        await model.load(orgs: [])
+        let approved = await model.approve(model.items[0], orgs: [])
+        XCTAssertFalse(approved)
+        XCTAssertEqual(model.error, "returnTo must be the requesting app's own frontend origin")
+    }
 }

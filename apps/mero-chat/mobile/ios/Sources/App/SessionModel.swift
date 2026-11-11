@@ -23,7 +23,8 @@ final class SessionModel: ObservableObject {
             guard let self else { throw CancellationError() }
             return try await self.pendingApprovals(org: org)
         },
-        consent: { [weak self] request, confirm in await self?.requestConsent(request, confirm: confirm) })
+        consent: { [weak self] request, confirm in await self?.requestConsent(request, confirm: confirm) },
+        failure: { [weak self] in self?.client.errorMessage })
     /// Bumped whenever ``backend`` is rebuilt, so screens re-read.
     @Published private(set) var revision = 0
     @Published private(set) var isRestoring = false
@@ -223,7 +224,16 @@ final class SessionModel: ObservableObject {
     func requestConsent(
         _ request: @escaping (String) -> ConsentRequest, confirm: @escaping @MainActor (ConsentStarted) async -> Bool
     ) async -> ConsentResult? {
-        await client.requestConsent(request, callback: AppConfig.callback, confirm: confirm)
+        // The node sends the person back only to Mero Chat's own page, which
+        // passes the answer on to `mero-chat://consent`.
+        let returnTo: String?
+        do {
+            returnTo = try await client.servedConsentReturnTo(cluster: AppConfig.cluster)
+        } catch {
+            client.errorMessage = "Couldn't reach Mero Chat's page: \(error.localizedDescription)"
+            return nil
+        }
+        return await client.requestConsent(request, callback: AppConfig.callback, returnTo: returnTo, confirm: confirm)
     }
 
     /// Talk to what the Calimero Cloud field names: a cluster by name (its
