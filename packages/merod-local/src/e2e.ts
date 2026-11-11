@@ -83,7 +83,9 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
   for (const name of names) {
     const role = roleOf(org, name);
     if (!role) continue;
-    const token = (await owner.client.orgs.inviteCreate({ org: orgId, role, teams: [] }, { confirm: passkeyConfirm(owner.passkey) })).token;
+    const token = (
+      await owner.client.orgs.inviteCreate({ org: orgId, role, teams: [] }, { confirm: passkeyConfirm(owner.passkey) })
+    ).token;
     await (people.get(name) as Person).client.orgs.inviteRedeem({ token });
   }
   const app = (await owner.client.apps.create({ name: `e2e-${run}`, bundle, org: orgId })).appId;
@@ -105,7 +107,10 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
         let outcome: Outcome;
         if (step.op === "removeMember") {
           const who = typeof step.args === "string" ? step.args : String(args);
-          await owner.client.orgs.removeMember({ org: orgId, account: accountOf(who) }, { confirm: passkeyConfirm(owner.passkey) });
+          await owner.client.orgs.removeMember(
+            { org: orgId, account: accountOf(who) },
+            { confirm: passkeyConfirm(owner.passkey) },
+          );
           outcome = { ok: true, value: null };
         } else {
           const as = step.as ?? "owner";

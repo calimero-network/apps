@@ -122,7 +122,11 @@ test("1. Alice makes a workspace in Chat, on its own", async ({ browser }) => {
   // from by name, so the dev-signed packages are uploaded as her. Then her
   // browser gets the same passkey, and from there on only the browser uses it.
   alice = await signUp("Alice", LOCAL_NODES[0]!);
-  for (const mpk of [chatMpk, kvMpk]) await alice.client.packages.upload({ body: new Uint8Array(readFileSync(mpk)), contentType: 'application/octet-stream' });
+  for (const mpk of [chatMpk, kvMpk])
+    await alice.client.packages.upload({
+      body: new Uint8Array(readFileSync(mpk)),
+      contentType: 'application/octet-stream',
+    });
   aliceBrowser = await browse(browser, await alice.passkey.toBrowser());
   const page = aliceBrowser.page;
 

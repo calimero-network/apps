@@ -268,7 +268,8 @@ export async function otherOrgs(
           .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
         let canCreate: boolean | null = null;
         let marked = false;
-        const view = (await client.orgs.get({ org: o.orgId }).catch(() => null)) as (OrgAccessView & { metadata?: unknown }) | null;
+        const view = (await client.orgs.get({ org: o.orgId }).catch(() => null)) as
+          (OrgAccessView & { metadata?: unknown }) | null;
         if (view) {
           marked = isMarkedFor(view.metadata, source);
           if (account) canCreate = mayCreateIn(view, account);

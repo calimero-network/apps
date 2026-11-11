@@ -78,7 +78,9 @@ export async function setOrgName(client: OrgNameClient, org: string, account: st
   if (!clean || !org || !account) return;
   let current: Record<string, unknown> = {};
   if (client.orgs.get) {
-    const o = (await client.orgs.get({ org }).catch(() => null)) as { memberMetadata?: Record<string, unknown> | null } | null;
+    const o = (await client.orgs.get({ org }).catch(() => null)) as {
+      memberMetadata?: Record<string, unknown> | null;
+    } | null;
     const meta = o?.memberMetadata?.[account];
     if (meta && typeof meta === "object") current = meta as Record<string, unknown>;
   }

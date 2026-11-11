@@ -193,7 +193,9 @@ export interface SignUpHereOptions extends CeremonySignal {
  * redeem (redeeming again would spend another use).
  */
 export async function signUpHere(
-  client: Pick<CalimeroClient, "signUp"> & ClientRoutes<{ auth: "me" }> & Partial<ClientRoutes<{ orgs: "memberMetadata" }>>,
+  client: Pick<CalimeroClient, "signUp"> &
+    ClientRoutes<{ auth: "me" }> &
+    Partial<ClientRoutes<{ orgs: "memberMetadata" }>>,
   target: Target,
   passkey: PasskeyProvider,
   options: SignUpHereOptions = {},
