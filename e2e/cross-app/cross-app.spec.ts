@@ -6,7 +6,6 @@
  */
 import { readFileSync } from "node:fs";
 
-import type { AppTeams } from "@calimero-network/mero-js";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import { LOCAL_NODES, signUp, type Person } from "../../packages/merod-local/src/cluster.ts";
@@ -180,8 +179,7 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   // Store's frontend makes a store only in an org of its own, so the store in
   // this org is made as Alice through mero-js (her session, no passkey), on
   // the app team Home just made, as an org app makes its instance.
-  // The document types the app teams as unknown.
-  const teams = (await alice.client.orgs.appTeamList({ org })) as unknown as AppTeams;
+  const teams = await alice.client.orgs.appTeamList({ org });
   const kvTeam = teams.appTeams.find((t) => t.package === KV)?.teamId;
   expect(kvTeam, "Home made no app team for KV Store").toBeTruthy();
   await alice.client.apps.create({ name: STORE, package: KV, org, access: { kind: "team", team: kvTeam! } });

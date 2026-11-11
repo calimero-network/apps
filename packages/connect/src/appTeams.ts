@@ -32,7 +32,6 @@ import {
   type PasskeyProvider,
   type ScopeAppsResult,
   type ScopedAppTeam,
-  type TeamInfo,
 } from "@calimero-network/mero-js";
 
 import type { OrgAccessView } from "./invite";
@@ -52,8 +51,7 @@ export function isNotFound(error: unknown): boolean {
  */
 export async function appTeams(client: ClientRoutes<{ orgs: "appTeamList" }>, org: string): Promise<AppTeams | null> {
   try {
-    // The document types the answer's `mode` and `appTeams` as unknown.
-    const answer = (await client.orgs.appTeamList({ org })) as unknown as AppTeams;
+    const answer = await client.orgs.appTeamList({ org });
     return { mode: answer.mode, appTeams: Array.isArray(answer.appTeams) ? answer.appTeams : [] };
   } catch (e) {
     if (isNotFound(e)) return null;
@@ -113,7 +111,8 @@ export async function createAppTeam(
   const app: { package: string; name?: string; instances?: string[] } = { package: pkg };
   if (options.name) app.name = options.name;
   if (options.instances) app.instances = options.instances;
-  // The document types the answer as an open object.
+  // The document answers each team's `join` as nullable, mero-js's
+  // `ScopedAppTeam` as optional: the same answer, typed two ways.
   const result = (await client.orgs.appTeamsScope(
     { org, apps: [app], ...(options.shared === undefined ? {} : { shared: options.shared }) },
     { confirm: passkeyConfirm(passkey) },
@@ -378,8 +377,7 @@ export async function appTeamInstances(
     seen.add(id);
     let team;
     try {
-      // The document types `apps` and `children` as unknown.
-      team = (await client.orgs.teamGet({ org, team: id })) as unknown as TeamInfo;
+      team = await client.orgs.teamGet({ org, team: id });
     } catch (e) {
       // The app team itself must be readable; one below may not be.
       if (id === teamId) throw e;
@@ -449,9 +447,6 @@ export async function keepAppsApart(
   org: string,
   passkey: PasskeyProvider,
 ): Promise<OrgMode> {
-  const result = (await client.orgs.appTeamsScope(
-    { org, apps: [], shared: true },
-    { confirm: passkeyConfirm(passkey) },
-  )) as unknown as ScopeAppsResult;
+  const result = await client.orgs.appTeamsScope({ org, apps: [], shared: true }, { confirm: passkeyConfirm(passkey) });
   return result.mode;
 }
