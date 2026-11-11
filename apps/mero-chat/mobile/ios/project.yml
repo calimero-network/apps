@@ -4,8 +4,8 @@
 #   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
 #   open MeroChat.xcodeproj
 #
-# The SDK is consumed from GitHub, pinned to its v0.6.0 release. To bump it,
-# change `exactVersion` below and regenerate.
+# The SDK is consumed from GitHub, pinned to a commit (served-page sign-in,
+# before its release). To bump it, change `revision` below and regenerate.
 name: MeroChat
 
 options:
@@ -17,7 +17,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.6.0
+    revision: 3262576664743788fd827c6b753a2b526bdeeea4
 
 targets:
   MeroChat:
@@ -37,7 +37,8 @@ targets:
         UILaunchScreen: {}
         CFBundleURLTypes:
           # The node's consent page returns here after an approval
-          # (`mero-chat://consent?request_id=…&result=…`).
+          # (`mero-chat://consent?request_id=…&result=…`), and the sign-in
+          # page with the session (`mero-chat://signed-in#…`).
           # ASWebAuthenticationSession intercepts it itself; registering it also
           # lets `onOpenURL` see a return that arrives outside the sheet.
           - CFBundleURLName: network.calimero.chat.consent
@@ -50,6 +51,9 @@ targets:
         MeroChatCallbackScheme: mero-chat
         MeroChatCallbackHost: ""
         MeroChatCallbackPath: /consent
+        # A Calimero Cloud cluster to sign in on. Empty: Mero Chat's own
+        # address, which routes to its cluster.
+        MeroChatCluster: ""
         # The Calimero Cloud cluster to sign in to: a node URL from the
         # console. Empty: the sign-in screen asks for one. See README.md.
         CalimeroClusterURL: ""
@@ -62,17 +66,12 @@ targets:
         # everything else stays https under ATS.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-    # The device's passkey on Calimero Cloud: the clusters' relying party is
-    # `calimero.network`, so the app names it as an associated domain and
-    # https://calimero.network/.well-known/apple-app-site-association lists
-    # `<TeamID>.network.calimero.chat` under `webcredentials`. A development
-    # node uses a software passkey and needs neither. See README.md.
+    # Calimero Cloud sign-in runs on Mero Chat's served page in the system
+    # sign-in sheet, which returns to `mero-chat://signed-in`: no associated
+    # domains. A development node uses a software passkey.
     entitlements:
       path: Sources/MeroChat.entitlements
-      properties:
-        com.apple.developer.associated-domains:
-          - webcredentials:calimero.network
-    # DEVELOPMENT_TEAM (the Apple Team ID the AASA file names) comes from
+    # DEVELOPMENT_TEAM (for device builds) comes from
     # Config/Signing.xcconfig: empty by default, so simulator builds need none.
     configFiles:
       Debug: Config/Signing.xcconfig

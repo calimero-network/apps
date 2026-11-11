@@ -24,14 +24,14 @@ enum LiveScenario {
     static func foundWorkspace(_ founder: LiveAccount, rig: LiveRig) async throws -> LiveWorkspace {
         let backend = founder.backend
         let appId = rig.appId
-        let workspaces = WorkspacesModel(backend: backend, applicationId: { appId }, displayName: { "" })
+        let workspaces = WorkspacesModel(backend: backend, applicationId: { appId })
         XCTAssertTrue(workspaces.hasRelay)
         await workspaces.load()
         XCTAssertNil(workspaces.errorText, "listing a fresh account's workspaces")
         XCTAssertTrue(workspaces.workspaces.isEmpty, "a fresh account is in no workspace: \(workspaces.workspaces)")
 
         let name = "Live \(UUID().uuidString.prefix(8))"
-        let created = await workspaces.create(name: name)
+        let created = await workspaces.create(name: name, username: "") != nil
         guard created else {
             throw LiveFailure("founding \(name) failed: \(workspaces.errorText ?? "no reason given")")
         }
@@ -83,7 +83,7 @@ enum LiveScenario {
     ) async throws -> LiveWorkspace {
         let appId = rig.appId
         let before = WorkspacesModel(
-            backend: member.backend, applicationId: { appId }, displayName: { displayName })
+            backend: member.backend, applicationId: { appId })
         await before.load()
         XCTAssertTrue(before.workspaces.isEmpty)
 
@@ -98,7 +98,7 @@ enum LiveScenario {
         try await member.didJoinWorkspace()
 
         let workspaces = WorkspacesModel(
-            backend: member.backend, applicationId: { appId }, displayName: { displayName })
+            backend: member.backend, applicationId: { appId })
         try await eventually(
             "\(member.label) lists the joined workspace",
             detail: "\(workspaces.workspaces) \(workspaces.errorText ?? "")"

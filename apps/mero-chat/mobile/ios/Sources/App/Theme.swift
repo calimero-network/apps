@@ -283,3 +283,15 @@ struct Banner: View {
         .accessibilityIdentifier(kind == .error ? "errorBanner" : "noticeBanner")
     }
 }
+
+/// Close the keyboard, whichever field has it.
+@MainActor func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+extension View {
+    /// Close the keyboard whenever `value` changes: a panel, dialog or screen opened or closed.
+    func hidesKeyboard<V: Equatable>(when value: V) -> some View {
+        onChange(of: value) { _ in hideKeyboard() }
+    }
+}

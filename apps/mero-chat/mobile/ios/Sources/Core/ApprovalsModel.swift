@@ -63,17 +63,25 @@ final class ApprovalsModel: ObservableObject {
     @Published private(set) var code: String?
     private var answer: CheckedContinuation<Bool, Never>?
     private var opened = false
+    /// Whether the node answered the request (its code was shown).
+    private var asked = false
 
     private let packageName: String
     private let appName: String
     private let fetch: Fetch
     private let consent: Consent
+    /// Why the last request failed before the node answered it, if known.
+    private let failure: @MainActor () -> String?
 
-    init(packageName: String, appName: String, fetch: @escaping Fetch, consent: @escaping Consent) {
+    init(
+        packageName: String, appName: String, fetch: @escaping Fetch, consent: @escaping Consent,
+        failure: @escaping @MainActor () -> String? = { nil }
+    ) {
         self.packageName = packageName
         self.appName = appName
         self.fetch = fetch
         self.consent = consent
+        self.failure = failure
     }
 
     /// Re-read what waits, for the account's own apps and each of `orgs`.
@@ -95,12 +103,17 @@ final class ApprovalsModel: ObservableObject {
         defer { approving = nil }
         error = nil
         opened = false
+        asked = false
         let result = await consent({ item.request(returnTo: $0) }) { [weak self] started in
             guard let self else { return false }
             return await self.ask(started)
         }
         code = nil
-        guard opened else { return false }
+        guard opened else {
+            // The node refused or never answered: say so rather than do nothing.
+            if !asked { error = failure() ?? "Couldn't start the approval. Try again." }
+            return false
+        }
         guard let result else {
             error = "Couldn't open the approval page. Try again."
             return false
@@ -116,6 +129,7 @@ final class ApprovalsModel: ObservableObject {
     func cancelCode() { reply(false) }
 
     private func ask(_ started: ConsentStarted) async -> Bool {
+        asked = true
         code = (started.code ?? "").isEmpty ? confirmationCode(started.requestId) : started.code
         let go = await withCheckedContinuation { answer = $0 }
         code = nil
