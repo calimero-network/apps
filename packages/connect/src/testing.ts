@@ -483,7 +483,16 @@ const ROUTES: Array<[string, string, string, (a: Args, o: Opts) => unknown[], ((
   ["consent", "pageResult", "consentResult", (a) => [a.request]],
   ["apps", "get", "getApp", (a) => [a.app]],
   ["apps", "list", "listApps", (a) => [a ?? {}], (apps) => ({ apps })],
-  ["apps", "create", "createApp", (a) => { const { source, rest } = createTarget(a); return [a.name, source, rest]; }, (appId) => ({ appId })],
+  [
+    "apps",
+    "create",
+    "createApp",
+    (a) => {
+      const { source, rest } = createTarget(a);
+      return [a.name, source, Object.keys(rest).length ? rest : undefined];
+    },
+    (appId) => ({ appId }),
+  ],
   ["apps", "delete", "deleteApp", (a) => [a.app]],
   ["apps", "metadata", "setAppMetadata", (a) => [a.app, a.metadata]],
   ["apps", "access", "setAccess", (a) => [a.app, a.access]],
@@ -515,7 +524,7 @@ const ROUTES: Array<[string, string, string, (a: Args, o: Opts) => unknown[], ((
   ["orgs", "delete", "deleteOrg", (a, o) => [a.org, o]],
   ["orgs", "metadata", "setOrgMetadata", (a) => [a.org, a.metadata]],
   ["orgs", "memberMetadata", "setMemberMetadata", (a) => [a.org, a.account, a.metadata]],
-  ["orgs", "capabilities", "setCapabilities", ({ org, capabilities, ...at }, o) => [org, capabilities, o, at]],
+  ["orgs", "capabilities", "setCapabilities", ({ org, capabilities, ...at }, o) => [org, capabilities, o, Object.keys(at).length ? at : undefined]],
   ["orgs", "setMember", "setMember", (a, o) => [a.org, a.account, a.role, o]],
   ["orgs", "removeMember", "removeMember", (a, o) => [a.org, a.account, o]],
   ["orgs", "teamCreate", "createTeam", (a) => [a.org, a.name, a.join, a.parent], (teamId) => ({ teamId })],
@@ -568,7 +577,12 @@ export function withRoutes<T extends object>(fake: T): T & CalimeroClient {
     };
     // A function there (the `packages()` wrapper) takes the group too, as on the client.
     const existing = own[group];
-    const target = (typeof existing === "object" && existing) || typeof existing === "function" ? existing : (own[group] = {});
+    let target = (typeof existing === "object" && existing) || typeof existing === "function" ? existing : undefined;
+    if (!target) {
+      // Not enumerable, so a test that walks its fake's own mocks does not meet the groups.
+      target = {};
+      Object.defineProperty(own, group, { value: target, configurable: true, enumerable: false, writable: true });
+    }
     // Read when called for, so a wrapper the test adds later (`Object.assign(client, { getOrg })`) is routed too.
     Object.defineProperty(target, method, {
       configurable: true,
