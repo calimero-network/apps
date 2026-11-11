@@ -4,12 +4,13 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const ACCOUNT = "acct-5926f2d2a4940fa2";
-const client = {
+const client = withRoutes({
   getOrg: vi.fn(async () => ({ members: { [ACCOUNT]: "member" }, memberMetadata: { [ACCOUNT]: { name: "Ana Lee" } } })),
   setMemberMetadata: vi.fn(async () => undefined),
-};
+});
 const signedIn = { client, after: () => {} };
 vi.mock("./sessionContext", () => ({ useMaybeSignedIn: () => signedIn }));
 

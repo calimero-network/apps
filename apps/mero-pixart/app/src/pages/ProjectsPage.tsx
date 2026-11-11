@@ -4,8 +4,7 @@ import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { ManageInHomeLink } from "@calimero-apps/passkey";
 import { useSessionApi, useSignedIn } from "../api/sessionContext";
-import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
-import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, appOnlyInviteNote } from "@calimero-apps/connect";
 import { PRODUCT_NAME, createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
@@ -251,7 +250,7 @@ export default function ProjectsPage() {
   async function deleteProject(project: ProjectCard) {
     setMenuOpenId(null);
     try {
-      await client.deleteApp(project.contextId);
+      await client.apps.delete({ app: project.contextId });
     } catch (err) {
       showToast(`Could not delete project: ${messageOf(err)}`);
       return;

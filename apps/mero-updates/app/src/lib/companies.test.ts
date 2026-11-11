@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createCompany, listCompanies } from "./companies";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
 function client() {
@@ -9,7 +10,7 @@ function client() {
     { appId: "a1", name: "All hands", owner: "me", org: "acme", bundle: "b", package: null, version: null },
     { appId: "w1", name: "overworld", owner: "me", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null },
   ];
-  return {
+  return withRoutes({
     me: vi.fn(async () => ({
       orgs: [
         { orgId: "acme", name: "Acme", role: "owner" },
@@ -24,7 +25,7 @@ function client() {
     setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
       meta[org] = m;
     }),
-  };
+  });
 }
 
 describe("companies", () => {

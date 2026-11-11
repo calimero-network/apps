@@ -18,6 +18,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
 import { buildInviteUrl, invites, migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
@@ -135,7 +136,7 @@ function fakeClient() {
     getDoc: DOC,
     searchDocs: { hits: [], total: '0', nextCursor: null },
   };
-  return {
+  return withRoutes({
     get session() {
       return session;
     },
@@ -163,13 +164,13 @@ function fakeClient() {
     publishPresence: vi.fn(async () => undefined),
     redeemInvite: vi.fn(async () => ({ orgId: 'org-1' })),
     setMemberMetadata: vi.fn(async () => undefined),
-  };
+  });
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   return {
     env: DEV_ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }) as never,
   };
 }
@@ -475,10 +476,10 @@ describe('App on Calimero 1.0', () => {
 describe('the release the workspace runs (useInstanceRelease)', () => {
   /** A folder of the workspace, whose registry (`reg-1`) runs `version`. */
   function openWorkspace(version: string) {
-    const client = Object.assign(fakeClient(), {
+    const client = Object.assign(fakeClient(), withRoutes({
       getApp: vi.fn(async () => ({ appId: 'reg-1', org: 'org-1' })),
       appsReportAll: vi.fn(async () => ({ apps: [{ app: 'reg-1', package: { package: 'com.calimero.docs', version } }] })),
-    });
+    }));
     remember();
     window.history.replaceState(null, '', '/app/org-1/f/eng');
     render(<App deps={deps(client)} />);

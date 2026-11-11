@@ -7,13 +7,14 @@
  */
 import type { ReactNode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import type { CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import type { CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, targetKey } from "@calimero-apps/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { APP, type SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn } from "./sessionContext";
 import { useActiveWorkspace } from "./useActiveWorkspace";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
@@ -49,7 +50,7 @@ function openWorkspace(version: string) {
     JSON.stringify({ appId: "app-1", org: "org-1" }),
   );
   let session: CalimeroSession | undefined;
-  const client = {
+  const client = withRoutes({
     get session() {
       return session;
     },
@@ -62,10 +63,10 @@ function openWorkspace(version: string) {
     me: vi.fn(async () => ({ accountId: "acct-me", orgs: [{ orgId: "org-1", name: "Acme", role: "member" }] })),
     getApp: vi.fn(async () => ({ appId: "app-1", org: "org-1" })),
     appsReportAll: vi.fn(async () => ({ apps: [{ app: "app-1", package: { package: "com.calimero.forms", version } }] })),
-  };
+  });
   const deps: SessionDeps = {
     env: DEV_ENV,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
   render(

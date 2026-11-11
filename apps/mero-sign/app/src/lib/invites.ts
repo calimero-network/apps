@@ -8,15 +8,16 @@
  * Replaces v1's signed namespace invitations, which travelled as a
  * deflate+base58 payload (`inviteCodec`) on a registry deep link.
  */
-import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import type { PasskeyProvider } from '@calimero-network/mero-js';
 import {
-  SPENT_INVITE_COPY,
   appInvite,
   createInviteStore,
-  type AppInviteToken,
-  type AppSource,
   inviteLink as sharedInviteLink,
   isSpentInvite,
+  SPENT_INVITE_COPY,
+  type AppInviteToken,
+  type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
@@ -39,7 +40,7 @@ const LEGACY_PENDING = 'mero-sign:pending-invite';
  * (an org that keeps its apps apart). Org-wide in a legacy org.
  */
 export function appInviteToken(
-  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,
@@ -49,7 +50,7 @@ export function appInviteToken(
 
 /** {@link appInviteToken}'s token alone. */
 export async function inviteToken(
-  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,
@@ -193,12 +194,12 @@ export function inviteRefused(e: unknown): boolean {
  * single use, which then leaves the person it was meant for unable to join.
  */
 export async function alreadyMember(
-  client: Pick<CalimeroClient, 'me'>,
+  client: ClientRoutes<{ auth: 'me' }>,
   invite: PendingInvite,
 ): Promise<boolean | null> {
   if (!invite.org) return null;
   try {
-    const me = (await client.me()) as {
+    const me = (await client.auth.me()) as {
       orgs?: Array<{ orgId?: unknown }>;
     };
     return (me.orgs ?? []).some((o) => o.orgId === invite.org);

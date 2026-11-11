@@ -1,11 +1,13 @@
-import { AppError, ORG_CAPABILITIES, TrapError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
+import { passkeyConfirm, AppError, ORG_CAPABILITIES, TrapError, type AppInfo } from "@calimero-network/mero-js";
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   isAppOnly,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   myOrgs,
   orgInstanceOptions,
   orgsWithApp,
@@ -15,6 +17,7 @@ import {
   type AppInviteToken,
   type AppOrgView,
   type AppSource,
+  type ClientRoutes,
   type LeftApp,
   type OtherOrg,
 } from "@calimero-apps/connect";
@@ -119,13 +122,13 @@ export function callFailure(err: unknown): Error {
 /** Pages `getElementsPage` reads at a time when `get_elements` wants the whole board. */
 const ELEMENT_PAGE = 1000;
 
-type Contract = Pick<CalimeroClient, "call" | "view">;
+type Contract = ClientRoutes<{ apps: "call" | "view" }>;
 
 async function send(client: Contract, app: string, method: string, args: Record<string, unknown>): Promise<unknown> {
   const req = toWire(method, args);
   const res = req.kind === "call"
-    ? await client.call(app, req.name, req.args)
-    : await client.view(app, req.name, req.args);
+    ? await client.apps.call({ app, method: req.name, args: req.args })
+    : await client.apps.view({ app, method: req.name, args: req.args });
   return res.result;
 }
 
@@ -273,7 +276,7 @@ export async function createTeam(name: string): Promise<CreatedTeam> {
 export async function deleteTeam(org: string): Promise<void> {
   const { client, passkey, after } = getApi();
   try {
-    await client.deleteOrg(org, passkey());
+    await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
   } finally {
     after();
   }
@@ -321,7 +324,7 @@ export async function createTeamInvitation(org: string): Promise<AppInviteToken>
 export async function redeemInvitation(token: string): Promise<string | null> {
   const { client, after } = getApi();
   try {
-    const redeemed = await client.redeemInvite(token);
+    const redeemed = await client.orgs.inviteRedeem({ token });
     for (const key of ["org", "orgId"]) {
       const v = (redeemed as Record<string, unknown>)[key];
       if (typeof v === "string" && v) return v;
@@ -350,7 +353,7 @@ export interface TeamRecord {
 export async function readTeam(org: string): Promise<TeamRecord> {
   const { client, source, after } = getApi();
   try {
-    const o = (await client.getOrg(org)) as Record<string, unknown>;
+    const o = (await client.orgs.get({ org })) as Record<string, unknown>;
     const pkg = sourcePackage(source);
     const members = (o.members ?? {}) as Record<string, string>;
     const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -410,7 +413,10 @@ export async function listGroupMembers(org: string): Promise<{ members: GroupMem
 export async function updateMemberRole(org: string, account: string, role: "Admin" | "Member"): Promise<void> {
   const { client, passkey, after } = getApi();
   try {
-    await client.setMember(org, account, role === "Admin" ? "admin" : "member", passkey());
+    await client.orgs.setMember(
+      { org, account, role: role === "Admin" ? "admin" : "member" },
+      { confirm: passkeyConfirm(passkey()) },
+    );
   } finally {
     after();
   }
@@ -443,9 +449,9 @@ export interface BoardEntry {
 }
 
 /** The instances of this app (the dev bundle, or the package) the account reaches. */
-export async function listInstances(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listInstances(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
 /** A team's boards, by name. */
@@ -481,7 +487,13 @@ export async function createBoard(org: string, name: string): Promise<string> {
   try {
     // On this app's team (made first, by an owner or admin, in an org whose
     // other apps have teams), or organization access in a legacy org.
-    app = await client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
+    app = (
+      await client.apps.create({
+        name,
+        ...appTarget(source),
+        ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
+      })
+    ).appId;
   } finally {
     after();
   }
@@ -494,7 +506,7 @@ export async function createBoard(org: string, name: string): Promise<string> {
 export async function deleteBoard(app: string): Promise<void> {
   const { client, after } = getApi();
   try {
-    await client.deleteApp(app);
+    await client.apps.delete({ app });
   } finally {
     after();
   }
@@ -521,7 +533,7 @@ export async function uploadBlob(data: ArrayBuffer | Uint8Array, app: string): P
   const { client, after } = getApi();
   try {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const res = await client.uploadBlob(app, bytes);
+    const res = await client.apps.blobUpload({ app, body: bytes, contentType: 'application/octet-stream' });
     return { blobId: res?.id || res?.blobId || "" };
   } finally {
     after();

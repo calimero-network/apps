@@ -4,6 +4,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const ME = "a".repeat(64);
 const BEN = "b".repeat(64);
@@ -12,7 +13,7 @@ const listGroupMembers = vi.fn();
 const removeGroupMembers = vi.fn();
 const showToast = vi.fn();
 
-vi.mock("../api/rpc", () => ({
+vi.mock("../api/rpc", () => (withRoutes({
   getNodeIdentity: vi.fn().mockResolvedValue({ accountId: ME }),
   listGroupMembers: (...a: unknown[]) => listGroupMembers(...a),
   rpcCall: vi.fn().mockResolvedValue([]),
@@ -20,7 +21,7 @@ vi.mock("../api/rpc", () => ({
   removeTeamMember: (...a: unknown[]) => removeGroupMembers(...a),
   readTeam: vi.fn().mockResolvedValue({ name: "", roles: new Map(), names: new Map() }),
   setTeamName: vi.fn(),
-}));
+})));
 vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 

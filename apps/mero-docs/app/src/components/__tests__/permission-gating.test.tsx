@@ -18,6 +18,7 @@ import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityTog
 import { NewFolderButton } from '@/components/folders/NewFolderButton';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
@@ -132,13 +133,13 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useSubgroups: () => ({ subgroups: [], loading: false, error: null, refetch: vi.fn() }),
-  useGroupCapabilities: () => ({
+  useGroupCapabilities: () => (withRoutes({
     capabilities: 1,
     loading: false,
     error: null,
     refetch: vi.fn(),
     setCapabilities: vi.fn(),
-  }),
+  })),
   // MemberPicker (adopted by WorkspaceSettingsPanel + FolderSharingPanel)
   // calls useGroupMembers for its candidate list. Empty list keeps the
   // dropdown closed so existing assertions are unaffected.

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, ForumClient, VIEWS, toCommentView, toPostView } from "./forumApi";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../../logic/res/abi.json"), "utf8")) as {
@@ -54,7 +55,7 @@ describe("the client covers the contract", () => {
       const result = method === "listPosts" || method === "listComments" ? { items: [], nextCursor: null } : method === "getPost" ? WIRE_POST : null;
       return Promise.resolve({ index: 1, result, events: [] });
     };
-    const f = new ForumClient({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const f = new ForumClient(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     await Promise.all([
       f.createPost({ title: "t", body: "b" }),
       f.editPost({ post_id: "p", title: "t", body: "b" }),
@@ -114,7 +115,7 @@ describe("the adapter", () => {
       .fn()
       .mockResolvedValue({ index: 3, result: { items: [WIRE_POST], nextCursor: "cur" } });
     const after = vi.fn();
-    const f = new ForumClient({ call, view }, "app-1", after);
+    const f = new ForumClient(withRoutes({ call, view }), "app-1", after);
 
     expect(await f.createComment({ post_id: "p1", body: "x" })).toBe("newid");
     expect(call).toHaveBeenCalledWith("app-1", "createComment", { postId: "p1", body: "x" });
@@ -127,7 +128,7 @@ describe("the adapter", () => {
 
   it("runs `after` when a request fails too", async () => {
     const after = vi.fn();
-    const f = new ForumClient({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }, "a", after);
+    const f = new ForumClient(withRoutes({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }), "a", after);
     await expect(f.getPost({ post_id: "x" })).rejects.toThrow("boom");
     expect(after).toHaveBeenCalledTimes(1);
   });

@@ -1,4 +1,4 @@
-import type { CalimeroClient } from '@calimero-network/mero-js';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 /** The package a production vault is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = 'com.calimero.mero-pass';
@@ -146,7 +146,7 @@ export interface MeroPass {
   getAuditLogs(): Promise<AuditWire[]>;
 }
 
-export type Transport = Pick<CalimeroClient, 'call' | 'view'>;
+export type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
 
 /**
  * The vault at app instance `app` through `client`. `after` runs after every
@@ -162,7 +162,7 @@ export function meroPass(
     args: Record<string, unknown> = {},
   ): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
@@ -172,7 +172,7 @@ export function meroPass(
     args: Record<string, unknown> = {},
   ): Promise<T> => {
     try {
-      return (await client.view(app, method, args)).result as T;
+      return (await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

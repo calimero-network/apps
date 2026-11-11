@@ -11,6 +11,7 @@ import {
   toDocumentInfo,
   toSignature,
 } from './meroSign';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(
@@ -94,7 +95,7 @@ describe('the client covers the contract', () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: answering(method), events: [] });
     };
-    const m = new MeroSignApp({ call: vi.fn(record), view: vi.fn(record) } as never, 'app-1');
+    const m = new MeroSignApp(withRoutes({ call: vi.fn(record), view: vi.fn(record) }) as never, 'app-1');
     await Promise.all([
       m.setup({ is_private: false, context_name: 'n' }),
       m.isDefaultPrivateContext(),
@@ -181,7 +182,7 @@ describe('the adapter', () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: '7', events: [] });
     const view = vi.fn().mockResolvedValue({ index: 3, result: [WIRE_DOC] });
     const after = vi.fn();
-    const m = new MeroSignApp({ call, view } as never, 'app-1', after);
+    const m = new MeroSignApp(withRoutes({ call, view }) as never, 'app-1', after);
 
     expect(await m.createSignature({ name: 's', blob_id_str: HEX, data_size: 10 })).toBe(7);
     expect(call).toHaveBeenCalledWith('app-1', 'createSignature', {
@@ -216,7 +217,7 @@ describe('the adapter', () => {
   it('runs `after` when a request fails too', async () => {
     const after = vi.fn();
     const m = new MeroSignApp(
-      { call: vi.fn(), view: vi.fn().mockRejectedValue(new Error('boom')) } as never,
+      withRoutes({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error('boom')) }) as never,
       'a',
       after,
     );

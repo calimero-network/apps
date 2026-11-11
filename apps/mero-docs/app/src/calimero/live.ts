@@ -9,7 +9,7 @@
 // which `lib/rich/events.ts` already reads), and say when a stream (re)opens,
 // since nothing replays what happened while it was down.
 
-import type { CalimeroClient, CloudEvent } from '@calimero-network/mero-js';
+import { presenceState, type CalimeroClient, type CloudEvent } from '@calimero-network/mero-js';
 
 /** One delivered event, in the shape v1's subscription handlers read. */
 export interface SseEventData {
@@ -89,7 +89,7 @@ export class EventHub {
       try {
         if (from === null) {
           // Start after what is already applied: a view answers the index.
-          const { index } = await this.client.view(app, 'listManagers', {});
+          const { index } = await this.client.apps.view({ app, method: 'listManagers', args: {} });
           from = index + 1;
         }
         const events = this.client.events(app, from, signal);
@@ -160,10 +160,12 @@ export class PresenceHub {
   ) {}
 
   /** Publishes `value` as this device's slice in `app`; an empty object retracts it. */
-  set(app: string, value: object): Promise<void> {
+  async set(app: string, value: object): Promise<void> {
     const empty = Object.keys(value).length === 0;
     this.seq += 1;
-    return this.client.publishPresence(app, this.seq, empty ? null : encoder.encode(JSON.stringify(value)));
+    const state = presenceState(empty ? null : encoder.encode(JSON.stringify(value)));
+    // `null` retracts; the document types `state` as a string only.
+    await this.client.apps.presencePublish({ app, seq: this.seq, state: state as unknown as string });
   }
 
   watch(app: string, listener: () => void): () => void {

@@ -7,7 +7,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ME = "acct-me";
-const client = { getOrg: vi.fn(), setMemberMetadata: vi.fn() };
+const client = withRoutes({ getOrg: vi.fn(), setMemberMetadata: vi.fn() });
 const signedIn = { client, accountId: ME, passkey: () => ({}), after: () => {}, targetKey: "local:test" };
 const data = { getMembers: vi.fn(), setUsername: vi.fn() };
 const actions = { getEvents: vi.fn(async () => {}), getMembers: vi.fn(async () => {}) };
@@ -27,6 +27,7 @@ vi.mock("../../hooks", () => ({
 }));
 
 import CalendarPage from "./index";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 function renderCalendar(contextId = "cal-1") {
   return render(

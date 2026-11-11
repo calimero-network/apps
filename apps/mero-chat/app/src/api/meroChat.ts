@@ -11,10 +11,10 @@
  * `meroChat.test.ts` checks every method and parameter here against the
  * committed ABI.
  */
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import { AppError } from "@calimero-network/mero-js";
 
 import { after, getClient } from "./calimero";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 type Args = Record<string, unknown>;
 type Out = unknown;
@@ -343,7 +343,7 @@ export async function execute<T>(
   app: string,
   name: string,
   v1Args: Args = {},
-  client: Pick<CalimeroClient, "call" | "view"> = getClient(),
+  client: ClientRoutes<{ apps: "call" | "view" }> = getClient(),
 ): Promise<T> {
   const spec = METHODS[name];
   if (!spec) throw new ChatError(`Method not found: ${name}`, -32601);
@@ -352,8 +352,8 @@ export async function execute<T>(
   try {
     const out =
       spec.kind === "call"
-        ? await client.call(app, spec.method, args)
-        : await client.view(app, spec.method, args);
+        ? await client.apps.call({ app, method: spec.method, args })
+        : await client.apps.view({ app, method: spec.method, args });
     return spec.result(out.result) as T;
   } catch (e) {
     const status = (e as { status?: unknown })?.status;

@@ -141,7 +141,11 @@ export const blobClient: BlobApi = {
       const s = signSession();
       const bytes = new Uint8Array(await file.arrayBuffer());
       try {
-        const up = await s.client.uploadBlob(requireApp(appId), bytes);
+        const up = await s.client.apps.blobUpload({
+          app: requireApp(appId),
+          body: bytes,
+          contentType: 'application/octet-stream',
+        });
         return { blobId: up.id.toLowerCase(), size: up.size };
       } finally {
         s.after();

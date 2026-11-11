@@ -62,12 +62,13 @@ vi.mock('../../components/AppShell', () => ({
 vi.mock('../../components/LockGate', () => ({ default: () => null }));
 
 import VaultPage from './VaultPage';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const HOST = `https://${'a'.repeat(52)}.apps.calimero.network`;
 
 /** The page of vault `vault-1`, which runs `version`. */
 function openVault(version: string) {
-  const client = {
+  const client = withRoutes({
     view: vi.fn(async () => ({ index: 1, result: 'Ops' })),
     getApp: vi.fn(async () => ({ appId: 'vault-1', org: 'org-1' })),
     appsReportAll: vi.fn(async () => ({
@@ -75,7 +76,7 @@ function openVault(version: string) {
         { app: 'vault-1', package: { package: 'com.calimero.pass', version } },
       ],
     })),
-  };
+  });
   signedIn.client = client;
   render(
     <MemoryRouter initialEntries={['/vault/vault-1']}>

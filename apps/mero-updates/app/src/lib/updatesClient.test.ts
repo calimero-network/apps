@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, UpdatesClient, VIEWS, fromWire, toWire } from "./updatesClient";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build` writes it). */
 const abi = JSON.parse(
@@ -11,7 +12,7 @@ const abi = JSON.parse(
 
 function recorder() {
   const sent: { kind: "call" | "view"; method: string; args: Record<string, unknown> }[] = [];
-  const transport = {
+  const transport = withRoutes({
     call: vi.fn(async (_app: string, method: string, args?: unknown) => {
       sent.push({ kind: "call", method, args: args as Record<string, unknown> });
       return { index: 1, result: null, events: [] };
@@ -20,7 +21,7 @@ function recorder() {
       sent.push({ kind: "view", method, args: args as Record<string, unknown> });
       return { index: 1, result: null };
     }),
-  };
+  });
   return { sent, transport };
 }
 
@@ -83,7 +84,7 @@ describe("the contract's methods", () => {
 
   it("are sent by name, as call or view, with exactly the ABI's parameter names", async () => {
     const { sent, transport } = recorder();
-    await callEverything(new UpdatesClient(transport, "app-1"));
+    await callEverything(new UpdatesClient(withRoutes(transport), "app-1"));
     const named = new Set(sent.map((s) => s.method));
     expect(named.size).toBe(CALLS.length + VIEWS.length);
     for (const { kind, method, args } of sent) {
@@ -97,7 +98,7 @@ describe("the contract's methods", () => {
 
   it("sends nested input in camelCase and a u64 argument as a decimal string", async () => {
     const { sent, transport } = recorder();
-    const c = new UpdatesClient(transport, "app-1");
+    const c = new UpdatesClient(withRoutes(transport), "app-1");
     await c.publishUpdate({ input });
     await c.listContributions({ since: 1_700_000_000_000 });
     expect(sent[0].args).toEqual({
@@ -115,13 +116,13 @@ describe("the contract's methods", () => {
 
   it("keeps the stored session current after every request, failed ones too", async () => {
     const after = vi.fn();
-    const transport = {
+    const transport = withRoutes({
       call: vi.fn(async () => {
         throw new Error("Forbidden");
       }),
       view: vi.fn(async () => ({ index: 1, result: { account: "a" } })),
-    };
-    const c = new UpdatesClient(transport, "app-1", after);
+    });
+    const c = new UpdatesClient(withRoutes(transport), "app-1", after);
     await c.getMe();
     await expect(c.setProfile({ name: "n", firm: "" })).rejects.toThrow("Forbidden");
     expect(after).toHaveBeenCalledTimes(2);

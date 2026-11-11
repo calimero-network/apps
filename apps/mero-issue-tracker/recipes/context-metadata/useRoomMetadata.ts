@@ -3,21 +3,21 @@
  * Reference code; copy into app/src/hooks/. Not compiled as-is.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { CalimeroClient } from '@calimero-network/mero-js';
+import type { ClientRoutes } from '@calimero-apps/connect';
 
 export interface RoomMeta {
   name: string;
   data: Record<string, string>;
 }
 
-export function useRoomMetadata(client: Pick<CalimeroClient, 'getApp' | 'setAppMetadata'>, appId: string | null) {
+export function useRoomMetadata(client: ClientRoutes<{ apps: 'get' | 'metadata' }>, appId: string | null) {
   const [meta, setMetaState] = useState<RoomMeta | null>(null);
 
   useEffect(() => {
     if (!appId) return;
     let live = true;
-    client
-      .getApp(appId)
+    client.apps
+      .get({ app: appId })
       .then((app) => {
         const m = (app.metadata ?? null) as Partial<RoomMeta> | null;
         if (live) setMetaState(m && typeof m.name === 'string' ? { name: m.name, data: m.data ?? {} } : null);
@@ -32,7 +32,7 @@ export function useRoomMetadata(client: Pick<CalimeroClient, 'getApp' | 'setAppM
   const setMeta = useCallback(
     async (next: RoomMeta) => {
       if (!appId) return;
-      await client.setAppMetadata(appId, next);
+      await client.apps.metadata({ app: appId, metadata: next });
       setMetaState(next);
     },
     [client, appId],

@@ -2,15 +2,18 @@ import { type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calime
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
+  listAppInfos,
   orgInstanceOptions,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
-  inviteLink as sharedInviteLink,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -61,20 +64,20 @@ interface MeOrgs {
 }
 
 /** The instances of this app (the dev bundle, or the package) the account reaches. */
-export async function listInstances(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listInstances(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
-export async function listOrgs(client: Pick<CalimeroClient, "me">): Promise<OrgRow[]> {
-  const me = (await client.me()) as MeOrgs;
+export async function listOrgs(client: ClientRoutes<{ auth: "me" }>): Promise<OrgRow[]> {
+  const me = (await client.auth.me()) as MeOrgs;
   return (me.orgs ?? [])
     .map((o) => ({ orgId: o.orgId, name: o.name, role: o.role }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.orgId.localeCompare(b.orgId));
 }
 
 export async function listWorkspaces(
-  client: Pick<CalimeroClient, "listApps">,
+  client: ClientRoutes<{ apps: "list" }>,
   source: AppSource,
 ): Promise<WorkspaceRow[]> {
   return (await listInstances(client, source))
@@ -90,17 +93,21 @@ export async function listWorkspaces(
  * or uses organization access in a legacy org. Answers the instance id and org.
  */
 export async function createWorkspace(
-  client: Pick<
-    CalimeroClient,
-    "createOrg" | "createApp" | "getOrg" | "setOrgMetadata" | "setCapabilities" | "scopeApps" | "session"
-  >,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "create" | "get" | "metadata" | "capabilities" | "appTeamsScope"; apps: "create" }>,
   source: AppSource,
   name: string,
   org: string | null,
   passkey: () => PasskeyProvider,
 ): Promise<{ appId: string; org: string }> {
   const orgId = org ?? (await createAppOrg(client, name, source, passkey, { mark: false })).orgId;
-  const appId = await client.createApp(name, source, await orgInstanceOptions(client, orgId, source, passkey, PRODUCT_NAME));
+  const appId = (
+    await client.apps.create({
+      name,
+      ...appTarget(source),
+      ...(await orgInstanceOptions(client, orgId, source, passkey, PRODUCT_NAME)),
+    })
+  ).appId;
   return { appId, org: orgId };
 }
 
@@ -119,11 +126,11 @@ export interface OrgMembers {
 }
 
 export async function readMembers(
-  client: Pick<CalimeroClient, "getOrg">,
+  client: ClientRoutes<{ orgs: "get" }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -142,12 +149,12 @@ export async function readMembers(
 
 /** Publishes the name `account` goes by across the org (org member metadata). */
 export async function publishName(
-  client: Pick<CalimeroClient, "setMemberMetadata">,
+  client: ClientRoutes<{ orgs: "memberMetadata" }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.setMemberMetadata(org, account, { name });
+  await client.orgs.memberMetadata({ org, account, metadata: { name } });
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────
@@ -158,7 +165,7 @@ export async function publishName(
  * Mero Forms only (an org that keeps its apps apart). Org-wide in a legacy org.
  */
 export function inviteToken(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,

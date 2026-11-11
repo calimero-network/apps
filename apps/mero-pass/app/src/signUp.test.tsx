@@ -1,13 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-  CalimeroClient,
-  PasskeyProvider,
-} from '@calimero-network/mero-js';
+import type { PasskeyProvider } from '@calimero-network/mero-js';
 import { SIGN_UP_NOT_FINISHED } from '@calimero-apps/passkey';
 
 import { CalimeroProvider, useCalimero, type CalimeroDeps } from './calimero';
 import SignInPanel from './components/SignInPanel';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 // Since core #4849 a sign-up takes two prompts. The second is asked right
 // after the first; it waits for Approve only when that failed or was refused
@@ -29,7 +27,7 @@ function setup(get: PasskeyProvider['get']) {
   };
   const deps: CalimeroDeps = {
     env: { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' },
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey: () => pk as unknown as PasskeyProvider,
   };
   function Status() {

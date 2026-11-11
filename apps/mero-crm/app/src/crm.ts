@@ -1,4 +1,4 @@
-import type { CalimeroClient } from '@calimero-network/mero-js';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 /**
  * The contract's methods by their ABI names (camelCase), split the way the node
@@ -308,7 +308,7 @@ export interface Crm {
 /** v1's generated-client name for the same surface. */
 export type CrmClient = Crm;
 
-export type Transport = Pick<CalimeroClient, 'call' | 'view'>;
+export type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
 
 /**
  * The pipeline at app instance `app` through `client`. `after` runs after every
@@ -317,14 +317,14 @@ export type Transport = Pick<CalimeroClient, 'call' | 'view'>;
 export function crm(client: Transport, app: string, after: () => void = () => {}): Crm {
   const call = async <T>(method: Call, args: Record<string, unknown> = {}): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: View, args: Record<string, unknown> = {}): Promise<T> => {
     try {
-      return (await client.view(app, method, args)).result as T;
+      return (await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

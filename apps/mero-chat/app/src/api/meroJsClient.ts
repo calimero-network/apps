@@ -87,7 +87,7 @@ export const nodeApi = {
   /** The app instance's record (v1: the context). */
   async getContext(contextId: string): Promise<ResponseData<Record<string, unknown>>> {
     try {
-      const data = await getClient().getApp(contextId);
+      const data = await getClient().apps.get({ app: contextId });
       return { data };
     } catch (e) {
       return { error: toLegacyError(e) };
@@ -102,7 +102,7 @@ export const nodeApi = {
     contextId: string,
   ): Promise<ResponseData<LegacyFetchContextIdentitiesResponse>> {
     try {
-      await getClient().getApp(contextId);
+      await getClient().apps.get({ app: contextId });
       const account = getAccountId();
       return { data: { data: { identities: account ? [account] : [] } } };
     } catch (e) {
