@@ -41,9 +41,7 @@ export function presencePublisher(client: PresenceClient, app: string) {
   let seq = 0;
   return (state: Uint8Array): Promise<void> => {
     seq = Math.max(seq + 1, Date.now() * 1000);
-    // The document types `state` as a string only (`presenceState(null)` retracts).
-    const hex = presenceState(state) as unknown as string;
-    return client.apps.presencePublish({ app, seq, state: hex }).then(() => undefined);
+    return client.apps.presencePublish({ app, seq, state: presenceState(state) }).then(() => undefined);
   };
 }
 

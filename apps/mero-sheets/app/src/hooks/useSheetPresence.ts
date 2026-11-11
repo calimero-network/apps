@@ -115,7 +115,7 @@ export function useSheetPresence(
       if (!client || !contextId) return;
       seq.current += 1;
       const state = next.d === undefined ? null : new TextEncoder().encode(JSON.stringify(next));
-      client.apps.presencePublish({ app: contextId, seq: seq.current, state: presenceState(state) as unknown as string }).catch((err: unknown) => {
+      client.apps.presencePublish({ app: contextId, seq: seq.current, state: presenceState(state) }).catch((err: unknown) => {
         console.warn('[presence] publish failed', err);
       });
     },

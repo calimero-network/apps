@@ -164,8 +164,8 @@ export class PresenceHub {
     const empty = Object.keys(value).length === 0;
     this.seq += 1;
     const state = presenceState(empty ? null : encoder.encode(JSON.stringify(value)));
-    // `null` retracts; the document types `state` as a string only.
-    await this.client.apps.presencePublish({ app, seq: this.seq, state: state as unknown as string });
+    // `null` retracts.
+    await this.client.apps.presencePublish({ app, seq: this.seq, state });
   }
 
   watch(app: string, listener: () => void): () => void {

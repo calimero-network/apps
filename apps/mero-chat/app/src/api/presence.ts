@@ -58,7 +58,7 @@ export function useEphemeral<T>(app: string | null): Ephemeral<T> {
         .presencePublish({
           app,
           seq: seq.current,
-          state: presenceState(value === null ? null : encode(value)) as unknown as string,
+          state: presenceState(value === null ? null : encode(value)),
         })
         .catch((e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
     },
