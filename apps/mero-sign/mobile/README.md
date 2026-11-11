@@ -8,7 +8,7 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (`android/kotlin-sdk.ref`, composite build) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (`android/kotlin-sdk.ref`, composite build) |
 
 Both pins are SDK releases; bump them to the next release together.
 
