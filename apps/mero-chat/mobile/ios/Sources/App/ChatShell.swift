@@ -29,7 +29,7 @@ struct ChatShell: View {
         _channels = StateObject(
             wrappedValue: ChannelsModel(
                 workspace: workspace, backend: backend,
-                displayName: { [weak session] in session?.displayName ?? "" }))
+                displayName: { [weak session] in session?.name(in: workspace.id) ?? "" }))
     }
 
     var body: some View {

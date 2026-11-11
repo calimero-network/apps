@@ -18,17 +18,14 @@ final class WorkspacesModel: ObservableObject {
     /// Chat's package, when known: only orgs running it are chat
     /// workspaces (the web app filters the same way).
     private let applicationId: @MainActor () -> String?
-    private let displayName: @MainActor () -> String
 
     /// `applicationId` is read on every load: the session resolves it from
     /// the registry after sign-in.
     init(
-        backend: any ChatBackend, applicationId: @escaping @MainActor () -> String?,
-        displayName: @escaping @MainActor () -> String
+        backend: any ChatBackend, applicationId: @escaping @MainActor () -> String?
     ) {
         self.backend = backend
         self.applicationId = applicationId
-        self.displayName = displayName
     }
 
     var hasRelay: Bool { backend.hasRelay }
@@ -56,13 +53,14 @@ final class WorkspacesModel: ObservableObject {
         return listed.filter { $0.applicationId.lowercased() == applicationId.lowercased() }
     }
 
-    /// Found a workspace, then give it `#general` as the web app does.
+    /// Found a workspace, then give it `#general` as the web app does, with
+    /// `username` as your name there. Returns the new workspace's id.
     @discardableResult
-    func create(name rawName: String) async -> Bool {
+    func create(name rawName: String, username: String) async -> String? {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         if let problem = Self.nameProblem(name) {
             errorText = problem
-            return false
+            return nil
         }
         isWorking = true
         defer { isWorking = false }
@@ -83,7 +81,7 @@ final class WorkspacesModel: ObservableObject {
                 let creator = ChannelCreator(backend: backend)
                 do {
                     _ = try await creator.create(
-                        in: workspace, name: ChatConstants.generalChannel, isPublic: true, username: displayName())
+                        in: workspace, name: ChatConstants.generalChannel, isPublic: true, username: username)
                 } catch {
                     notes.append("#general could not be created: \(ChatErrorText.describe(error))")
                 }
@@ -92,10 +90,10 @@ final class WorkspacesModel: ObservableObject {
             }
             notice = notes.isEmpty ? nil : notes.joined(separator: "\n")
             errorText = nil
-            return true
+            return founded.namespaceId
         } catch {
             errorText = ChatErrorText.describe(error)
-            return false
+            return nil
         }
     }
 

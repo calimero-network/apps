@@ -299,7 +299,7 @@ struct SignInView: View {
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 await session.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
-                if session.displayName.isEmpty, !trimmedName.isEmpty { session.displayName = trimmedName }
+                if session.lastUsedName.isEmpty, !trimmedName.isEmpty { session.lastUsedName = trimmedName }
             }
         }
     }

@@ -70,7 +70,6 @@ struct SignedInView: View {
     @ObservedObject var session: SessionModel
     let backend: CloudChatBackend
     @StateObject private var workspaces: WorkspacesModel
-    @AppStorage("mero-chat:workspace") private var workspaceId = ""
     @State private var picking = false
 
     init(session: SessionModel, backend: CloudChatBackend) {
@@ -79,14 +78,14 @@ struct SignedInView: View {
         _workspaces = StateObject(
             wrappedValue: WorkspacesModel(
                 backend: backend,
-                applicationId: { [weak session] in session?.applicationId },
-                displayName: { [weak session] in session?.displayName ?? "" }))
+                applicationId: { [weak session] in session?.applicationId }))
     }
 
     var body: some View {
         Group {
-            if !picking, !session.displayName.isEmpty,
-                let workspace = workspaces.workspaces.first(where: { $0.id == workspaceId })
+            // A workspace is entered once you have a name in it (asked per workspace).
+            if !picking, !session.name(in: session.workspaceId).isEmpty,
+                let workspace = workspaces.workspaces.first(where: { $0.id == session.workspaceId })
             {
                 ChatShell(
                     session: session, backend: backend, workspaces: workspaces, workspace: workspace,
@@ -95,7 +94,7 @@ struct SignedInView: View {
                 .id(workspace.id)
             } else {
                 WorkspacePicker(session: session, model: workspaces) { workspace in
-                    workspaceId = workspace.id
+                    session.workspaceId = workspace.id
                     picking = false
                 }
             }

@@ -29,13 +29,57 @@ final class SessionModel: ObservableObject {
     @Published private(set) var isRestoring = false
     /// An invitation link that arrived (deep link) and waits to be redeemed.
     @Published var pendingInvitation: String?
-    /// The name this account registers in the channels it joins or creates
-    /// (`set_profile`). Kept on the device, like the web app's `chat-username`.
-    @Published var displayName: String {
-        didSet { UserDefaults.standard.set(displayName, forKey: Self.displayNameKey) }
+    /// Your name in each workspace (org id → name), registered in the
+    /// channels you join or create there (`set_profile`). Asked once per
+    /// workspace, kept on the device, like the web app's `chat-username:<org>`.
+    @Published private(set) var names: [String: String]
+    /// The workspace open now.
+    @Published var workspaceId: String {
+        didSet { UserDefaults.standard.set(workspaceId, forKey: Self.workspaceKey) }
     }
 
-    private static let displayNameKey = "chat-username"
+    /// The name last chosen anywhere: what a new workspace's name step offers.
+    var lastUsedName: String {
+        get { UserDefaults.standard.string(forKey: Self.lastUsedKey) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastUsedKey) }
+    }
+
+    /// Your name in the open workspace.
+    var displayName: String {
+        get { name(in: workspaceId) }
+        set { setName(newValue, in: workspaceId) }
+    }
+
+    /// Your name in `workspace`, or "" before you chose one there.
+    func name(in workspace: String) -> String { names[workspace] ?? "" }
+
+    /// Name yourself in `workspace` (at most 50 characters).
+    func setName(_ name: String, in workspace: String) {
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50))
+        guard !trimmed.isEmpty, !workspace.isEmpty else { return }
+        names[workspace] = trimmed
+        UserDefaults.standard.set(trimmed, forKey: Self.nameKeyPrefix + workspace)
+        lastUsedName = trimmed
+    }
+
+    private static let lastUsedKey = "chat-username"
+    private static let nameKeyPrefix = "chat-username:"
+    private static let workspaceKey = "mero-chat:workspace"
+
+    private static func storedNames() -> [String: String] {
+        var out: [String: String] = [:]
+        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(nameKeyPrefix) {
+            if let name = value as? String, !name.isEmpty { out[String(key.dropFirst(nameKeyPrefix.count))] = name }
+        }
+        return out
+    }
+
+    private func forgetNames() {
+        for workspace in names.keys { UserDefaults.standard.removeObject(forKey: Self.nameKeyPrefix + workspace) }
+        names = [:]
+        UserDefaults.standard.removeObject(forKey: Self.lastUsedKey)
+    }
+
     private var lastKey = ""
     #if canImport(Combine)
     private var watching: AnyCancellable?
@@ -47,7 +91,8 @@ final class SessionModel: ObservableObject {
             ?? MeroClient(
                 config: AppConfig.providerConfig,
                 store: KeychainCloudSessionStore(service: AppConfig.keychainService))
-        displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
+        names = Self.storedNames()
+        workspaceId = UserDefaults.standard.string(forKey: Self.workspaceKey) ?? ""
         #if canImport(Combine)
         watching = self.client.objectWillChange.sink { [weak self] _ in
             Task { @MainActor in self?.rebuild() }
@@ -145,6 +190,8 @@ final class SessionModel: ObservableObject {
 
     func signOut() async {
         await client.logout()
+        // The next person on this phone is not offered these names.
+        forgetNames()
         rebuild()
     }
 
@@ -209,7 +256,10 @@ final class SessionModel: ObservableObject {
         if let cloud = client.cloud, let account = client.account {
             let app = CalimeroAppBackend(
                 client: cloud, account: account, packageName: ChatConstants.packageName,
-                packageVersion: client.config.packageVersion, passkey: client.passkeyForNode())
+                packageVersion: client.config.packageVersion,
+                // Invites and member changes are approved on Mero Chat's page,
+                // where the node takes this session's approvals from.
+                passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback))
             backend = CloudChatBackend(
                 app: app,
                 privateTeams: { org in
