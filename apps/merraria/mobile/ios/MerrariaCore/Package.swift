@@ -12,10 +12,9 @@ let package = Package(
         .library(name: "MerrariaCore", targets: ["MerrariaCore"]),
     ],
     dependencies: [
-        // swift-sdk v0.5.0 (Calimero 1.0). Keep it equal to the exactVersion
+        // swift-sdk v0.7.0 (Calimero 1.0). Keep it equal to the exactVersion
         // in ../project.yml.
-        // swift-sdk master after #90 (the generated API): exact: "0.7.0" once that is tagged.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "9210f657394831a392ed5c63e1b26ae46db832ce"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.7.0"),
     ],
     targets: [
         // Sources/MerrariaCore/Contract/MerrariaClient.swift is typed by hand from the component ABI

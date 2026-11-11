@@ -8,7 +8,7 @@
 # reader, comment threads, the view models) is the local SwiftPM package DocsCore/, which
 # `swift test --package-path DocsCore` builds and tests on macOS.
 #
-# The swift-sdk is pinned to its v0.5.0 release (`exactVersion`). Keep both
+# The swift-sdk is pinned to its v0.7.0 release (`exactVersion`). Keep both
 # pins (here and DocsCore/Package.swift) equal.
 name: MeroDocs
 
@@ -21,8 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    # swift-sdk master after #90 (the generated API): exactVersion 0.7.0 once that is tagged.
-    revision: 9210f657394831a392ed5c63e1b26ae46db832ce
+    exactVersion: 0.7.0
   DocsCore:
     path: DocsCore
 

@@ -23,7 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/calimero-network/swift-sdk",
       "state" : {
-        "revision" : "9210f657394831a392ed5c63e1b26ae46db832ce"
+        "revision" : "9210f657394831a392ed5c63e1b26ae46db832ce",
+        "version" : "0.7.0"
       }
     }
   ],
