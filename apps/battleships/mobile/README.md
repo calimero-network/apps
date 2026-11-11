@@ -7,7 +7,7 @@ Material Icons) and flows, and both run on **Calimero 1.0**.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml`, `ios/BattleshipsCore/Package.swift` and `Package.resolved` |
-| Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
+| Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
 
 Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
 To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).

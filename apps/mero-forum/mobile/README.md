@@ -7,7 +7,7 @@ icons (SF Symbols on iOS, Material Icons on Android) and flows.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0` (not on Maven Central), composite build |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `0.4.0` (not on Maven Central), composite build |
 
 The pins are SDK releases. To bump them, change `exactVersion` / `exact:` in
 `ios/project.yml` and `ios/ForumCore/Package.swift` (keep the two identical), and

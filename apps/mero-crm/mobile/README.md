@@ -8,7 +8,7 @@ Material Symbols on Android).
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build |
+| Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build |
 
 **The SDK pins** are set in `ios/project.yml` and
 `ios/Core/Package.swift` (keep them equal), and `android/kotlin-sdk.ref`.
