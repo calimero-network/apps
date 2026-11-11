@@ -48,7 +48,7 @@ export function presencePublisher(client: PresenceClient, app: string, onSent: (
     seq += 1;
     onSent();
     client.apps
-      .presencePublish({ app, seq, state: presenceState(encodeState(value)) as unknown as string })
+      .presencePublish({ app, seq, state: presenceState(encodeState(value)) })
       .catch(() => {
         /* a dropped frame is replaced 66 ms later */
       })
