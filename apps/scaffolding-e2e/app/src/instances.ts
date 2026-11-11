@@ -1,5 +1,6 @@
 import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  appTarget,
   createInviteStore,
   listAppInfos,
   targetKey,
@@ -36,8 +37,7 @@ export async function createInstance(
   shared: boolean,
 ): Promise<string> {
   const org = shared ? (await client.orgs.create({ name })).orgId : undefined;
-  const target = typeof source === "string" ? { bundle: source } : source;
-  const { appId } = await client.apps.create({ name, ...target, ...(org ? { org } : {}) });
+  const { appId } = await client.apps.create({ name, ...appTarget(source), ...(org ? { org } : {}) });
   return appId;
 }
 

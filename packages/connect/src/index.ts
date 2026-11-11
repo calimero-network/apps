@@ -76,6 +76,7 @@ export {
 export {
   CREATED_FOR,
   appFilter,
+  appTarget,
   listAppInfos,
   appKey,
   appTeamsLabel,

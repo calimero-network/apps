@@ -62,6 +62,14 @@ export function appFilter(source: AppSource): { bundle: string } | { package: st
 }
 
 /**
+ * What `client.apps.create` takes to make an instance of `source`: the dev
+ * bundle's hash, or the package (and the version, when it names one).
+ */
+export function appTarget(source: AppSource): { bundle: string } | { package: string; version?: string } {
+  return typeof source === "string" ? { bundle: source } : source;
+}
+
+/**
  * The app instances the account can see (`GET /apps`), of one package or
  * bundle when `filter` names one (an empty field filters nothing).
  */
