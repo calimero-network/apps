@@ -6,6 +6,7 @@ import { LoginRequired } from "@calimero-network/mero-js";
 
 import { blocks, type Blocks } from "./blocks";
 import type { GameEvent } from "./sync";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** How long to wait before re-opening a dropped event stream. */
 const RECONNECT_MS = 1500;
@@ -22,7 +23,7 @@ export class GameClient {
   private abort: AbortController | null = null;
 
   constructor(
-    private readonly client: Pick<CalimeroClient, "call" | "view" | "events">,
+    private readonly client: Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>,
     readonly appId: string,
     device: string,
     private readonly options: GameClientOptions = {},

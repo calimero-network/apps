@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, INIT_PARAMS, PARAMS, VIEWS, blocks, initArgs, playerId } from "../src/net/blocks";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 interface AbiMethod {
   kind: string;
@@ -63,7 +64,7 @@ describe("blocks(): the wire", () => {
   it("sends writes as calls with `now` as a decimal string and the device label", async () => {
     const { client, sent } = fakeClient({ setBlocks: 1 });
     const after = vi.fn();
-    const api = blocks(client, "app-1", "dev1", after);
+    const api = blocks(withRoutes(client), "app-1", "dev1", after);
     expect(await api.setBlocks([{ x: 1, y: 2, z: 3, b: 4 }], 1700000000.9)).toBe(1);
     await api.join("Alice", 1700000001);
     await api.heartbeat({ name: "Alice", x: 1, y: 2, z: 3, yaw: 0, pitch: 0, sel: 2 }, 1700000002);
@@ -84,7 +85,7 @@ describe("blocks(): the wire", () => {
 
   it("reads the meta's u64s as numbers, with the index it was read at", async () => {
     const { client, sent } = fakeClient({ worldMeta: { name: "w", seed: "4294967295", createdAt: "1700000000" } });
-    const read = await blocks(client, "a", "d").worldMeta();
+    const read = await blocks(withRoutes(client), "a", "d").worldMeta();
     expect(read).toEqual({ meta: { name: "w", seed: 4294967295, createdAt: 1700000000 }, index: 42 });
     expect(sent[0]).toEqual({ op: "view", method: "worldMeta", args: {} });
   });
@@ -98,7 +99,7 @@ describe("blocks(): the wire", () => {
       myAccount: "acc",
       getOverrides: { items: [{ k: "1,2,3", b: 4 }], next: null },
     });
-    const api = blocks(client, "a", "d");
+    const api = blocks(withRoutes(client), "a", "d");
     expect(await api.getPlayers(99)).toEqual([
       { id: "acc/d", name: "A", x: 1, y: 2, z: 3, yaw: 0.5, pitch: 0, sel: 1, online: true },
     ]);
@@ -117,7 +118,7 @@ describe("blocks(): the wire", () => {
       }),
       view: vi.fn(),
     };
-    await expect(blocks(client as never, "a", "d", after).leave(1)).rejects.toThrow("down");
+    await expect(blocks(withRoutes(client) as never, "a", "d", after).leave(1)).rejects.toThrow("down");
     expect(after).toHaveBeenCalledTimes(1);
   });
 });
@@ -138,7 +139,7 @@ describe("paged views", () => {
         return { index: 1, result: pages[cursor] };
       }),
     };
-    const entries = await blocks(client as never, "a", "d").getOverrides();
+    const entries = await blocks(withRoutes(client) as never, "a", "d").getOverrides();
     expect(entries.map((e) => e.b)).toEqual([1, 2, 3]);
     expect(sent).toEqual([
       { method: "getOverrides", args: {} },
@@ -157,7 +158,7 @@ describe("paged views", () => {
         return { index: 1, result: (args as { cursor?: string }).cursor ? { items: [row], next: null } : { items: [row], next: "p2" } };
       }),
     };
-    expect(await blocks(client as never, "a", "d").getPlayers(5)).toHaveLength(2);
+    expect(await blocks(withRoutes(client) as never, "a", "d").getPlayers(5)).toHaveLength(2);
     expect(seen).toEqual([{ now: "5" }, { now: "5", cursor: "p2" }]);
   });
 });

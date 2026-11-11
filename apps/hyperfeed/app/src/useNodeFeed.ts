@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, listAppInfos, type ClientRoutes } from "@calimero-apps/connect";
 import { useInstanceRelease } from "@calimero-apps/passkey";
 import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
 import type { LensView } from "./hyperfeedTypes";
@@ -100,11 +100,11 @@ function writePosition(account: string, app: string, index: number) {
  * answers it. Watching starts after it, so the first visit records what
  * happens from now on, not the app's whole history. Null when it has no such view.
  */
-export async function currentIndex(client: Pick<CalimeroClient, "appAbi" | "view">, app: string): Promise<number | null> {
-  const abi = (await client.appAbi(app)) as { methods?: Record<string, { kind?: string; params?: unknown[] }> };
+export async function currentIndex(client: ClientRoutes<{ apps: "abi" | "view" }>, app: string): Promise<number | null> {
+  const abi = (await client.apps.abi({ app })) as { methods?: Record<string, { kind?: string; params?: unknown[] }> };
   const probe = Object.entries(abi.methods ?? {}).find(([, m]) => m.kind === "view" && (m.params ?? []).length === 0);
   if (!probe) return null;
-  return (await client.view(app, probe[0], {})).index;
+  return (await client.apps.view({ app, method: probe[0], args: {} })).index;
 }
 
 /**
@@ -130,7 +130,11 @@ export function useNodeFeed(appId: string): NodeFeed {
     // you let into the feed, read them by id.
     const images: BlobStore = {
       upload: async (data) => {
-        const { blobId, size } = await client.uploadBlob(appId, new Uint8Array(await data.arrayBuffer()));
+        const { blobId, size } = await client.apps.blobUpload({
+          app: appId,
+          body: new Uint8Array(await data.arrayBuffer()),
+          contentType: 'application/octet-stream',
+        });
         return { blobId, size };
       },
       read: async (blobId) => new Blob([(await client.downloadBlob(appId, blobId)) as BlobPart]),
@@ -146,8 +150,7 @@ export function useNodeFeed(appId: string): NodeFeed {
     const stop = new AbortController();
     let from: number | null = null;
     void (async () => {
-      from = await client
-        .view(appId, "settings", {})
+      from = await client.apps.view({ app: appId, method: "settings", args: {} })
         .then((v) => v.index + 1)
         .catch(() => 0);
       await follow(
@@ -171,7 +174,7 @@ export function useNodeFeed(appId: string): NodeFeed {
   useEffect(() => {
     if (!client) return;
     let on = true;
-    client.listApps().then(
+    listAppInfos(client).then(
       (all) => {
         if (!on) return;
         setApps(all);

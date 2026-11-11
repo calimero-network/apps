@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import { useState } from "react";
 import {
   SessionStore,
@@ -17,6 +17,7 @@ import { StudioPage } from "./StudioPage";
 import { useScene } from "./scene";
 import { migrateStoredInvite, selectionKey } from "./scenes";
 import { APP, useSession, type SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 // The modeller itself is three.js and WebGL; these tests are about getting to it.
 vi.mock("./studio/Studio", () => ({
@@ -96,7 +97,7 @@ function deps(client: ReturnType<typeof fakeClient>, storage: KeyValueStorage): 
   return {
     env: DEV_ENV,
     storage,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

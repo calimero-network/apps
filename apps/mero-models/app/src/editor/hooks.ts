@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CalimeroClient, PresenceEntry } from "@calimero-network/mero-js";
+import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
 import { MeroModelsClient } from "../meroModels";
 import { useMaybeScene, useScene } from "../scene";
 import { memberColor } from "./model";
@@ -7,6 +7,7 @@ import { GUEST, useEditor } from "./store";
 import { BlobStore, clientTransport } from "./blobs";
 import { SceneSync, messageOf } from "./sync";
 import type { Peer } from "./viewport";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** How often to re-read the scene when no event arrived — one that landed while the stream reconnected. */
 const POLL_MS = 8_000;
@@ -52,7 +53,7 @@ export function useModelsClient(contextId: string): MeroModelsClient | null {
  * with a cheap view), so opening a scene does not replay its whole history.
  */
 function subscribeEvents(
-  client: Pick<CalimeroClient, "events" | "view">,
+  client: Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "view" }>,
   app: string,
   onEvent: () => void,
 ): () => void {
@@ -60,7 +61,7 @@ function subscribeEvents(
   void (async () => {
     for (let attempt = 0; !abort.signal.aborted; attempt += 1) {
       try {
-        const { index } = await client.view(app, "myRole", {});
+        const { index } = await client.apps.view({ app, method: "myRole", args: {} });
         for await (const _event of client.events(app, index, abort.signal)) onEvent();
       } catch {
         // Closed (sign-out, network): the poll covers the gap; retry a little later.
@@ -222,7 +223,9 @@ export function usePresence(contextId: string, name: string): {
       timer = null;
       last = Date.now();
       seq = Math.max(seq + 1, Date.now() * 1000);
-      void client.publishPresence(contextId, seq, encodeSlice(slice.current)).catch(() => undefined);
+      void client.apps
+        .presencePublish({ app: contextId, seq, state: presenceState(encodeSlice(slice.current)) as unknown as string })
+        .catch(() => undefined);
     };
     publish.current = () => {
       if (timer !== null) return;
@@ -235,7 +238,9 @@ export function usePresence(contextId: string, name: string): {
       if (timer !== null) window.clearTimeout(timer);
       publish.current = () => {};
       seq = Math.max(seq + 1, Date.now() * 1000);
-      void client.publishPresence(contextId, seq, null).catch(() => undefined);
+      void client.apps
+        .presencePublish({ app: contextId, seq, state: presenceState(null) as unknown as string })
+        .catch(() => undefined);
     };
   }, [scene.client, contextId]);
 

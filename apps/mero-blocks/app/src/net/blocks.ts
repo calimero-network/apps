@@ -8,9 +8,9 @@
 // `createdAt`, the counts in `worldStats`) travels as a decimal string; the
 // game keeps numbers.
 
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import type { Edit } from "../engine/world";
 import type { BlockEntry, RemotePlayer, Transform, WorldApi } from "./sync";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-blocks";
@@ -67,7 +67,7 @@ export interface Blocks extends WorldApi {
   myAccount(): Promise<string>;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /** One page of a paged view (`getOverrides`, `getPlayers`). */
 interface Page<T> {
@@ -93,14 +93,14 @@ export function initArgs(name: string, seed: number, nowSecs: number): Record<(t
 export function blocks(client: Transport, app: string, device: string, after: () => void = () => {}): Blocks {
   const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown>): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<{ result: T; index: number }> => {
     try {
-      const answer = await client.view(app, method, args);
+      const answer = await client.apps.view({ app, method, args });
       return { result: answer.result as T, index: answer.index };
     } finally {
       after();

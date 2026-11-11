@@ -1,9 +1,12 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  appTarget,
   createInviteStore,
   inviteLink,
+  listAppInfos,
   targetKey,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -20,9 +23,9 @@ import { APP } from "./session";
  */
 
 /** The tables the account reaches: of the dev bundle, or of the package. */
-export async function listTables(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listTables(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  const apps = await client.listApps(filter);
+  const apps = await listAppInfos(client, filter);
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
@@ -33,27 +36,33 @@ export async function listTables(client: Pick<CalimeroClient, "listApps">, sourc
  * the table's `createdAt`.
  */
 export async function createTable(
-  client: Pick<CalimeroClient, "createApp" | "createOrg">,
+  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
   source: AppSource,
   name: string,
   org?: string,
   now: number = Date.now(),
 ): Promise<{ appId: string; org: string }> {
-  const inOrg = org ?? (await client.createOrg(name));
-  const appId = await client.createApp(name, source, {
-    org: inOrg,
-    initArgs: { title: name, now: String(Math.floor(now)) },
-  });
+  const inOrg = org ?? (await client.orgs.create({ name })).orgId;
+  const appId = (
+    await client.apps.create({
+      name,
+      ...appTarget(source),
+      org: inOrg,
+      initArgs: { title: name, now: String(Math.floor(now)) },
+    })
+  ).appId;
   return { appId, org: inOrg };
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
 export function inviteToken(
-  client: Pick<CalimeroClient, "invite">,
+  client: ClientRoutes<{ orgs: "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  return client.invite(org, "member", passkey);
+  return client.orgs
+    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
+    .then((r) => r.token);
 }
 
 /**

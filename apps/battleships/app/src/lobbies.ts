@@ -1,8 +1,11 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import { passkeyConfirm, type AppInfo, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
+  appTarget,
   createInviteStore,
   inviteLink,
+  listAppInfos,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -19,9 +22,9 @@ import { APP } from './session';
  */
 
 /** The lobbies this account reaches: instances of the dev bundle, or of the package. */
-export async function listLobbies(client: Pick<CalimeroClient, 'listApps'>, source: AppSource): Promise<AppInfo[]> {
+export async function listLobbies(client: ClientRoutes<{ apps: 'list' }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
-  const apps = await client.listApps(filter);
+  const apps = await listAppInfos(client, filter);
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
@@ -30,12 +33,12 @@ export async function listLobbies(client: Pick<CalimeroClient, 'listApps'>, sour
  * invited, then the app instance in it.
  */
 export async function createLobby(
-  client: Pick<CalimeroClient, 'createApp' | 'createOrg'>,
+  client: ClientRoutes<{ apps: 'create'; orgs: 'create' }>,
   source: AppSource,
   name: string,
 ): Promise<{ appId: string; org: string }> {
-  const org = await client.createOrg(name);
-  const appId = await client.createApp(name, source, { org });
+  const org = (await client.orgs.create({ name })).orgId;
+  const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
   return { appId, org };
 }
 
@@ -53,8 +56,8 @@ const ROLE: Record<string, string> = { owner: 'Admin', admin: 'Admin', member: '
  * (org member metadata `{ name }`). Replaces v1's namespace member list and
  * `@calimero-apps/names`.
  */
-export async function orgMembers(client: Pick<CalimeroClient, 'getOrg'>, org: string): Promise<LobbyMember[]> {
-  const info = await client.getOrg(org);
+export async function orgMembers(client: ClientRoutes<{ orgs: 'get' }>, org: string): Promise<LobbyMember[]> {
+  const info = await client.orgs.get({ org });
   const members = (info.members ?? {}) as Record<string, string>;
   const metadata = (info.memberMetadata ?? {}) as Record<string, unknown>;
   return Object.entries(members)
@@ -70,22 +73,24 @@ export async function orgMembers(client: Pick<CalimeroClient, 'getOrg'>, org: st
 }
 
 /** Set the caller's display name in the lobby's organization. */
-export function saveMemberName(
-  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+export async function saveMemberName(
+  client: ClientRoutes<{ orgs: 'memberMetadata' }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  return client.setMemberMetadata(org, account, { name });
+  await client.orgs.memberMetadata({ org, account, metadata: { name } });
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
 export function inviteToken(
-  client: Pick<CalimeroClient, 'invite'>,
+  client: ClientRoutes<{ orgs: 'inviteCreate' }>,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  return client.invite(org, 'member', passkey);
+  return client.orgs
+    .inviteCreate({ org, role: 'member', teams: [] }, { confirm: passkeyConfirm(passkey) })
+    .then((r) => r.token);
 }
 
 /**

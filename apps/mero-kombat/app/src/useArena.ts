@@ -5,6 +5,7 @@ import { presencePublisher, subscribePresence } from "./presence";
 import type { ArenaState, Slice } from "./game/controller";
 import type { MoveKind } from "./game/sim";
 import type { FighterId } from "./game/fighters";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 const FIGHTER_KEY = "mero-kombat:fighter";
 
@@ -29,7 +30,8 @@ export const rememberFighter = (id: FighterId) => write(FIGHTER_KEY, id);
 
 /** Where an arena lives: the signed-in client and the app instance. */
 export interface ArenaConn {
-  client: Pick<CalimeroClient, "call" | "view" | "events" | "publishPresence" | "presenceStream">;
+  client: Pick<CalimeroClient, "events" | "presenceStream"> &
+    ClientRoutes<{ apps: "call" | "view" | "presencePublish" }>;
   appId: string;
   /** Runs after every request (keeps the stored session current). */
   after?: () => void;

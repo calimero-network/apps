@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GameClient } from "../src/net/client";
 import type { GameEvent } from "../src/net/events";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 type Ev = { id: string; kind: string; data: unknown };
 
@@ -21,7 +22,7 @@ function scripted(batches: Ev[][]) {
     })();
   });
   const view = vi.fn().mockResolvedValue({ index: 10, result: { name: "w", seed: 1, createdAt: 2 } });
-  return { client: { events, view, call: vi.fn() }, froms };
+  return { client: withRoutes({ events, view, call: vi.fn() }), froms };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

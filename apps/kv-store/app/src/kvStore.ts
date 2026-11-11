@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.kv-store";
@@ -33,7 +33,7 @@ export interface KvStore {
   clear(): Promise<null>;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * The store at instance `app` through `client`. `after` runs after every request
@@ -42,14 +42,14 @@ type Transport = Pick<CalimeroClient, "call" | "view">;
 export function kvStore(client: Transport, app: string, after: () => void = () => {}): KvStore {
   const call = async <T>(method: (typeof CALLS)[number], args: Record<string, string> = {}): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, string> = {}): Promise<T> => {
     try {
-      return (await client.view(app, method, args)).result as T;
+      return (await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

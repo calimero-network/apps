@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
+import { CalimeroError, type AppInfo, type CalimeroSession } from '@calimero-network/mero-js';
 import {
   SessionStore,
   createInviteStore,
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { invites as appInvites, migrateStoredInvite } from './lobbies';
 import { APP, type SessionDeps } from './session';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -110,7 +111,7 @@ function fakeClient(apps: AppInfo[] = []) {
 function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps['env'] = DEV_ENV): SessionDeps {
   return {
     env,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
 }

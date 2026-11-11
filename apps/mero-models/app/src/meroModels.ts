@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-models";
@@ -167,7 +167,7 @@ export interface MemberView {
 }
 
 /** What the adapter needs of a signed-in `CalimeroClient`. */
-export type MethodClient = Pick<CalimeroClient, "call" | "view">;
+export type MethodClient = ClientRoutes<{ apps: "call" | "view" }>;
 
 /** A u64 parameter: a canonical decimal string (D20). */
 function u64(n: number): string {
@@ -190,7 +190,7 @@ export class MeroModelsClient {
 
   private async call<T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> {
     try {
-      return (await this.client.call(this.appId, method, args)).result as T;
+      return (await this.client.apps.call({ app: this.appId, method, args })).result as T;
     } finally {
       this.after();
     }
@@ -198,7 +198,7 @@ export class MeroModelsClient {
 
   private async view<T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> {
     try {
-      return (await this.client.view(this.appId, method, args)).result as T;
+      return (await this.client.apps.view({ app: this.appId, method, args })).result as T;
     } finally {
       this.after();
     }

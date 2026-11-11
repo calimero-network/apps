@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HyperfeedClient, U64_PARAMS, VIEWS, calimeroTransport, toWire } from "./hyperfeed";
 import { otherApps, wireArgs } from "./otherApps";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ABI = resolve(HERE, "..", "..", "logic", "res", "abi.json");
@@ -60,7 +61,7 @@ describe("the wire", () => {
         return { index: 1, result: { counts: {} } };
       },
     };
-    const hf = new HyperfeedClient(calimeroTransport(client), "feed-1");
+    const hf = new HyperfeedClient(calimeroTransport(withRoutes(client)), "feed-1");
     expect(await hf.feed({ filter: "all", app_key: "chat", limit: 1, before: 5 })).toEqual({ counts: {} });
     expect(await hf.archive({ chains: ["c"], until: 9 })).toBe(3);
     expect(seen).toEqual([
@@ -71,13 +72,13 @@ describe("the wire", () => {
 
   it("calls another app by its v1 method name in camelCase", async () => {
     const seen: string[] = [];
-    const apps = otherApps({
+    const apps = otherApps(withRoutes({
       call: async (app: string, method: string, args: unknown) => {
         seen.push(`${app} ${method} ${JSON.stringify(args)}`);
         return { index: 1, result: null, events: [] };
       },
       view: async () => ({ index: 1, result: null }),
-    });
+    }));
     await apps.call("chat-1", "send_message", { message_id: "m", text: "hi" });
     expect(seen).toEqual(['chat-1 sendMessage {"messageId":"m","text":"hi"}']);
     expect(wireArgs({ a_b: { c_d: 1 } })).toEqual({ aB: { c_d: 1 } });

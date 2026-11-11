@@ -1,7 +1,7 @@
 import { timeLabel } from "./format";
 
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import type { AppSource } from "@calimero-apps/connect";
+import type { AppInfo } from "@calimero-network/mero-js";
+import { appTarget, listAppInfos, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Your feeds on the cluster, told apart: by name, and by how much each holds
@@ -81,9 +81,9 @@ export function feedLabel(name: string | null | undefined, id: string): string {
 }
 
 /** The feeds this account reaches: instances of the dev bundle, or of the package. */
-export async function listFeeds(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listFeeds(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  const apps = await client.listApps(filter);
+  const apps = await listAppInfos(client, filter);
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
@@ -92,14 +92,14 @@ export async function listFeeds(client: Pick<CalimeroClient, "listApps">, source
  * agents are invited), then the instance in it. Answers its app id.
  */
 export async function createFeed(
-  client: Pick<CalimeroClient, "createApp" | "createOrg">,
+  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
   source: AppSource,
   name: string,
 ): Promise<string> {
   const problem = nameProblem(name);
   if (problem) throw new Error(problem);
-  const org = await client.createOrg(name.trim());
-  return client.createApp(name.trim(), source, { org });
+  const org = (await client.orgs.create({ name: name.trim() })).orgId;
+  return (await client.apps.create({ name: name.trim(), ...appTarget(source), org })).appId;
 }
 
 /**
@@ -107,20 +107,20 @@ export async function createFeed(
  * was made in stays (deleting one is a passkey step-up of its own, from the
  * cluster's console).
  */
-export async function deleteFeed(client: Pick<CalimeroClient, "deleteApp">, app: string): Promise<void> {
-  await client.deleteApp(app);
+export async function deleteFeed(client: ClientRoutes<{ apps: "delete" }>, app: string): Promise<void> {
+  await client.apps.delete({ app });
 }
 
 /** Every feed's name: the one set in its metadata (a rename), else the one it was created with. */
 export async function readFeedNames(
-  client: Pick<CalimeroClient, "getApp">,
+  client: ClientRoutes<{ apps: "get" }>,
   feeds: Pick<AppInfo, "appId" | "name">[],
 ): Promise<Record<string, string | null>> {
   const out: Record<string, string | null> = {};
   await Promise.all(
     feeds.map(async (f) => {
-      const meta = await client
-        .getApp(f.appId)
+      const meta = await client.apps
+        .get({ app: f.appId })
         .then((a) => (a.metadata ?? null) as { name?: unknown } | null)
         .catch(() => null);
       const renamed = typeof meta?.name === "string" ? meta.name.trim() : "";
@@ -132,15 +132,18 @@ export async function readFeedNames(
 
 /** Rename a feed: its metadata's `name`, keeping whatever else the metadata holds. */
 export async function renameFeed(
-  client: Pick<CalimeroClient, "getApp" | "setAppMetadata">,
+  client: ClientRoutes<{ apps: "get" | "metadata" }>,
   app: string,
   name: string,
 ): Promise<void> {
   const problem = nameProblem(name);
   if (problem) throw new Error(problem);
-  const meta = await client
-    .getApp(app)
+  const meta = await client.apps
+    .get({ app })
     .then((a) => (a.metadata ?? {}) as Record<string, unknown>)
     .catch(() => ({}));
-  await client.setAppMetadata(app, { ...(typeof meta === "object" && meta ? meta : {}), name: name.trim() });
+  await client.apps.metadata({
+    app,
+    metadata: { ...(typeof meta === "object" && meta ? meta : {}), name: name.trim() },
+  });
 }
