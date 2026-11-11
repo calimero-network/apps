@@ -34,11 +34,11 @@ public final class CalimeroPresenceChannel: PresenceChannel, @unchecked Sendable
     }
 
     public func publish(_ sliceJSON: String) async throws {
-        try await client.publishPresence(contextId, seq: nextSeq(), state: Data(sliceJSON.utf8))
+        _ = try await client.apps.presencePublish(app: contextId, seq: nextSeq(), state: Hex.encode(Data(sliceJSON.utf8)))
     }
 
     public func retract() async {
-        try? await client.publishPresence(contextId, seq: nextSeq(), state: nil)
+        _ = try? await client.apps.presencePublish(app: contextId, seq: nextSeq(), state: nil)
     }
 
     public func slices() -> AsyncThrowingStream<String, Error> {

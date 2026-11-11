@@ -77,18 +77,33 @@ public struct ClientSignAdmin: SignAdmin {
 
     public func instances() async throws -> [SignInstance] {
         let client = try signedIn()
-        let apps =
-            isBundle
-            ? try await client.listApps(bundle: applicationId) : try await client.listApps(package: applicationId)
+        let bundle: String? = isBundle ? applicationId : nil
+        let package: String? = isBundle ? nil : applicationId
+        let apps = try await client.answer(as: AppListing.self) {
+            try await client.apps.list(package: package, bundle: bundle)
+        }.apps
         return apps.map { SignInstance(appId: $0.appId, name: $0.name, owner: $0.owner, org: $0.org) }
     }
 
     public func createInstance(name: String, org: String?) async throws -> String {
-        let source: AppSource = isBundle ? .bundle(applicationId) : .package(applicationId)
-        return try await signedIn().createApp(name, bundle: source, org: org)
+        let client = try signedIn()
+        let bundle: String? = isBundle ? applicationId : nil
+        let package: String? = isBundle ? nil : applicationId
+        let created = try await client.answerJSON {
+            try await client.apps.create(name: name, bundle: bundle, package: package, org: org)
+        }
+        guard let appId = created["appId"]?.stringValue else {
+            throw SignModelError.message("The cluster created no app.")
+        }
+        return appId
     }
 
     public func memberName(namespaceId: String, account: String) async throws -> String? {
         try await backend.listMembers(groupId: namespaceId).first { SignIds.same($0.identity, account) }?.name
     }
+}
+
+/// `GET /apps`' answer, read as MeroKit's ``AppInfo``.
+private struct AppListing: Decodable {
+    let apps: [AppInfo]
 }
