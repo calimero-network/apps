@@ -2,6 +2,7 @@ package network.calimero.kombat.app
 
 import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CloudEvent
+import com.calimero.mero.Explicit
 import com.calimero.mero.crypto.Hex
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -41,10 +42,13 @@ class CalimeroPresenceChannel(
 ) : PresenceChannel {
     private val seq = AtomicLong(0)
 
-    override suspend fun publish(sliceJson: String) = client.publishPresence(contextId, seq.incrementAndGet(), sliceJson.encodeToByteArray())
+    override suspend fun publish(sliceJson: String) {
+        client.apps.presencePublish(app = contextId, seq = seq.incrementAndGet(), state = Explicit(Hex.encode(sliceJson.encodeToByteArray())))
+    }
 
+    /** `Explicit(null)` sends `"state": null`, which retracts this device's entry. */
     override suspend fun retract() {
-        runCatching { client.publishPresence(contextId, seq.incrementAndGet(), null) }
+        runCatching { client.apps.presencePublish(app = contextId, seq = seq.incrementAndGet(), state = Explicit(null)) }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

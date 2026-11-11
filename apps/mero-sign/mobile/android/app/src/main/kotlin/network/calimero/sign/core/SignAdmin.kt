@@ -1,6 +1,5 @@
 package network.calimero.sign.core
 
-import com.calimero.mero.AppSource
 import com.calimero.mero.CalimeroClient
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.crypto.Hex
@@ -78,14 +77,18 @@ class ClientSignAdmin(
     ): ByteArray = signedIn().blobContent(contextId, blobId).data
 
     override suspend fun instances(): List<SignInstance> {
-        val apps = if (isBundle) signedIn().listApps(bundle = applicationId) else signedIn().listApps(pkg = applicationId)
-        return apps.map { SignInstance(it.appId, it.name, it.owner, it.org) }
+        val apps = if (isBundle) signedIn().apps.list(bundle = applicationId) else signedIn().apps.list(`package` = applicationId)
+        return apps.apps.map { SignInstance(it.appId, it.name, it.owner, it.org) }
     }
 
     override suspend fun createInstance(
         name: String,
         org: String?,
-    ): String = signedIn().createApp(name, if (isBundle) AppSource.Bundle(applicationId) else AppSource.Package(applicationId), org)
+    ): String =
+        signedIn()
+            .apps
+            .create(name = name, bundle = applicationId.takeIf { isBundle }, `package` = applicationId.takeUnless { isBundle }, org = org)
+            .appId
 
     override suspend fun memberName(
         namespaceId: String,

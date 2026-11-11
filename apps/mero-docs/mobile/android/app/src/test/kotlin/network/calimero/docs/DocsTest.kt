@@ -4,9 +4,10 @@ import com.calimero.mero.AppError
 import com.calimero.mero.CalimeroError
 import com.calimero.mero.ConfirmCancelled
 import com.calimero.mero.LoginRequired
-import com.calimero.mero.OrgInfo
-import com.calimero.mero.TeamInfo
 import com.calimero.mero.WrongNode
+import com.calimero.mero.api.models.Org
+import com.calimero.mero.api.models.Team
+import com.calimero.mero.api.models.TeamJoin
 import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.test.runTest
@@ -358,23 +359,24 @@ class WireTest {
 
     @Test fun foldersComeFromTheOrgsTeams() {
         val org =
-            OrgInfo(
-                raw = JsonObject(emptyMap()),
+            Org(
                 orgId = "org1",
                 name = "Acme",
                 members = emptyMap(),
                 teams =
                     mapOf(
-                        "t-product" to TeamInfo("t-product", "Product", null, "everyone", metadata = meta("docsApp" to "app-product", "color" to "blue")),
-                        "t-specs" to TeamInfo("t-specs", "Specs", "t-product", "invite", metadata = meta("docsApp" to "app-specs")),
+                        "t-product" to team("t-product", "Product", null, TeamJoin.EVERYONE, meta("docsApp" to "app-product", "color" to "blue")),
+                        "t-specs" to team("t-specs", "Specs", "t-product", TeamJoin.INVITE, meta("docsApp" to "app-specs")),
                         // Its parent is a team the caller does not see: it sits at the top.
-                        "t-shared" to TeamInfo("t-shared", "Board", "t-hidden", "invite", metadata = meta()),
+                        "t-shared" to team("t-shared", "Board", "t-hidden", TeamJoin.INVITE, meta()),
                     ),
+                defaultCapabilities = 0,
+                capabilities = emptyMap(),
+                approvedReleases = emptyList(),
+                outboundApprovals = emptyMap(),
                 metadata = JsonObject(emptyMap()),
                 memberMetadata = emptyMap(),
-                releaseApprovers = emptyList(),
-                publishes = emptyList(),
-                newWorkStopped = null,
+                upgradeRuns = emptyMap(),
             )
         val folders = DocsDirectory.folders(org)
         assertEquals(listOf("t-product", "t-shared", "t-specs"), folders.map { it.id })
@@ -424,4 +426,23 @@ class WireTest {
     }
 
     private fun meta(vararg pairs: Pair<String, String>) = JsonObject(pairs.associate { it.first to JsonPrimitive(it.second) })
+
+    /** A team as `orgs.get` answers it. */
+    private fun team(
+        id: String,
+        name: String,
+        parent: String?,
+        join: TeamJoin,
+        metadata: JsonObject,
+    ) = Team(
+        teamId = id,
+        name = name,
+        parent = parent,
+        join = join,
+        members = emptyMap(),
+        readOnly = emptyList(),
+        capabilities = emptyMap(),
+        metadata = metadata,
+        removed = emptyList(),
+    )
 }
