@@ -2,6 +2,8 @@ package network.calimero.stream.core
 
 import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CloudEvent
+import com.calimero.mero.Explicit
+import com.calimero.mero.crypto.Hex
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapConcat
@@ -45,7 +47,7 @@ interface MediaChannel {
 }
 
 /**
- * [MediaChannel] over a Calimero 1.0 app instance's presence ([CalimeroClient.publishPresence] /
+ * [MediaChannel] over a Calimero 1.0 app instance's presence (`client.apps.presencePublish` /
  * [CalimeroClient.presenceStream]). One entry per account and device: newest `seq` wins, an entry
  * not refreshed within 7 s is dropped, and state is at most 4 KiB, which [LiveFrames] fragments to.
  * (Identical to the iOS `CalimeroMediaChannel`.)
@@ -68,10 +70,13 @@ class CalimeroMediaChannel(
     override suspend fun publish(
         contextId: String,
         slice: ByteArray,
-    ) = client.publishPresence(contextId, nextSeq(), slice)
+    ) {
+        client.apps.presencePublish(app = contextId, seq = nextSeq(), state = Explicit(Hex.encode(slice)))
+    }
 
+    /** `Explicit(null)` sends `"state": null`, which retracts this device's entry. */
     override suspend fun retract(contextId: String) {
-        runCatching { client.publishPresence(contextId, nextSeq(), null) }
+        runCatching { client.apps.presencePublish(app = contextId, seq = nextSeq(), state = Explicit(null)) }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

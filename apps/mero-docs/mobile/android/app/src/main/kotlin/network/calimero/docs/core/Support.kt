@@ -6,12 +6,12 @@ import com.calimero.mero.ConfirmCancelled
 import com.calimero.mero.ConsentStale
 import com.calimero.mero.LoginRequired
 import com.calimero.mero.NotFound
-import com.calimero.mero.OrgInfo
 import com.calimero.mero.PasskeyCancelled
 import com.calimero.mero.ReleaseDeadlineError
-import com.calimero.mero.TeamInfo
 import com.calimero.mero.UnavailableError
 import com.calimero.mero.WrongNode
+import com.calimero.mero.api.models.Org
+import com.calimero.mero.api.models.Team
 import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.app.CalimeroAppBackend
 import com.calimero.mero.app.ContextContractCalling
@@ -77,7 +77,7 @@ class DocsDirectory(
     /** Every folder of [workspaceId] this account sees. */
     suspend fun folders(workspaceId: String): List<Folder> {
         val cloud = backend as? CalimeroAppBackend ?: return walk(workspaceId)
-        return folders(cloud.client.getOrg(workspaceId))
+        return folders(cloud.client.orgs.get(org = workspaceId))
     }
 
     /** The docs instance of one folder, when a link did not carry it. */
@@ -86,10 +86,8 @@ class DocsDirectory(
         folderId: String,
     ): String? {
         val cloud = backend as? CalimeroAppBackend ?: return backend.listContexts(folderId).firstOrNull()
-        return cloud.client
-            .getOrg(workspaceId)
-            .teams[folderId]
-            ?.let(::docsApp)
+        val org = cloud.client.orgs.get(org = workspaceId)
+        return org.teams[folderId]?.let(::docsApp)
     }
 
     private suspend fun walk(workspaceId: String): List<Folder> =
@@ -124,15 +122,15 @@ class DocsDirectory(
         const val MAX_DEPTH = 8
         private const val UNTITLED = "Untitled folder"
 
-        /** The folders of one org snapshot: a team whose parent the caller cannot see sits at the top. */
-        fun folders(org: OrgInfo): List<Folder> =
+        /** The folders of one org snapshot (`orgs.get`): a team whose parent the caller cannot see sits at the top. */
+        fun folders(org: Org): List<Folder> =
             org.teams.values
                 .map { team ->
                     val parent = team.parent?.takeIf { org.teams.containsKey(it) }
                     Folder(team.teamId, team.name.trim().ifEmpty { UNTITLED }, parent, docsApp(team))
                 }.sortedBy { it.id }
 
-        fun docsApp(team: TeamInfo): String? =
+        fun docsApp(team: Team): String? =
             ((team.metadata as? JsonObject)?.get(DOCS_APP_KEY) as? JsonPrimitive)
                 ?.takeIf { it.isString }
                 ?.content

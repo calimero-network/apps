@@ -237,7 +237,7 @@ class SignViewModel(
                 } else {
                     val started = ConsentLauncher.request(context, s.client, build(BuildConfig.CONSENT_CALLBACK_URL), confirm)
                     s.consentResult.value?.takeIf { it.requestId == started.requestId }
-                        ?: runCatching<ConsentResult> { s.client.consentResult(started.requestId) }.getOrNull()
+                        ?: runCatching<ConsentResult> { s.client.fetchConsentResult(started.requestId) }.getOrNull()
                 }
             },
         )
@@ -377,3 +377,7 @@ class PrefsPrivateContextCache(
         account: String,
     ) = prefs.edit().putString("privateContext.$account", contextId).apply()
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }
