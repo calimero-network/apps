@@ -346,11 +346,13 @@ struct WorkspacePicker: View {
         step = next
     }
 
+    /// Switching never asks for a name: it is asked when you create or join a
+    /// workspace. One without a name saved on this phone takes the name you
+    /// last used (your profile in its channels still wins).
     private func enter(_ workspace: Workspace) {
-        if session.name(in: workspace.id).isEmpty {
-            go(.name(workspace))
-        } else {
-            onEnter(workspace)
+        if session.name(in: workspace.id).isEmpty, !session.lastUsedName.isEmpty {
+            session.setName(session.lastUsedName, in: workspace.id)
         }
+        onEnter(workspace)
     }
 }

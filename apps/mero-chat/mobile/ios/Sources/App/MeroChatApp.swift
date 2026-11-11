@@ -83,8 +83,8 @@ struct SignedInView: View {
 
     var body: some View {
         Group {
-            // A workspace is entered once you have a name in it (asked per workspace).
-            if !picking, !session.name(in: session.workspaceId).isEmpty,
+            // Names are asked on create and join only, never on entering.
+            if !picking,
                 let workspace = workspaces.workspaces.first(where: { $0.id == session.workspaceId })
             {
                 ChatShell(
