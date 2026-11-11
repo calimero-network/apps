@@ -574,6 +574,16 @@ export function withRoutes<T extends object>(fake: T): T & CalimeroClient {
   const own = fake as Record<string, unknown>;
   for (const [group, method, wrapper, args, answer] of ROUTES) {
     const call = async (a: Args = {}, o?: Opts) => {
+      // A team's default capabilities reach the fake's `setTeamDefaultCapabilities`, when it has one.
+      if (method === "capabilities" && a.team && !a.account && typeof own.setTeamDefaultCapabilities === "function") {
+        return (own.setTeamDefaultCapabilities as (...x: unknown[]) => unknown).apply(fake, [a.org, a.team, a.capabilities, o]);
+      }
+      // A confirmed contract call reaches the fake's `callConfirmed`, when it has one.
+      if (method === "call" && o?.confirm && typeof own.callConfirmed === "function") {
+        const given = [a.app, a.method, a.args, o, a.idempotencyKey];
+        while (given.length > 0 && given[given.length - 1] === undefined) given.pop();
+        return (own.callConfirmed as (...x: unknown[]) => unknown).apply(fake, given);
+      }
       // Trailing arguments the wrapper was not given are left off, as a caller left them.
       const given = args(a, o);
       while (given.length > 0 && given[given.length - 1] === undefined) given.pop();
@@ -592,7 +602,10 @@ export function withRoutes<T extends object>(fake: T): T & CalimeroClient {
     Object.defineProperty(target, method, {
       configurable: true,
       enumerable: true,
-      get: () => (typeof own[wrapper] === "function" ? call : undefined),
+      get: () => {
+        const alt = method === "capabilities" ? "setTeamDefaultCapabilities" : method === "call" ? "callConfirmed" : null;
+        return typeof own[wrapper] === "function" || (alt && typeof own[alt] === "function") ? call : undefined;
+      },
     });
   }
   return fake as T & CalimeroClient;
