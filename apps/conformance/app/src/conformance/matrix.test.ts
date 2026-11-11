@@ -6,6 +6,8 @@ import { runMatrix } from "./matrix";
 import type { Row } from "./types";
 
 /** A client every request of which the node refuses, by name. */
+const GROUPS = new Set(["apps", "auth", "consent", "deployments", "ops", "orgs", "packages", "public"]);
+
 function refusingClient(): never {
   const refuse = () => Promise.reject(new CalimeroError(503, "UNAVAILABLE", "no cluster"));
   return new Proxy(
@@ -21,6 +23,8 @@ function refusingClient(): never {
           };
         }
         if (prop === "useApiKey" || prop === "useSession") return () => {};
+        // The generated method groups: every method refuses too.
+        if (typeof prop === "string" && GROUPS.has(prop)) return new Proxy({}, { get: () => refuse });
         return refuse;
       },
     },

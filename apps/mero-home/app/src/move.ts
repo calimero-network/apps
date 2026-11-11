@@ -12,8 +12,8 @@
  * route is not there), and Home hides both "Move to another organization" and
  * "Merge organizations" ({@link movesSupported}).
  */
-import { describeError, type MyOrg } from "@calimero-apps/connect";
-import type { CalimeroClient, OrgInvite, PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes, type MyOrg } from "@calimero-apps/connect";
+import { passkeyConfirm, type CalimeroClient, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
 
 import { peopleOf, type Person, type Role } from "./home";
 
@@ -26,9 +26,9 @@ export const MOVE_PROBE = "mero-home-move-probe";
  * app), one without it a bare `404` (or `405`). Anything that is not an API
  * answer (the node unreachable) reads as no, so nothing is offered that fails.
  */
-export async function movesSupported(client: Pick<CalimeroClient, "post">): Promise<boolean> {
+export async function movesSupported(client: ClientRoutes<{ apps: "move" }>): Promise<boolean> {
   try {
-    await client.post(`apps/${MOVE_PROBE}/move`, { toOrg: "" });
+    await client.apps.move({ app: MOVE_PROBE, toOrg: "" });
     return true;
   } catch (e) {
     const { status, code } = (e ?? {}) as { status?: unknown; code?: unknown };
@@ -53,22 +53,15 @@ export interface MoveResult {
   revokedInvites: number;
 }
 
-/**
- * Move `app` to `toOrg`, approved with `passkey`. Through `postConfirmed`
- * rather than mero-js's `moveApp`, which the pinned mero-js does not have yet.
- */
-export function moveApp(
-  client: Pick<CalimeroClient, "postConfirmed">,
+/** Move `app` to `toOrg`, approved with `passkey`. */
+export async function moveApp(
+  client: ClientRoutes<{ apps: "move" }>,
   app: string,
   toOrg: string,
   bringMembers: boolean,
   passkey: PasskeyProvider,
 ): Promise<MoveResult> {
-  return client.postConfirmed<MoveResult>(
-    `apps/${encodeURIComponent(app)}/move`,
-    { toOrg, bringMembers },
-    passkey,
-  );
+  return await client.apps.move({ app, toOrg, bringMembers }, { confirm: passkeyConfirm(passkey) });
 }
 
 function administers(o: MyOrg): boolean {
@@ -107,14 +100,18 @@ export interface MergePlan {
  * invites. Invites the caller may not list read as none.
  */
 export async function loadMergePlan(
-  client: Pick<CalimeroClient, "getOrg" | "appsReportAll" | "listInvites">,
+  client: Pick<CalimeroClient, "appsReportAll"> & ClientRoutes<{ orgs: "get" | "inviteList" }>,
   source: string,
   account: string,
 ): Promise<MergePlan> {
   const [info, report, invites] = await Promise.all([
-    client.getOrg(source),
+    client.orgs.get({ org: source }),
     client.appsReportAll(source),
-    client.listInvites(source).catch(() => [] as OrgInvite[]),
+    client.orgs
+      .inviteList({ org: source })
+      // The document lets an invite carry the `owner` role; mero-js's `OrgInvite` does not.
+      .then((r) => r.invites as OrgInvite[])
+      .catch(() => [] as OrgInvite[]),
   ]);
   const people = peopleOf(info);
   return {
@@ -140,7 +137,7 @@ export type MoveOutcome = MergeApp & ({ ok: true; result: MoveResult } | { ok: f
  * the target, an app on a sub-team) is that app's outcome; the rest go on.
  */
 export async function moveEvery(
-  client: Pick<CalimeroClient, "postConfirmed">,
+  client: ClientRoutes<{ apps: "move" }>,
   plan: Pick<MergePlan, "apps">,
   target: string,
   bringMembers: boolean,
