@@ -179,7 +179,7 @@ export default function TeamCalendarsPage() {
     setMenuOpenId(null);
     setBusyId(contextId);
     try {
-      await client.deleteApp(contextId);
+      await client.apps.delete({ app: contextId });
       clearStoredCalendarName(contextId);
       setCalendars((prev) => prev.filter((c) => c.contextId !== contextId));
       forgetCalendar(targetKey, teamId, contextId);

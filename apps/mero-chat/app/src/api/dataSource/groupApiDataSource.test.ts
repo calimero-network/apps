@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A Calimero 1.0 cluster in memory: one org, the chat instances in it.
-const h = vi.hoisted(() => {
+const h = await vi.hoisted(async () => {
   const state = {
     orgs: new Map<string, Record<string, unknown>>(),
     apps: new Map<string, Record<string, unknown>>(),
     seq: 0,
   };
-  const client = {
+  const client = (await import("@calimero-apps/connect/testing")).withRoutes({
     me: vi.fn(async () => ({
       orgs: [...state.orgs.values()].map((o) => ({ orgId: o.orgId, name: o.name, role: (o.members as Record<string, string>)["acct-me"] })),
     })),
@@ -57,7 +57,7 @@ const h = vi.hoisted(() => {
     removeMember: vi.fn(async () => ({})),
     deleteOrg: vi.fn(async () => {}),
     deleteApp: vi.fn(async () => {}),
-  };
+  });
   return { state, client };
 });
 
@@ -89,7 +89,7 @@ describe("a workspace is an org", () => {
   it("is created with the member capabilities v1 gave a namespace", async () => {
     const res = await api.createGroup({ applicationId: "x", name: "Team" });
     expect(res.data).toEqual({ groupId: "org-1" });
-    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", DEFAULT_MEMBER_CAPABILITIES, expect.anything(), {});
+    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", DEFAULT_MEMBER_CAPABILITIES, expect.anything());
   });
 
   it("lists the orgs the account is in that hold chat", async () => {

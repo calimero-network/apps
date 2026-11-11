@@ -187,7 +187,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token)) ?? invite.org;
+      const org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token })) ?? invite.org;
       invites.drop();
       land(invite, org, invite);
     } catch (e) {

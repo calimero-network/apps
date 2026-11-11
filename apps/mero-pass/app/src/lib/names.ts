@@ -3,9 +3,9 @@
 // reads v1 namespace metadata.
 
 import { useCallback, useEffect, useState } from 'react';
-import type { CalimeroClient } from '@calimero-network/mero-js';
 
 import { memberName, readOrg } from './vaults';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 /** `abcdef…7890` for a long id; short ids as they are; `unknown` for none. */
 export function shortAccount(
@@ -22,7 +22,7 @@ export function shortAccount(
 
 /** Every name set in `org`, re-read on `refresh`. */
 export function useMemberNames(
-  client: Pick<CalimeroClient, 'getOrg'> | null,
+  client: ClientRoutes<{ orgs: 'get' }> | null,
   org: string | null,
 ): { nameOf: (account: string) => string | undefined; refresh: () => void } {
   const [names, setNames] = useState<Map<string, string>>(new Map());
@@ -57,10 +57,14 @@ export function useMemberNames(
 
 /** Set the name `account` shows in `org`. */
 export async function publishMemberName(
-  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+  client: ClientRoutes<{ orgs: 'memberMetadata' }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.setMemberMetadata(org, account, { name: name.trim() });
+  await client.orgs.memberMetadata({
+    org,
+    account,
+    metadata: { name: name.trim() },
+  });
 }

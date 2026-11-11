@@ -41,6 +41,8 @@
  *              uninstallPackage, deleteOrg, signOut, signOutEverywhere
  */
 import {
+  passkeyConfirm,
+  presenceState,
   ORG_CAPABILITIES,
   orgCapabilities,
   type CalimeroClient,
@@ -52,6 +54,7 @@ import { OK, appError, assert, check, eventually as waitFor, need, short, sleep,
 import { PACKAGE, contract } from "./contract";
 import { publisher, signedMpk, variant } from "./mpk";
 import type { Row, Who } from "./types";
+import { listAppInfos } from "@calimero-apps/connect";
 
 /** What the matrix runs on. The page and the cluster run each make one. */
 export interface MatrixEnv {
@@ -79,6 +82,9 @@ interface Person {
 }
 
 const lower = (x: unknown) => String(x ?? "").toLowerCase();
+/** A fresh attestation nonce: 32 random bytes, hex (what mero-js's `attestation()` sent). */
+const freshNonce = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
 const enc = new TextEncoder();
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -149,7 +155,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     p.account = s?.accountId;
   }
   const me = await row(A, ACC, "me", OK, async () => {
-    const m = await A.client.me();
+    const m = await A.client.auth.me();
     assert(m.accountId === need(A.account, "A's account"), `me() is ${short(m.accountId)}, signed up as ${A.account}`);
     return m;
   }, (m) => ({ accountId: m.accountId, via: m.via }));
@@ -169,10 +175,17 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     assert(s.accountId === A.account, `refreshed as ${short(s.accountId)}`);
     return s;
   }, (s) => ({ expiresAt: s.expiresAt }));
-  await row(A, ACC, "attestation", OK, () => A.client.attestation(), (d) => ({ mock: (d as { mock?: unknown }).mock }));
-  await row(A, ACC, "usage", OK, () => A.client.usage(), (u) => Object.keys(u));
+  await row(
+    A,
+    ACC,
+    "attestation",
+    OK,
+    () => A.client.public.attestation({ nonce: freshNonce() }),
+    (d) => ({ mock: (d as { mock?: unknown }).mock }),
+  );
+  await row(A, ACC, "usage", OK, () => A.client.auth.usage(), (u) => Object.keys(u));
   await row(A, ACC, "labelPasskey", OK, () =>
-    A.client.labelPasskey(need(me?.passkeyId as string | undefined, "A's passkey id"), "conformance"));
+    A.client.auth.passkeyLabel({ cred: need(me?.passkeyId as string | undefined, "A's passkey id"), label: "conformance" }));
   const device = env.passkey();
   // Approving with the passkey being added is refused before anything is
   // written: no account has that credential yet, which the node answers
@@ -185,152 +198,253 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     return s;
   }, (s) => s.accountId);
   await row(A, ACC, "removePasskey (without the step-up)", "CONFIRM_REQUIRED", () =>
-    A.client.delete(`auth/passkeys/${need(cred, "the added passkey")}`));
-  await row(A, ACC, "removePasskey", OK, () => A.client.removePasskey(need(cred, "the added passkey"), A.passkey));
+    A.client.auth.passkeyRemove({ cred: need(cred, "the added passkey") }));
+  await row(A, ACC, "removePasskey", OK, () =>
+    A.client.auth.passkeyRemove({ cred: need(cred, "the added passkey") }, { confirm: passkeyConfirm(A.passkey) }),
+  );
 
   // ── packages ──────────────────────────────────────────────────────────────
   const PKG = "Packages";
-  const bundle = await row(A, PKG, "uploadBundle (the component, raw)", OK, () => A.client.uploadBundle(env.wasm), (h) => h);
+  const bundle = await row(
+    A,
+    PKG,
+    "uploadBundle (the component, raw)",
+    OK,
+    () => A.client.packages.bundlePut({ body: env.wasm, contentType: "application/wasm" }).then((r) => r.hash),
+    (h) => h,
+  );
   const key = await publisher();
   const floor = env.minRuntimeVersion ?? "1.0.0-rc.8";
-  await row(A, PKG, "uploadPackage (not a package)", "BAD_PACKAGE", () => A.client.uploadPackage(new Uint8Array([1, 2, 3])));
+  await row(A, PKG, "uploadPackage (not a package)", "BAD_PACKAGE", () =>
+    A.client.packages.upload({ body: new Uint8Array([1, 2, 3]), contentType: "application/octet-stream" }),
+  );
   for (const version of ["0.0.0", "0.0.1"]) {
     await row(A, PKG, `uploadPackage (${version})`, OK, async () => {
-      const r = await A.client.uploadPackage(await signedMpk(pkg, version, variant(env.wasm, `${tag}-${version}`), key, floor));
+      const r = await A.client.packages.upload({
+        body: await signedMpk(pkg, version, variant(env.wasm, `${tag}-${version}`), key, floor),
+        contentType: "application/octet-stream",
+      });
       assert(r.package === pkg && r.version === version && r.signerId === key.signerId, `installed ${short(r)}`);
       return r;
     }, (r) => ({ version: r.version, signerId: r.signerId }));
   }
   await row(A, PKG, "uploadPackage (another key, the same package)", "FORBIDDEN", async () =>
-    A.client.uploadPackage(await signedMpk(pkg, "0.0.2", variant(env.wasm, `${tag}-forged`), await publisher(), floor)));
+    A.client.packages.upload({ body: await signedMpk(pkg, "0.0.2", variant(env.wasm, `${tag}-forged`), await publisher(), floor), contentType: "application/octet-stream" }));
   await row(A, PKG, "packages", OK, async () => {
-    const list = await A.client.packages();
+    const list = (await A.client.packages.list()).packages;
     assert(list.some((p) => p.package === pkg), `${pkg} is not listed`);
     return list;
   }, (l) => `${l.length} packages`);
   await row(A, PKG, "package", OK, async () => {
-    const p = await A.client.package(pkg);
+    const p = await A.client.packages.get({ package: pkg });
     assert(p.latest === "0.0.1", `latest is ${p.latest}`);
     return p;
   }, (p) => ({ latest: p.latest, versions: p.versions.map((v) => v.version) }));
   await row(A, PKG, "installPackage (a development cluster has no registry)", "NO_REGISTRY", () =>
-    A.client.installPackage(pkg, "0.0.1"));
+    A.client.packages.install({ package: pkg, version: "0.0.1" }));
 
   // ── orgs and teams ────────────────────────────────────────────────────────
   const ORG = "Orgs";
   const TEAM = "Teams";
-  const org = await row(A, ORG, "createOrg", OK, () => A.client.createOrg(`conformance-${tag}`), (o) => o);
+  const org = await row(
+    A,
+    ORG,
+    "createOrg",
+    OK,
+    () => A.client.orgs.create({ name: `conformance-${tag}` }).then((r) => r.orgId),
+    (o) => o,
+  );
   const orgId = () => need(org, "an org");
   await row(A, ORG, "getOrg", OK, async () => {
-    const o = await A.client.getOrg(orgId());
+    const o = await A.client.orgs.get({ org: orgId() });
     assert(o.orgId === org, `getOrg answers ${short(o.orgId)}`);
     assert(Object.hasOwn((o.members ?? {}) as object, need(A.account, "A's account")), "A is not a member of its own org");
     return o;
-  }, (o) => ({ members: Object.keys((o.members ?? {}) as object).length, releaseApprovers: o.releaseApprovers.length }));
-  await row(A, ORG, "setOrgMetadata", OK, () => A.client.setOrgMetadata(orgId(), { name: `Conformance ${tag}` }));
-  const open = await row(A, TEAM, "createTeam (open)", OK, () => A.client.createTeam(orgId(), `open-${tag}`, "everyone"), (t) => t);
-  const closed = await row(A, TEAM, "createTeam (invite-only)", OK, () => A.client.createTeam(orgId(), `closed-${tag}`, "invite"), (t) => t);
-  const moved = await row(A, TEAM, "createTeam (to move)", OK, () => A.client.createTeam(orgId(), `moved-${tag}`, "invite"), (t) => t);
+  }, (o) => ({ members: Object.keys((o.members ?? {}) as object).length, releaseApprovers: o.releaseApprovers?.length }));
+  await row(A, ORG, "setOrgMetadata", OK, () =>
+    A.client.orgs.metadata({ org: orgId(), metadata: { name: `Conformance ${tag}` } }),
+  );
+  const open = await row(
+    A,
+    TEAM,
+    "createTeam (open)",
+    OK,
+    () => A.client.orgs.teamCreate({ org: orgId(), name: `open-${tag}`, join: "everyone" }).then((r) => r.teamId),
+    (t) => t,
+  );
+  const closed = await row(
+    A,
+    TEAM,
+    "createTeam (invite-only)",
+    OK,
+    () => A.client.orgs.teamCreate({ org: orgId(), name: `closed-${tag}`, join: "invite" }).then((r) => r.teamId),
+    (t) => t,
+  );
+  const moved = await row(
+    A,
+    TEAM,
+    "createTeam (to move)",
+    OK,
+    () => A.client.orgs.teamCreate({ org: orgId(), name: `moved-${tag}`, join: "invite" }).then((r) => r.teamId),
+    (t) => t,
+  );
   await row(A, TEAM, "getTeam", OK, async () => {
-    const t = await A.client.getTeam(orgId(), need(closed, "a team"));
+    const t = await A.client.orgs.teamGet({ org: orgId(), team: need(closed, "a team") });
     assert(t.teamId === closed, `getTeam answers ${short(t.teamId)}`);
     return t;
   }, (t) => ({ name: t.name, join: t.join }));
   await row(A, TEAM, "updateTeam (name, metadata)", OK, async () => {
-    await A.client.updateTeam(orgId(), need(closed, "a team"), { name: `renamed-${tag}`, metadata: { colour: "teal" } });
-    const t = await A.client.getTeam(orgId(), need(closed, "a team"));
+    await A.client.orgs.teamUpdate({
+      org: orgId(),
+      team: need(closed, "a team"),
+      name: `renamed-${tag}`,
+      metadata: { colour: "teal" },
+    });
+    const t = await A.client.orgs.teamGet({ org: orgId(), team: need(closed, "a team") });
     assert(t.name === `renamed-${tag}`, `the team is called ${short(t.name)}`);
   });
   await row(A, TEAM, "updateTeam (parent: move under another team)", OK, async () => {
-    await A.client.updateTeam(orgId(), need(moved, "a team to move"), { parent: need(closed, "a parent") });
-    const t = await A.client.getTeam(orgId(), need(moved, "a team to move"));
+    await A.client.orgs.teamUpdate({
+      org: orgId(),
+      team: need(moved, "a team to move"),
+      parent: need(closed, "a parent"),
+    });
+    const t = await A.client.orgs.teamGet({ org: orgId(), team: need(moved, "a team to move") });
     assert(t.parent === closed, `the team's parent is ${short(t.parent)}`);
   });
-  await row(A, TEAM, "updateTeam (join: everyone)", OK, () => A.client.updateTeam(orgId(), need(moved, "a team"), { join: "everyone" }));
+  await row(A, TEAM, "updateTeam (join: everyone)", OK, () =>
+    A.client.orgs.teamUpdate({ org: orgId(), team: need(moved, "a team"), join: "everyone" }),
+  );
   await row(A, ORG, "setCapabilities (the org's default, approved)", OK, () =>
-    A.client.setCapabilities(orgId(), orgCapabilities("CREATE_APP", "INVITE_MEMBERS", "JOIN_OPEN_TEAMS"), A.passkey));
+    A.client.orgs.capabilities({ org: orgId(), capabilities: orgCapabilities("CREATE_APP", "INVITE_MEMBERS", "JOIN_OPEN_TEAMS") }, { confirm: passkeyConfirm(A.passkey) }));
   await row(A, ORG, "invite (without the step-up)", "CONFIRM_REQUIRED", () =>
-    A.client.post(`orgs/${orgId()}/invites`, { role: "member" }));
-  const invite = await row(A, ORG, "invite (member)", OK, () => A.client.invite(orgId(), "member", A.passkey), () => "a token");
-  await row(B, ORG, "redeemInvite", OK, () => B.client.redeemInvite(need(invite, "an invite")), (r) => r);
+    A.client.orgs.inviteCreate({ org: orgId(), role: "member" }));
+  const invite = await row(
+    A,
+    ORG,
+    "invite (member)",
+    OK,
+    () =>
+      A.client.orgs
+        .inviteCreate({ org: orgId(), role: "member", teams: [] }, { confirm: passkeyConfirm(A.passkey) })
+        .then((r) => r.token),
+    () => "a token",
+  );
+  await row(
+    B,
+    ORG,
+    "redeemInvite",
+    OK,
+    () => B.client.orgs.inviteRedeem({ token: need(invite, "an invite") }),
+    (r) => r,
+  );
   // A one-use invite is gone once redeemed: the system log rejects the redemption.
-  await row(B, ORG, "redeemInvite (again: one use)", "REJECTED", () => B.client.redeemInvite(need(invite, "an invite")));
+  await row(B, ORG, "redeemInvite (again: one use)", "REJECTED", () =>
+    B.client.orgs.inviteRedeem({ token: need(invite, "an invite") }),
+  );
   await row(B, ORG, "getOrg (second account)", OK, async () => {
-    const o = await eventually(() => B.client.getOrg(orgId()), (o) => Object.hasOwn((o.members ?? {}) as object, need(B.account, "B's account")), "B listed as a member");
+    const o = await eventually(
+      () => B.client.orgs.get({ org: orgId() }),
+      (o) => Object.hasOwn((o.members ?? {}) as object, need(B.account, "B's account")),
+      "B listed as a member",
+    );
     return o;
   }, (o) => Object.keys((o.members ?? {}) as object).length);
-  await row(C, ORG, "getOrg (an outsider)", "NOT_FOUND", () => C.client.getOrg(orgId()));
-  await row(B, ORG, "setMemberMetadata (its own)", OK, () => B.client.setMemberMetadata(orgId(), need(B.account, "B's account"), { title: "second" }));
-  await row(A, ORG, "setMemberMetadata (another member's, cleared)", OK, () => A.client.setMemberMetadata(orgId(), need(B.account, "B's account"), null));
+  await row(C, ORG, "getOrg (an outsider)", "NOT_FOUND", () => C.client.orgs.get({ org: orgId() }));
+  await row(B, ORG, "setMemberMetadata (its own)", OK, () =>
+    B.client.orgs.memberMetadata({
+      org: orgId(),
+      account: need(B.account, "B's account"),
+      metadata: { title: "second" },
+    }),
+  );
+  await row(A, ORG, "setMemberMetadata (another member's, cleared)", OK, () =>
+    A.client.orgs.memberMetadata({ org: orgId(), account: need(B.account, "B's account"), metadata: null }),
+  );
   await row(A, ORG, "invite (guest, a team, one use, an hour)", OK, () =>
-    A.client.invite(orgId(), "guest", A.passkey, [need(closed, "a team")], { ttlSecs: 3600, uses: 1 }), () => "a token");
+    A.client.orgs.inviteCreate({ org: orgId(), role: "guest", teams: [need(closed, "a team")], ttlSecs: 3600, uses: 1 }, { confirm: passkeyConfirm(A.passkey) }).then((r) => r.token), () => "a token");
 
   // ── apps ──────────────────────────────────────────────────────────────────
   const APPS = "Apps";
   const app = await row(A, APPS, "createApp (a bundle, in the org)", OK, () =>
-    A.client.createApp(`main-${tag}`, need(bundle, "a bundle"), { org: orgId() }), (a) => a);
+    A.client.apps.create({ name: `main-${tag}`, bundle: need(bundle, "a bundle"), org: orgId() }).then((r) => r.appId), (a) => a);
   const appId = () => need(app, "the main app");
   const fromPkg = await row(A, APPS, "createApp (a package release, in the org)", OK, () =>
-    A.client.createApp(`pkg-${tag}`, { package: pkg, version: "0.0.0" }, { org: orgId() }), (a) => a);
+    A.client.apps.create({ name: `pkg-${tag}`, package: pkg, version: "0.0.0", org: orgId() }).then((r) => r.appId), (a) => a);
   const forRun = await row(A, APPS, "createApp (a package release, for the org run)", OK, () =>
-    A.client.createApp(`run-${tag}`, { package: pkg, version: "0.0.0" }, { org: orgId() }), (a) => a);
+    A.client.apps.create({ name: `run-${tag}`, package: pkg, version: "0.0.0", org: orgId() }).then((r) => r.appId), (a) => a);
   const inOpen = await row(A, APPS, "createApp (the open team's)", OK, () =>
-    A.client.createApp(`open-${tag}`, need(bundle, "a bundle"), { org: orgId(), access: { kind: "team", team: need(open, "the open team") } }), (a) => a);
+    A.client.apps.create({ name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(open, "the open team") } }).then((r) => r.appId), (a) => a);
   const inClosed = await row(A, APPS, "createApp (the invite-only team's)", OK, () =>
-    A.client.createApp(`closed-${tag}`, need(bundle, "a bundle"), { org: orgId(), access: { kind: "team", team: need(closed, "the invite-only team") } }), (a) => a);
-  const own = await row(A, APPS, "createApp (A's own, no org)", OK, () => A.client.createApp(`own-${tag}`, need(bundle, "a bundle")), (a) => a);
+    A.client.apps.create({ name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(closed, "the invite-only team") } }).then((r) => r.appId), (a) => a);
+  const own = await row(
+    A,
+    APPS,
+    "createApp (A's own, no org)",
+    OK,
+    () => A.client.apps.create({ name: `own-${tag}`, bundle: need(bundle, "a bundle") }).then((r) => r.appId),
+    (a) => a,
+  );
   await row(A, APPS, "listApps", OK, async () => {
-    const list = await A.client.listApps();
+    const list = await listAppInfos(A.client);
     for (const id of [app, fromPkg, own]) assert(list.some((x) => x.appId === id), `${short(id)} is not listed`);
     return list;
   }, (l) => `${l.length} apps`);
   await row(A, APPS, "listApps ({ bundle })", OK, async () => {
-    const list = await A.client.listApps({ bundle: need(bundle, "a bundle") });
+    const list = await listAppInfos(A.client, { bundle: need(bundle, "a bundle") });
     assert(list.some((x) => x.appId === app), "the main app is not listed by its bundle");
     return list;
   }, (l) => `${l.length} apps`);
   await row(A, APPS, "listApps ({ package })", OK, async () => {
-    const list = await A.client.listApps({ package: pkg });
+    const list = await listAppInfos(A.client, { package: pkg });
     const mine = list.find((x) => x.appId === fromPkg);
     assert(mine?.version === "0.0.0", `the package's app is listed at ${short(mine)}`);
     return list;
   }, (l) => `${l.length} apps`);
   await row(B, APPS, "listApps (second account: the org's apps)", OK, async () => {
-    const list = await eventually(() => B.client.listApps(), (l) => l.some((x) => x.appId === app), "the org's app listed for B");
+    const list = await eventually(
+      () => listAppInfos(B.client),
+      (l) => l.some((x) => x.appId === app),
+      "the org's app listed for B",
+    );
     assert(!list.some((x) => x.appId === own), "B is shown A's own app");
     return list;
   }, (l) => `${l.length} apps`);
   await row(A, APPS, "getApp", OK, async () => {
-    const a = await A.client.getApp(appId());
+    const a = await A.client.apps.get({ app: appId() });
     assert(a.owner === A.account && a.org === org, `getApp: owner ${short(a.owner)}, org ${short(a.org)}`);
     return a;
   }, (a) => ({ owner: short(a.owner, 12), org: short(a.org, 12) }));
-  await row(A, APPS, "setAppMetadata", OK, () => A.client.setAppMetadata(appId(), { title: `Conformance ${tag}` }));
+  await row(A, APPS, "setAppMetadata", OK, () =>
+    A.client.apps.metadata({ app: appId(), metadata: { title: `Conformance ${tag}` } }),
+  );
   await row(A, APPS, "appAbi", OK, async () => {
-    const r = await A.client.appAbi(appId());
+    const r = await A.client.apps.abi({ app: appId() });
     const methods = ((r.abi as { methods?: object } | undefined)?.methods ?? {}) as Record<string, unknown>;
     assert("confirmedSet" in methods && "myAccount" in methods, `the ABI lists ${short(Object.keys(methods))}`);
     return r;
   }, (r) => ({ bundle: r.bundle }));
   const ALIAS = "Aliases";
   const alias = `conformance-${tag}`;
-  await row(A, ALIAS, "setAlias", OK, () => A.client.setAlias(alias, appId()));
+  await row(A, ALIAS, "setAlias", OK, () => A.client.auth.aliasSet({ alias, app: appId() }));
   await row(A, ALIAS, "alias", OK, async () => {
-    const r = await A.client.alias(alias);
+    const r = (await A.client.auth.aliasGet({ alias })).appId;
     assert(r === app, `${alias} names ${short(r)}`);
     return r;
   }, (r) => r);
   await row(A, ALIAS, "aliases", OK, async () => {
-    const r = await A.client.aliases();
+    const r = (await A.client.auth.aliasList()).aliases;
     assert(r[alias] === app, `the listing has ${alias} as ${short(r[alias])}`);
     return r;
   }, (r) => `${Object.keys(r).length} aliases`);
   await row(A, ALIAS, "deleteAlias", OK, async () => {
-    await A.client.deleteAlias(alias);
-    const r = await A.client.aliases();
+    await A.client.auth.aliasDelete({ alias });
+    const r = (await A.client.auth.aliasList()).aliases;
     assert(!(alias in r), `${alias} is still listed`);
   });
-  await row(B, ALIAS, "alias (another account's name)", "NOT_FOUND", () => B.client.alias(alias));
+  await row(B, ALIAS, "alias (another account's name)", "NOT_FOUND", () =>
+    B.client.auth.aliasGet({ alias }).then((r) => r.appId),
+  );
 
   // ── calls ─────────────────────────────────────────────────────────────────
   const CALL = "Calls";
@@ -342,9 +456,14 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const bHears = listen((signal) => B.client.events(appId(), 0, signal));
 
   const first = await row(A, CALL, "call (set, with an idempotency key)", OK, () =>
-    A.client.call(appId(), "set", { key: "conformance", value: `pub-${tag}` }, `set-${tag}`), (r) => ({ index: r.index, events: r.events.map((e) => e.kind) }));
+    A.client.apps.call({ app: appId(), method: "set", args: { key: "conformance", value: `pub-${tag}` }, idempotencyKey: `set-${tag}` }), (r) => ({ index: r.index, events: r.events.map((e) => e.kind) }));
   await row(A, CALL, "call (the same key again: answered once)", OK, async () => {
-    const r = await A.client.call(appId(), "set", { key: "conformance", value: "other" }, `set-${tag}`);
+    const r = await A.client.apps.call({
+      app: appId(),
+      method: "set",
+      args: { key: "conformance", value: "other" },
+      idempotencyKey: `set-${tag}`,
+    });
     assert(r.index === first?.index, `a retry was applied again at ${r.index} (first ${first?.index})`);
     assert((await a().get("conformance")) === `pub-${tag}`, "the retry's arguments were applied");
     return r;
@@ -355,7 +474,13 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     return v;
   }, (v) => v);
   await row(B, CALL, "view (stale, at least the write's index, another node)", OK, async () => {
-    const r = await B.client.view(appId(), "get", { key: "conformance" }, { stale: true, minIndex: need(first, "the write").index });
+    const r = await B.client.apps.view({
+      app: appId(),
+      method: "get",
+      args: { key: "conformance" },
+      consistency: "stale",
+      minIndex: need(first, "the write").index,
+    });
     assert(r.result === `pub-${tag}`, `read ${short(r.result)}`);
     return r;
   }, (r) => r.result);
@@ -447,53 +572,77 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(B, CALL, "callConfirmed (B's passkey, B's own call)", OK, () => b().confirmedSet("confirmed", "2", B.passkey), (r) => r.index);
   await row(A, CALL, "an app error (getResult, a missing key)", appError("NotFound"), () => a().getResult("missing"));
   await row(A, CALL, "a trap (getUnchecked, a missing key)", "TRAP", () => a().getUnchecked("missing"));
-  await row(A, CALL, "malformed arguments", appError("BadArgs"), () => A.client.call(appId(), "set", { key: "k" }));
-  await row(A, CALL, "an unknown method (v0's snake_case name)", appError("UnknownMethod"), () => A.client.view(appId(), "my_account", {}));
-  await row(A, CALL, "a call made as a view", appError("NotAView"), () => A.client.view(appId(), "set", { key: "k", value: "v" }));
+  await row(A, CALL, "malformed arguments", appError("BadArgs"), () =>
+    A.client.apps.call({ app: appId(), method: "set", args: { key: "k" } }),
+  );
+  await row(A, CALL, "an unknown method (v0's snake_case name)", appError("UnknownMethod"), () =>
+    A.client.apps.view({ app: appId(), method: "my_account", args: {} }),
+  );
+  await row(A, CALL, "a call made as a view", appError("NotAView"), () =>
+    A.client.apps.view({ app: appId(), method: "set", args: { key: "k", value: "v" } }),
+  );
 
   // ── access ────────────────────────────────────────────────────────────────
   const ACCESS = "Access";
   const anonymous = await env.client(0);
-  await row(C, ACCESS, "view (an outsider)", "NOT_FOUND", () => C.client.view(appId(), "get", { key: "conformance" }));
-  await row(C, ACCESS, "call (an outsider)", "NOT_FOUND", () => C.client.call(appId(), "set", { key: "x", value: "y" }));
-  await row("anonymous", ACCESS, "view (no session)", "UNAUTHENTICATED", () => anonymous.view(appId(), "get", { key: "conformance" }));
+  await row(C, ACCESS, "view (an outsider)", "NOT_FOUND", () =>
+    C.client.apps.view({ app: appId(), method: "get", args: { key: "conformance" } }),
+  );
+  await row(C, ACCESS, "call (an outsider)", "NOT_FOUND", () =>
+    C.client.apps.call({ app: appId(), method: "set", args: { key: "x", value: "y" } }),
+  );
+  await row("anonymous", ACCESS, "view (no session)", "UNAUTHENTICATED", () =>
+    anonymous.apps.view({ app: appId(), method: "get", args: { key: "conformance" } }),
+  );
   await row(B, ACCESS, "the open team's app (reached by inheritance)", OK, () =>
-    eventually(() => B.client.view(need(inOpen, "the open team's app"), "myAccount", {}), () => true, "the open team's app"), (r) => r.result);
+    eventually(() => B.client.apps.view({ app: need(inOpen, "the open team's app"), method: "myAccount", args: {} }), () => true, "the open team's app"), (r) => r.result);
   await row(B, ACCESS, "the invite-only team's app (not a member yet)", "NOT_FOUND", () =>
-    B.client.view(need(inClosed, "the invite-only team's app"), "myAccount", {}));
-  await row(C, ACCESS, "A's own app (an outsider)", "NOT_FOUND", () => C.client.view(need(own, "A's own app"), "get", { key: "k" }));
+    B.client.apps.view({ app: need(inClosed, "the invite-only team's app"), method: "myAccount", args: {} }));
+  await row(C, ACCESS, "A's own app (an outsider)", "NOT_FOUND", () =>
+    C.client.apps.view({ app: need(own, "A's own app"), method: "get", args: { key: "k" } }),
+  );
   await row(A, ACCESS, "setAccess (accounts: the outsider)", OK, () =>
-    A.client.setAccess(need(own, "A's own app"), { kind: "accounts", accounts: [need(C.account, "the outsider's account")] }));
+    A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "accounts", accounts: [need(C.account, "the outsider's account")] } }));
   await row(C, ACCESS, "A's own app (an account it names)", OK, () =>
-    eventually(() => C.client.view(need(own, "A's own app"), "myAccount", {}), () => true, "access by account"), (r) => r.result);
-  await row(A, ACCESS, "setAccess (public)", OK, () => A.client.setAccess(need(own, "A's own app"), { kind: "public" }));
+    eventually(() => C.client.apps.view({ app: need(own, "A's own app"), method: "myAccount", args: {} }), () => true, "access by account"), (r) => r.result);
+  await row(A, ACCESS, "setAccess (public)", OK, () =>
+    A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "public" } }),
+  );
   await row("anonymous", ACCESS, "a public method of a public app (no session)", OK, async () => {
     await contract(A.client, need(own, "A's own app")).set("open", "to anyone");
-    const r = await eventually(() => anonymous.view(need(own, "A's own app"), "publicGet", { key: "open" }), (r) => r.result === "to anyone", "the public read");
+    const r = await eventually(
+      () => anonymous.apps.view({ app: need(own, "A's own app"), method: "publicGet", args: { key: "open" } }),
+      (r) => r.result === "to anyone",
+      "the public read",
+    );
     return r;
   }, (r) => r.result);
   await row("anonymous", ACCESS, "a method that is not public (no session)", "UNAUTHENTICATED", () =>
-    anonymous.view(need(own, "A's own app"), "get", { key: "open" }));
+    anonymous.apps.view({ app: need(own, "A's own app"), method: "get", args: { key: "open" } }));
   const KEYS = "API keys";
-  await row(A, KEYS, "createApiKey (without the step-up)", "CONFIRM_REQUIRED", () => A.client.post("auth/apikeys", { label: "conformance" }));
+  await row(A, KEYS, "createApiKey (without the step-up)", "CONFIRM_REQUIRED", () =>
+    A.client.auth.apikeyCreate({ label: "conformance" }),
+  );
   const apiKey = await row(A, KEYS, "createApiKey (read-only, one app)", OK, () =>
-    A.client.createApiKey({ label: `conformance-${tag}`, apps: [appId()], readOnly: true }, A.passkey), (k) => k.keyId);
+    A.client.auth.apikeyCreate({ label: `conformance-${tag}`, apps: [appId()], readOnly: true }, { confirm: passkeyConfirm(A.passkey) }), (k) => k.keyId);
   await row(A, KEYS, "listApiKeys", OK, async () => {
-    const list = await A.client.listApiKeys();
+    const list = (await A.client.auth.apikeyList()).keys;
     assert(list.some((k) => k.keyId === apiKey?.keyId), "the new key is not listed");
     return list;
   }, (l) => `${l.length} keys`);
   const agent = await env.client(2);
   if (apiKey) agent.useApiKey(apiKey.key);
   await row("apiKey", KEYS, "view (a read-only key)", OK, async () => {
-    const r = await agent.view(appId(), "myAccount", {});
+    const r = await agent.apps.view({ app: appId(), method: "myAccount", args: {} });
     assert(r.result === A.account, `the key acts as ${short(r.result)}`);
     return r;
   }, (r) => r.result);
-  await row("apiKey", KEYS, "call (a read-only key)", "FORBIDDEN", () => agent.call(appId(), "set", { key: "agent", value: "x" }));
+  await row("apiKey", KEYS, "call (a read-only key)", "FORBIDDEN", () =>
+    agent.apps.call({ app: appId(), method: "set", args: { key: "agent", value: "x" } }),
+  );
   await row(A, KEYS, "revokeApiKey", OK, async () => {
-    await A.client.revokeApiKey(need(apiKey?.keyId, "an API key"), A.passkey);
-    const list = await A.client.listApiKeys();
+    await A.client.auth.apikeyRevoke({ key: need(apiKey?.keyId, "an API key") }, { confirm: passkeyConfirm(A.passkey) });
+    const list = (await A.client.auth.apikeyList()).keys;
     assert(!list.some((k) => k.keyId === apiKey?.keyId), "the key is still listed");
   });
 
@@ -501,25 +650,39 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const MEM = "Members";
   const bAcc = () => need(B.account, "B's account");
   await row(A, MEM, "setMember (promote to admin)", OK, async () => {
-    await A.client.setMember(orgId(), bAcc(), "admin", A.passkey);
-    await eventually(() => A.client.getOrg(orgId()), (o) => lower((o.members as Record<string, unknown>)[bAcc()]) === "admin", "B as admin");
+    await A.client.orgs.setMember(
+      { org: orgId(), account: bAcc(), role: "admin" },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
+    await eventually(
+      () => A.client.orgs.get({ org: orgId() }),
+      (o) => lower((o.members as Record<string, unknown>)[bAcc()]) === "admin",
+      "B as admin",
+    );
   });
-  await row(A, MEM, "setMember (back to member)", OK, () => A.client.setMember(orgId(), bAcc(), "member", A.passkey));
+  await row(A, MEM, "setMember (back to member)", OK, () =>
+    A.client.orgs.setMember({ org: orgId(), account: bAcc(), role: "member" }, { confirm: passkeyConfirm(A.passkey) }),
+  );
   await row(A, MEM, "setTeamMember (the invite-only team)", OK, () =>
-    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { role: "member" }));
+    A.client.orgs.teamSetMember({ org: orgId(), team: need(closed, "the invite-only team"), account: bAcc(), role: "member" }, { confirm: passkeyConfirm(A.passkey) }));
   await row(B, MEM, "the invite-only team's app (now a member)", OK, () =>
-    eventually(() => B.client.view(need(inClosed, "the invite-only team's app"), "myAccount", {}), () => true, "the team's app"), (r) => r.result);
+    eventually(() => B.client.apps.view({ app: need(inClosed, "the invite-only team's app"), method: "myAccount", args: {} }), () => true, "the team's app"), (r) => r.result);
   await row(A, MEM, "setTeamMember (lead, capabilities)", OK, () =>
-    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { lead: true, capabilities: ORG_CAPABILITIES.MANAGE_MEMBERS }));
+    A.client.orgs.teamSetMember({ org: orgId(), team: need(closed, "the invite-only team"), account: bAcc(), lead: true, capabilities: ORG_CAPABILITIES.MANAGE_MEMBERS }, { confirm: passkeyConfirm(A.passkey) }));
   await row(A, MEM, "setCapabilities (a member, on a team)", OK, () =>
-    A.client.setCapabilities(orgId(), orgCapabilities("CREATE_APP"), A.passkey, { account: bAcc(), team: need(closed, "a team") }));
+    A.client.orgs.capabilities({ org: orgId(), capabilities: orgCapabilities("CREATE_APP"), account: bAcc(), team: need(closed, "a team") }, { confirm: passkeyConfirm(A.passkey) }));
   await row(A, MEM, "setTeamMember (read-only)", OK, () =>
-    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { role: "readOnly", lead: false }));
+    A.client.orgs.teamSetMember({ org: orgId(), team: need(closed, "the invite-only team"), account: bAcc(), role: "readOnly", lead: false }, { confirm: passkeyConfirm(A.passkey) }));
   await row(B, MEM, "a read-only member's write is refused", "FORBIDDEN", () =>
-    untilRefused(() => B.client.call(need(inClosed, "the team's app"), "set", { key: "ro", value: "x" }), "B's write as read-only"));
-  await row(A, MEM, "removeTeamMember", OK, () => A.client.removeTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey));
+    untilRefused(() => B.client.apps.call({ app: need(inClosed, "the team's app"), method: "set", args: { key: "ro", value: "x" } }), "B's write as read-only"));
+  await row(A, MEM, "removeTeamMember", OK, () =>
+    A.client.orgs.teamRemoveMember(
+      { org: orgId(), team: need(closed, "the invite-only team"), account: bAcc() },
+      { confirm: passkeyConfirm(A.passkey) },
+    ),
+  );
   await row(A, MEM, "setCapabilities (a member, org-wide)", OK, () =>
-    A.client.setCapabilities(orgId(), orgCapabilities("JOIN_OPEN_TEAMS"), A.passkey, { account: bAcc() }));
+    A.client.orgs.capabilities({ org: orgId(), capabilities: orgCapabilities("JOIN_OPEN_TEAMS"), account: bAcc() }, { confirm: passkeyConfirm(A.passkey) }));
 
   // ── live: events and presence ─────────────────────────────────────────────
   const LIVE = "Events";
@@ -539,10 +702,16 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   aHears.stop();
   bHears.stop();
   const PRES = "Presence";
-  await row(A, PRES, "publishPresence", OK, () => A.client.publishPresence(appId(), 1, enc.encode(`here-${tag}`)));
+  await row(A, PRES, "publishPresence", OK, () =>
+    A.client.apps.presencePublish({
+      app: appId(),
+      seq: 1,
+      state: presenceState(enc.encode(`here-${tag}`)) as unknown as string,
+    }),
+  );
   const stateHex = Array.from(enc.encode(`here-${tag}`), (x) => x.toString(16).padStart(2, "0")).join("");
   await row(B, PRES, "presence (A is present)", OK, () =>
-    eventually(() => B.client.presence(appId()), (l) => l.some((p) => p.account === A.account && p.state === stateHex), "A's presence"),
+    eventually(() => B.client.apps.presenceGet({ app: appId() }).then((r) => r.present), (l) => l.some((p) => p.account === A.account && p.state === stateHex), "A's presence"),
   (l) => `${l.length} present`);
   await row(B, PRES, "presenceStream (a snapshot first)", OK, async () => {
     const ac = new AbortController();
@@ -552,8 +721,12 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     return firstEvent.value;
   }, (e) => e?.kind);
   await row(A, PRES, "publishPresence (retract)", OK, async () => {
-    await A.client.publishPresence(appId(), 2, null);
-    await eventually(() => B.client.presence(appId()), (l) => !l.some((p) => p.account === A.account && p.state !== null), "A's presence retracted");
+    await A.client.apps.presencePublish({ app: appId(), seq: 2, state: presenceState(null) as unknown as string });
+    await eventually(
+      () => B.client.apps.presenceGet({ app: appId() }).then((r) => r.present),
+      (l) => !l.some((p) => p.account === A.account && p.state !== null),
+      "A's presence retracted",
+    );
   });
 
   // ── blobs ─────────────────────────────────────────────────────────────────
@@ -565,18 +738,18 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const BLOBS = OK;
   const bytes = enc.encode(`blob-${tag}:${"conformance ".repeat(400)}`);
   const up = await row(A, BLOB, "uploadBlob (a component app)", BLOBS, async () => {
-    const r = await A.client.uploadBlob(appId(), bytes);
+    const r = await A.client.apps.blobUpload({ app: appId(), body: bytes, contentType: "application/octet-stream" });
     assert(r.size === bytes.length, `stored ${r.size} bytes of ${bytes.length}`);
     return r;
   }, (r) => ({ blobId: r.blobId, size: r.size }));
   await row(A, BLOB, "listBlobs (a component app)", BLOBS, async () => {
-    const r = await A.client.listBlobs(appId());
+    const r = (await A.client.apps.blobList({ app: appId() })).blobs;
     if (up) assert(r.some((x) => x.id === up.id), "the uploaded blob is not listed");
     return r;
   }, (r) => `${r.length} blobs`);
   if (up) {
     await row(A, BLOB, "blobInfo", OK, async () => {
-      const r = await A.client.blobInfo(appId(), up.blobId);
+      const r = await A.client.apps.blobInfo({ app: appId(), id: up.blobId });
       assert(r.size === bytes.length && r.id === up.id, `info: ${short(r)}`);
       return r;
     }, (r) => r);
@@ -591,84 +764,123 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
       return got.length;
     }, (n) => `${n} bytes`);
     await row(A, BLOB, "downloadBlob (through another app)", "NOT_FOUND", () => A.client.downloadBlob(need(own, "another app"), up.blobId));
-    await row(A, BLOB, "deleteBlob", OK, () => A.client.deleteBlob(appId(), up.blobId));
-    await row(A, BLOB, "blobInfo (deleted)", "NOT_FOUND", () => A.client.blobInfo(appId(), up.blobId));
+    await row(A, BLOB, "deleteBlob", OK, () => A.client.apps.blobDelete({ app: appId(), id: up.blobId }));
+    await row(A, BLOB, "blobInfo (deleted)", "NOT_FOUND", () => A.client.apps.blobInfo({ app: appId(), id: up.blobId }));
   }
 
   // ── upgrades, releases ────────────────────────────────────────────────────
   const UP = "Upgrades";
-  await row(A, UP, "upgradeApp (without the step-up)", "CONFIRM_REQUIRED", () => A.client.upgradeApp(need(fromPkg, "the package's app"), { version: "0.0.1" }));
+  await row(A, UP, "upgradeApp (without the step-up)", "CONFIRM_REQUIRED", () =>
+    A.client.apps.upgrade({ app: need(fromPkg, "the package's app"), version: "0.0.1" }),
+  );
   await row(A, UP, "upgradeApp (0.0.1)", OK, async () => {
     const pkgApp = contract(A.client, need(fromPkg, "the package's app"));
     await pkgApp.set("before", "the upgrade");
-    const r = await A.client.upgradeApp(need(fromPkg, "the package's app"), { version: "0.0.1" }, A.passkey);
+    const r = await A.client.apps.upgrade(
+      { app: need(fromPkg, "the package's app"), version: "0.0.1" },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
     assert(r.status === "ok", `the upgrade is ${short(r)}`);
     assert((await pkgApp.get("before")) === "the upgrade", "the state did not survive the upgrade");
     return r;
   }, (r) => r.status);
   await row(A, UP, "listApps (the upgraded app at 0.0.1)", OK, async () => {
-    const l = await A.client.listApps({ package: pkg });
+    const l = await listAppInfos(A.client, { package: pkg });
     const x = l.find((y) => y.appId === fromPkg);
     assert(x?.version === "0.0.1", `listed at ${short(x?.version)}`);
     return x;
   }, (x) => x?.version);
   const run = await row(A, UP, "upgradeOrg (the package, 0.0.1)", OK, () =>
-    A.client.upgradeOrg(orgId(), { package: pkg, version: "0.0.1" }, A.passkey), (r) => ({ runId: r.runId, apps: r.apps.length }));
+    A.client.orgs.upgrade({ org: orgId(), package: pkg, version: "0.0.1" }, { confirm: passkeyConfirm(A.passkey) }), (r) => ({ runId: r.runId, apps: r.apps.length }));
   await row(A, UP, "upgradeRun (until it finishes)", OK, async () => {
-    const r = await eventually(() => A.client.upgradeRun(orgId(), need(run?.runId, "an upgrade run")), (r) => r.finished, "the run finished", patience + 10_000);
+    const r = await eventually(
+      () => A.client.orgs.upgradeStatus({ org: orgId(), run: need(run?.runId, "an upgrade run") }),
+      (r) => r.finished,
+      "the run finished",
+      patience + 10_000,
+    );
     assert(Object.keys(r.failed).length === 0, `failed: ${short(r.failed)}`);
     assert(r.done.includes(need(forRun, "the run's app")), `the run upgraded ${short(r.done)}`);
     return r;
   }, (r) => ({ done: r.done.length, failed: Object.keys(r.failed).length }));
   await row(A, UP, "retryUpgradeRun (nothing failed: nothing to run)", OK, async () => {
-    const r = await A.client.retryUpgradeRun(orgId(), need(run?.runId, "an upgrade run"), A.passkey);
+    const r = await A.client.orgs.upgradeRetry(
+      { org: orgId(), run: need(run?.runId, "an upgrade run") },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
     assert(r.apps.length === 0 && r.runId !== run?.runId, `the retry: ${short(r)}`);
     return r;
   }, (r) => r.apps.length);
   const REL = "Releases";
-  await row(A, REL, "releaseRules", OK, () => A.client.releaseRules(), (r) => Object.keys(r));
+  await row(A, REL, "releaseRules", OK, () => A.client.public.releasesPublic(), (r) => Object.keys(r));
   await row(A, REL, "pendingApprovals (the org)", OK, () => A.client.pendingApprovals(orgId()), (r) => Object.keys(r));
-  await row(A, REL, "appsReport (the org)", OK, () => A.client.appsReport(orgId()), (r) => Object.keys(r));
+  await row(A, REL, "appsReport (the org)", OK, () => A.client.orgs.apps({ org: orgId() }), (r) => Object.keys(r));
   await row(A, REL, "approveRelease (the org, then the account; withdrawn)", OK, async () => {
-    await A.client.approveRelease(orgId(), "2.3.200", A.passkey);
-    await A.client.approveRelease(null, "2.3.200", A.passkey);
-    await A.client.approveRelease(null, "2.3.200", A.passkey, false);
+    await A.client.orgs.releaseApproval(
+      { org: orgId(), version: "2.3.200", approved: true },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
+    await A.client.auth.accountReleaseApproval(
+      { version: "2.3.200", approved: true },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
+    await A.client.auth.accountReleaseApproval(
+      { version: "2.3.200", approved: false },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
   });
   await row(A, REL, "approveOutbound (the package's declared prefixes, then none)", OK, async () => {
-    await A.client.approveOutbound(orgId(), pkg, A.passkey);
-    await A.client.approveOutbound(orgId(), pkg, A.passkey, { prefixes: [], replace: true });
+    await A.client.orgs.outboundApproval(
+      { org: orgId(), package: pkg, prefixes: "manifest", replace: false },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
+    await A.client.orgs.outboundApproval(
+      { org: orgId(), package: pkg, prefixes: [], replace: true },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
   });
   await row(B, REL, "approveRelease (a member without APPROVE_RELEASES)", "FORBIDDEN", () =>
-    B.client.approveRelease(orgId(), "2.3.200", B.passkey));
+    B.client.orgs.releaseApproval({ org: orgId(), version: "2.3.200", approved: true }, { confirm: passkeyConfirm(B.passkey) }));
 
   // ── teardown ──────────────────────────────────────────────────────────────
   const END = "Teardown";
   await row(A, END, "transferApp (to B, an org member)", OK, async () => {
-    await A.client.transferApp(need(inOpen, "the open team's app"), bAcc(), A.passkey);
-    const x = await B.client.getApp(need(inOpen, "the open team's app"));
+    await A.client.apps.transfer(
+      { app: need(inOpen, "the open team's app"), to: bAcc() },
+      { confirm: passkeyConfirm(A.passkey) },
+    );
+    const x = await B.client.apps.get({ app: need(inOpen, "the open team's app") });
     assert(x.owner === B.account, `owned by ${short(x.owner)}`);
     return x;
   }, (x) => short(x.owner, 12));
-  await row(B, END, "removeMember (B leaves the org)", OK, () => B.client.removeMember(orgId(), bAcc(), B.passkey));
+  await row(B, END, "removeMember (B leaves the org)", OK, () =>
+    B.client.orgs.removeMember({ org: orgId(), account: bAcc() }, { confirm: passkeyConfirm(B.passkey) }),
+  );
   await row(B, END, "the org's app after leaving", "NOT_FOUND", () =>
-    untilRefused(() => B.client.view(appId(), "get", { key: "conformance" }), "B's read after leaving"));
+    untilRefused(() => B.client.apps.view({ app: appId(), method: "get", args: { key: "conformance" } }), "B's read after leaving"));
   for (const [what, id] of [["the main app", app], ["the package's app", fromPkg], ["the run's app", forRun], ["the invite-only team's app", inClosed], ["A's own app", own]] as const) {
-    await row(A, END, `deleteApp (${what})`, OK, () => A.client.deleteApp(need(id, what)));
+    await row(A, END, `deleteApp (${what})`, OK, () => A.client.apps.delete({ app: need(id, what) }));
   }
-  await row(A, END, "getApp (deleted)", "NOT_FOUND", () => A.client.getApp(appId()));
-  await row(A, END, "deleteTeam (moves with its sub-team)", OK, () => A.client.deleteTeam(orgId(), need(closed, "a team")));
-  await row(A, END, "getTeam (deleted)", "NOT_FOUND", () => A.client.getTeam(orgId(), need(moved, "the moved team")));
-  await row(A, END, "deleteOrg (without the step-up)", "CONFIRM_REQUIRED", () => A.client.delete(`orgs/${orgId()}`));
-  await row(A, END, "deleteOrg", OK, () => A.client.deleteOrg(orgId(), A.passkey));
-  await row(A, END, "getOrg (deleted)", "NOT_FOUND", () => A.client.getOrg(orgId()));
+  await row(A, END, "getApp (deleted)", "NOT_FOUND", () => A.client.apps.get({ app: appId() }));
+  await row(A, END, "deleteTeam (moves with its sub-team)", OK, () =>
+    A.client.orgs.teamDelete({ org: orgId(), team: need(closed, "a team") }),
+  );
+  await row(A, END, "getTeam (deleted)", "NOT_FOUND", () =>
+    A.client.orgs.teamGet({ org: orgId(), team: need(moved, "the moved team") }),
+  );
+  await row(A, END, "deleteOrg (without the step-up)", "CONFIRM_REQUIRED", () => A.client.orgs.delete({ org: orgId() }));
+  await row(A, END, "deleteOrg", OK, () =>
+    A.client.orgs.delete({ org: orgId() }, { confirm: passkeyConfirm(A.passkey) }),
+  );
+  await row(A, END, "getOrg (deleted)", "NOT_FOUND", () => A.client.orgs.get({ org: orgId() }));
   await row(A, END, "uninstallPackage", OK, async () => {
-    await A.client.uninstallPackage(pkg);
-    const list = await A.client.packages();
+    await A.client.packages.uninstall({ package: pkg });
+    const list = (await A.client.packages.list()).packages;
     assert(!list.some((p) => p.package === pkg), `${pkg} is still installed`);
   });
   await row(B, END, "signOut", OK, () => B.client.signOut());
-  await row(B, END, "me (signed out)", "UNAUTHENTICATED", () => B.client.me());
+  await row(B, END, "me (signed out)", "UNAUTHENTICATED", () => B.client.auth.me());
   await row(A, END, "signOutEverywhere", OK, () => A.client.signOutEverywhere());
-  await row(A, END, "me (another device, after signOutEverywhere)", "UNAUTHENTICATED", () => elsewhere.me());
+  await row(A, END, "me (another device, after signOutEverywhere)", "UNAUTHENTICATED", () => elsewhere.auth.me());
   return rows;
 }

@@ -1,4 +1,3 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import type {
   ChunkView,
   DecodedFrame,
@@ -8,6 +7,7 @@ import type {
   SenderStats,
   StreamStats,
 } from "../types";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from. */
 export const PACKAGE = "com.calimero.mero-stream";
@@ -195,7 +195,7 @@ const liveStats = (s: WireLiveStats): LiveStats => ({
 
 // ── The client ───────────────────────────────────────────────────────────────
 
-export type StreamClient = Pick<CalimeroClient, "call" | "view">;
+export type StreamClient = ClientRoutes<{ apps: "call" | "view" }>;
 
 export interface ChunkInput {
   dataB64: string;
@@ -215,14 +215,14 @@ export interface ChunkInput {
 export function meroStream(client: StreamClient, app: string, after: () => void = () => {}) {
   const call = async <T>(method: string, args: Record<string, unknown>): Promise<T> => {
     try {
-      return (await client.call(app, method, args)).result as T;
+      return (await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: string, args: Record<string, unknown>): Promise<T> => {
     try {
-      return (await client.view(app, method, args)).result as T;
+      return (await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

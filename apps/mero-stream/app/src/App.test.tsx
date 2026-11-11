@@ -3,7 +3,9 @@ import {
   CalimeroError,
   DEFAULT_ORG_CAPABILITIES,
   ORG_CAPABILITIES,
-  type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+  type AppInfo,
+  type CalimeroSession,
+} from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -18,6 +20,7 @@ function hold(legacy: string) {
   migrateLegacyInvite();
 }
 import { APP, type SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 class Memory implements KeyValueStorage {
   readonly items = new Map<string, string>();
@@ -74,7 +77,7 @@ function fakeClient() {
   const defaults = new Map<string, number>();
   const metadata = new Map<string, unknown>();
   const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null });
-  return {
+  return withRoutes({
     apps,
     orgs,
     meta,
@@ -143,7 +146,7 @@ function fakeClient() {
     setMemberMetadata: vi.fn(async (org: string, account: string, m: Record<string, unknown>) => {
       meta[org] = { ...meta[org], [account]: m };
     }),
-  };
+  });
 }
 
 const ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "b" };
@@ -153,7 +156,7 @@ function renderApp(client: ReturnType<typeof fakeClient>, path: string, signedIn
   if (signedIn) new SessionStore(APP, resolveTarget(ENV), storage).save(SESSION);
   const deps: SessionDeps = {
     env: ENV,
-    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }) as never,
     storage,
   };

@@ -2,21 +2,24 @@ import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvid
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
-  inviteLink as sharedInviteLink,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
-  type LeftApp,
   type KeyValueStorage,
+  type LeftApp,
   type PendingInvite,
 } from '@calimero-apps/connect';
 import { nodeBasename } from '@calimero-apps/node-served';
@@ -67,7 +70,7 @@ export interface RepoEntry {
  * only under "Connect to an existing organization" (`otherOrgs`).
  */
 export async function listWorkspaces(
-  client: Pick<CalimeroClient, 'me' | 'listApps' | 'getOrg'>,
+  client: ClientRoutes<{ auth: 'me'; apps: 'list'; orgs: 'get' }>,
   source: AppSource,
 ): Promise<Workspace[]> {
   return (await orgsWithApp(client, source, { marked: true }))
@@ -77,12 +80,12 @@ export async function listWorkspaces(
 
 /** The instances of this app (the dev bundle, or the package) in `org`, by name. */
 export async function listRepos(
-  client: Pick<CalimeroClient, 'listApps'>,
+  client: ClientRoutes<{ apps: 'list' }>,
   source: AppSource,
   org: string,
 ): Promise<RepoEntry[]> {
   const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
-  const apps: AppInfo[] = await client.listApps(filter);
+  const apps: AppInfo[] = await listAppInfos(client, filter);
   return apps
     .filter((a) => a.org === org)
     .map((a) => ({ contextId: a.appId, name: a.name }))
@@ -108,7 +111,7 @@ export interface CreatedWorkspace {
  * is a passkey step-up; refused, the org stays and the Members page offers it again).
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
+  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
   name: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
@@ -127,7 +130,8 @@ export async function createWorkspace(
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */
 export async function addRepo(
-  client: Pick<CalimeroClient, 'createApp' | 'call' | 'view' | 'getOrg' | 'scopeApps' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> &
+    ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   source: AppSource,
   org: string,
   name: string,
@@ -137,7 +141,13 @@ export async function addRepo(
 ): Promise<string> {
   // On this app's team (`orgWideAccess`): made first, by an owner or admin,
   // in an org whose other apps have teams; organization access in a legacy org.
-  const appId = await client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
+  const appId = (
+    await client.apps.create({
+      name,
+      ...appTarget(source),
+      ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
+    })
+  ).appId;
   if (repoUrl.trim()) await tracker(client, appId, after).setRepoUrl(repoUrl.trim());
   return appId;
 }
@@ -164,11 +174,11 @@ export interface OrgMembers {
 }
 
 export async function readMembers(
-  client: Pick<CalimeroClient, 'getOrg'>,
+  client: ClientRoutes<{ orgs: 'get' }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const view = o as AppOrgView;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
@@ -196,7 +206,8 @@ export async function readMembers(
  * {@link leaveWorkspaceOrg}); elsewhere it is the organization, as before.
  */
 export function leaveWorkspace(
-  client: Pick<CalimeroClient, 'getOrg' | 'listAppTeams' | 'removeTeamMember' | 'removeMember' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> &
+    ClientRoutes<{ orgs: 'get' | 'appTeamList' | 'teamRemoveMember' | 'removeMember' }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
@@ -207,7 +218,7 @@ export function leaveWorkspace(
 
 /** The signed-in account leaves the organization altogether, every app in it. A passkey step-up. */
 export function leaveWorkspaceOrg(
-  client: Pick<CalimeroClient, 'removeMember' | 'session'>,
+  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ orgs: 'removeMember' }>,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
@@ -223,7 +234,7 @@ export function leaveWorkspaceOrg(
  * its apps apart it gives this app only (`appOnly`). Org-wide in a legacy org.
  */
 export function inviteToken(
-  client: Pick<CalimeroClient, 'listAppTeams' | 'invite'>,
+  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,

@@ -1,4 +1,4 @@
-import { appOnlyInviteNote } from '@calimero-apps/connect';
+import { appOnlyInviteNote, listAppInfos } from '@calimero-apps/connect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useInstanceRelease } from '@calimero-apps/passkey';
@@ -228,8 +228,7 @@ export default function AgreementPage() {
   useEffect(() => {
     if (!app || !contextId) return;
     let live = true;
-    void app.client
-      .listApps()
+    void listAppInfos(app.client)
       .then((apps) => {
         const org = apps.find((a) => a.appId === contextId)?.org ?? null;
         if (live && org) setInstanceOrg(org);

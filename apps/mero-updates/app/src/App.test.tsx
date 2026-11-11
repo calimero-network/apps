@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 // new wire (camelCase, u64 as decimal strings) reaches them in the shapes they
 // were written against.
 
-const h = vi.hoisted(() => {
+const h = await vi.hoisted(async () => {
   const wire: Record<string, unknown> = {
     getMe: { account: "ana", name: "Ana", firm: "CEO", isAdmin: true, isTeam: true, muted: [] },
     getOverview: {
@@ -49,7 +49,7 @@ const h = vi.hoisted(() => {
       nextCursor: null,
     },
   };
-  const client = {
+  const client = (await import("@calimero-apps/connect/testing")).withRoutes({
     view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: wire[method] ?? null })),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
     // A stream that stays open and quiet until aborted.
@@ -73,7 +73,7 @@ const h = vi.hoisted(() => {
     setCapabilities: vi.fn(async () => undefined),
     createApp: vi.fn(async () => "app-2"),
     invite: vi.fn(async () => "token-1"),
-  };
+  });
   return { wire, client };
 });
 

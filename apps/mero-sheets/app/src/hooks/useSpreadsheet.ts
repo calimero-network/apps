@@ -1217,7 +1217,11 @@ export function useSpreadsheet({
       const at = idsAt(sheetId, row, col);
       if (!client || !calimero || !contextId || !at) return;
       // A blob of this workbook's app instance: every member of the workspace reads it.
-      const blob = await calimero.uploadBlob(contextId, new Uint8Array(await file.arrayBuffer()));
+      const blob = await calimero.apps.blobUpload({
+        app: contextId,
+        body: new Uint8Array(await file.arrayBuffer()),
+        contentType: 'application/octet-stream',
+      });
       after?.();
       await enqueue(() => client.addAttachment({
         sheet_id: sheetId, ...at, blob_id: blob.blobId, name: file.name, size: file.size, mime: file.type,

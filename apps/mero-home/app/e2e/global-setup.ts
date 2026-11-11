@@ -17,6 +17,7 @@ import {
   signUp,
   startCluster,
 } from "../../../../packages/merod-local/src/cluster.ts";
+import { passkeyConfirm } from "@calimero-network/mero-js";
 
 /** Where the seed is handed to the spec: beside the cluster's state, which is gitignored. */
 export const SEED = join(ROOT, ".merod-local", "home-e2e-seed.json");
@@ -70,9 +71,9 @@ export default async function globalSetup(): Promise<() => void> {
   const cluster = running ? null : await startCluster({ fresh: true, log: join(ROOT, ".merod-local", "home-e2e.log") });
 
   const ana = await signUp("Ana", LOCAL_NODES[0]!);
-  const org = await ana.client.createOrg("Acme");
+  const org = (await ana.client.orgs.create({ name: "Acme" })).orgId;
   try {
-    await ana.client.listAppTeams(org);
+    await ana.client.orgs.appTeamList({ org });
   } catch (e) {
     cluster?.stop();
     throw new Error(
@@ -81,10 +82,18 @@ export default async function globalSetup(): Promise<() => void> {
     );
   }
 
-  const installed = await ana.client.uploadPackage(new Uint8Array(readFileSync(kvStoreMpk())));
+  const installed = await ana.client.packages.upload({
+    body: new Uint8Array(readFileSync(kvStoreMpk())),
+    contentType: "application/octet-stream",
+  });
   const kvPackage = installed.package;
-  await ana.client.createApp("pipeline", { package: kvPackage }, { org });
-  const adminInvite = await ana.client.invite(org, "admin", ana.passkey, undefined, { uses: 1 });
+  await ana.client.apps.create({ name: "pipeline", package: kvPackage, org });
+  const adminInvite = (
+    await ana.client.orgs.inviteCreate(
+      { org, role: "admin", teams: undefined, uses: 1 },
+      { confirm: passkeyConfirm(ana.passkey) },
+    )
+  ).token;
 
   const seed: Seed = { org, owner: ana.accountId, adminInvite, kvPackage };
   mkdirSync(dirname(SEED), { recursive: true });

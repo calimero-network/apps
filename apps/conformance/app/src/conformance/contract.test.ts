@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, contract } from "./contract";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../../logic/res/abi.json"), "utf8")) as {
@@ -38,7 +39,7 @@ describe("the adapter covers the contract", () => {
       const result = /Len$|^len$|VecPush$/.test(method) ? "0" : null;
       return Promise.resolve({ index: 1, result, events: [] });
     };
-    const c = contract({ call: vi.fn(record), view: vi.fn(record), callConfirmed: vi.fn(record) }, "app-1");
+    const c = contract(withRoutes({ call: vi.fn(record), view: vi.fn(record), callConfirmed: vi.fn(record) }), "app-1");
     await Promise.all([
       c.set("k", "v"),
       c.confirmedSet("k", "v"),
@@ -80,7 +81,7 @@ describe("the adapter covers the contract", () => {
       Promise.resolve({ index: 1, result: method === "len" ? "12" : "x" }),
     );
     const call = vi.fn(() => Promise.resolve({ index: 1, result: "3", events: [] }));
-    const c = contract({ call, view, callConfirmed: vi.fn() }, "app-1");
+    const c = contract(withRoutes({ call, view, callConfirmed: vi.fn() }), "app-1");
     expect(await c.len()).toBe(12);
     expect(await c.authoredVecPush("v")).toBe(3);
     await c.authoredVecGet(7);
@@ -92,11 +93,16 @@ describe("the adapter covers the contract", () => {
   it("confirmedSet uses the passkey step-up only when given a passkey", async () => {
     const call = vi.fn(() => Promise.resolve({ index: 1, result: null, events: [] }));
     const callConfirmed = vi.fn(() => Promise.resolve({ index: 2, result: null, events: [] }));
-    const c = contract({ call, view: vi.fn(), callConfirmed }, "app-1");
+    const c = contract(withRoutes({ call, view: vi.fn(), callConfirmed }), "app-1");
     const passkey = { create: vi.fn(), get: vi.fn() };
     await c.confirmedSet("k", "v");
     await c.confirmedSet("k", "v", passkey);
     expect(call).toHaveBeenCalledWith("app-1", "confirmedSet", { key: "k", value: "v" });
-    expect(callConfirmed).toHaveBeenCalledWith("app-1", "confirmedSet", { key: "k", value: "v" }, passkey);
+    expect(callConfirmed).toHaveBeenCalledWith(
+      "app-1",
+      "confirmedSet",
+      { key: "k", value: "v" },
+      expect.objectContaining({ confirm: expect.any(Function) }),
+    );
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 import { DEFAULT_ORG_CAPABILITIES, ORG_CAPABILITIES } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 import {
@@ -41,7 +42,7 @@ const app = (appId: string, name: string, org: string | null) => ({
 
 describe("streams are organizations, rooms are app instances", () => {
   it("lists the account's orgs with their room and member counts", async () => {
-    const client = {
+    const client = withRoutes({
       me: vi.fn(async () => ({
         orgs: [
           { orgId: "o2", name: "Zeta", role: "Member" },
@@ -52,7 +53,7 @@ describe("streams are organizations, rooms are app instances", () => {
       getOrg: vi.fn(async (org: string) =>
         org === "o1" ? { members: { acct: "owner", bob: "member" } } : Promise.reject(new Error("x")),
       ),
-    };
+    });
     const rows = await listStreams(client as never, "bundle-hash");
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
     // Zeta holds no room and was not made for Mero Stream: another app's org.
@@ -60,28 +61,28 @@ describe("streams are organizations, rooms are app instances", () => {
   });
 
   it("lists a stream made here before it holds a room", async () => {
-    const client = {
+    const client = withRoutes({
       me: vi.fn(async () => ({ orgs: [{ orgId: "o2", name: "Zeta", role: "Owner" }] })),
       listApps: vi.fn(async () => []),
       getOrg: vi.fn(async () => ({ members: { acct: "owner" }, metadata: { createdFor: "bundle-hash" } })),
-    };
+    });
     expect(await listStreams(client as never, "bundle-hash")).toEqual([
       { orgId: "o2", name: "Zeta", role: "owner", roomCount: 0, memberCount: 1 },
     ]);
   });
 
   it("lists one stream's rooms, by name, from the package in production", async () => {
-    const client = {
+    const client = withRoutes({
       listApps: vi.fn(async () => [app("b", "Beta", "o1"), app("a", "Alpha", "o1"), app("c", "Gamma", "o2")]),
-    };
-    const rooms = await listRooms(client, { package: "com.calimero.mero-stream" }, "o1");
+    });
+    const rooms = await listRooms(withRoutes(client), { package: "com.calimero.mero-stream" }, "o1");
     expect(client.listApps).toHaveBeenCalledWith({ package: "com.calimero.mero-stream" });
     expect(rooms.map((r) => r.name)).toEqual(["Alpha", "Beta"]);
   });
 
   it("creates a room in the org, naming the stream in init", async () => {
     // A raw dev bundle has no app team: the room keeps organization access.
-    const client = { createApp: vi.fn(async () => "app-1"), getOrg: vi.fn(), scopeApps: vi.fn(), session: undefined };
+    const client = withRoutes({ createApp: vi.fn(async () => "app-1"), getOrg: vi.fn(), scopeApps: vi.fn(), session: undefined });
     expect(await createRoom(client as never, "bundle", "o1", "Standup")).toBe("app-1");
     expect(client.createApp).toHaveBeenCalledWith("Standup", "bundle", {
       org: "o1",
@@ -90,13 +91,13 @@ describe("streams are organizations, rooms are app instances", () => {
   });
 
   it("reads member display names from org member metadata", async () => {
-    const client = {
+    const client = withRoutes({
       getOrg: vi.fn(async () => ({
         name: "Team",
         members: { a: "owner", b: "member" },
         memberMetadata: { a: { name: " Alice " }, b: { title: "x" } },
       })),
-    };
+    });
     expect(await streamInfo(client as never, "o1")).toEqual({
       name: "Team",
       members: ["a", "b"],
@@ -115,34 +116,34 @@ describe("members of a new stream may create rooms (core's CREATE_APP)", () => {
 
   it("creating a stream sets the org's member defaults, approved with the owner's passkey", async () => {
     const pk = { create: vi.fn(), get: vi.fn() };
-    const client = {
+    const client = withRoutes({
       createOrg: vi.fn(async () => "o1"),
       setCapabilities: vi.fn(async () => {}),
-    };
+    });
     expect(await createStream(client as never, "Team", () => pk as never)).toEqual({ orgId: "o1", warning: null });
     expect(client.createOrg).toHaveBeenCalledWith("Team");
     // No `at`: the organization's default, not one member's row.
-    expect(client.setCapabilities).toHaveBeenCalledWith("o1", MEMBER_DEFAULTS, pk);
+    expect(client.setCapabilities).toHaveBeenCalledWith("o1", MEMBER_DEFAULTS, expect.objectContaining({ confirm: expect.any(Function) }));
   });
 
   it("keeps the stream when the defaults are refused (a cancelled passkey), and says so", async () => {
-    const client = {
+    const client = withRoutes({
       createOrg: vi.fn(async () => "o1"),
       setCapabilities: vi.fn(async () => Promise.reject(new Error("cancelled"))),
-    };
+    });
     const created = await createStream(client as never, "Team", () => ({}) as never);
     expect(created.orgId).toBe("o1");
     expect(created.warning).toMatch(/Members can create rooms/);
   });
 
   it("the toggle flips only CREATE_APP in the org's default, keeping the other bits", async () => {
-    const client = { setCapabilities: vi.fn(async () => {}) };
+    const client = withRoutes({ setCapabilities: vi.fn(async () => {}) });
     const pk = {} as never;
     const others = ORG_CAPABILITIES.JOIN_OPEN_TEAMS | ORG_CAPABILITIES.INVITE_MEMBERS;
     await setMembersCreateRooms(client as never, "o1", others, true, pk);
-    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others | ORG_CAPABILITIES.CREATE_APP, pk);
+    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others | ORG_CAPABILITIES.CREATE_APP, expect.objectContaining({ confirm: expect.any(Function) }));
     await setMembersCreateRooms(client as never, "o1", others | ORG_CAPABILITIES.CREATE_APP, false, pk);
-    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others, pk);
+    expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others, expect.objectContaining({ confirm: expect.any(Function) }));
   });
 });
 

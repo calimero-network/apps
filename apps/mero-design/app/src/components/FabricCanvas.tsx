@@ -1428,6 +1428,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const focusedTag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
         if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- fabric's `type`, read as before this lint
         if (active?.type === "i-text" && (active as IText).isEditing) return;
 
         // Every selected element, not just the active object: an ActiveSelection

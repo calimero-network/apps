@@ -1,23 +1,32 @@
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  passkeyConfirm,
+  ORG_CAPABILITIES,
+  type AppInfo,
+  type CalimeroClient,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 import {
   appInvite,
   appPeople,
+  appTarget,
   createAppOrg,
   createInviteStore,
+  inviteLink as sharedInviteLink,
   isAppOnly,
   leaveApp,
   leaveOrg,
+  listAppInfos,
   orgInstanceOptions,
-  removeFromApp,
   orgsWithApp,
+  removeFromApp,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
-  type LeftApp,
-  inviteLink as sharedInviteLink,
   type AppSource,
+  type ClientRoutes,
   type InviteStore,
   type KeyValueStorage,
+  type LeftApp,
   type PendingInvite,
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
@@ -77,9 +86,9 @@ interface MeOrgs {
 }
 
 /** The instances of this app (the dev bundle, or the package) the account reaches. */
-export async function listInstances(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+export async function listInstances(client: ClientRoutes<{ apps: "list" }>, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
-  return client.listApps(filter);
+  return listAppInfos(client, filter);
 }
 
 function byName<T extends { name: string }>(key: (row: T) => string) {
@@ -88,7 +97,7 @@ function byName<T extends { name: string }>(key: (row: T) => string) {
 
 /** The spaces this account is in (orgs holding forums, or made for them), with their forum and member counts. */
 export async function listSpaces(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
+  client: ClientRoutes<{ auth: "me"; apps: "list"; orgs: "get" }>,
   source: AppSource,
 ): Promise<NamespaceRow[]> {
   // Only the spaces made for forums or holding one: an org made for another
@@ -111,7 +120,7 @@ export async function listSpaces(
 
 /** The forums in `org`, by name. */
 export async function listForums(
-  client: Pick<CalimeroClient, "listApps">,
+  client: ClientRoutes<{ apps: "list" }>,
   source: AppSource,
   org: string,
 ): Promise<ForumRow[]> {
@@ -135,7 +144,7 @@ export const MEMBER_DEFAULTS =
  * admins can then create forums and invite).
  */
 export async function createSpace(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
   name: string,
   passkey: () => PasskeyProvider,
   onStatus: (m: string) => void = () => {},
@@ -156,11 +165,11 @@ export async function createSpace(
 
 /** Deletes the org and, with it, every forum in it. A passkey step-up. */
 export async function deleteSpace(
-  client: Pick<CalimeroClient, "deleteOrg">,
+  client: ClientRoutes<{ orgs: "delete" }>,
   org: string,
   passkey: () => PasskeyProvider,
 ): Promise<void> {
-  await client.deleteOrg(org, passkey());
+  await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
 }
 
 /**
@@ -169,7 +178,8 @@ export async function deleteSpace(
  * caller's last app there (offer {@link leaveSpaceOrg}); elsewhere the org.
  */
 export function leaveSpace(
-  client: Pick<CalimeroClient, "getOrg" | "listAppTeams" | "removeTeamMember" | "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
@@ -179,7 +189,7 @@ export function leaveSpace(
 
 /** Leaves the organization altogether, every app in it. A passkey step-up. */
 export function leaveSpaceOrg(
-  client: Pick<CalimeroClient, "removeMember" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
   org: string,
   passkey: () => PasskeyProvider,
 ): Promise<void> {
@@ -193,7 +203,7 @@ export function leaveSpaceOrg(
  * before. Answers which it was.
  */
 export function removeFromSpace(
-  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
@@ -211,18 +221,20 @@ export const CONNECTED_FORUM_NAME = "General";
  * access in a legacy org). Answers its instance id.
  */
 export async function createForum(
-  client: Pick<CalimeroClient, "createApp" | "getOrg" | "scopeApps" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "create"; orgs: "get" | "appTeamsScope" }>,
   source: AppSource,
   org: string,
   name: string,
   passkey: () => PasskeyProvider,
 ): Promise<string> {
-  return client.createApp(name, source, await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME));
+  return client.apps
+    .create({ name, ...appTarget(source), ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)) })
+    .then((r) => r.appId);
 }
 
 /** Deletes the forum instance, its posts and comments with it. */
-export function deleteForum(client: Pick<CalimeroClient, "deleteApp">, forumId: string): Promise<void> {
-  return client.deleteApp(forumId);
+export async function deleteForum(client: ClientRoutes<{ apps: "delete" }>, forumId: string): Promise<void> {
+  await client.apps.delete({ app: forumId });
 }
 
 // ── members ──────────────────────────────────────────────────────────────────
@@ -241,11 +253,11 @@ export interface OrgMembers {
 }
 
 export async function readMembers(
-  client: Pick<CalimeroClient, "getOrg">,
+  client: ClientRoutes<{ orgs: "get" }>,
   org: string,
   source: AppSource | null = null,
 ): Promise<OrgMembers> {
-  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const o = (await client.orgs.get({ org })) as Record<string, unknown>;
   const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
@@ -264,8 +276,8 @@ export async function readMembers(
 }
 
 /** The caller's role in `org` (`/me`), or null when not in it. */
-export async function roleIn(client: Pick<CalimeroClient, "me">, org: string): Promise<string | null> {
-  const me = (await client.me()) as MeOrgs;
+export async function roleIn(client: ClientRoutes<{ auth: "me" }>, org: string): Promise<string | null> {
+  const me = (await client.auth.me()) as MeOrgs;
   return me.orgs?.find((o) => o.orgId === org)?.role ?? null;
 }
 
@@ -276,12 +288,12 @@ export function isSpaceAdmin(role: string | undefined): boolean {
 
 /** Publishes the name `account` goes by across the space (org member metadata). */
 export async function publishSpaceName(
-  client: Pick<CalimeroClient, "setMemberMetadata">,
+  client: ClientRoutes<{ orgs: "memberMetadata" }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.setMemberMetadata(org, account, { name });
+  await client.orgs.memberMetadata({ org, account, metadata: { name } });
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────
@@ -292,7 +304,7 @@ export async function publishSpaceName(
  * Mero Forum only (an org that keeps its apps apart). Org-wide in a legacy org.
  */
 export function inviteToken(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   passkey: PasskeyProvider,
   source: AppSource | null = null,

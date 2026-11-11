@@ -3,15 +3,16 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const HEX = "5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334";
-const calimero = {
+const calimero = withRoutes({
   getOrg: vi.fn().mockResolvedValue({
     name: "Space",
     members: { [HEX]: "admin" },
     memberMetadata: { [HEX]: { name: "Sandi" } },
   }),
-};
+});
 vi.mock("../sessionContext", () => ({
   useMaybeSignedIn: () => ({ client: calimero, accountId: HEX, after: () => {} }),
 }));

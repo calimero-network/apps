@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import abiText from "../../../logic/res/abi.json?raw";
 import { fromBase64Url, meroStream, METHODS, toBase64Url } from "./meroStream";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 interface Abi {
   methods: Record<string, { kind: string; params: [string, string][] }>;
@@ -19,7 +20,7 @@ describe("the typed client matches the committed ABI", () => {
 });
 
 function fake(results: Record<string, unknown>) {
-  return {
+  return withRoutes({
     call: vi.fn(async (_app: string, method: string) => ({
       index: 3,
       result: results[method] ?? null,
@@ -29,14 +30,14 @@ function fake(results: Record<string, unknown>) {
       index: 3,
       result: results[method] ?? null,
     })),
-  };
+  });
 }
 
 describe("meroStream: wire shapes back to the screens' shapes", () => {
   it("sends u64s as decimal strings and raw luma as base64url", async () => {
     const client = fake({ encodeFrame: "7" });
     const after = vi.fn();
-    const s = meroStream(client, "room-1", after);
+    const s = meroStream(withRoutes(client), "room-1", after);
     const seq = await s.encodeFrame([0, 17, 255], 3, 1, 0, 1751955010000.7);
     expect(seq).toBe(7);
     expect(client.call).toHaveBeenCalledWith("room-1", "encodeFrame", {
@@ -64,7 +65,7 @@ describe("meroStream: wire shapes back to the screens' shapes", () => {
         },
       ],
     });
-    const frames = await meroStream(client, "r").getFrame(3);
+    const frames = await meroStream(withRoutes(client), "r").getFrame(3);
     expect(client.view).toHaveBeenCalledWith("r", "getFrame", { afterSeq: "3" });
     expect(frames).toEqual([
       {
@@ -124,7 +125,7 @@ describe("meroStream: wire shapes back to the screens' shapes", () => {
         ],
       },
     });
-    const s = meroStream(client, "r");
+    const s = meroStream(withRoutes(client), "r");
     expect(await s.getMembers()).toEqual([
       { memberId: "a", username: "A", joinedAt: 1, updatedAt: 2 },
     ]);
@@ -143,7 +144,7 @@ describe("meroStream: wire shapes back to the screens' shapes", () => {
 
   it("keeps the checksum a string: a u64 does not fit a JS number", async () => {
     const client = fake({ frameChecksum: "18446744073709551557" });
-    expect(await meroStream(client, "r").frameChecksum(1)).toBe("18446744073709551557");
+    expect(await meroStream(withRoutes(client), "r").frameChecksum(1)).toBe("18446744073709551557");
   });
 
   it("round-trips base64url", () => {

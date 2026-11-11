@@ -12,12 +12,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
 import type { AppEvent } from '../spreadsheet/events';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 /** How long to wait before retrying a dropped stream. */
 const RETRY_MS = 2_000;
 
 export function useAppEvents(
-  client: Pick<CalimeroClient, 'events' | 'view'> | null,
+  client: (Pick<CalimeroClient, 'events'> & ClientRoutes<{ apps: 'view' }>) | null,
   appId: string | null,
   onEvent: (event: AppEvent) => void,
   onReconnect: () => void,
@@ -42,7 +43,7 @@ export function useAppEvents(
       while (!abort.signal.aborted) {
         try {
           // Where the state a read sees ends: events after it are news.
-          const { index } = await client.view(appId, 'whoami', {});
+          const { index } = await client.apps.view({ app: appId, method: 'whoami', args: {} });
           if (abort.signal.aborted) return;
           setConnected(true);
           if (!first) handlers.current.onReconnect();

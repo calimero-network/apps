@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CONTRACT_METHODS, CONTRACT_VIEWS, SpreadsheetClient, fromWire, u64 } from './SpreadsheetClient';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, '../../../../logic/res/abi.json'), 'utf8')) as {
@@ -18,7 +19,7 @@ function transport(answers: Record<string, unknown> = {}) {
       sent.push({ app, method, args: args as Record<string, unknown>, kind });
       return ok(answers[method] ?? null);
     });
-  return { sent, client: { call: make('call'), view: make('view') } };
+  return { sent, client: withRoutes({ call: make('call'), view: make('view') }) };
 }
 
 describe('the client covers the contract', () => {
@@ -70,7 +71,7 @@ describe('on the wire', () => {
 
   it('runs `after` after every request, failed ones too', async () => {
     const after = vi.fn();
-    const client = { call: vi.fn(() => Promise.reject(new Error('down'))), view: vi.fn(() => ok([])) };
+    const client = withRoutes({ call: vi.fn(() => Promise.reject(new Error('down'))), view: vi.fn(() => ok([])) });
     const ss = new SpreadsheetClient(client, 'app-1', after);
     await expect(ss.createSheet({ name: 'x' })).rejects.toThrow('down');
     await ss.listSheets();
@@ -103,10 +104,10 @@ describe('linked ranges, relayed by the browser', () => {
   });
 
   it('never fails the edit when the relay does', async () => {
-    const client = {
+    const client = withRoutes({
       call: vi.fn((app: string) => (app === 'app-2' ? Promise.reject(new Error('not a member')) : ok('k'))),
       view: vi.fn((_app: string, method: string) => ok(method === 'getPublications' ? [PUB] : PUSH)),
-    };
+    });
     await expect(new SpreadsheetClient(client, 'app-1').setCell({ sheet_id: 's1', row_id: '0', col_id: '0', raw_value: '1' })).resolves.toBe('k');
   });
 

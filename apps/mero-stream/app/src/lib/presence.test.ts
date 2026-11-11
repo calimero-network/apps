@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fromHex, presencePublisher, subscribePresence, toHex } from "./presence";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 describe("presence as a media pipe", () => {
   it("carries bytes as hex", () => {
@@ -12,7 +13,7 @@ describe("presence as a media pipe", () => {
 
   it("publishes with a seq that only grows, even across a reload", async () => {
     const publishPresence = vi.fn(async () => {});
-    const send = presencePublisher({ publishPresence, presenceStream: vi.fn() }, "room");
+    const send = presencePublisher(withRoutes({ publishPresence, presenceStream: vi.fn() }), "room");
     await send(Uint8Array.of(1));
     await send(Uint8Array.of(2));
     const seqs = publishPresence.mock.calls.map((c) => (c as unknown[])[1] as number);
@@ -28,7 +29,7 @@ describe("presence as a media pipe", () => {
       yield { id: "2", kind: "presence", data: { account: "b", device: "d2", state: null } };
     });
     const seen: unknown[] = [];
-    subscribePresence({ presenceStream, publishPresence: vi.fn() }, "room", (u) => seen.push(u));
+    subscribePresence(withRoutes({ presenceStream, publishPresence: vi.fn() }), "room", (u) => seen.push(u));
     await vi.waitFor(() => expect(seen).toHaveLength(2));
     expect(seen).toEqual([
       { account: "b", device: "d2", state: Uint8Array.of(2, 3) },

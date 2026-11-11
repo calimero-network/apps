@@ -4,6 +4,7 @@ import { AppError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { BOOKING_GUEST_METHODS, CALLS, VIEWS, calendar, messageOf } from "./calendar";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../../logic/res/abi.json"), "utf8")) as {
@@ -40,7 +41,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: method.startsWith("get") || method.startsWith("list") ? [] : {} });
     };
-    const cal = calendar({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const cal = calendar(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     const guest = { name: "g", email: "g@x", note: "" };
     await Promise.all([
       cal.setUsername("a"),
@@ -84,7 +85,7 @@ describe("calendar", () => {
   it("sends an update only the fields it names", async () => {
     const call = vi.fn().mockResolvedValue({ index: 2, result: "e1" });
     const after = vi.fn();
-    const cal = calendar({ call, view: vi.fn() }, "app-1", after);
+    const cal = calendar(withRoutes({ call, view: vi.fn() }), "app-1", after);
     expect(await cal.updateEvent("e1", { title: "New", peers: undefined })).toBe("e1");
     expect(call).toHaveBeenCalledWith("app-1", "updateEvent", { eventId: "e1", eventData: { title: "New" } });
     expect(after).toHaveBeenCalledTimes(1);
@@ -95,7 +96,7 @@ describe("calendar", () => {
       index: 2,
       result: [{ id: "a", username: "Ann", joinedAt: "1783296000000", usernameUpdatedAt: "1783296000001" }],
     });
-    const cal = calendar({ call: vi.fn(), view }, "app-1");
+    const cal = calendar(withRoutes({ call: vi.fn(), view }), "app-1");
     expect(await cal.getMembers()).toEqual([
       { id: "a", username: "Ann", joinedAt: 1_783_296_000_000, usernameUpdatedAt: 1_783_296_000_001 },
     ]);
@@ -103,7 +104,7 @@ describe("calendar", () => {
 
   it("runs `after` when a request fails too", async () => {
     const after = vi.fn();
-    const cal = calendar({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }, "a", after);
+    const cal = calendar(withRoutes({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }), "a", after);
     await expect(cal.getEvents()).rejects.toThrow("boom");
     expect(after).toHaveBeenCalledTimes(1);
   });

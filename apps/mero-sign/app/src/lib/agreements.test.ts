@@ -13,6 +13,7 @@ import {
   listWorkspaces,
   pickInvitedAgreement,
 } from './agreements';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 const ME = 'acct-alice';
 const app = (appId: string, name: string, org: string | null, owner = ME) => ({
@@ -32,7 +33,7 @@ function fake(
 ) {
   const calls: { app: string; method: string; args: unknown }[] = [];
   let next = 0;
-  return {
+  return withRoutes({
     calls,
     me: vi.fn(async () => ({
       orgs: [
@@ -57,7 +58,7 @@ function fake(
       index: 1,
       result: views[method] ?? null,
     })),
-  };
+  });
 }
 
 describe('workspaces', () => {
@@ -71,13 +72,13 @@ describe('workspaces', () => {
 
   it('a workspace made here is listed before it holds an agreement', async () => {
     const meta: Record<string, unknown> = {};
-    const c = {
+    const c = withRoutes({
       ...fake([app('a1', 'NDA', 'org-a')]),
       getOrg: vi.fn(async (org: string) => ({ name: org, members: { [ME]: 'owner' }, metadata: meta[org] ?? null })),
       setOrgMetadata: vi.fn(async (org: string, m: unknown) => {
         meta[org] = m;
       }),
-    };
+    });
     c.me.mockResolvedValue({
       orgs: [
         { orgId: 'org-a', name: 'Acme', role: 'owner' },
@@ -100,7 +101,7 @@ describe('workspaces', () => {
     const passkey = { create: vi.fn(), get: vi.fn() };
     const res = await createWorkspace(c as never, 'Acme', () => passkey);
     expect(res).toEqual({ namespaceId: 'org-new', warning: null });
-    expect(c.setCapabilities).toHaveBeenCalledWith('org-new', MEMBER_DEFAULTS, passkey);
+    expect(c.setCapabilities).toHaveBeenCalledWith('org-new', MEMBER_DEFAULTS, expect.objectContaining({ confirm: expect.any(Function) }));
     expect(MEMBER_DEFAULTS & ORG_CAPABILITIES.CREATE_APP).toBeTruthy();
     expect(MEMBER_DEFAULTS & ORG_CAPABILITIES.INVITE_MEMBERS).toBeTruthy();
   });

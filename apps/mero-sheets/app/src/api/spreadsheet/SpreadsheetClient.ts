@@ -17,12 +17,12 @@
  *    The person relaying must be an editor in both workbooks. A failed relay
  *    never fails the edit that triggered it.
  */
-import type { CalimeroClient } from '@calimero-network/mero-js';
 import type {
   ActivityEntry, Attachment, AxisOp, AxisSize, Cell, CellOp, CellStyle, Chart, ChartInput, Comment,
   FunctionDef, Link, Member, NamedRange, NoteChange, NotedCell, Project, Protection, Publication, Rule,
   RuleInput, Sheet, SheetLayout, SheetView, Span, StyleOp,
 } from './types';
+import { type ClientRoutes } from '@calimero-apps/connect';
 
 export * from './types';
 
@@ -39,7 +39,7 @@ export interface LinkPush {
 }
 
 /** What the adapter needs of a `CalimeroClient`. */
-export type ContractTransport = Pick<CalimeroClient, 'call' | 'view'>;
+export type ContractTransport = ClientRoutes<{ apps: 'call' | 'view' }>;
 
 /**
  * Every contract method this client calls and its parameter names, in the
@@ -187,7 +187,7 @@ export class SpreadsheetClient {
 
   private async call<T>(method: string, args: Record<string, unknown>): Promise<T> {
     try {
-      const { result } = await this.client.call(this.appId, method, args);
+      const { result } = await this.client.apps.call({ app: this.appId, method, args });
       if (EDITS.has(method) && typeof args.sheetId === 'string') void this.relaySheet(args.sheetId);
       return fromWire(result) as T;
     } finally {
@@ -197,7 +197,7 @@ export class SpreadsheetClient {
 
   private async view<T>(method: string, args: Record<string, unknown>, app = this.appId): Promise<T> {
     try {
-      const { result } = await this.client.view(app, method, args);
+      const { result } = await this.client.apps.view({ app, method, args });
       return fromWire(result) as T;
     } finally {
       this.after();
@@ -210,7 +210,7 @@ export class SpreadsheetClient {
   async relay(id: string): Promise<void> {
     const push = await this.view<LinkPush>('pushPublication', { id });
     try {
-      await this.client.call(push.target_context, 'receiveLink', {
+      await this.client.apps.call({ app: push.target_context, method: 'receiveLink', args: {
         fromContext: this.appId,
         publicationId: push.publication_id,
         name: push.name,
@@ -218,7 +218,7 @@ export class SpreadsheetClient {
         rows: push.rows,
         cols: push.cols,
         values: push.values,
-      });
+      } });
     } finally {
       this.after();
     }
@@ -260,7 +260,11 @@ export class SpreadsheetClient {
     this.publications = null;
     if (pub) {
       try {
-        await this.client.call(pub.target_context, 'dropLink', { fromContext: this.appId, publicationId: pub.id });
+        await this.client.apps.call({
+          app: pub.target_context,
+          method: 'dropLink',
+          args: { fromContext: this.appId, publicationId: pub.id },
+        });
       } catch {
         // The other workbook is out of reach: its sheet stays until someone there unlinks it.
       } finally {

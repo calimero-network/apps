@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, type MyOrg } from "@calimero-apps/connect";
+import { passkeyConfirm, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes, type MyOrg } from "@calimero-apps/connect";
 
 import { displayName, roleLabel, type OrgView } from "../home";
 import {
@@ -14,7 +14,7 @@ import {
 } from "../move";
 
 export interface MergeOrgsProps {
-  client: Pick<CalimeroClient, "getOrg" | "appsReportAll" | "listInvites" | "postConfirmed" | "deleteOrg">;
+  client: Pick<CalimeroClient, "appsReportAll"> & ClientRoutes<{ apps: "move"; orgs: "get" | "inviteList" | "delete" }>;
   /** The organization everything moves into. */
   view: OrgView;
   /** The caller's organizations. */
@@ -91,7 +91,7 @@ export function MergeOrgs({ client, view, orgs, account, passkey, after, onChang
     setDeleting(true);
     setError(null);
     try {
-      await client.deleteOrg(p.source, passkey());
+      await client.orgs.delete({ org: p.source }, { confirm: passkeyConfirm(passkey()) });
       setDeleted(p.name);
       setSource("");
       onChanged();

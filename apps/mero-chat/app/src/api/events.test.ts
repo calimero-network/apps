@@ -9,6 +9,7 @@ vi.mock("./calimero", () => ({
 
 import { indexOf, streamApp, v1Payload, type AppEvent } from "./events";
 import { bytesParser } from "../utils/bytesParser";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 describe("v1Payload", () => {
   it("puts each event's data back in the shape the handlers decode", () => {
@@ -30,13 +31,13 @@ describe("streamApp", () => {
   it("starts after the app's current index and passes each event on", async () => {
     const ctrl = new AbortController();
     const seen: AppEvent[] = [];
-    const client = {
+    const client = withRoutes({
       view: vi.fn().mockResolvedValue({ index: 41, result: "0" }),
       events: vi.fn(async function* () {
         yield { id: "42:0", kind: "MessageSent", data: { messageId: "m1" } };
         ctrl.abort();
       }),
-    };
+    });
     await streamApp(client as never, "app-1", (e) => seen.push(e), ctrl.signal);
     expect(client.events).toHaveBeenCalledWith("app-1", 42, ctrl.signal);
     expect(seen).toEqual([{ app: "app-1", kind: "MessageSent", data: JSON.stringify({ message_id: "m1" }) }]);

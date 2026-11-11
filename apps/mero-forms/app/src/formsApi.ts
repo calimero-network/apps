@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The forms contract, typed (no client is generated from a component ABI
@@ -347,7 +347,7 @@ export function asError(e: unknown): unknown {
   return err;
 }
 
-export type Transport = Pick<CalimeroClient, "call" | "view">;
+export type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * The workspace at app instance `app`, with v1's generated client's method
@@ -363,7 +363,7 @@ export class FormsClient {
 
   private async call<T>(method: Call, args: Raw = {}): Promise<T> {
     try {
-      return (await this.client.call(this.app, method, args)).result as T;
+      return (await this.client.apps.call({ app: this.app, method, args })).result as T;
     } catch (e) {
       throw asError(e);
     } finally {
@@ -373,7 +373,7 @@ export class FormsClient {
 
   private async view<T>(method: View, args: Raw = {}): Promise<T> {
     try {
-      return (await this.client.view(this.app, method, args)).result as T;
+      return (await this.client.apps.view({ app: this.app, method, args })).result as T;
     } catch (e) {
       throw asError(e);
     } finally {
@@ -525,4 +525,3 @@ export class FormsClient {
     return this.view("myAccount");
   }
 }
-

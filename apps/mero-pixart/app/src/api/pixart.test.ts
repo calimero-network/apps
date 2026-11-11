@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import abiJson from "../../../logic/res/abi.json";
 import { invoke, isView, messageOf, methodOf, toWire, V1_METHODS } from "./pixart";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = abiJson as unknown as {
@@ -56,14 +57,14 @@ describe("the adapter covers the contract", () => {
   });
 
   it("reads with views and writes with calls", async () => {
-    const client = {
+    const client = withRoutes({
       view: vi.fn().mockResolvedValue({ index: 1, result: [] }),
       call: vi.fn().mockResolvedValue({ index: 2, result: "l1", events: [] }),
-    };
+    });
     expect(isView("getLayers")).toBe(true);
-    expect(await invoke(client, "app", "get_layers")).toEqual([]);
+    expect(await invoke(withRoutes(client), "app", "get_layers")).toEqual([]);
     expect(client.view).toHaveBeenCalledWith("app", "getLayers", {});
-    expect(await invoke(client, "app", "add_layer", { layer: { id: "l1" } })).toBe("l1");
+    expect(await invoke(withRoutes(client), "app", "add_layer", { layer: { id: "l1" } })).toBe("l1");
     expect(client.call).toHaveBeenCalledWith("app", "addLayer", { layer: { id: "l1" } });
   });
 });

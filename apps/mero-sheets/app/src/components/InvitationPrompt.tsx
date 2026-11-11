@@ -113,7 +113,7 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
     setBusy(true);
     setError(null);
     try {
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+      const org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token }));
       dropInvite();
       setInvite(null);
       const landed = { namespaceId: org, contextId: invite.sheet };

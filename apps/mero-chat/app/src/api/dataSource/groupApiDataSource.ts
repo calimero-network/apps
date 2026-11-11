@@ -220,7 +220,7 @@ export class GroupApiDataSource implements GroupApi {
       if (await isOrg(groupId)) {
         await deleteOrg(groupId);
       } else {
-        await run((c) => c.deleteApp(pendingChannel(groupId)?.appId ?? groupId));
+        await run((c) => c.apps.delete({ app: pendingChannel(groupId)?.appId ?? groupId }));
         invalidate();
       }
       return ok(true);
@@ -576,7 +576,7 @@ export class GroupApiDataSource implements GroupApi {
   async setContextAlias(_groupId: string, contextId: string, name: string): ApiResponse<void> {
     try {
       const app = await getAppRecord(contextId);
-      await run((c) => c.setAppMetadata(contextId, { ...(app.metadata ?? {}), name }));
+      await run((c) => c.apps.metadata({ app: contextId, metadata: { ...(app.metadata ?? {}), name } }));
       invalidate(contextId);
       return ok(undefined);
     } catch (error) {

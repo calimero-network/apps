@@ -1,4 +1,4 @@
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 
 import {
   BOOKING_GUEST_METHODS,
@@ -10,6 +10,7 @@ import {
   type GuestDetails,
   type WeeklyWindow,
 } from "./calendar";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 export type {
   BookingLinkView,
@@ -86,7 +87,7 @@ export async function sha256Hex(text: string): Promise<string> {
 
 /** The signed-in owner, at one calendar. */
 export interface Owner {
-  client: Pick<CalimeroClient, "createApiKey" | "revokeApiKey" | "call" | "view">;
+  client: ClientRoutes<{ auth: "apikeyCreate" | "apikeyRevoke"; apps: "call" | "view" }>;
   app: string;
   passkey: () => PasskeyProvider;
   after?: () => void;
@@ -109,14 +110,14 @@ export async function createBookingLink(
   const ttlSecs = link.expiresAtMs
     ? Math.max(60, Math.min(MAX_KEY_SECS, Math.ceil((link.expiresAtMs - now) / 1000)))
     : undefined;
-  const key = await owner.client.createApiKey(
+  const key = await owner.client.auth.apikeyCreate(
     {
       label: `Booking link: ${link.title}`.slice(0, 128),
       apps: [owner.app],
       methods: [...BOOKING_GUEST_METHODS],
       ...(ttlSecs ? { ttlSecs } : {}),
     },
-    owner.passkey(),
+    { confirm: passkeyConfirm(owner.passkey()) },
   );
   owner.after?.();
   try {
@@ -134,7 +135,9 @@ export async function createBookingLink(
     });
     return { link: created, url: bookingUrl(base, { app: owner.app, token: key.key }) };
   } catch (err) {
-    await owner.client.revokeApiKey(key.keyId, owner.passkey()).catch(() => undefined);
+    await owner.client.auth
+      .apikeyRevoke({ key: key.keyId }, { confirm: passkeyConfirm(owner.passkey()) })
+      .catch(() => undefined);
     throw err;
   }
 }
@@ -149,7 +152,7 @@ export async function deleteBookingLink(
   link: Pick<BookingLinkView, "linkId" | "grantId">,
 ): Promise<void> {
   if (link.grantId) {
-    await owner.client.revokeApiKey(link.grantId, owner.passkey()).catch((err: { status?: number }) => {
+    await owner.client.auth.apikeyRevoke({ key: link.grantId }, { confirm: passkeyConfirm(owner.passkey()) }).catch((err: { status?: number }) => {
       if (err?.status !== 404) throw err;
     });
   }
@@ -162,7 +165,7 @@ export async function deleteBookingLink(
  * The calendar as the guest reaches it: a client of its own (never the
  * page's signed-in one) that authenticates every request with the link's key.
  */
-export function guestCalendar(client: Pick<CalimeroClient, "useApiKey" | "call" | "view">, target: BookingLinkTarget): Calendar {
+export function guestCalendar(client: Pick<CalimeroClient, "useApiKey"> & ClientRoutes<{ apps: "call" | "view" }>, target: BookingLinkTarget): Calendar {
   client.useApiKey(target.token);
   return calendar(client, target.app);
 }
