@@ -533,7 +533,7 @@ export async function uploadBlob(data: ArrayBuffer | Uint8Array, app: string): P
   const { client, after } = getApi();
   try {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const res = await client.apps.blobUpload({ app, body: bytes, contentType: 'application/octet-stream' });
+    const res = await client.apps.blobUpload({ app, body: bytes, contentType: "application/octet-stream" });
     return { blobId: res?.id || res?.blobId || "" };
   } finally {
     after();

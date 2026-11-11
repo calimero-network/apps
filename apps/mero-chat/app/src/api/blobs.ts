@@ -60,7 +60,7 @@ export async function uploadBlob(
         ? new Uint8Array(data)
         : new Uint8Array(await data.arrayBuffer());
   try {
-    const res = await getClient().apps.blobUpload({ app, body: bytes, contentType: 'application/octet-stream' });
+    const res = await getClient().apps.blobUpload({ app, body: bytes, contentType: "application/octet-stream" });
     const blobId = toBlobIdHex(res?.id ?? "");
     if (!blobId) throw new Error(`The node returned a blob id this app cannot use: ${String(res?.id)}`);
     return { blobId, size: res?.size ?? bytes.length };
