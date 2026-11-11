@@ -75,4 +75,15 @@ final class ChatInvitationTests: XCTestCase {
         XCTAssertEqual(ChatInvitation.parse("inv_abc123")?.invitation.token, "inv_abc123")
         XCTAssertNil(ChatInvitation.parse("https://chat.example.com/?invite=nope"))
     }
+
+    /// The phone shares the web app's link, which a browser opens.
+    func testOurWebLinkIsTheWebAppsAndRoundTrips() throws {
+        let invitation = ChatInvitation(
+            invitation: OrgInvitation(namespaceId: "org1", token: "inv_abc123"), workspaceName: "Team")
+        let link = invitation.webLink(origin: URL(string: "https://chat.example.com")!)
+        XCTAssertEqual(link, "https://chat.example.com/?invite=inv_abc123&org=org1")
+        let parsed = try XCTUnwrap(ChatInvitation.parse(link))
+        XCTAssertEqual(parsed.invitation.token, "inv_abc123")
+        XCTAssertEqual(parsed.namespaceId, "org1")
+    }
 }

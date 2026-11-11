@@ -1,3 +1,4 @@
+import MeroKit
 import MeroKitUI
 import SwiftUI
 
@@ -78,7 +79,8 @@ struct SignedInView: View {
         _workspaces = StateObject(
             wrappedValue: WorkspacesModel(
                 backend: backend,
-                applicationId: { [weak session] in session?.applicationId }))
+                applicationId: { [weak session] in session?.applicationId },
+                webOrigin: AppHost.origin(package: ChatConstants.packageName, cluster: AppConfig.cluster)))
     }
 
     var body: some View {
