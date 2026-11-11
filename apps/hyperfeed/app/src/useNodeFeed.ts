@@ -133,7 +133,7 @@ export function useNodeFeed(appId: string): NodeFeed {
         const { blobId, size } = await client.apps.blobUpload({
           app: appId,
           body: new Uint8Array(await data.arrayBuffer()),
-          contentType: 'application/octet-stream',
+          contentType: "application/octet-stream",
         });
         return { blobId, size };
       },
