@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { HOME_PACKAGE, appLabel, type Target } from "@calimero-apps/connect";
 
 import { ManageInHomeLink } from "./HomeLink";
@@ -41,7 +41,8 @@ describe("ManageInHomeLink", () => {
         <ManageInHomeLink session={{ status: "connecting" }} org="org-1" href={PAGE} />
       </>,
     );
-    const clientOf = (s: Session) => (s.status === "signed-in" ? s.client : null);
+    // `withRoutes` hands back the fake itself, whose wrapper-named mocks the routed methods call.
+    const clientOf = (s: Session) => (s.status === "signed-in" ? (s.client as unknown as Record<"getOrg" | "package", Mock>) : null);
     await waitFor(() => expect(clientOf(member)?.getOrg).toHaveBeenCalled());
     await waitFor(() => expect(clientOf(noHome)?.package).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));

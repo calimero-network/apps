@@ -30,6 +30,8 @@ const policy = (p: SignUpPolicy["policy"]): SignUpPolicy => ({
   orgInvites: p !== "closed",
   signUpInvites: true,
   inviteRequired: p !== "open",
+  cluster: "eu-shared-1",
+  passkeyTag: "k7q2",
 });
 
 const pk = (): PasskeyProvider =>

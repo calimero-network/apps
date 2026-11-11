@@ -44,8 +44,10 @@ function named(name: string, message = name): Error {
   return e;
 }
 
-const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
-const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true };
+// The cluster's name and the four-character tag its passkeys' names carry (GET /sign-up).
+const CLUSTER = { cluster: "eu-shared-1", passkeyTag: "k7q2" };
+const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false, ...CLUSTER };
+const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true, ...CLUSTER };
 
 /**
  * A client whose sign-up drives the passkey it is given the way mero-js

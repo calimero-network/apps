@@ -59,18 +59,24 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
       orgInvites: true,
       signUpInvites: true,
       inviteRequired: false,
+      cluster: "eu-shared-1",
+      passkeyTag: "k7q2",
     },
     invite: {
       policy: "invite",
       orgInvites: true,
       signUpInvites: true,
       inviteRequired: true,
+      cluster: "eu-shared-1",
+      passkeyTag: "k7q2",
     },
     closed: {
       policy: "closed",
       orgInvites: false,
       signUpInvites: true,
       inviteRequired: true,
+      cluster: "eu-shared-1",
+      passkeyTag: "k7q2",
     },
   };
 
@@ -258,6 +264,8 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     orgInvites: true,
     signUpInvites: true,
     inviteRequired: false,
+    cluster: "eu-shared-1",
+    passkeyTag: "k7q2",
   };
   function cluster() {
     const pk = {

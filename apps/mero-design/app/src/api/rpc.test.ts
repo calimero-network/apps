@@ -1,4 +1,4 @@
-import { AppError, type CalimeroClient } from "@calimero-network/mero-js";
+import { AppError } from "@calimero-network/mero-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { bindApi } from "./client";
@@ -15,7 +15,8 @@ import {
 } from "./rpc";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
-function bind(client: Partial<Record<keyof CalimeroClient, unknown>>) {
+// The fake holds wrapper-named mocks (`view`, `listApps`, ...); `withRoutes` routes the client's methods to them.
+function bind(client: object) {
   const after = vi.fn();
   bindApi({
     client: withRoutes(client),
