@@ -19,7 +19,7 @@ ktlint = "12.1.1"
 detekt = "1.23.7"
 # Unreleased: replaced by the included kotlin-sdk build (settings.gradle.kts). The number only
 # has to be well-formed.
-meroSdk = "0.2.0"
+meroSdk = "0.4.0"
 
 [libraries]
 mero-core = { module = "network.calimero:mero-core", version.ref = "meroSdk" }

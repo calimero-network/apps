@@ -11,13 +11,13 @@ coreKtx = "1.13.1"
 activityCompose = "1.9.2"
 lifecycle = "2.8.6"
 navigation = "2.8.4"
-composeBom = "2024.09.03"
+composeBom = "2024.12.01"
 junit = "4.13.2"
 ktlint = "12.1.1"
 detekt = "1.23.7"
 # Not on Maven Central: replaced by the included kotlin-sdk build (settings.gradle.kts). The number only
 # has to be well-formed.
-meroSdk = "0.2.0"
+meroSdk = "0.4.0"
 
 [libraries]
 mero-core = { module = "network.calimero:mero-core", version.ref = "meroSdk" }

@@ -261,7 +261,7 @@ class StreamViewModel(
         s.consentResult.value
             ?.takeIf { it.requestId == started.requestId }
             ?.let { return it }
-        return runCatching { s.client.consentResult(started.requestId) }.getOrNull()
+        return runCatching { s.client.fetchConsentResult(started.requestId) }.getOrNull()
     }
 
     /** The session on [choice], its client verified as the choice says. Null with [signInError] set when it can't connect. */
@@ -355,3 +355,7 @@ class StreamViewModel(
         }
     }
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }

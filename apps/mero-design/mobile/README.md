@@ -10,7 +10,7 @@ contract (`../logic`, package `com.calimero.mero-design`). They have the same sc
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
 `ios/project.yml` and `ios/DesignCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.

@@ -15,7 +15,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.calimero.mero.CalimeroClient
 import com.calimero.mero.ConsentRequest
+import com.calimero.mero.ConsentResult
 import com.calimero.mero.ConsentStarted
 import com.calimero.mero.compose.MeroAppSession
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,7 +53,7 @@ fun MerrariaApp(
                         consent = { build, confirm ->
                             val started = consent(s, build(s.callbackUrl)) { confirm(it.code) }
                             s.consentResult.value?.takeIf { it.requestId == started.requestId }
-                                ?: runCatching { s.client.consentResult(started.requestId) }.getOrNull()
+                                ?: runCatching { s.client.fetchConsentResult(started.requestId) }.getOrNull()
                         },
                     )
                 }
@@ -116,3 +118,7 @@ fun Splash(
         }
     }
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }

@@ -7,7 +7,7 @@ copy, icons and flows.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (Calimero 1.0, `android/kotlin-sdk.ref`) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (Calimero 1.0, `android/kotlin-sdk.ref`) |
 
 **SDK pins.** Both are SDK releases. They live in
 `Core/Package.swift` and `project.yml` on iOS, `kotlin-sdk.ref` on Android.

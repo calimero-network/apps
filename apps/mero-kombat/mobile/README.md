@@ -8,11 +8,11 @@ engine** (`../app/src/game`, unchanged) running in a WebView, bundled into the a
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/KombatCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
+| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 | Game page | `web/` | TypeScript, built with the web app's Vite | the web app's engine, imported as is |
 
 **Both apps run on Calimero 1.0** and call the contract's component ABI (`../logic/res/abi.json`
-after apps#711). The SDK pins are releases: swift-sdk `v0.5.0` and kotlin-sdk `v0.2.0`.
+after apps#711). The SDK pins are releases: swift-sdk `v0.5.0` and kotlin-sdk `0.4.0`.
 Bumping is one line per platform (iOS: both `exactVersion` / `exact:` values; Android:
 `kotlin-sdk.ref`, the new tag's commit).
 

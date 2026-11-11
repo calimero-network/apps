@@ -11,6 +11,7 @@ import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CalimeroClientOptions
 import com.calimero.mero.CalimeroConnectOptions
 import com.calimero.mero.CloudPolicy
+import com.calimero.mero.ConsentResult
 import com.calimero.mero.PasskeyProvider
 import com.calimero.mero.SoftPasskey
 import com.calimero.mero.app.MeroAppBackend
@@ -136,7 +137,7 @@ class ModelsAppViewModel(
                 val started = session.requestConsent(context, build(CONSENT_CALLBACK), confirm)
                 // The page sends the person back to CONSENT_CALLBACK ([handleLink]); ask the node meanwhile.
                 session.consentResult.value?.takeIf { it.requestId == started.requestId }
-                    ?: runCatching { session.client.consentResult(started.requestId) }.getOrNull()
+                    ?: runCatching { session.client.fetchConsentResult(started.requestId) }.getOrNull()
             },
         )
 
@@ -326,3 +327,7 @@ class ModelsAppViewModel(
         private fun devRpId(host: String): String = if (host == "10.0.2.2" || host == "127.0.0.1") "localhost" else host
     }
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }
