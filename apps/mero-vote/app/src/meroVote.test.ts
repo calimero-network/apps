@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, decode, meroVote, type PollView } from "./meroVote";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -31,7 +32,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const c = meroVote({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const c = meroVote(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     await Promise.all([
       c.whoami(),
       c.setName({ name: "Ada" }),
@@ -75,7 +76,7 @@ describe("meroVote", () => {
     const call = vi.fn().mockResolvedValue({ index: 3, result: "digest", events: [] });
     const view = vi.fn().mockResolvedValue({ index: 3, result: [] });
     const after = vi.fn();
-    const c = meroVote({ call, view }, "app-1", after);
+    const c = meroVote(withRoutes({ call, view }), "app-1", after);
 
     const ballot = { choices: [], sum_proof: [] };
     expect(await c.castBallot({ poll_id: "p1", ballot })).toBe("digest");
@@ -87,7 +88,7 @@ describe("meroVote", () => {
 
   it("sends a deadline as a decimal string, and none as null", async () => {
     const call = vi.fn().mockResolvedValue({ index: 1, result: "id", events: [] });
-    const c = meroVote({ call, view: vi.fn() }, "app-1");
+    const c = meroVote(withRoutes({ call, view: vi.fn() }), "app-1");
     const base = {
       title: "t",
       description: "",
@@ -119,7 +120,7 @@ describe("meroVote", () => {
       my_digest: "1234",
     };
     const view = vi.fn().mockResolvedValue({ index: 1, result: wire });
-    const v: PollView = await meroVote({ call: vi.fn(), view }, "app-1").getPoll({ poll_id: "p1" });
+    const v: PollView = await meroVote(withRoutes({ call: vi.fn(), view }), "app-1").getPoll({ poll_id: "p1" });
     expect(v.definition.created_at).toBe(1_700_000_000_000);
     expect(v.definition.closes_at).toBeNull();
     expect(v.state.election?.opened_at).toBe(1_700_000_000_001);

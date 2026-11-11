@@ -15,6 +15,7 @@ import {
   toMatchSummary,
   toPlayerStats,
 } from './battleships';
+import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, '../../logic/res/abi.json'), 'utf8')) as {
@@ -60,7 +61,7 @@ describe('the client covers the contract', () => {
               : null;
       return Promise.resolve({ index: 1, result, events: [] });
     };
-    const b = battleships({ call: vi.fn(record), view: vi.fn(record) }, 'app-1');
+    const b = battleships(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), 'app-1');
     const match_id = 'm';
     await Promise.all([
       b.registerPlayer(),
@@ -100,7 +101,7 @@ describe('battleships', () => {
   it('sends the reveal\'s bytes as base64url, and tracks the newest index', async () => {
     const call = vi.fn().mockResolvedValue({ index: 7, result: null, events: [] });
     const after = vi.fn();
-    const b = battleships({ call, view: vi.fn() }, 'app-1', after);
+    const b = battleships(withRoutes({ call, view: vi.fn() }), 'app-1', after);
     await b.revealBoard({
       match_id: 'm1',
       board_bytes: new Uint8Array([100, 0, 0, 0, 1, 0]),
@@ -118,7 +119,7 @@ describe('battleships', () => {
   it('runs `after` when a request fails too, and words the refusal', async () => {
     const after = vi.fn();
     const refusal = new AppError('refused', { code: 'Forbidden', fields: { message: 'not your turn' } });
-    const b = battleships({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }, 'a', after);
+    const b = battleships(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), 'a', after);
     await expect(b.proposeShot({ match_id: 'm', x: 0, y: 0 })).rejects.toBe(refusal);
     expect(after).toHaveBeenCalledTimes(1);
     expect(messageOf(refusal)).toBe('Not your turn');

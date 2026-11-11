@@ -1,4 +1,4 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-standup";
@@ -198,7 +198,7 @@ export interface StandupClient {
   getName(p: { account: string }): Promise<string>;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * The team at app instance `app` through `client`. `after` runs after every
@@ -207,14 +207,14 @@ type Transport = Pick<CalimeroClient, "call" | "view">;
 export function standup(client: Transport, app: string, after: () => void = () => {}): StandupClient {
   const call = async (method: (typeof CALLS)[number], args: Wire = {}): Promise<unknown> => {
     try {
-      return (await client.call(app, method, args)).result;
+      return (await client.apps.call({ app, method, args })).result;
     } finally {
       after();
     }
   };
   const view = async (method: (typeof VIEWS)[number], args: Wire = {}): Promise<unknown> => {
     try {
-      return (await client.view(app, method, args)).result;
+      return (await client.apps.view({ app, method, args })).result;
     } finally {
       after();
     }

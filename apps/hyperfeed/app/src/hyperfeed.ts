@@ -1,4 +1,3 @@
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import type {
   ActionDef,
   ActionInput,
@@ -36,6 +35,7 @@ import type {
   WatchInput,
   WatchView,
 } from "./hyperfeedTypes";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The Hyperfeed contract, method by method, for the screens: the ONE place
@@ -55,10 +55,10 @@ export interface AppTransport {
 }
 
 /** {@link AppTransport} over a `CalimeroClient`. */
-export function calimeroTransport(client: Pick<CalimeroClient, "call" | "view">): AppTransport {
+export function calimeroTransport(client: ClientRoutes<{ apps: "call" | "view" }>): AppTransport {
   return {
-    call: async (app, method, args) => (await client.call(app, method, args)).result,
-    view: async (app, method, args) => (await client.view(app, method, args)).result,
+    call: async (app, method, args) => (await client.apps.call({ app, method, args })).result,
+    view: async (app, method, args) => (await client.apps.view({ app, method, args })).result,
   };
 }
 

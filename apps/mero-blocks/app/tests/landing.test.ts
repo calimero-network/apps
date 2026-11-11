@@ -2,7 +2,7 @@
 // list, creating a world, entering one, an invite link redeemed after sign-in.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInfo, CalimeroClient, CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
 import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
 import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from "@calimero-apps/passkey/ceremony";
 import { CalimeroError, SignUpRefused } from "@calimero-network/mero-js";
@@ -14,6 +14,7 @@ vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () 
 import { connect, type Phase, type SessionDeps } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { PACKAGE } from "../src/net/blocks";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const ENV = { DEV: true, VITE_CALIMERO_TARGET: "local", VITE_CALIMERO_BUNDLE: "bundle-1" };
@@ -64,7 +65,7 @@ async function launcher(
   const deps: SessionDeps = {
     env: ENV,
     storage,
-    makeClient: async () => client as unknown as CalimeroClient,
+    makeClient: async () => withRoutes(client),
     passkey,
   };
   const phase: Phase = await connect(deps);

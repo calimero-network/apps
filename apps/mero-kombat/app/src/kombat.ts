@@ -1,5 +1,5 @@
-import { AppError, type CalimeroClient } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { AppError } from "@calimero-network/mero-js";
+import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-kombat";
@@ -94,7 +94,7 @@ export interface Kombat {
   index(): number;
 }
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
 const now = (clock: () => number) => String(Math.floor(clock()));
@@ -116,14 +116,14 @@ export function kombat(
   };
   const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown>): Promise<T> => {
     try {
-      return saw(await client.call(app, method, args)).result as T;
+      return saw(await client.apps.call({ app, method, args })).result as T;
     } finally {
       after();
     }
   };
   const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> => {
     try {
-      return saw(await client.view(app, method, args)).result as T;
+      return saw(await client.apps.view({ app, method, args })).result as T;
     } finally {
       after();
     }

@@ -4,6 +4,7 @@ import { AppError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { CALLS, VIEWS, kombat, messageOf } from "./kombat";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
@@ -30,7 +31,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const k = kombat({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
+    const k = kombat(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
     await Promise.all([
       k.arena(),
       k.history(),
@@ -60,7 +61,7 @@ describe("kombat", () => {
     const call = vi.fn().mockResolvedValue({ index: 7, result: null, events: [] });
     const view = vi.fn().mockResolvedValue({ index: 9, result: { status: "waiting" } });
     const after = vi.fn();
-    const k = kombat({ call, view }, "app-1", after, () => 1_700_000_000_123.7);
+    const k = kombat(withRoutes({ call, view }), "app-1", after, () => 1_700_000_000_123.7);
 
     await k.act({ match: 2, round: 1, id: 41, kind: "uppercut", hit: true, blocked: false });
     expect(call).toHaveBeenCalledWith("app-1", "act", {
@@ -82,7 +83,7 @@ describe("kombat", () => {
   it("runs `after` when a request fails too, and words the refusal like v1", async () => {
     const after = vi.fn();
     const refusal = new AppError("refused", { code: "CornerTaken", fields: {} });
-    const k = kombat({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }, "a", after);
+    const k = kombat(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), "a", after);
     await expect(k.sit("p1", "n", "cryo")).rejects.toBe(refusal);
     expect(after).toHaveBeenCalledTimes(1);
     expect(messageOf(refusal)).toBe("that corner is taken");

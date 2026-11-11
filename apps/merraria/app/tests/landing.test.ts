@@ -9,6 +9,7 @@ import { SessionStore, createInviteStore, type InviteStore, type PendingInvite }
 import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
 import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from "@calimero-apps/passkey/ceremony";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const target = { kind: "local", nodes: ["http://127.0.0.1:2501"] } as const;
 
@@ -50,7 +51,7 @@ function launcher(
   const client = fakeClient(signedIn);
   setup?.(client);
   const conn = new Connection(
-    client as never,
+    withRoutes(client) as never,
     target as never,
     new SessionStore("merraria", target as never, localStorage),
     passkey,

@@ -4,7 +4,7 @@
 // names the ABI declares, so a method the contract drops or renames fails a
 // test rather than a request.
 
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production world is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.merraria";
@@ -88,7 +88,7 @@ export const nowSecs = (): number => Math.floor(Date.now() / 1000);
 /** `exec(method, args)`: the shape SyncEngine is written against. */
 export type Exec = <T = unknown>(method: MethodName, args: Record<string, unknown>) => Promise<T>;
 
-type Transport = Pick<CalimeroClient, "call" | "view">;
+type Transport = ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
  * `exec` for the world at instance `app`: views through `client.view`, calls
@@ -103,7 +103,9 @@ export function bindExec(
 ): Exec {
   return async <T>(method: MethodName, args: Record<string, unknown>): Promise<T> => {
     try {
-      const answer = isView(method) ? await client.view(app, method, args) : await client.call(app, method, args);
+      const answer = isView(method)
+        ? await client.apps.view({ app, method, args })
+        : await client.apps.call({ app, method, args });
       onIndex(answer.index);
       return answer.result as T;
     } finally {

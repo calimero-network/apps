@@ -1,5 +1,6 @@
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import { camel } from "./hyperfeed";
+import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * Your OTHER apps on the cluster, as the feed reaches them: the lens reads an
@@ -24,10 +25,12 @@ export function wireArgs(args: Record<string, unknown>): Record<string, unknown>
   return Object.fromEntries(Object.entries(args).map(([k, v]) => [camel(k), v]));
 }
 
-export function otherApps(client: Pick<CalimeroClient, "call" | "view">): OtherApps {
+export function otherApps(client: ClientRoutes<{ apps: "call" | "view" }>): OtherApps {
   return {
-    call: async (app, method, args) => (await client.call(app, camel(method), wireArgs(args))).result,
-    view: async (app, method, args) => (await client.view(app, camel(method), wireArgs(args))).result,
+    call: async (app, method, args) =>
+      (await client.apps.call({ app, method: camel(method), args: wireArgs(args) })).result,
+    view: async (app, method, args) =>
+      (await client.apps.view({ app, method: camel(method), args: wireArgs(args) })).result,
   };
 }
 

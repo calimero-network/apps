@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import abiJson from "../../logic/res/abi.json";
 import { CALLS, VIEWS, bindExec, merraria, readAllOverrides, toSeed } from "../src/net/merraria";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = abiJson as unknown as {
@@ -27,7 +28,7 @@ describe("the client covers the contract", () => {
       sent.set(method, Object.keys(args as object).sort());
       return Promise.resolve({ index: 1, result: null, events: [] });
     };
-    const m = merraria(bindExec({ call: vi.fn(record), view: vi.fn(record) }, "world-1"));
+    const m = merraria(bindExec(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "world-1"));
     await Promise.all([
       m.createWorld("w", 1),
       m.worldMeta(),
@@ -46,7 +47,7 @@ describe("the client covers the contract", () => {
 
   it("sends every `now` as whole seconds (a u32), never a decimal string", async () => {
     const call = vi.fn().mockResolvedValue({ index: 1, result: null, events: [] });
-    const m = merraria(bindExec({ call, view: vi.fn() }, "w"));
+    const m = merraria(bindExec(withRoutes({ call, view: vi.fn() }), "w"));
     await m.leave();
     const now = (call.mock.calls[0][2] as { now: unknown }).now;
     expect(typeof now).toBe("number");
@@ -61,7 +62,7 @@ describe("bindExec", () => {
     const view = vi.fn().mockResolvedValue({ index: 4, result: [] });
     const after = vi.fn();
     const onIndex = vi.fn();
-    const exec = bindExec({ call, view }, "w", after, onIndex);
+    const exec = bindExec(withRoutes({ call, view }), "w", after, onIndex);
 
     expect(await exec("setTiles", { edits: [], now: 1 })).toBe(2);
     expect(call).toHaveBeenCalledWith("w", "setTiles", { edits: [], now: 1 });
@@ -73,7 +74,7 @@ describe("bindExec", () => {
 
   it("runs `after` when a request fails too", async () => {
     const after = vi.fn();
-    const exec = bindExec({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }, "w", after);
+    const exec = bindExec(withRoutes({ call: vi.fn(), view: vi.fn().mockRejectedValue(new Error("boom")) }), "w", after);
     await expect(exec("worldMeta", {})).rejects.toThrow("boom");
     expect(after).toHaveBeenCalledTimes(1);
   });

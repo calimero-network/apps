@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import { SessionContext, type SessionApi } from "./session";
 import { FeedSwitcher } from "./FeedPicker";
 import { openFeed, selectionKey, useOpenFeed } from "./newFeed";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** What each feed holds: feed-bbbb has 39 rows. */
 const pages: Record<string, { counts: { all: number; archived: number }; items: { chain_at: number }[] }> = {
@@ -20,7 +20,7 @@ const metadata: Record<string, Record<string, unknown>> = { "feed-aaaa-1111": { 
 const deleted: string[] = [];
 const made: string[] = [];
 
-const client = {
+const client = withRoutes({
   listApps: vi.fn(async () => apps.filter((a) => !deleted.includes(a.appId))),
   getApp: vi.fn(async (id: string) => ({ appId: id, metadata: metadata[id] ?? null })),
   setAppMetadata: vi.fn(async (id: string, m: Record<string, unknown>) => void (metadata[id] = m)),
@@ -34,7 +34,7 @@ const client = {
     expect(method).toBe("feed");
     return { index: 1, result: pages[app] ?? { counts: { all: 0, archived: 0 }, items: [] } };
   }),
-} as unknown as CalimeroClient;
+});
 
 const api: SessionApi = {
   session: { status: "signed-in", client, target: { kind: "local", nodes: ["http://127.0.0.1:2501"] } as never, accountId: "me" },
