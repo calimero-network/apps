@@ -47,22 +47,27 @@ interface Sent {
 /** A client that records what it is sent and answers from `results` by method name. */
 function fakeClient(results: Record<string, unknown> = {}, apps: Array<{ appId: string; name: string; org: string | null }> = []) {
   const sent: Sent[] = [];
-  const created: Array<{ name: string; source: unknown; options: unknown }> = [];
-  const answer = (kind: Sent['kind']) => async (app: string, method: string, args?: unknown) => {
-    sent.push({ kind, app, method, args });
-    const r = results[method];
-    return { index: 1, result: typeof r === 'function' ? (r as (a: string) => unknown)(app) : (r ?? null), events: [] };
-  };
+  const created: unknown[] = [];
+  const answer =
+    (kind: Sent['kind']) =>
+    async ({ app, method, args }: { app: string; method: string; args?: unknown }) => {
+      sent.push({ kind, app, method, args });
+      const r = results[method];
+      return { index: 1, result: typeof r === 'function' ? (r as (a: string) => unknown)(app) : (r ?? null), events: [] };
+    };
   const client = {
-    call: answer('call'),
-    view: answer('view'),
-    me: async () => ({ orgs: [{ orgId: 'org-1', name: 'Platform', role: 'owner' }] }),
-    listApps: async () =>
-      apps.map((a) => ({ ...a, owner: 'acct', bundle: 'b', package: 'com.calimero.mero-issue-tracker', version: '1' })),
-    createApp: async (name: string, source: unknown, options: unknown) => {
-      created.push({ name, source, options });
-      return 'app-new';
+    apps: {
+      call: answer('call'),
+      view: answer('view'),
+      list: async () => ({
+        apps: apps.map((a) => ({ ...a, owner: 'acct', bundle: 'b', package: 'com.calimero.mero-issue-tracker', version: '1' })),
+      }),
+      create: async (args: unknown) => {
+        created.push(args);
+        return { appId: 'app-new' };
+      },
     },
+    auth: { me: async () => ({ orgs: [{ orgId: 'org-1', name: 'Platform', role: 'owner' }] }) },
   } as unknown as Client;
   return { client, sent, created };
 }
@@ -284,7 +289,7 @@ test('addRepo creates an instance in the workspace org and sets its repo_url', a
   const { client, sent, created } = fakeClient({}, [{ appId: 'a-1', name: 'web', org: 'org-1' }]);
   const out = await addRepo(client, cfg, { name: 'api', github_url: 'https://github.com/acme/api' });
   assert.deepEqual(out, { appId: 'app-new', name: 'api', url: 'https://github.com/acme/api' });
-  assert.deepEqual(created, [{ name: 'api', source: { package: 'com.calimero.mero-issue-tracker' }, options: { org: 'org-1' } }]);
+  assert.deepEqual(created, [{ name: 'api', package: 'com.calimero.mero-issue-tracker', org: 'org-1' }]);
   assert.deepEqual(sent, [
     { kind: 'call', app: 'app-new', method: 'setRepoUrl', args: { url: 'https://github.com/acme/api' } },
   ]);

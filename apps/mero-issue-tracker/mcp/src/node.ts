@@ -6,8 +6,11 @@ import { AppError, CalimeroClient, CalimeroError, TrapError } from '@calimero-ne
 
 import type { Config } from './config.ts';
 
-/** What the server uses of the client (a fake in tests). */
-export type Client = Pick<CalimeroClient, 'call' | 'view' | 'me' | 'listApps' | 'createApp'>;
+/** What the server uses of the client: its generated route methods (a fake in tests). */
+export interface Client {
+  apps: Pick<CalimeroClient['apps'], 'call' | 'view' | 'list' | 'create'>;
+  auth: Pick<CalimeroClient['auth'], 'me'>;
+}
 
 export interface ResolvedTarget {
   /** The repo: an app instance id. */
@@ -64,7 +67,7 @@ export async function callMethod<T = unknown>(
   method: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  return (await client.call(target.appId, method, args)).result as T;
+  return (await client.apps.call({ app: target.appId, method, args })).result as T;
 }
 
 /** A view: answered by a node without writing. */
@@ -74,13 +77,13 @@ export async function viewMethod<T = unknown>(
   method: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  return (await client.view(target.appId, method, args)).result as T;
+  return (await client.apps.view({ app: target.appId, method, args })).result as T;
 }
 
 export async function findWorkspace(client: Client, cfg: Config): Promise<{ orgId: string; name: string }> {
   const wanted = cfg.workspaceRaw;
   if (!wanted) throw new Error('TRACKER_WORKSPACE is not set.');
-  const me = (await client.me()) as { orgs?: Array<{ orgId: string; name: string }> };
+  const me = (await client.auth.me()) as { orgs?: Array<{ orgId: string; name: string }> };
   const orgs = me.orgs ?? [];
   const match = orgs.find((o) => o.orgId === wanted || o.name === wanted);
   if (!match) {
@@ -93,7 +96,7 @@ export async function findWorkspace(client: Client, cfg: Config): Promise<{ orgI
 /** The repos of `org`: instances of this app (its package, or the dev bundle) in that org. */
 export async function listWorkspaceRepos(client: Client, cfg: Config, org: string): Promise<WorkspaceRepo[]> {
   const filter = typeof cfg.source === 'string' ? { bundle: cfg.source } : { package: cfg.source.package };
-  const apps = await client.listApps(filter);
+  const { apps } = await client.apps.list(filter);
   return apps
     .filter((a) => a.org === org)
     .map((a) => ({ appId: a.appId, name: a.name }))
