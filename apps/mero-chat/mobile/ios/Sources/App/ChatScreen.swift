@@ -57,6 +57,9 @@ struct ChatScreen: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: thread?.id)
+        // Channel info, members, invite, search, settings, a thread: the keyboard goes.
+        .hidesKeyboard(when: overlay.map { String(describing: $0) })
+        .hidesKeyboard(when: thread?.id)
         .task {
             await model.loadInitial()
             model.startLive()
@@ -333,6 +336,10 @@ struct ConversationView: View {
                 if !loading { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+            .hidesKeyboard(when: actionsFor)
+            .hidesKeyboard(when: moreFor)
+            .hidesKeyboard(when: reactingTo?.id)
+            .hidesKeyboard(when: settingName)
         }
     }
 

@@ -252,17 +252,30 @@ struct WorkspacePicker: View {
         Button {
             Task {
                 working = true
+                let invitation = ChatInvitation.parse(text)
                 let joined = await model.join(invitation: text)
-                if joined != nil {
+                if let joined {
                     await session.didJoinWorkspace()
-                    await model.load()
+                    // The listing can lag the join for a moment.
+                    for attempt in 0..<4 {
+                        await model.load()
+                        if model.workspaces.contains(where: { $0.id == joined }) { break }
+                        if attempt < 3 { try? await Task.sleep(nanoseconds: 1_000_000_000) }
+                    }
                 }
                 working = false
                 if let joined {
                     text = ""
                     // Your name in the workspace you just joined, as on the web.
-                    if let workspace = model.workspaces.first(where: { $0.id == joined }) {
-                        enter(workspace)
+                    let workspace =
+                        model.workspaces.first(where: { $0.id == joined })
+                        ?? session.applicationId.map {
+                            Workspace(
+                                id: joined, name: invitation?.workspaceName ?? ChatIdentity.short(joined),
+                                applicationId: $0)
+                        }
+                    if let workspace {
+                        go(.name(workspace))
                     } else {
                         go(.select)
                     }
