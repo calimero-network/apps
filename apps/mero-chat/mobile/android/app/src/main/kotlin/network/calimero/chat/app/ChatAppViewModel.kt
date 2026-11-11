@@ -8,6 +8,7 @@ import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CalimeroClientOptions
 import com.calimero.mero.CalimeroConnectOptions
 import com.calimero.mero.CloudPolicy
+import com.calimero.mero.ConsentResult
 import com.calimero.mero.PasskeyProvider
 import com.calimero.mero.SoftPasskey
 import com.calimero.mero.app.MeroAppBackend
@@ -114,7 +115,7 @@ class ChatAppViewModel(
                 val context = activity?.get() ?: throw IOException("The app is not on screen")
                 val started = session.requestConsent(context, build(CONSENT_CALLBACK), confirm)
                 session.consentResult.value?.takeIf { it.requestId == started.requestId }
-                    ?: runCatching { session.client.consentResult(started.requestId) }.getOrNull()
+                    ?: runCatching { session.client.fetchConsentResult(started.requestId) }.getOrNull()
             },
         )
 
@@ -359,3 +360,7 @@ private class SessionChatBackend(
 
     override fun changes(contextId: String): Flow<Unit>? = current()?.changes(contextId)
 }
+
+/** What became of consent request [requestId] (`consent.pageResult`), as the session's [ConsentResult]. */
+private suspend fun CalimeroClient.fetchConsentResult(requestId: String): ConsentResult =
+    consent.pageResult(request = requestId).let { ConsentResult(it.requestId, it.kind.value, it.status.value, it.decidedAt) }

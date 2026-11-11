@@ -7,7 +7,7 @@ Symbols ↔ Material Symbols), controls and flows, and both are landscape-only.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0`, composite build at the tag commit in `android/kotlin-sdk.ref` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0`, composite build at the release commit in `android/kotlin-sdk.ref` |
 
 **Both apps run on Calimero 1.0** and call the contract's component ABI (`../logic/res/abi.json`
 after apps#710). The SDK pins are releases. Bumping is one line per platform (iOS: `exactVersion:` and
