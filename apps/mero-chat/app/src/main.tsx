@@ -1,4 +1,7 @@
 import "@calimero-apps/glass/glass.css";
+// The passkey styles also carry the "new version available" card
+// (`watchUpgrades`), which shows on any page once signed in, not just /login.
+import "@calimero-apps/passkey/passkey.css";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
