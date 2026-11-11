@@ -19,7 +19,7 @@ extension ApprovalsModel {
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
                 guard let cloud = session.client.cloud else { return nil }
                 let id = started.requestId
-                return try? await MeroJSON.convert(cloud.consent.pageResult(request: id), to: ConsentResult.self)
+                return try? await MeroJSON.decode(ConsentResult.self, from: MeroJSON.encode(cloud.consent.pageResult(request: id)))
             })
     }
 }

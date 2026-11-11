@@ -79,7 +79,8 @@ public struct ClientSignAdmin: SignAdmin {
         let client = try signedIn()
         let bundle: String? = isBundle ? applicationId : nil
         let package: String? = isBundle ? nil : applicationId
-        let apps = try MeroJSON.convert(try await client.apps.list(package: package, bundle: bundle).apps, to: [AppInfo].self)
+        let listed = try await client.apps.list(package: package, bundle: bundle).apps
+        let apps = try MeroJSON.decode([AppInfo].self, from: MeroJSON.encode(listed))
         return apps.map { SignInstance(appId: $0.appId, name: $0.name, owner: $0.owner, org: $0.org) }
     }
 

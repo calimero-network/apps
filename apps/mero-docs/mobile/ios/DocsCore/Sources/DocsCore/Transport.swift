@@ -55,7 +55,8 @@ public struct DocsDirectory: Sendable {
     public func folders(workspaceId: String) async throws -> [Folder] {
         if let cloud = backend as? CalimeroAppBackend {
             let client = cloud.client
-            let org = OrgInfo(json: try JSONValue(encoding: try await client.orgs.get(org: workspaceId)))
+            let answer = try await client.orgs.get(org: workspaceId)
+            let org = OrgInfo(json: try MeroJSON.decode(JSONValue.self, from: MeroJSON.encode(answer)))
             return Self.folders(of: org)
         }
         return try await walk(workspaceId)
@@ -65,7 +66,8 @@ public struct DocsDirectory: Sendable {
     public func docsApp(workspaceId: String, folderId: String) async throws -> String? {
         if let cloud = backend as? CalimeroAppBackend {
             let client = cloud.client
-            let org = OrgInfo(json: try JSONValue(encoding: try await client.orgs.get(org: workspaceId)))
+            let answer = try await client.orgs.get(org: workspaceId)
+            let org = OrgInfo(json: try MeroJSON.decode(JSONValue.self, from: MeroJSON.encode(answer)))
             return org.teams[folderId].flatMap(Self.docsApp)
         }
         return try await backend.listContexts(groupId: folderId).first
