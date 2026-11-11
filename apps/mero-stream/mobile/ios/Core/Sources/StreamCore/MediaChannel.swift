@@ -60,11 +60,11 @@ public final class CalimeroMediaChannel: MediaChannel, @unchecked Sendable {
     }
 
     public func publish(contextId: String, slice: [UInt8]) async throws {
-        _ = try await client.apps.presencePublish(app: contextId, seq: nextSeq(), state: Hex.encode(Data(slice)))
+        _ = try await client.apps.presencePublish(app: contextId, seq: Int64(nextSeq()), state: Hex.encode(Data(slice)))
     }
 
     public func retract(contextId: String) async {
-        _ = try? await client.apps.presencePublish(app: contextId, seq: nextSeq(), state: nil)
+        _ = try? await client.apps.presencePublish(app: contextId, seq: Int64(nextSeq()), state: .some(nil))
     }
 
     public func slices(contextId: String) -> AsyncThrowingStream<MediaSlice, Error> {

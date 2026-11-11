@@ -206,7 +206,8 @@ final class SessionModel: ObservableObject {
             backend = CloudChatBackend(
                 app: app,
                 privateTeams: { org in
-                    guard let org = try? await cloud.orgs.get(org: org), let json = try? JSONValue(encoding: org) else { return [] }
+                    guard let answer = try? await cloud.orgs.get(org: org), let json = try? JSONValue(encoding: answer)
+                    else { return [] }
                     let info = OrgInfo(json: json)
                     return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
                 })
