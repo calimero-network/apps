@@ -531,7 +531,12 @@ const ROUTES: Array<[string, string, string, (a: Args, o: Opts) => unknown[], ((
   ["orgs", "teamGet", "getTeam", (a) => [a.org, a.team]],
   ["orgs", "teamUpdate", "updateTeam", ({ org, team, ...update }) => [org, team, update]],
   ["orgs", "teamDelete", "deleteTeam", (a, o) => [a.org, a.team, o]],
-  ["orgs", "teamSetMember", "setTeamMember", ({ org, team, account, ...row }, o) => [org, team, account, o, row]],
+  [
+    "orgs",
+    "teamSetMember",
+    "setTeamMember",
+    ({ org, team, account, ...row }, o) => [org, team, account, o, Object.keys(row).length ? row : undefined],
+  ],
   ["orgs", "teamRemoveMember", "removeTeamMember", (a, o) => [a.org, a.team, a.account, o]],
   // No team is the wrapper's default (`teams = []`), left off as a caller left it.
   [
