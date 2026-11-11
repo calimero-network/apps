@@ -115,9 +115,13 @@ describe("followRelease", () => {
   });
 });
 
-function client(version: string | null, org: string | null = "org-1"): ReleaseClient & { appsReportAll: ReturnType<typeof vi.fn> } {
+function client(
+  version: string | null,
+  org: string | null = "org-1",
+): ReleaseClient & { appsReportAll: ReturnType<typeof vi.fn>; apps: { get: ReturnType<typeof vi.fn> } } {
   return {
-    getApp: vi.fn(async (app: string) => ({ appId: app, org })),
+    // Only what `instanceRelease` reads of the app.
+    apps: { get: vi.fn(async ({ app }: { app: string }) => ({ appId: app, org }) as never) },
     appsReportAll: vi.fn(
       async () =>
         ({
@@ -140,7 +144,7 @@ describe("instanceRelease", () => {
   it("is null when the report does not say or cannot be read", async () => {
     expect(await instanceRelease(client(null), "app-1")).toBeNull();
     expect(await instanceRelease(client("1.0.0"), "app-9")).toBeNull();
-    expect(await instanceRelease({ getApp: async () => Promise.reject(new Error("x")), appsReportAll: vi.fn() }, "app-1")).toBeNull();
+    expect(await instanceRelease({ apps: { get: async () => Promise.reject(new Error("x")) }, appsReportAll: vi.fn() }, "app-1")).toBeNull();
   });
 });
 
@@ -148,7 +152,7 @@ describe("followInstanceRelease", () => {
   it("reads nothing in development", async () => {
     const c = client("1.0.0");
     expect(await followInstanceRelease({ client: c, app: "app-1", href: "http://localhost:5173/", navigate: vi.fn() })).toBe(false);
-    expect(c.getApp).not.toHaveBeenCalled();
+    expect(c.apps.get).not.toHaveBeenCalled();
   });
 
   it("moves a served page to the instance's release", async () => {

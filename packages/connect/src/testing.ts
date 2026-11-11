@@ -1,7 +1,9 @@
 /**
  * An in-memory cluster for an org app's tests: organizations with members,
  * teams and a mode derived as core derives it (core#4890), app instances,
- * and the client calls the org-app module makes. Free of any test runner, so
+ * and the client calls the org-app module makes (the generated methods,
+ * `client.orgs.get(...)`, recorded under the names of the wrappers they
+ * replace, with the arguments in the wrappers' order). Free of any test runner, so
  * each app's own vitest records nothing twice: every call is kept in
  * `calls`, and `callsOf(name)` reads them back.
  *
@@ -9,7 +11,7 @@
  *     const cluster = orgCluster({ me: "acct-me" });
  *     const org = cluster.addOrg({ mode: "shared", app: PKG, members: { "acct-bob": "member" } });
  */
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import type { CalimeroClient, MethodOptions } from "@calimero-network/mero-js";
 export type ClusterMode = "legacy" | "standalone" | "shared";
 
 export interface ClusterTeam {
@@ -110,18 +112,8 @@ export function orgCluster(options: OrgClusterOptions = {}) {
   const pkgOf = (source: unknown) =>
     typeof source === "string" ? null : ((source as { package?: string } | null)?.package ?? null);
 
-  const raw = {
-    session: { accountId: state.me } as { accountId: string },
-    me: async () => {
-      record("me", []);
-      return {
-        accountId: state.me,
-        orgs: [...state.orgs.values()]
-          .filter((o) => state.me in o.members)
-          .map((o) => ({ orgId: o.orgId, name: o.name, role: o.members[state.me] })),
-      };
-    },
-    getOrg: async (id: string) => {
+  const orgs = {
+    get: async ({ org: id }: { org: string }) => {
       record("getOrg", [id]);
       const o = org(id);
       if (!(state.me in o.members)) throw notFound(`org ${id}`);
@@ -135,7 +127,7 @@ export function orgCluster(options: OrgClusterOptions = {}) {
       if (!options.noAppTeams) view.mode = modeOf(o);
       return { releaseApprovers: [], publishes: [], newWorkStopped: null, ...view };
     },
-    createOrg: async (name: string) => {
+    create: async ({ name }: { name: string }) => {
       record("createOrg", [name]);
       const orgId = `org-${(state.seq += 1)}`;
       state.orgs.set(orgId, {
@@ -148,65 +140,89 @@ export function orgCluster(options: OrgClusterOptions = {}) {
         metadata: null,
         teams: {},
       });
-      return orgId;
+      return { orgId };
     },
-    deleteOrg: async (id: string, ...rest: unknown[]) => {
-      record("deleteOrg", [id, ...rest]);
+    delete: async ({ org: id }: { org: string }, opts?: Opts) => {
+      record("deleteOrg", [id, opts]);
       state.orgs.delete(id);
+      return {};
     },
-    setOrgMetadata: async (id: string, metadata: unknown) => {
+    metadata: async ({ org: id, metadata }: { org: string; metadata: unknown }) => {
       record("setOrgMetadata", [id, metadata]);
       org(id).metadata = metadata;
+      return {};
     },
-    setMemberMetadata: async (id: string, account: string, metadata: unknown) => {
+    memberMetadata: async ({ org: id, account, metadata }: { org: string; account: string; metadata: unknown }) => {
       record("setMemberMetadata", [id, account, metadata]);
       org(id).memberMetadata[account] = metadata;
+      return {};
     },
-    setCapabilities: async (id: string, capabilities: number, ...rest: unknown[]) => {
-      record("setCapabilities", [id, capabilities, ...rest]);
-      const opts = rest[1] as { account?: string } | undefined;
-      if (opts?.account) org(id).capabilities[opts.account] = capabilities;
+    capabilities: async (
+      { org: id, capabilities, ...at }: { org: string; capabilities: number; account?: string; team?: string },
+      opts?: Opts,
+    ) => {
+      record("setCapabilities", [id, capabilities, opts, at]);
+      if (at.account) org(id).capabilities[at.account] = capabilities;
       else org(id).defaultCapabilities = capabilities;
+      return {};
     },
-    setMember: async (id: string, account: string, role: string, ...rest: unknown[]) => {
-      record("setMember", [id, account, role, ...rest]);
+    setMember: async ({ org: id, account, role }: { org: string; account: string; role: string }, opts?: Opts) => {
+      record("setMember", [id, account, role, opts]);
       org(id).members[account] = role;
+      return {};
     },
-    removeMember: async (id: string, account: string, ...rest: unknown[]) => {
-      record("removeMember", [id, account, ...rest]);
+    removeMember: async ({ org: id, account }: { org: string; account: string }, opts?: Opts) => {
+      record("removeMember", [id, account, opts]);
       const o = org(id);
       delete o.members[account];
       for (const t of Object.values(o.teams)) delete t.members[account];
       return {};
     },
-    createTeam: async (id: string, name: string, join: "everyone" | "invite" = "invite", parent: string | null = null) => {
+    teamCreate: async ({
+      org: id,
+      name,
+      join = "invite",
+      parent = null,
+    }: {
+      org: string;
+      name: string;
+      join?: "everyone" | "invite";
+      parent?: string | null;
+    }) => {
       record("createTeam", [id, name, join, parent]);
       const teamId = `team-${(state.seq += 1)}`;
       org(id).teams[teamId] = { parent, members: { [state.me]: true }, join, removed: [], metadata: { name }, defaultCapabilities: null };
-      return teamId;
+      return { teamId };
     },
-    setTeamMember: async (id: string, team: string, account: string, ...rest: unknown[]) => {
-      record("setTeamMember", [id, team, account, ...rest]);
+    teamSetMember: async (
+      { org: id, team, account, ...row }: { org: string; team: string; account: string; role?: string; lead?: boolean; capabilities?: number },
+      opts?: Opts,
+    ) => {
+      record("setTeamMember", [id, team, account, opts, row]);
       const t = org(id).teams[team];
       if (!t) throw notFound(`team ${team}`);
-      t.members[account] = (rest[1] as { lead?: boolean } | undefined)?.lead ?? false;
+      t.members[account] = row.lead ?? false;
       t.removed = t.removed.filter((a) => a !== account);
+      return {};
     },
-    removeTeamMember: async (id: string, team: string, account: string, ...rest: unknown[]) => {
-      record("removeTeamMember", [id, team, account, ...rest]);
+    teamRemoveMember: async ({ org: id, team, account }: { org: string; team: string; account: string }, opts?: Opts) => {
+      record("removeTeamMember", [id, team, account, opts]);
       const t = org(id).teams[team];
       if (!t) throw notFound(`team ${team}`);
       delete t.members[account];
       if (t.join === "everyone" && !t.removed.includes(account)) t.removed.push(account);
+      return {};
     },
-    scopeApps: async (id: string, ...rest: unknown[]) => {
-      record("scopeApps", [id, ...rest]);
+    appTeamsScope: async (
+      { org: id, ...body }: { org: string; apps?: Array<{ package: string }>; shared?: boolean },
+      opts?: Opts,
+    ) => {
+      record("scopeApps", [id, opts, body]);
       if (options.noAppTeams) throw notFound("route");
       const o = org(id);
       if (!ADMIN.has(o.members[state.me] ?? "")) {
         throw Object.assign(new Error("only the organization's owner and admins install apps in it"), { status: 400 });
       }
-      const body = (rest[1] ?? {}) as { apps?: Array<{ package: string }>; shared?: boolean };
       const teams = [];
       for (const { package: pkg } of body.apps ?? []) {
         let teamId = appTeamsOf(o).find(([, t]) => (t.metadata as { app: { package: string } }).app.package === pkg)?.[0];
@@ -244,7 +260,7 @@ export function orgCluster(options: OrgClusterOptions = {}) {
       }
       return { mode: modeOf(o), teams };
     },
-    listAppTeams: async (id: string) => {
+    appTeamList: async ({ org: id }: { org: string }) => {
       record("listAppTeams", [id]);
       if (options.noAppTeams) throw notFound("route");
       const o = org(id);
@@ -263,53 +279,82 @@ export function orgCluster(options: OrgClusterOptions = {}) {
         })),
       };
     },
-    invite: async (id: string, role: string, ...rest: unknown[]) => {
-      record("invite", [id, role, ...rest]);
+    inviteCreate: async (
+      { org: id, role, teams, ...extra }: { org: string; role: string; teams?: string[]; ttlSecs?: number; uses?: number },
+      opts?: Opts,
+    ) => {
+      // No team and no extra recorded as `undefined`, where the wrapper took none.
+      record("invite", [id, role, opts, teams?.length ? teams : undefined, Object.keys(extra).length ? extra : undefined]);
       org(id);
-      return `tok-${(state.seq += 1)}`;
+      return { token: `tok-${(state.seq += 1)}` };
     },
-    createApp: async (name: string, source: unknown, opts: { org?: string; access?: Record<string, unknown> } = {}) => {
-      record("createApp", [name, source, opts]);
+  };
+
+  const apps = {
+    create: async (args: { name: string; org?: string; access?: Record<string, unknown> } & Record<string, unknown>) => {
+      const { source, rest } = createTarget(args);
+      record("createApp", [args.name, source, rest]);
       const appId = `app-${(state.seq += 1)}`;
       state.apps.set(appId, {
         appId,
-        name,
+        name: args.name,
         owner: state.me,
-        org: opts.org ?? null,
-        access: opts.access ?? (opts.org ? { kind: "org" } : { kind: "owner" }),
+        org: args.org ?? null,
+        access: args.access ?? (args.org ? { kind: "org" } : { kind: "owner" }),
         package: pkgOf(source),
         bundle: typeof source === "string" ? source : "bundle-hash",
         metadata: null,
       });
-      return appId;
+      return { appId };
     },
-    getApp: async (id: string) => {
+    get: async ({ app: id }: { app: string }) => {
       record("getApp", [id]);
       const a = state.apps.get(id);
       if (!a) throw notFound(`app ${id}`);
       return structuredClone(a) as unknown as Record<string, unknown>;
     },
-    listApps: async (filter: { bundle?: string; package?: string } = {}) => {
+    list: async (filter: { bundle?: string; package?: string } = {}) => {
       record("listApps", [filter]);
-      return [...state.apps.values()]
-        .filter((a) => (!filter.package || a.package === filter.package) && (!filter.bundle || a.bundle === filter.bundle))
-        .map((a) => ({ appId: a.appId, name: a.name, owner: a.owner, org: a.org, bundle: a.bundle, package: a.package, version: null }));
+      return {
+        apps: [...state.apps.values()]
+          .filter((a) => (!filter.package || a.package === filter.package) && (!filter.bundle || a.bundle === filter.bundle))
+          .map((a) => ({ appId: a.appId, name: a.name, owner: a.owner, org: a.org, bundle: a.bundle, package: a.package, version: null })),
+      };
     },
-    setAccess: async (id: string, access: Record<string, unknown>) => {
+    access: async ({ app: id, access }: { app: string; access: Record<string, unknown> }) => {
       record("setAccess", [id, access]);
       const a = state.apps.get(id);
       if (!a) throw notFound(`app ${id}`);
       a.access = access;
+      return {};
     },
     /** A contract call: answered empty (the app's own tests cover its contract). */
-    call: async (app: string, method: string, ...rest: unknown[]) => {
-      record("call", [app, method, ...rest]);
+    call: async ({ app, method, ...rest }: { app: string; method: string; args?: unknown }, opts?: Opts) => {
+      record("call", [app, method, rest.args, opts]);
       return { index: 1, result: null, events: [] };
     },
-    deleteApp: async (id: string) => {
+    delete: async ({ app: id }: { app: string }) => {
       record("deleteApp", [id]);
       state.apps.delete(id);
+      return {};
     },
+  };
+
+  const raw = {
+    session: { accountId: state.me } as { accountId: string },
+    auth: {
+      me: async () => {
+        record("me", []);
+        return {
+          accountId: state.me,
+          orgs: [...state.orgs.values()]
+            .filter((o) => state.me in o.members)
+            .map((o) => ({ orgId: o.orgId, name: o.name, role: o.members[state.me] })),
+        };
+      },
+    },
+    orgs,
+    apps,
   };
 
   /** An org made elsewhere: legacy, or with app teams (`app`'s, and `otherApps`'). */
@@ -393,3 +438,129 @@ export function orgCluster(options: OrgClusterOptions = {}) {
 
 export type OrgCluster = ReturnType<typeof orgCluster>;
 
+
+// ── a fake written by the wrapper names ─────────────────────────────────────
+
+type Args = Record<string, unknown>;
+type Opts = MethodOptions | undefined;
+
+/** `createApp`'s target as the wrapper took it: a bundle hash, or the package (and version, ...). */
+function createTarget(args: Args): { source: unknown; rest: Args } {
+  const { name: _name, bundle, package: pkg, version, service, deployment, ...rest } = args;
+  const source =
+    typeof bundle === "string"
+      ? bundle
+      : Object.fromEntries(Object.entries({ package: pkg, version, service, deployment }).filter(([, v]) => v !== undefined));
+  return { source, rest };
+}
+
+/** Bytes from a `presenceState` hex string, `null` kept (a retraction). */
+function presenceBytes(state: unknown): Uint8Array | null {
+  if (typeof state !== "string") return null;
+  const out = new Uint8Array(state.length / 2);
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(state.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/**
+ * Each generated method by the wrapper it replaces: `[group, method, wrapper,
+ * the wrapper's arguments from the method's, the method's answer from the
+ * wrapper's]`. A step-up's per-call options take the passkey's place.
+ */
+const ROUTES: Array<[string, string, string, (a: Args, o: Opts) => unknown[], ((r: unknown) => unknown)?]> = [
+  ["auth", "me", "me", () => []],
+  ["auth", "apikeyList", "listApiKeys", () => [], (keys) => ({ keys })],
+  ["auth", "apikeyCreate", "createApiKey", (a, o) => [a, o]],
+  ["auth", "apikeyRevoke", "revokeApiKey", (a, o) => [a.key, o]],
+  ["auth", "passkeyRemove", "removePasskey", (a, o) => [a.cred, o]],
+  ["auth", "passkeyLabel", "labelPasskey", (a) => [a.cred, a.label]],
+  ["deployments", "signUpPublic", "signUpPolicy", () => []],
+  ["packages", "get", "package", (a) => [a.package]],
+  ["packages", "list", "packages", () => [], (packages) => ({ packages })],
+  ["packages", "upload", "uploadPackage", (a) => [a.body]],
+  ["packages", "bundlePut", "uploadBundle", (a) => [a.body], (hash) => ({ hash })],
+  ["consent", "pageCreate", "requestConsent", (a) => [a.body]],
+  ["consent", "pageResult", "consentResult", (a) => [a.request]],
+  ["apps", "get", "getApp", (a) => [a.app]],
+  ["apps", "list", "listApps", (a) => [a ?? {}], (apps) => ({ apps })],
+  ["apps", "create", "createApp", (a) => { const { source, rest } = createTarget(a); return [a.name, source, rest]; }, (appId) => ({ appId })],
+  ["apps", "delete", "deleteApp", (a) => [a.app]],
+  ["apps", "metadata", "setAppMetadata", (a) => [a.app, a.metadata]],
+  ["apps", "access", "setAccess", (a) => [a.app, a.access]],
+  ["apps", "abi", "appAbi", (a) => [a.app]],
+  ["apps", "call", "call", (a) => [a.app, a.method, a.args, a.idempotencyKey]],
+  [
+    "apps",
+    "view",
+    "view",
+    (a) => [
+      a.app,
+      a.method,
+      a.args,
+      a.consistency === "stale" || a.minIndex !== undefined
+        ? { ...(a.consistency === "stale" ? { stale: true } : {}), ...(a.minIndex !== undefined ? { minIndex: a.minIndex } : {}) }
+        : undefined,
+    ],
+  ],
+  ["apps", "presencePublish", "publishPresence", (a) => [a.app, a.seq, presenceBytes(a.state)]],
+  ["apps", "presenceGet", "presence", (a) => [a.app], (present) => ({ present })],
+  ["apps", "blobUpload", "uploadBlob", (a) => [a.app, a.body, a.contentType]],
+  ["apps", "blobInfo", "blobInfo", (a) => [a.app, a.id]],
+  ["apps", "blobList", "listBlobs", (a) => [a.app], (blobs) => ({ blobs })],
+  ["apps", "blobDelete", "deleteBlob", (a) => [a.app, a.id]],
+  ["apps", "upgrade", "upgradeApp", ({ app, ...target }, o) => [app, target, o]],
+  ["orgs", "get", "getOrg", (a) => [a.org]],
+  ["orgs", "create", "createOrg", ({ name, ...options }) => [name, options], (orgId) => ({ orgId })],
+  ["orgs", "delete", "deleteOrg", (a, o) => [a.org, o]],
+  ["orgs", "metadata", "setOrgMetadata", (a) => [a.org, a.metadata]],
+  ["orgs", "memberMetadata", "setMemberMetadata", (a) => [a.org, a.account, a.metadata]],
+  ["orgs", "capabilities", "setCapabilities", ({ org, capabilities, ...at }, o) => [org, capabilities, o, at]],
+  ["orgs", "setMember", "setMember", (a, o) => [a.org, a.account, a.role, o]],
+  ["orgs", "removeMember", "removeMember", (a, o) => [a.org, a.account, o]],
+  ["orgs", "teamCreate", "createTeam", (a) => [a.org, a.name, a.join, a.parent], (teamId) => ({ teamId })],
+  ["orgs", "teamGet", "getTeam", (a) => [a.org, a.team]],
+  ["orgs", "teamUpdate", "updateTeam", ({ org, team, ...update }) => [org, team, update]],
+  ["orgs", "teamDelete", "deleteTeam", (a, o) => [a.org, a.team, o]],
+  ["orgs", "teamSetMember", "setTeamMember", ({ org, team, account, ...row }, o) => [org, team, account, o, row]],
+  ["orgs", "teamRemoveMember", "removeTeamMember", (a, o) => [a.org, a.team, a.account, o]],
+  ["orgs", "inviteCreate", "invite", ({ org, role, teams, ...extra }, o) => [org, role, o, teams, Object.keys(extra).length ? extra : undefined], (token) => ({ token })],
+  ["orgs", "inviteRedeem", "redeemInvite", (a) => [a.token]],
+  ["orgs", "inviteList", "listInvites", (a) => [a.org], (invites) => ({ invites })],
+  ["orgs", "inviteRevoke", "revokeInvite", (a, o) => [a.org, a.key, o]],
+  ["orgs", "appTeamList", "listAppTeams", (a) => [a.org]],
+  ["orgs", "appTeamsScope", "scopeApps", ({ org, ...body }, o) => [org, o, body]],
+];
+
+/**
+ * A test's fake client written by the wrapper names mero-js retired
+ * (`getOrg(org)`, `me()`, `invite(org, role, passkey, teams)`, ...), with the
+ * generated methods the code under test calls (`orgs.get({ org })`, ...) on
+ * it: each calls the fake's own function of the old name with the arguments
+ * in the wrapper's order (its per-call options where the passkey was), and
+ * answers what the generated method answers (`{ token }` for a token). A
+ * method whose wrapper the fake does not define is left out, as the wrapper
+ * was, so a test of "a client without X" still holds. The fake's own
+ * functions stay on it, so a test asserts on them as before.
+ */
+export function withRoutes<T extends object>(fake: T): T & CalimeroClient {
+  const own = fake as Record<string, unknown>;
+  for (const [group, method, wrapper, args, answer] of ROUTES) {
+    const call = async (a: Args = {}, o?: Opts) => {
+      // Trailing arguments the wrapper was not given are left off, as a caller left them.
+      const given = args(a, o);
+      while (given.length > 0 && given[given.length - 1] === undefined) given.pop();
+      const r = await (own[wrapper] as (...x: unknown[]) => unknown).apply(fake, given);
+      return answer ? answer(r) : r;
+    };
+    // A function there (the `packages()` wrapper) takes the group too, as on the client.
+    const existing = own[group];
+    const target = (typeof existing === "object" && existing) || typeof existing === "function" ? existing : (own[group] = {});
+    // Read when called for, so a wrapper the test adds later (`Object.assign(client, { getOrg })`) is routed too.
+    Object.defineProperty(target, method, {
+      configurable: true,
+      enumerable: true,
+      get: () => (typeof own[wrapper] === "function" ? call : undefined),
+    });
+  }
+  return fake as T & CalimeroClient;
+}

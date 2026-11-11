@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 
+import type { AppTeams } from "@calimero-network/mero-js";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import { LOCAL_NODES, signUp, type Person } from "../../packages/merod-local/src/cluster.ts";
@@ -121,7 +122,7 @@ test("1. Alice makes a workspace in Chat, on its own", async ({ browser }) => {
   // from by name, so the dev-signed packages are uploaded as her. Then her
   // browser gets the same passkey, and from there on only the browser uses it.
   alice = await signUp("Alice", LOCAL_NODES[0]!);
-  for (const mpk of [chatMpk, kvMpk]) await alice.client.uploadPackage(new Uint8Array(readFileSync(mpk)));
+  for (const mpk of [chatMpk, kvMpk]) await alice.client.packages.upload({ body: new Uint8Array(readFileSync(mpk)), contentType: 'application/octet-stream' });
   aliceBrowser = await browse(browser, await alice.passkey.toBrowser());
   const page = aliceBrowser.page;
 
@@ -134,7 +135,7 @@ test("1. Alice makes a workspace in Chat, on its own", async ({ browser }) => {
   // In the workspace, with the #general channel Chat makes in it.
   await expect(page.getByTestId("channel-item").filter({ hasText: "general" })).toBeVisible();
 
-  const me = (await alice.client.me()) as { orgs?: Array<{ orgId: string; name: string }> };
+  const me = (await alice.client.auth.me()) as { orgs?: Array<{ orgId: string; name: string }> };
   org = me.orgs?.find((o) => o.name === WORKSPACE)?.orgId ?? "";
   expect(org, "Chat made no organization").not.toBe("");
 });
@@ -175,10 +176,11 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   // Store's frontend makes a store only in an org of its own, so the store in
   // this org is made as Alice through mero-js (her session, no passkey), on
   // the app team Home just made, as an org app makes its instance.
-  const teams = await alice.client.listAppTeams(org);
+  // The document types the app teams as unknown.
+  const teams = (await alice.client.orgs.appTeamList({ org })) as unknown as AppTeams;
   const kvTeam = teams.appTeams.find((t) => t.package === KV)?.teamId;
   expect(kvTeam, "Home made no app team for KV Store").toBeTruthy();
-  await alice.client.createApp(STORE, { package: KV }, { org, access: { kind: "team", team: kvTeam! } });
+  await alice.client.apps.create({ name: STORE, package: KV, org, access: { kind: "team", team: kvTeam! } });
 });
 
 test("4. Alice invites Bob to every app; he joins from Home and reaches the org in Chat and KV Store", async ({

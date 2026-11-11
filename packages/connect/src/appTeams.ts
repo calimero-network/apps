@@ -24,6 +24,7 @@ import {
   CalimeroError,
   DEFAULT_ORG_CAPABILITIES,
   ORG_CAPABILITIES,
+  passkeyConfirm,
   type AppTeam,
   type AppTeams,
   type CalimeroClient,
@@ -31,9 +32,11 @@ import {
   type PasskeyProvider,
   type ScopeAppsResult,
   type ScopedAppTeam,
+  type TeamInfo,
 } from "@calimero-network/mero-js";
 
 import type { OrgAccessView } from "./invite";
+import type { ClientRoutes } from "./routes";
 
 /** Whether `error` is the node's 404: no such route (an older node), or not a member of the org. */
 export function isNotFound(error: unknown): boolean {
@@ -47,9 +50,10 @@ export function isNotFound(error: unknown): boolean {
  * cannot say: a node without the route (before core#4890) or an account
  * outside the org, both a 404. Any other failure is thrown.
  */
-export async function appTeams(client: Pick<CalimeroClient, "listAppTeams">, org: string): Promise<AppTeams | null> {
+export async function appTeams(client: ClientRoutes<{ orgs: "appTeamList" }>, org: string): Promise<AppTeams | null> {
   try {
-    const answer = await client.listAppTeams(org);
+    // The document types the answer's `mode` and `appTeams` as unknown.
+    const answer = (await client.orgs.appTeamList({ org })) as unknown as AppTeams;
     return { mode: answer.mode, appTeams: Array.isArray(answer.appTeams) ? answer.appTeams : [] };
   } catch (e) {
     if (isNotFound(e)) return null;
@@ -70,7 +74,7 @@ export interface AppTeamOf {
  * for a guest `team: null` can also mean "not yours".
  */
 export async function appTeamOf(
-  client: Pick<CalimeroClient, "listAppTeams">,
+  client: ClientRoutes<{ orgs: "appTeamList" }>,
   org: string,
   pkg: string,
 ): Promise<AppTeamOf | null> {
@@ -100,7 +104,7 @@ export interface CreateAppTeamOptions {
  * a team already answers it with `created: false`.
  */
 export async function createAppTeam(
-  client: Pick<CalimeroClient, "scopeApps">,
+  client: ClientRoutes<{ orgs: "appTeamsScope" }>,
   org: string,
   pkg: string,
   passkey: PasskeyProvider,
@@ -109,10 +113,11 @@ export async function createAppTeam(
   const app: { package: string; name?: string; instances?: string[] } = { package: pkg };
   if (options.name) app.name = options.name;
   if (options.instances) app.instances = options.instances;
-  const result: ScopeAppsResult = await client.scopeApps(org, passkey, {
-    apps: [app],
-    ...(options.shared === undefined ? {} : { shared: options.shared }),
-  });
+  // The document types the answer as an open object.
+  const result = (await client.orgs.appTeamsScope(
+    { org, apps: [app], ...(options.shared === undefined ? {} : { shared: options.shared }) },
+    { confirm: passkeyConfirm(passkey) },
+  )) as unknown as ScopeAppsResult;
   const team = result.teams.find((t) => t.package === pkg) ?? result.teams[0];
   if (!team) throw new Error(`the node made no app team for ${pkg}`);
   return { ...team, mode: result.mode };
@@ -124,7 +129,7 @@ export async function createAppTeam(
  * already is never asked for a passkey. `null` on a node without app teams.
  */
 export async function ensureAppTeam(
-  client: Pick<CalimeroClient, "listAppTeams" | "scopeApps">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "appTeamsScope" }>,
   org: string,
   pkg: string,
   passkey: PasskeyProvider,
@@ -177,7 +182,7 @@ export class NoAppTeamError extends Error {
  * rather than widened to the whole org.
  */
 export async function inviteToApp(
-  client: Pick<CalimeroClient, "listAppTeams" | "invite">,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
   org: string,
   pkg: string | readonly string[],
   options: InviteToAppOptions,
@@ -196,12 +201,9 @@ export async function inviteToApp(
   const extra: { ttlSecs?: number; uses?: number } = {};
   if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
   if (options.uses !== undefined) extra.uses = options.uses;
-  const token = await client.invite(
-    org,
-    options.role ?? "member",
-    options.passkey,
-    teams.length > 0 ? teams : undefined,
-    Object.keys(extra).length > 0 ? extra : undefined,
+  const { token } = await client.orgs.inviteCreate(
+    { org, role: options.role ?? "member", teams, ...extra },
+    { confirm: passkeyConfirm(options.passkey) },
   );
   return { token, teams: named, mode: answer?.mode ?? null };
 }
@@ -245,14 +247,14 @@ function orgSide(org: OrgAccessView, account: string) {
  * what an app's member menu and invite button decide on.
  */
 export async function appAccess(
-  client: Pick<CalimeroClient, "listAppTeams" | "getOrg" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "appTeamList" | "get" }>,
   org: string,
   pkg: string,
 ): Promise<AppAccess> {
   const account = client.session?.accountId ?? null;
   const [found, view] = await Promise.all([
     appTeamOf(client, org, pkg),
-    client.getOrg(org).then(
+    client.orgs.get({ org }).then(
       (o) => o as OrgAccessView,
       () => null,
     ),
@@ -336,7 +338,7 @@ export function membersMayInvite(team: Pick<AppTeam, "defaultCapabilities">): bo
  * The team's managers (or `MANAGE_MEMBERS` on it), approved with `passkey`.
  */
 export async function setMembersMayInvite(
-  client: Pick<CalimeroClient, "setTeamDefaultCapabilities">,
+  client: ClientRoutes<{ orgs: "capabilities" }>,
   org: string,
   team: Pick<AppTeam, "teamId" | "defaultCapabilities">,
   on: boolean,
@@ -344,7 +346,7 @@ export async function setMembersMayInvite(
 ): Promise<number> {
   const current = team.defaultCapabilities ?? 0;
   const next = on ? current | INVITE : current & ~INVITE;
-  await client.setTeamDefaultCapabilities(org, team.teamId, next, passkey);
+  await client.orgs.capabilities({ org, team: team.teamId, capabilities: next }, { confirm: passkeyConfirm(passkey) });
   return next;
 }
 
@@ -365,7 +367,7 @@ export interface AppTeamInstance {
  * the caller may not read is left out, so an owner or admin should read it.
  */
 export async function appTeamInstances(
-  client: Pick<CalimeroClient, "getTeam">,
+  client: ClientRoutes<{ orgs: "teamGet" }>,
   org: string,
   teamId: string,
 ): Promise<AppTeamInstance[]> {
@@ -376,7 +378,8 @@ export async function appTeamInstances(
     seen.add(id);
     let team;
     try {
-      team = await client.getTeam(org, id);
+      // The document types `apps` and `children` as unknown.
+      team = (await client.orgs.teamGet({ org, team: id })) as unknown as TeamInfo;
     } catch (e) {
       // The app team itself must be readable; one below may not be.
       if (id === teamId) throw e;
@@ -403,11 +406,11 @@ export async function appTeamInstances(
  * its managers (owners, admins, its leads) hold.
  */
 export async function openAppTeam(
-  client: Pick<CalimeroClient, "updateTeam">,
+  client: ClientRoutes<{ orgs: "teamUpdate" }>,
   org: string,
   team: Pick<AppTeam, "teamId">,
 ): Promise<void> {
-  await client.updateTeam(org, team.teamId, { join: "everyone" });
+  await client.orgs.teamUpdate({ org, team: team.teamId, join: "everyone" });
 }
 
 /**
@@ -416,7 +419,7 @@ export async function openAppTeam(
  * before it already open.
  */
 export async function openAppTeams(
-  client: Pick<CalimeroClient, "updateTeam">,
+  client: ClientRoutes<{ orgs: "teamUpdate" }>,
   org: string,
   teams: ReadonlyArray<Pick<AppTeam, "teamId" | "join">>,
 ): Promise<string[]> {
@@ -442,10 +445,13 @@ export async function openAppTeams(
  * team was open, so nothing here offers it.
  */
 export async function keepAppsApart(
-  client: Pick<CalimeroClient, "scopeApps">,
+  client: ClientRoutes<{ orgs: "appTeamsScope" }>,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<OrgMode> {
-  const result = await client.scopeApps(org, passkey, { apps: [], shared: true });
+  const result = (await client.orgs.appTeamsScope(
+    { org, apps: [], shared: true },
+    { confirm: passkeyConfirm(passkey) },
+  )) as unknown as ScopeAppsResult;
   return result.mode;
 }

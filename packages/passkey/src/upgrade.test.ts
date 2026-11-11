@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import type { AppsReport, ReportedApp } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 
@@ -69,8 +70,15 @@ function org(role: string | null, caps?: number, teams: Record<string, unknown> 
   };
 }
 
-function fakeClient(over: Partial<Record<keyof UpgradeClient, unknown>> = {}) {
-  return {
+/**
+ * The calls these helpers make, by the names they had before the generated
+ * methods, each answering with the arguments in that order; the client the
+ * helpers get routes its generated methods to them.
+ */
+type Calls = "session" | "getApp" | "appsReportAll" | "getOrg" | "me" | "requestConsent" | "consentResult";
+
+function fakeClient(over: Partial<Record<Calls, unknown>> = {}) {
+  const m = {
     session: { accountId: ME },
     getApp: vi.fn(async (app: string) => ({ appId: app, owner: "acct-boss", org: "org-1", access: { kind: "org" } })),
     appsReportAll: vi.fn(async () => report([reported({ app: "app-1" })])),
@@ -79,7 +87,17 @@ function fakeClient(over: Partial<Record<keyof UpgradeClient, unknown>> = {}) {
     requestConsent: vi.fn(async () => ({ requestId: "req-1", url: "https://node.example/consent/req-1", expiresAt: 9e9 })),
     consentResult: vi.fn(async () => ({ requestId: "req-1", kind: "upgrade", status: "approved", decidedAt: 1 })),
     ...over,
-  } as unknown as UpgradeClient & Record<string, ReturnType<typeof vi.fn>>;
+  } as Record<string, Mock<(...args: unknown[]) => unknown>>;
+  const routes = {
+    apps: { get: ({ app }: { app: string }) => m.getApp!(app) },
+    orgs: { get: ({ org: id }: { org: string }) => m.getOrg!(id) },
+    auth: { me: () => m.me!() },
+    consent: {
+      pageCreate: ({ body }: { body: unknown }) => m.requestConsent!(body),
+      pageResult: ({ request }: { request: string }) => m.consentResult!(request),
+    },
+  };
+  return Object.assign(routes, m) as unknown as UpgradeClient & Record<string, ReturnType<typeof vi.fn>>;
 }
 
 describe("upgradeOffer", () => {

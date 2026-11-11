@@ -18,6 +18,7 @@ import type { AppInfo, AppTeams, CalimeroClient, OrgMode } from "@calimero-netwo
 import { appTeams } from "./appTeams";
 import { mayCreateIn, type OrgAccessView } from "./invite";
 import type { AppSource } from "./target";
+import type { ClientRoutes } from "./routes";
 
 /** An organization the account is in, as `/me` lists it. */
 export interface MyOrg {
@@ -60,9 +61,22 @@ export function appFilter(source: AppSource): { bundle: string } | { package: st
   return typeof source === "string" ? { bundle: source } : { package: source.package };
 }
 
+/**
+ * The app instances the account can see (`GET /apps`), of one package or
+ * bundle when `filter` names one (an empty field filters nothing).
+ */
+export async function listAppInfos(
+  client: ClientRoutes<{ apps: "list" }>,
+  filter: { package?: string; bundle?: string } = {},
+): Promise<AppInfo[]> {
+  const { apps } = await client.apps.list({ package: filter.package || undefined, bundle: filter.bundle || undefined });
+  // The document's `App` has no `package` or `version`, which the node's answer (`AppInfo`) carries.
+  return apps as unknown as AppInfo[];
+}
+
 /** Every organization the account is in (`/me`), by name. */
-export async function myOrgs(client: Pick<CalimeroClient, "me">): Promise<MyOrg[]> {
-  const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown; name?: unknown; role?: unknown }> };
+export async function myOrgs(client: ClientRoutes<{ auth: "me" }>): Promise<MyOrg[]> {
+  const me = (await client.auth.me()) as { orgs?: Array<{ orgId?: unknown; name?: unknown; role?: unknown }> };
   return (me.orgs ?? [])
     .filter((o): o is { orgId: string; name?: unknown; role?: unknown } => typeof o.orgId === "string" && !!o.orgId)
     .map((o) => ({
@@ -102,17 +116,17 @@ export function isMarkedFor(metadata: unknown, source: AppSource): boolean {
  * what the metadata holds; best-effort (`false` when the node refused it).
  */
 export async function markOrgFor(
-  client: Pick<CalimeroClient, "getOrg" | "setOrgMetadata">,
+  client: ClientRoutes<{ orgs: "get" | "metadata" }>,
   org: string,
   source: AppSource,
 ): Promise<boolean> {
   try {
-    const current = (await client.getOrg(org).catch(() => null)) as { metadata?: unknown } | null;
+    const current = (await client.orgs.get({ org }).catch(() => null)) as { metadata?: unknown } | null;
     const base =
       current?.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
         ? (current.metadata as Record<string, unknown>)
         : {};
-    await client.setOrgMetadata(org, { ...base, [CREATED_FOR]: appKey(source) });
+    await client.orgs.metadata({ org, metadata: { ...base, [CREATED_FOR]: appKey(source) } });
     return true;
   } catch {
     return false;
@@ -138,14 +152,15 @@ function orgIds(apps: AppInfo[]): Set<string> {
  * default. An organization made for another app is not among them.
  */
 export async function orgsWithApp(
-  client: Pick<CalimeroClient, "me" | "listApps"> & Partial<Pick<CalimeroClient, "getOrg">>,
+  client: ClientRoutes<{ auth: "me"; apps: "list" }> & Partial<ClientRoutes<{ orgs: "get" }>>,
   source: AppSource,
   options: OrgsWithAppOptions = {},
 ): Promise<MyOrg[]> {
-  const [orgs, apps] = await Promise.all([myOrgs(client), client.listApps(appFilter(source))]);
+  const [orgs, apps] = await Promise.all([myOrgs(client), listAppInfos(client, appFilter(source))]);
   const held = orgIds(apps);
-  if (!options.marked || !client.getOrg) return orgs.filter((o) => held.has(o.orgId));
-  const getOrg = client.getOrg.bind(client);
+  const getOrgOf = client.orgs?.get;
+  if (!options.marked || !getOrgOf) return orgs.filter((o) => held.has(o.orgId));
+  const getOrg = (org: string) => getOrgOf.call(client.orgs, { org });
   const keep = await Promise.all(
     orgs.map(async (o) => {
       if (held.has(o.orgId)) return true;
@@ -221,14 +236,17 @@ export interface OtherOrgsOptions {
  * creates this app's instance there (`createApp(name, source, { org })`).
  */
 export async function otherOrgs(
-  client: Pick<CalimeroClient, "me" | "listApps" | "getOrg" | "session"> & Partial<Pick<CalimeroClient, "listAppTeams">>,
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ auth: "me"; apps: "list" }> & {
+      readonly orgs: Pick<CalimeroClient["orgs"], "get"> & Partial<Pick<CalimeroClient["orgs"], "appTeamList">>;
+    },
   source: AppSource,
   options: OtherOrgsOptions = {},
 ): Promise<OtherOrg[]> {
   const [orgs, mine, all] = await Promise.all([
     myOrgs(client),
-    client.listApps(appFilter(source)),
-    client.listApps().catch(() => [] as AppInfo[]),
+    listAppInfos(client, appFilter(source)),
+    listAppInfos(client).catch(() => [] as AppInfo[]),
   ]);
   const held = orgIds(mine);
   const account = client.session?.accountId ?? null;
@@ -242,12 +260,12 @@ export async function otherOrgs(
           .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
         let canCreate: boolean | null = null;
         let marked = false;
-        const view = (await client.getOrg(o.orgId).catch(() => null)) as (OrgAccessView & { metadata?: unknown }) | null;
+        const view = (await client.orgs.get({ org: o.orgId }).catch(() => null)) as (OrgAccessView & { metadata?: unknown }) | null;
         if (view) {
           marked = isMarkedFor(view.metadata, source);
           if (account) canCreate = mayCreateIn(view, account);
         }
-        const teams = await teamsOf(client, o.orgId);
+        const teams = await teamsOf(client.orgs, o.orgId);
         // In an org with app teams, only an owner or admin installs an app
         // that has no team there yet (core#4890, decision 4).
         const pkg = typeof source === "string" ? null : source.package;
@@ -272,12 +290,12 @@ export async function otherOrgs(
 
 /** {@link appTeams}, or `null` for a client without the method or any failure: the label falls back. */
 async function teamsOf(
-  client: Partial<Pick<CalimeroClient, "listAppTeams">>,
+  orgs: Partial<Pick<CalimeroClient["orgs"], "appTeamList">>,
   org: string,
 ): Promise<AppTeams | null> {
-  if (typeof client.listAppTeams !== "function") return null;
+  if (typeof orgs.appTeamList !== "function") return null;
   try {
-    return await appTeams(client as Pick<CalimeroClient, "listAppTeams">, org);
+    return await appTeams({ orgs: orgs as Pick<CalimeroClient["orgs"], "appTeamList"> }, org);
   } catch {
     return null;
   }

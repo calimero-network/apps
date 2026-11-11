@@ -1,24 +1,24 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroClient } from "@calimero-network/mero-js";
 import { HOME_PACKAGE, appLabel, type Target } from "@calimero-apps/connect";
 
 import { ManageInHomeLink } from "./HomeLink";
 import type { Session } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const PAGE = `https://${appLabel("com.calimero.mero-forum")}.apps.calimero.network/1.0.0/`;
 const HOME = `https://${appLabel(HOME_PACKAGE)}.apps.calimero.network/0.3.0/?org=org-1`;
 const TARGET: Target = { kind: "cloud", cluster: "x.apps.calimero.network", nodes: ["https://n1"], minReleaseVersion: "1" };
 
 function session(role: string, mode: string, home = true): Session {
-  const client = {
+  const client = withRoutes({
     package: vi.fn(async (pkg: string) => {
       if (!home) throw new Error("no such package");
       return { package: pkg, latest: "0.3.0", versions: [{ version: "0.3.0" }] };
     }),
     me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Acme", role }] })),
     getOrg: vi.fn(async () => ({ orgId: "org-1", mode })),
-  } as unknown as CalimeroClient;
+  });
   return { status: "signed-in", client, target: TARGET, accountId: "acc-1" };
 }
 

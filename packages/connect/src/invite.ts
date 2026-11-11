@@ -26,6 +26,7 @@ import {
 
 import { describeError, type KeyValueStorage } from "./client";
 import { targetKey, type Target } from "./target";
+import type { ClientRoutes } from "./routes";
 
 // ------------------------------------------------------------------ refusals
 
@@ -428,9 +429,9 @@ export function createInviteStore(app: string, options: InviteStoreOptions = {})
  * (the caller then asks, as for a link that names no org). Redeeming spends a
  * use even for a member, so a link that names its org is checked first.
  */
-export async function memberOf(client: Pick<CalimeroClient, "me">, org: string): Promise<boolean | null> {
+export async function memberOf(client: ClientRoutes<{ auth: "me" }>, org: string): Promise<boolean | null> {
   try {
-    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
+    const me = (await client.auth.me()) as { orgs?: Array<{ orgId?: unknown }> };
     return (me.orgs ?? []).some((o) => o.orgId === org);
   } catch {
     return null;
@@ -505,14 +506,14 @@ export function mayCreateIn(org: OrgAccessView, account: string, team?: string |
  * create action and let the node decide.
  */
 export async function canCreateIn(
-  client: Pick<CalimeroClient, "getOrg" | "session">,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" }>,
   org: string,
   team?: string | null,
 ): Promise<boolean | null> {
   const account = client.session?.accountId;
   if (!account) return null;
   try {
-    return mayCreateIn((await client.getOrg(org)) as OrgAccessView, account, team);
+    return mayCreateIn((await client.orgs.get({ org })) as OrgAccessView, account, team);
   } catch {
     return null;
   }

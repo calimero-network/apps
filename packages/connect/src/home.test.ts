@@ -100,13 +100,15 @@ function fakeClient({
   home = true,
 }: { role?: string; mode?: string | null; home?: boolean | "fails" } = {}) {
   return {
-    package: vi.fn(async (pkg: string) => {
-      if (home === "fails") throw new Error("network");
-      if (!home) throw Object.assign(new Error("no such package"), { status: 404 });
-      return { package: pkg, latest: "0.3.0", versions: [{ version: "0.3.0" }] };
-    }),
-    me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Acme", role }] })),
-    getOrg: vi.fn(async () => ({ orgId: "org-1", ...(mode ? { mode } : {}) })),
+    packages: {
+      get: vi.fn(async ({ package: pkg }: { package: string }) => {
+        if (home === "fails") throw new Error("network");
+        if (!home) throw Object.assign(new Error("no such package"), { status: 404 });
+        return { package: pkg, latest: "0.3.0", versions: [{ version: "0.3.0" }] };
+      }),
+    },
+    auth: { me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Acme", role }] })) },
+    orgs: { get: vi.fn(async () => ({ orgId: "org-1", ...(mode ? { mode } : {}) })) },
   };
 }
 
@@ -137,7 +139,7 @@ describe("homeLinkFor", () => {
     expect(await link(c, "org-1", "http://localhost:5173/")).toBeNull();
     expect(await link(c, "org-1", "https://mero-chess.vercel.app/")).toBeNull();
     expect(await link(c, null)).toBeNull();
-    expect(c.package).not.toHaveBeenCalled();
+    expect(c.packages.get).not.toHaveBeenCalled();
   });
 
   it("asks the cluster for Home once per session", async () => {
@@ -145,7 +147,7 @@ describe("homeLinkFor", () => {
     await link(c);
     await link(c, "org-2");
     await findHome(c as unknown as Parameters<typeof findHome>[0], TARGET, { href: SERVED });
-    expect(c.package).toHaveBeenCalledTimes(1);
-    expect(c.package).toHaveBeenCalledWith(HOME_PACKAGE);
+    expect(c.packages.get).toHaveBeenCalledTimes(1);
+    expect(c.packages.get).toHaveBeenCalledWith({ package: HOME_PACKAGE });
   });
 });

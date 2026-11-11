@@ -21,6 +21,7 @@
  */
 import type { CalimeroClient, PasskeyProvider, SignUpPolicy } from "@calimero-network/mero-js";
 import {
+  type ClientRoutes,
   describeSignInError,
   isPasskeyUnknownHere,
   PROMPT_BLOCKED_MESSAGE,
@@ -109,9 +110,9 @@ export function signUpInviteHere(policy: SignUpPolicy | null | undefined, invite
 }
 
 /** The organization a brand-new account is in: the one its invite joined. */
-export async function soleOrg(client: Pick<CalimeroClient, "me">): Promise<string | null> {
+export async function soleOrg(client: ClientRoutes<{ auth: "me" }>): Promise<string | null> {
   try {
-    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
+    const me = (await client.auth.me()) as { orgs?: Array<{ orgId?: unknown }> };
     const orgs = (me.orgs ?? []).map((o) => o.orgId).filter((o): o is string => typeof o === "string");
     return orgs.length === 1 ? (orgs[0] as string) : null;
   } catch {
@@ -192,7 +193,7 @@ export interface SignUpHereOptions extends CeremonySignal {
  * redeem (redeeming again would spend another use).
  */
 export async function signUpHere(
-  client: Pick<CalimeroClient, "signUp" | "me"> & Partial<Pick<CalimeroClient, "setMemberMetadata">>,
+  client: Pick<CalimeroClient, "signUp"> & ClientRoutes<{ auth: "me" }> & Partial<ClientRoutes<{ orgs: "memberMetadata" }>>,
   target: Target,
   passkey: PasskeyProvider,
   options: SignUpHereOptions = {},
@@ -224,14 +225,15 @@ export async function signUpHere(
  * stand without it, and the person can name themselves later.
  */
 async function nameJoinedOrg(
-  client: Partial<Pick<CalimeroClient, "setMemberMetadata">>,
+  client: Partial<ClientRoutes<{ orgs: "memberMetadata" }>>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  if (typeof client.setMemberMetadata !== "function") return;
+  const orgs = client.orgs;
+  if (typeof orgs?.memberMetadata !== "function") return;
   try {
-    await client.setMemberMetadata(org, account, { name });
+    await orgs.memberMetadata({ org, account, metadata: { name } });
   } catch {
     /* unnamed in the org until they name themselves */
   }

@@ -26,6 +26,10 @@ directly instead of through the module:
     client.removeMember(org, account, passkey)   remove someone, leave the org
     client.removeTeamMember(org, team, account, passkey)
 
+and the generated methods that replace those wrappers (mero-js#358):
+`client.orgs.create(...)`, `.orgs.appTeamsScope(...)`, `.orgs.inviteCreate(...)`,
+`.orgs.removeMember(...)` and `.orgs.teamRemoveMember(...)`, by name alone.
+
 The member calls are told from an app's own helpers of the same name
 (`roles.removeMember(account)`, `ws.invite({ contextId })`, a contract's
 `removeMember(account)`) by their argument count: the node's take the org,
@@ -96,6 +100,9 @@ CLIENT_CALLS = {
     "removeTeamMember": 4,
 }
 HELPER_CALLS = {"createAppTeam", "ensureAppTeam", "inviteToApp"}
+# The generated methods of the node's org routes the wrappers above became.
+GENERATED_CALLS = {"create", "appTeamsScope", "inviteCreate", "removeMember", "teamRemoveMember"}
+GENERATED = re.compile(r"\.\s*orgs\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*\(")
 
 CALL = re.compile(r"(\.\s*)?\b([A-Za-z_$][\w$]*)\s*\(")
 
@@ -200,6 +207,10 @@ def scan(path, source):
             continue
         line = code.count("\n", 0, m.start()) + 1
         problems.append((path, line, name))
+    for m in GENERATED.finditer(code):
+        if m.group(1) in GENERATED_CALLS:
+            problems.append((path, code.count("\n", 0, m.start()) + 1, f"orgs.{m.group(1)}"))
+    problems.sort(key=lambda p: p[1])
     return problems
 
 

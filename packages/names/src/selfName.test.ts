@@ -23,22 +23,25 @@ describe("decideSelfName", () => {
 describe("setOrgName", () => {
   it("keeps the rest of the member record and remembers the name", async () => {
     const client = {
-      getOrg: vi.fn().mockResolvedValue({ memberMetadata: { acc: { name: "old", avatar: "a.png" } } }),
-      setMemberMetadata: vi.fn().mockResolvedValue(undefined),
+      orgs: {
+        get: vi.fn().mockResolvedValue({ memberMetadata: { acc: { name: "old", avatar: "a.png" } } }),
+        memberMetadata: vi.fn().mockResolvedValue({}),
+      },
     };
     await setOrgName(client, "org", "acc", "  Fran ");
-    expect(client.setMemberMetadata).toHaveBeenCalledWith("org", "acc", { name: "Fran", avatar: "a.png" });
+    expect(client.orgs.get).toHaveBeenCalledWith({ org: "org" });
+    expect(client.orgs.memberMetadata).toHaveBeenCalledWith({ org: "org", account: "acc", metadata: { name: "Fran", avatar: "a.png" } });
     expect(lastUsedName()).toBe("Fran");
   });
   it("writes just the name when the client cannot read the org", async () => {
-    const client = { setMemberMetadata: vi.fn().mockResolvedValue(undefined) };
+    const client = { orgs: { memberMetadata: vi.fn().mockResolvedValue({}) } };
     await setOrgName(client, "org", "acc", "Fran");
-    expect(client.setMemberMetadata).toHaveBeenCalledWith("org", "acc", { name: "Fran" });
+    expect(client.orgs.memberMetadata).toHaveBeenCalledWith({ org: "org", account: "acc", metadata: { name: "Fran" } });
   });
   it("does nothing for a blank name", async () => {
-    const client = { setMemberMetadata: vi.fn() };
+    const client = { orgs: { memberMetadata: vi.fn() } };
     await setOrgName(client, "org", "acc", "  ");
-    expect(client.setMemberMetadata).not.toHaveBeenCalled();
+    expect(client.orgs.memberMetadata).not.toHaveBeenCalled();
   });
 });
 

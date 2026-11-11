@@ -6,12 +6,15 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p .",
+    "lint": "eslint .",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@calimero-network/mero-js": "catalog:component",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
   }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, listAppInfos } from "@calimero-apps/connect";
 
 import * as api from "../api/kvStore";
 import { ResultBox } from "../components/ResultBox";
@@ -59,7 +59,7 @@ export function WorkspaceManager() {
   async function loadInstances() {
     if (!conn) return;
     try {
-      setInstances(await conn.client.listApps());
+      setInstances(await listAppInfos(conn.client));
       setInstancesError(null);
     } catch (e) {
       setInstancesError(describeError(e));
@@ -221,7 +221,7 @@ export function WorkspaceManager() {
             instances your account reaches are the channel candidates.
           </p>
           <div className="input-row">
-            <button className="btn-calimero-outline" disabled={!conn.org || org.loading} onClick={() => org.run(async () => { try { return { result: { output: await conn.client.getOrg(conn.org as string) } }; } finally { conn.after(); } })}>
+            <button className="btn-calimero-outline" disabled={!conn.org || org.loading} onClick={() => org.run(async () => { try { return { result: { output: await conn.client.orgs.get({ org: conn.org as string }) } }; } finally { conn.after(); } })}>
               getOrg()
             </button>
             <button className="btn-calimero-outline" onClick={() => void loadInstances()}>

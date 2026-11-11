@@ -79,9 +79,9 @@ export default async function globalSetup(): Promise<() => void> {
       });
   try {
     const probe = await signUp("Probe", LOCAL_NODES[0]!);
-    const org = await probe.client.createOrg("probe");
+    const org = (await probe.client.orgs.create({ name: "probe" })).orgId;
     try {
-      await probe.client.listAppTeams(org);
+      await probe.client.orgs.appTeamList({ org });
     } catch (e) {
       throw new Error(
         `this merod has no app-team routes (GET /orgs/{org}/app-teams answered ${String(e)}): ` +

@@ -14,7 +14,7 @@ function memoryStorage(): KeyValueStorage {
 
 function client(version: string): ReleaseClient {
   return {
-    getApp: vi.fn(async () => ({ org: null })),
+    apps: { get: vi.fn(async () => ({ org: null }) as never) },
     appsReportAll: vi.fn(async () => ({ apps: [{ app: "app-1", package: { package: "p", version } }] }) as unknown as AppsReport),
   };
 }
@@ -39,6 +39,6 @@ describe("useInstanceRelease", () => {
     await waitFor(() => expect(c.appsReportAll).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
     expect(navigate).not.toHaveBeenCalled();
-    expect(none.getApp).not.toHaveBeenCalled();
+    expect(none.apps.get).not.toHaveBeenCalled();
   });
 });

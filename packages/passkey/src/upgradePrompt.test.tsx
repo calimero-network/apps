@@ -6,6 +6,7 @@ import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js"
 import type { KeyValueStorage } from "@calimero-apps/connect";
 
 import { usePasskeySession, type SessionDeps } from "./session";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const PKG = "com.calimero.kv";
 
@@ -46,7 +47,7 @@ function fakeClient(role: string, upgradesHeldBy = "owner") {
     requestConsent: vi.fn(),
     consentResult: vi.fn(),
   };
-  return client;
+  return withRoutes(client);
 }
 
 function deps(client: ReturnType<typeof fakeClient>): SessionDeps {

@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { NotFound, ORG_CAPABILITIES, type AppTeam, type CalimeroSession, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  NotFound,
+  ORG_CAPABILITIES,
+  type AppTeam,
+  type CalimeroClient,
+  type CalimeroSession,
+  type MethodOptions,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 
 import {
   NoAppTeamError,
@@ -51,31 +59,40 @@ interface FakeOpts {
 
 function fake(opts: FakeOpts = {}) {
   const account = opts.account === undefined ? "me" : opts.account;
-  return {
+  const f = {
     session: account ? ({ accountId: account } as CalimeroSession) : undefined,
-    listAppTeams: vi.fn(async () => {
-      if (opts.noRoute) throw new NotFound("no such route");
-      return { mode: opts.mode ?? "shared", appTeams: opts.teams ?? [] };
-    }),
-    getOrg: vi.fn(async () => ({
-      releaseApprovers: [],
-      publishes: [],
-      newWorkStopped: null,
-      members: opts.role ? { me: opts.role } : {},
-      ...(opts.orgCaps !== undefined ? { capabilities: { me: opts.orgCaps } } : {}),
-      teams: Object.fromEntries(
-        Object.entries(opts.rows ?? {}).map(([id, caps]) => [id, { parent: null, members: {}, capabilities: caps }]),
+    orgs: {
+      appTeamList: vi.fn(async (_args: { org: string }) => {
+        if (opts.noRoute) throw new NotFound("no such route");
+        return { mode: opts.mode ?? "shared", appTeams: opts.teams ?? [] };
+      }),
+      get: vi.fn(async (_args: { org: string }) => ({
+        releaseApprovers: [],
+        publishes: [],
+        newWorkStopped: null,
+        members: opts.role ? { me: opts.role } : {},
+        ...(opts.orgCaps !== undefined ? { capabilities: { me: opts.orgCaps } } : {}),
+        teams: Object.fromEntries(
+          Object.entries(opts.rows ?? {}).map(([id, caps]) => [id, { parent: null, members: {}, capabilities: caps }]),
+        ),
+      })),
+      appTeamsScope: vi.fn(
+        async ({ apps }: { org: string; apps?: Array<{ package: string }>; shared?: boolean }, _options?: MethodOptions) => ({
+          mode: "standalone" as const,
+          teams: (apps ?? []).map((a) => ({ package: a.package, teamId: `new-${a.package}`, created: true, apps: [], added: 1 })),
+        }),
       ),
-    })),
-    scopeApps: vi.fn(async (_org: string, _p: PasskeyProvider, o: { apps?: Array<{ package: string }> } = {}) => ({
-      mode: "standalone" as const,
-      teams: (o.apps ?? []).map((a) => ({ package: a.package, teamId: `new-${a.package}`, created: true, apps: [], added: 1 })),
-    })),
-    invite: vi.fn(async () => "tok-1"),
-    setTeamDefaultCapabilities: vi.fn(async () => undefined),
-    updateTeam: vi.fn(async (_org: string, _team: string, _update: { join?: string }): Promise<void> => undefined),
+      inviteCreate: vi.fn(async (_args: { org: string }, _options?: MethodOptions) => ({ token: "tok-1" })),
+      capabilities: vi.fn(async (_args: { org: string }, _options?: MethodOptions) => ({})),
+      teamUpdate: vi.fn(async (_args: { org: string; team: string; join?: string }) => ({})),
+    },
   };
+  // The mocks answer only what these helpers read, so the client's types are asserted.
+  return f as typeof f & Pick<CalimeroClient, "orgs">;
 }
+
+/** The per-call options of a step-up answered with the passkey. */
+const CONFIRMED = { confirm: expect.any(Function) };
 
 describe("isNotFound", () => {
   it("is the node's 404, typed or by status", () => {
@@ -106,7 +123,7 @@ describe("appTeams / appTeamOf", () => {
 
   it("throws anything else", async () => {
     const c = fake();
-    c.listAppTeams.mockRejectedValueOnce(new Error("offline"));
+    c.orgs.appTeamList.mockRejectedValueOnce(new Error("offline"));
     await expect(appTeams(c, "org")).rejects.toThrow("offline");
   });
 });
@@ -115,17 +132,17 @@ describe("createAppTeam / ensureAppTeam", () => {
   it("scopes one package, with the name, instances and shared flag given", async () => {
     const c = fake();
     const made = await createAppTeam(c, "org", CHAT, passkey, { name: "Chat", instances: [], shared: true });
-    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, {
-      apps: [{ package: CHAT, name: "Chat", instances: [] }],
-      shared: true,
-    });
+    expect(c.orgs.appTeamsScope).toHaveBeenCalledWith(
+      { org: "org", apps: [{ package: CHAT, name: "Chat", instances: [] }], shared: true },
+      CONFIRMED,
+    );
     expect(made).toMatchObject({ teamId: `new-${CHAT}`, created: true, mode: "standalone" });
   });
 
   it("leaves out what was not given, so the node's defaults apply", async () => {
     const c = fake();
     await createAppTeam(c, "org", CHAT, passkey);
-    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [{ package: CHAT }] });
+    expect(c.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: CHAT }] }, CONFIRMED);
   });
 
   it("ensure: never asks for a passkey when the team exists", async () => {
@@ -135,7 +152,7 @@ describe("createAppTeam / ensureAppTeam", () => {
       created: false,
       mode: "shared",
     });
-    expect(c.scopeApps).not.toHaveBeenCalled();
+    expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
   });
 
   it("ensure: makes it when missing; null on an older node", async () => {
@@ -149,32 +166,32 @@ describe("inviteToApp", () => {
   it("names the app team, as a member by default", async () => {
     const c = fake({ teams: [team(CHAT), team(BLOCKS)] });
     const made = await inviteToApp(c, "org", CHAT, { passkey });
-    expect(c.invite).toHaveBeenCalledWith("org", "member", passkey, ["team-chat"], undefined);
+    expect(c.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: ["team-chat"] }, CONFIRMED);
     expect(made).toEqual({ token: "tok-1", teams: ["team-chat"], mode: "shared" });
   });
 
   it("names several apps' teams, plus extra teams, with role, uses and ttl", async () => {
     const c = fake({ teams: [team(CHAT), team(BLOCKS)] });
     await inviteToApp(c, "org", [CHAT, BLOCKS], { passkey, role: "guest", teams: ["private"], uses: 3, ttlSecs: 60 });
-    expect(c.invite).toHaveBeenCalledWith("org", "guest", passkey, ["team-chat", "team-mero-blocks", "private"], {
-      uses: 3,
-      ttlSecs: 60,
-    });
+    expect(c.orgs.inviteCreate).toHaveBeenCalledWith(
+      { org: "org", role: "guest", teams: ["team-chat", "team-mero-blocks", "private"], uses: 3, ttlSecs: 60 },
+      CONFIRMED,
+    );
   });
 
   it("refuses a package without a team in an org that has app teams, rather than invite org-wide", async () => {
     const c = fake({ teams: [team(CHAT)] });
     await expect(inviteToApp(c, "org", BLOCKS, { passkey })).rejects.toBeInstanceOf(NoAppTeamError);
-    expect(c.invite).not.toHaveBeenCalled();
+    expect(c.orgs.inviteCreate).not.toHaveBeenCalled();
   });
 
   it("falls back to today's org-wide invite in a legacy org and on an older node", async () => {
     const legacy = fake({ mode: "legacy" });
     expect(await inviteToApp(legacy, "org", CHAT, { passkey })).toEqual({ token: "tok-1", teams: [], mode: "legacy" });
-    expect(legacy.invite).toHaveBeenCalledWith("org", "member", passkey, undefined, undefined);
+    expect(legacy.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: [] }, CONFIRMED);
     const old = fake({ noRoute: true });
     expect((await inviteToApp(old, "org", CHAT, { passkey })).mode).toBeNull();
-    expect(old.invite).toHaveBeenCalledWith("org", "member", passkey, undefined, undefined);
+    expect(old.orgs.inviteCreate).toHaveBeenCalledWith({ org: "org", role: "member", teams: [] }, CONFIRMED);
   });
 });
 
@@ -247,7 +264,7 @@ describe("members may invite: the per-app switch", () => {
   it("sets or clears INVITE_MEMBERS and keeps every other bit", async () => {
     const c = fake();
     expect(await setMembersMayInvite(c, "org", { teamId: "t", defaultCapabilities: 1 }, true, passkey)).toBe(1 | INVITE);
-    expect(c.setTeamDefaultCapabilities).toHaveBeenLastCalledWith("org", "t", 1 | INVITE, passkey);
+    expect(c.orgs.capabilities).toHaveBeenLastCalledWith({ org: "org", team: "t", capabilities: 1 | INVITE }, CONFIRMED);
     expect(await setMembersMayInvite(c, "org", { teamId: "t", defaultCapabilities: 1 | INVITE }, false, passkey)).toBe(1);
     expect(await setMembersMayInvite(c, "org", { teamId: "t", defaultCapabilities: null }, false, passkey)).toBe(0);
   });
@@ -291,6 +308,9 @@ describe("appTeamMembers: who is in an app team", () => {
 });
 
 describe("appTeamInstances: what deleting an app team deletes", () => {
+  // The fake answers what `appTeamInstances` reads of a team.
+  const teamClient = (teamGet: unknown) => ({ orgs: { teamGet } }) as unknown as Pick<CalimeroClient, "orgs">;
+
   const teamInfo = (id: string, named: Array<{ appId: string; name: string }>, children: string[] = []) => ({
     teamId: id,
     name: id,
@@ -311,8 +331,8 @@ describe("appTeamInstances: what deleting an app team deletes", () => {
       ch2: teamInfo("ch2", []),
       ch3: teamInfo("ch3", [{ appId: "a3", name: "deeper" }]),
     };
-    const getTeam = vi.fn(async (_org: string, id: string) => teams[id]!);
-    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([
+    const teamGet = vi.fn(async ({ team }: { org: string; team: string }) => teams[team]!);
+    expect(await appTeamInstances(teamClient(teamGet), "org", "app")).toEqual([
       { appId: "a1", name: "general", team: "app" },
       { appId: "a2", name: "secret", team: "ch1" },
       { appId: "a3", name: "deeper", team: "ch3" },
@@ -320,13 +340,13 @@ describe("appTeamInstances: what deleting an app team deletes", () => {
   });
 
   it("skips a team below it the caller may not read, but not the app team itself", async () => {
-    const getTeam = vi.fn(async (_org: string, id: string) => {
-      if (id !== "app") throw new NotFound("no such team");
+    const teamGet = vi.fn(async ({ team }: { org: string; team: string }) => {
+      if (team !== "app") throw new NotFound("no such team");
       return teamInfo("app", [{ appId: "a1", name: "general" }], ["hidden"]);
     });
-    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([{ appId: "a1", name: "general", team: "app" }]);
-    getTeam.mockRejectedValue(new NotFound("no such team"));
-    await expect(appTeamInstances({ getTeam }, "org", "app")).rejects.toThrow("no such team");
+    expect(await appTeamInstances(teamClient(teamGet), "org", "app")).toEqual([{ appId: "a1", name: "general", team: "app" }]);
+    teamGet.mockRejectedValue(new NotFound("no such team"));
+    await expect(appTeamInstances(teamClient(teamGet), "org", "app")).rejects.toThrow("no such team");
   });
 });
 
@@ -334,7 +354,7 @@ describe("everyone gets every app / keep apps apart", () => {
   it("opens one app team: join everyone, no passkey", async () => {
     const c = fake();
     await openAppTeam(c, "org", { teamId: "t-chat" });
-    expect(c.updateTeam).toHaveBeenCalledWith("org", "t-chat", { join: "everyone" });
+    expect(c.orgs.teamUpdate).toHaveBeenCalledWith({ org: "org", team: "t-chat", join: "everyone" });
   });
 
   it("opens only the closed ones, in turn, and says which", async () => {
@@ -345,23 +365,23 @@ describe("everyone gets every app / keep apps apart", () => {
       { teamId: "c", join: "invite" },
     ]);
     expect(opened).toEqual(["a", "c"]);
-    expect(c.updateTeam.mock.calls.map((x) => x[1])).toEqual(["a", "c"]);
+    expect(c.orgs.teamUpdate.mock.calls.map((x) => x[0].team)).toEqual(["a", "c"]);
   });
 
   it("stops at a refusal", async () => {
     const c = fake();
-    c.updateTeam.mockRejectedValueOnce(new Error("not allowed to change this team's visibility"));
+    c.orgs.teamUpdate.mockRejectedValueOnce(new Error("not allowed to change this team's visibility"));
     await expect(openAppTeams(c, "org", [{ teamId: "a", join: "invite" }, { teamId: "b", join: "invite" }])).rejects.toThrow(
       /visibility/,
     );
-    expect(c.updateTeam).toHaveBeenCalledTimes(1);
+    expect(c.orgs.teamUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("keeps apps apart: one ScopeApps naming no package, shared, and nothing opened", async () => {
     const c = fake();
-    c.scopeApps.mockResolvedValueOnce({ mode: "shared" as never, teams: [] });
+    c.orgs.appTeamsScope.mockResolvedValueOnce({ mode: "shared" as never, teams: [] });
     expect(await keepAppsApart(c, "org", passkey)).toBe("shared");
-    expect(c.scopeApps).toHaveBeenCalledWith("org", passkey, { apps: [], shared: true });
-    expect(c.updateTeam).not.toHaveBeenCalled();
+    expect(c.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [], shared: true }, CONFIRMED);
+    expect(c.orgs.teamUpdate).not.toHaveBeenCalled();
   });
 });

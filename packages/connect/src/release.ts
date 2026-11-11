@@ -22,6 +22,7 @@
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import type { KeyValueStorage } from "./client";
+import type { ClientRoutes } from "./routes";
 
 /** The tab's note of a release it moved to, read on the page it lands on. */
 export const RELEASE_FOLLOW_KEY = "cp-release:follow";
@@ -147,7 +148,7 @@ export function followRelease(options: FollowReleaseOptions): boolean {
 }
 
 /** The part of the client {@link instanceRelease} reads. */
-export type ReleaseClient = Pick<CalimeroClient, "getApp" | "appsReportAll">;
+export type ReleaseClient = Pick<CalimeroClient, "appsReportAll"> & ClientRoutes<{ apps: "get" }>;
 
 /**
  * The release `app` runs, as its scope's report says (`package.version`: the
@@ -155,7 +156,7 @@ export type ReleaseClient = Pick<CalimeroClient, "getApp" | "appsReportAll">;
  */
 export async function instanceRelease(client: ReleaseClient, app: string): Promise<string | null> {
   try {
-    const record = (await client.getApp(app)) as { org?: unknown };
+    const record = (await client.apps.get({ app })) as { org?: unknown };
     const org = typeof record.org === "string" ? record.org : null;
     const report = await client.appsReportAll(org);
     const version = report.apps.find((a) => a.app === app)?.package?.version;
