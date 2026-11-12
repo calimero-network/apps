@@ -220,7 +220,7 @@ class PollModelTest {
     fun `re-verifying the honest transcript agrees with the node`() =
         runTest {
             val (backend, script) = makeBackend(ME)
-            script.put("getTranscript") { Vectors.audit("honest")["transcript"]!! }
+            script.put("getTranscript") { Vectors.contractTranscript() }
             val model = model(backend)
             model.reverify()
             val audit = model.localAudit.value!!
