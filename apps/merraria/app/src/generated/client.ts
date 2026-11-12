@@ -132,47 +132,134 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MerrariaClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MerrariaClient` implements, for a test double to stand in for it. */
+export interface MerrariaApi {
+  /** call `createWorld`. */
+  createWorld(args: CreateWorldArgs, options?: CallOptions): Promise<null>;
+  /** view `getOverrides`. */
+  getOverrides(args: GetOverridesArgs, options?: ViewOptions): Promise<OverridesPage>;
+  /** view `getPlayers`. */
+  getPlayers(args: GetPlayersArgs, options?: ViewOptions): Promise<PlayerView[]>;
+  /** call `heartbeat`. */
+  heartbeat(args: HeartbeatArgs, options?: CallOptions): Promise<null>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<PlayerView>;
+  /** call `leave`. */
+  leave(args: LeaveArgs, options?: CallOptions): Promise<null>;
+  /** call `setTiles`. */
+  setTiles(args: SetTilesArgs, options?: CallOptions): Promise<number>;
+  /** view `worldMeta`. */
+  worldMeta(options?: ViewOptions): Promise<WorldMeta>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MerrariaClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MerrariaRawApi {
+  /** call `createWorld`. */
+  createWorld(args: CreateWorldArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getOverrides`. */
+  getOverrides(args: GetOverridesArgs, options?: ViewOptions): Promise<ViewAnswer<OverridesPage>>;
+  /** view `getPlayers`. */
+  getPlayers(args: GetPlayersArgs, options?: ViewOptions): Promise<ViewAnswer<PlayerView[]>>;
+  /** call `heartbeat`. */
+  heartbeat(args: HeartbeatArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<CallAnswer<PlayerView>>;
+  /** call `leave`. */
+  leave(args: LeaveArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setTiles`. */
+  setTiles(args: SetTilesArgs, options?: CallOptions): Promise<CallAnswer<number>>;
+  /** view `worldMeta`. */
+  worldMeta(options?: ViewOptions): Promise<ViewAnswer<WorldMeta>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MerrariaClient<T extends AppCallTransport = AppTransport> implements MerrariaApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MerrariaRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      createWorld: (args, options = {}) => this.#call<null>('createWorld', args, options),
+      getOverrides: (args, options = {}) => this.#view<OverridesPage>('getOverrides', args, options),
+      getPlayers: (args, options = {}) => this.#view<PlayerView[]>('getPlayers', args, options),
+      heartbeat: (args, options = {}) => this.#call<null>('heartbeat', args, options),
+      join: (args, options = {}) => this.#call<PlayerView>('join', args, options),
+      leave: (args, options = {}) => this.#call<null>('leave', args, options),
+      setTiles: (args, options = {}) => this.#call<number>('setTiles', args, options),
+      worldMeta: (options = {}) => this.#view<WorldMeta>('worldMeta', {}, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -182,7 +269,8 @@ export class MerrariaClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -190,46 +278,46 @@ export class MerrariaClient {
 
   /** call `createWorld`. */
   async createWorld(args: CreateWorldArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('createWorld', args, options)) as null;
+    return (await this.#call<null>('createWorld', args, options)).result;
   }
 
   /** view `getOverrides`. */
   async getOverrides(args: GetOverridesArgs, options: ViewOptions = {}): Promise<OverridesPage> {
-    return (await this.#view('getOverrides', args, options)) as OverridesPage;
+    return (await this.#view<OverridesPage>('getOverrides', args, options)).result;
   }
 
   /** view `getPlayers`. */
   async getPlayers(args: GetPlayersArgs, options: ViewOptions = {}): Promise<PlayerView[]> {
-    return (await this.#view('getPlayers', args, options)) as PlayerView[];
+    return (await this.#view<PlayerView[]>('getPlayers', args, options)).result;
   }
 
   /** call `heartbeat`. */
   async heartbeat(args: HeartbeatArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('heartbeat', args, options)) as null;
+    return (await this.#call<null>('heartbeat', args, options)).result;
   }
 
   /** call `join`. */
   async join(args: JoinArgs, options: CallOptions = {}): Promise<PlayerView> {
-    return (await this.#call('join', args, options)) as PlayerView;
+    return (await this.#call<PlayerView>('join', args, options)).result;
   }
 
   /** call `leave`. */
   async leave(args: LeaveArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('leave', args, options)) as null;
+    return (await this.#call<null>('leave', args, options)).result;
   }
 
   /** call `setTiles`. */
   async setTiles(args: SetTilesArgs, options: CallOptions = {}): Promise<number> {
-    return (await this.#call('setTiles', args, options)) as number;
+    return (await this.#call<number>('setTiles', args, options)).result;
   }
 
   /** view `worldMeta`. */
   async worldMeta(options: ViewOptions = {}): Promise<WorldMeta> {
-    return (await this.#view('worldMeta', {}, options)) as WorldMeta;
+    return (await this.#view<WorldMeta>('worldMeta', {}, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MerrariaClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

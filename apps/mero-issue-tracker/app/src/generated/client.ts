@@ -239,47 +239,189 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroIssueTrackerClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroIssueTrackerClient` implements, for a test double to stand in for it. */
+export interface MeroIssueTrackerApi {
+  /** call `addComment`. */
+  addComment(args: AddCommentArgs, options?: CallOptions): Promise<string>;
+  /** call `addLabel`. */
+  addLabel(args: AddLabelArgs, options?: CallOptions): Promise<null>;
+  /** call `createIssue`. */
+  createIssue(args: CreateIssueArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteIssue`. */
+  deleteIssue(args: DeleteIssueArgs, options?: CallOptions): Promise<null>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<null>;
+  /** view `getIssue`. */
+  getIssue(args: GetIssueArgs, options?: ViewOptions): Promise<IssueDetail>;
+  /** view `getRepoInfo`. */
+  getRepoInfo(options?: ViewOptions): Promise<RepoInfo>;
+  /** view `getStatusCounts`. */
+  getStatusCounts(options?: ViewOptions): Promise<StatusCount[]>;
+  /** view `listIssues`. */
+  listIssues(args: ListIssuesArgs, options?: ViewOptions): Promise<IssueView[]>;
+  /** call `removeLabel`. */
+  removeLabel(args: RemoveLabelArgs, options?: CallOptions): Promise<null>;
+  /** call `setAssignee`. */
+  setAssignee(args: SetAssigneeArgs, options?: CallOptions): Promise<null>;
+  /** call `setImpact`. */
+  setImpact(args: SetImpactArgs, options?: CallOptions): Promise<null>;
+  /** call `setPriority`. */
+  setPriority(args: SetPriorityArgs, options?: CallOptions): Promise<null>;
+  /** call `setRepoUrl`. */
+  setRepoUrl(args: SetRepoUrlArgs, options?: CallOptions): Promise<null>;
+  /** call `setRepro`. */
+  setRepro(args: SetReproArgs, options?: CallOptions): Promise<null>;
+  /** call `setResolutionCriteria`. */
+  setResolutionCriteria(args: SetResolutionCriteriaArgs, options?: CallOptions): Promise<null>;
+  /** call `setStatus`. */
+  setStatus(args: SetStatusArgs, options?: CallOptions): Promise<null>;
+  /** call `setSummary`. */
+  setSummary(args: SetSummaryArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroIssueTrackerClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroIssueTrackerRawApi {
+  /** call `addComment`. */
+  addComment(args: AddCommentArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `addLabel`. */
+  addLabel(args: AddLabelArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `createIssue`. */
+  createIssue(args: CreateIssueArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteIssue`. */
+  deleteIssue(args: DeleteIssueArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getIssue`. */
+  getIssue(args: GetIssueArgs, options?: ViewOptions): Promise<ViewAnswer<IssueDetail>>;
+  /** view `getRepoInfo`. */
+  getRepoInfo(options?: ViewOptions): Promise<ViewAnswer<RepoInfo>>;
+  /** view `getStatusCounts`. */
+  getStatusCounts(options?: ViewOptions): Promise<ViewAnswer<StatusCount[]>>;
+  /** view `listIssues`. */
+  listIssues(args: ListIssuesArgs, options?: ViewOptions): Promise<ViewAnswer<IssueView[]>>;
+  /** call `removeLabel`. */
+  removeLabel(args: RemoveLabelArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setAssignee`. */
+  setAssignee(args: SetAssigneeArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setImpact`. */
+  setImpact(args: SetImpactArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setPriority`. */
+  setPriority(args: SetPriorityArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setRepoUrl`. */
+  setRepoUrl(args: SetRepoUrlArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setRepro`. */
+  setRepro(args: SetReproArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setResolutionCriteria`. */
+  setResolutionCriteria(args: SetResolutionCriteriaArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setStatus`. */
+  setStatus(args: SetStatusArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setSummary`. */
+  setSummary(args: SetSummaryArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroIssueTrackerClient<T extends AppCallTransport = AppTransport> implements MeroIssueTrackerApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroIssueTrackerRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      addComment: (args, options = {}) => this.#call<string>('addComment', args, options),
+      addLabel: (args, options = {}) => this.#call<null>('addLabel', args, options),
+      createIssue: (args, options = {}) => this.#call<string>('createIssue', args, options),
+      deleteComment: (args, options = {}) => this.#call<null>('deleteComment', args, options),
+      deleteIssue: (args, options = {}) => this.#call<null>('deleteIssue', args, options),
+      editComment: (args, options = {}) => this.#call<null>('editComment', args, options),
+      getIssue: (args, options = {}) => this.#view<IssueDetail>('getIssue', args, options),
+      getRepoInfo: (options = {}) => this.#view<RepoInfo>('getRepoInfo', {}, options),
+      getStatusCounts: (options = {}) => this.#view<StatusCount[]>('getStatusCounts', {}, options),
+      listIssues: (args, options = {}) => this.#view<IssueView[]>('listIssues', args, options),
+      removeLabel: (args, options = {}) => this.#call<null>('removeLabel', args, options),
+      setAssignee: (args, options = {}) => this.#call<null>('setAssignee', args, options),
+      setImpact: (args, options = {}) => this.#call<null>('setImpact', args, options),
+      setPriority: (args, options = {}) => this.#call<null>('setPriority', args, options),
+      setRepoUrl: (args, options = {}) => this.#call<null>('setRepoUrl', args, options),
+      setRepro: (args, options = {}) => this.#call<null>('setRepro', args, options),
+      setResolutionCriteria: (args, options = {}) => this.#call<null>('setResolutionCriteria', args, options),
+      setStatus: (args, options = {}) => this.#call<null>('setStatus', args, options),
+      setSummary: (args, options = {}) => this.#call<null>('setSummary', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -289,7 +431,8 @@ export class MeroIssueTrackerClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -297,101 +440,101 @@ export class MeroIssueTrackerClient {
 
   /** call `addComment`. */
   async addComment(args: AddCommentArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addComment', args, options)) as string;
+    return (await this.#call<string>('addComment', args, options)).result;
   }
 
   /** call `addLabel`. */
   async addLabel(args: AddLabelArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('addLabel', args, options)) as null;
+    return (await this.#call<null>('addLabel', args, options)).result;
   }
 
   /** call `createIssue`. */
   async createIssue(args: CreateIssueArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createIssue', args, options)) as string;
+    return (await this.#call<string>('createIssue', args, options)).result;
   }
 
   /** call `deleteComment`. */
   async deleteComment(args: DeleteCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteComment', args, options)) as null;
+    return (await this.#call<null>('deleteComment', args, options)).result;
   }
 
   /** call `deleteIssue`. */
   async deleteIssue(args: DeleteIssueArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteIssue', args, options)) as null;
+    return (await this.#call<null>('deleteIssue', args, options)).result;
   }
 
   /** call `editComment`. */
   async editComment(args: EditCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editComment', args, options)) as null;
+    return (await this.#call<null>('editComment', args, options)).result;
   }
 
   /** view `getIssue`. */
   async getIssue(args: GetIssueArgs, options: ViewOptions = {}): Promise<IssueDetail> {
-    return (await this.#view('getIssue', args, options)) as IssueDetail;
+    return (await this.#view<IssueDetail>('getIssue', args, options)).result;
   }
 
   /** view `getRepoInfo`. */
   async getRepoInfo(options: ViewOptions = {}): Promise<RepoInfo> {
-    return (await this.#view('getRepoInfo', {}, options)) as RepoInfo;
+    return (await this.#view<RepoInfo>('getRepoInfo', {}, options)).result;
   }
 
   /** view `getStatusCounts`. */
   async getStatusCounts(options: ViewOptions = {}): Promise<StatusCount[]> {
-    return (await this.#view('getStatusCounts', {}, options)) as StatusCount[];
+    return (await this.#view<StatusCount[]>('getStatusCounts', {}, options)).result;
   }
 
   /** view `listIssues`. */
   async listIssues(args: ListIssuesArgs, options: ViewOptions = {}): Promise<IssueView[]> {
-    return (await this.#view('listIssues', args, options)) as IssueView[];
+    return (await this.#view<IssueView[]>('listIssues', args, options)).result;
   }
 
   /** call `removeLabel`. */
   async removeLabel(args: RemoveLabelArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('removeLabel', args, options)) as null;
+    return (await this.#call<null>('removeLabel', args, options)).result;
   }
 
   /** call `setAssignee`. */
   async setAssignee(args: SetAssigneeArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setAssignee', args, options)) as null;
+    return (await this.#call<null>('setAssignee', args, options)).result;
   }
 
   /** call `setImpact`. */
   async setImpact(args: SetImpactArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setImpact', args, options)) as null;
+    return (await this.#call<null>('setImpact', args, options)).result;
   }
 
   /** call `setPriority`. */
   async setPriority(args: SetPriorityArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setPriority', args, options)) as null;
+    return (await this.#call<null>('setPriority', args, options)).result;
   }
 
   /** call `setRepoUrl`. */
   async setRepoUrl(args: SetRepoUrlArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setRepoUrl', args, options)) as null;
+    return (await this.#call<null>('setRepoUrl', args, options)).result;
   }
 
   /** call `setRepro`. */
   async setRepro(args: SetReproArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setRepro', args, options)) as null;
+    return (await this.#call<null>('setRepro', args, options)).result;
   }
 
   /** call `setResolutionCriteria`. */
   async setResolutionCriteria(args: SetResolutionCriteriaArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setResolutionCriteria', args, options)) as null;
+    return (await this.#call<null>('setResolutionCriteria', args, options)).result;
   }
 
   /** call `setStatus`. */
   async setStatus(args: SetStatusArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setStatus', args, options)) as null;
+    return (await this.#call<null>('setStatus', args, options)).result;
   }
 
   /** call `setSummary`. */
   async setSummary(args: SetSummaryArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setSummary', args, options)) as null;
+    return (await this.#call<null>('setSummary', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroIssueTrackerClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

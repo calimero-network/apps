@@ -234,47 +234,179 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class BattleshipsClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `BattleshipsClient` implements, for a test double to stand in for it. */
+export interface BattleshipsApi {
+  /** call `acknowledgeShot`. */
+  acknowledgeShot(args: AcknowledgeShotArgs, options?: CallOptions): Promise<string>;
+  /** call `commitBoard`. */
+  commitBoard(args: CommitBoardArgs, options?: CallOptions): Promise<null>;
+  /** call `createMatch`. */
+  createMatch(args: CreateMatchArgs, options?: CallOptions): Promise<string>;
+  /** view `getActiveMatchId`. */
+  getActiveMatchId(options?: ViewOptions): Promise<string | null>;
+  /** view `getCurrentTurn`. */
+  getCurrentTurn(args: GetCurrentTurnArgs, options?: ViewOptions): Promise<string | null>;
+  /** view `getCurrentUser`. */
+  getCurrentUser(options?: ViewOptions): Promise<string>;
+  /** view `getHistory`. */
+  getHistory(options?: ViewOptions): Promise<MatchRecord[]>;
+  /** view `getIncomingShots`. */
+  getIncomingShots(args: GetIncomingShotsArgs, options?: ViewOptions): Promise<ShotsView>;
+  /** view `getMatchState`. */
+  getMatchState(args: GetMatchStateArgs, options?: ViewOptions): Promise<MatchStateView>;
+  /** view `getMatches`. */
+  getMatches(options?: ViewOptions): Promise<MatchSummary[]>;
+  /** view `getPlayerStats`. */
+  getPlayerStats(args: GetPlayerStatsArgs, options?: ViewOptions): Promise<PlayerStatsView | null>;
+  /** view `getPlayers`. */
+  getPlayers(options?: ViewOptions): Promise<PlayerEntry[]>;
+  /** view `getShots`. */
+  getShots(args: GetShotsArgs, options?: ViewOptions): Promise<ShotsView>;
+  /** view `getWinner`. */
+  getWinner(args: GetWinnerArgs, options?: ViewOptions): Promise<string | null>;
+  /** call `proposeShot`. */
+  proposeShot(args: ProposeShotArgs, options?: CallOptions): Promise<null>;
+  /** call `registerPlayer`. */
+  registerPlayer(options?: CallOptions): Promise<string>;
+  /** call `revealBoard`. */
+  revealBoard(args: RevealBoardArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `BattleshipsClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface BattleshipsRawApi {
+  /** call `acknowledgeShot`. */
+  acknowledgeShot(args: AcknowledgeShotArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `commitBoard`. */
+  commitBoard(args: CommitBoardArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `createMatch`. */
+  createMatch(args: CreateMatchArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `getActiveMatchId`. */
+  getActiveMatchId(options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** view `getCurrentTurn`. */
+  getCurrentTurn(args: GetCurrentTurnArgs, options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** view `getCurrentUser`. */
+  getCurrentUser(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getHistory`. */
+  getHistory(options?: ViewOptions): Promise<ViewAnswer<MatchRecord[]>>;
+  /** view `getIncomingShots`. */
+  getIncomingShots(args: GetIncomingShotsArgs, options?: ViewOptions): Promise<ViewAnswer<ShotsView>>;
+  /** view `getMatchState`. */
+  getMatchState(args: GetMatchStateArgs, options?: ViewOptions): Promise<ViewAnswer<MatchStateView>>;
+  /** view `getMatches`. */
+  getMatches(options?: ViewOptions): Promise<ViewAnswer<MatchSummary[]>>;
+  /** view `getPlayerStats`. */
+  getPlayerStats(args: GetPlayerStatsArgs, options?: ViewOptions): Promise<ViewAnswer<PlayerStatsView | null>>;
+  /** view `getPlayers`. */
+  getPlayers(options?: ViewOptions): Promise<ViewAnswer<PlayerEntry[]>>;
+  /** view `getShots`. */
+  getShots(args: GetShotsArgs, options?: ViewOptions): Promise<ViewAnswer<ShotsView>>;
+  /** view `getWinner`. */
+  getWinner(args: GetWinnerArgs, options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** call `proposeShot`. */
+  proposeShot(args: ProposeShotArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `registerPlayer`. */
+  registerPlayer(options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `revealBoard`. */
+  revealBoard(args: RevealBoardArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class BattleshipsClient<T extends AppCallTransport = AppTransport> implements BattleshipsApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: BattleshipsRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      acknowledgeShot: (args, options = {}) => this.#call<string>('acknowledgeShot', args, options),
+      commitBoard: (args, options = {}) => this.#call<null>('commitBoard', args, options),
+      createMatch: (args, options = {}) => this.#call<string>('createMatch', args, options),
+      getActiveMatchId: (options = {}) => this.#view<string | null>('getActiveMatchId', {}, options),
+      getCurrentTurn: (args, options = {}) => this.#view<string | null>('getCurrentTurn', args, options),
+      getCurrentUser: (options = {}) => this.#view<string>('getCurrentUser', {}, options),
+      getHistory: (options = {}) => this.#view<MatchRecord[]>('getHistory', {}, options),
+      getIncomingShots: (args, options = {}) => this.#view<ShotsView>('getIncomingShots', args, options),
+      getMatchState: (args, options = {}) => this.#view<MatchStateView>('getMatchState', args, options),
+      getMatches: (options = {}) => this.#view<MatchSummary[]>('getMatches', {}, options),
+      getPlayerStats: (args, options = {}) => this.#view<PlayerStatsView | null>('getPlayerStats', args, options),
+      getPlayers: (options = {}) => this.#view<PlayerEntry[]>('getPlayers', {}, options),
+      getShots: (args, options = {}) => this.#view<ShotsView>('getShots', args, options),
+      getWinner: (args, options = {}) => this.#view<string | null>('getWinner', args, options),
+      proposeShot: (args, options = {}) => this.#call<null>('proposeShot', args, options),
+      registerPlayer: (options = {}) => this.#call<string>('registerPlayer', {}, options),
+      revealBoard: (args, options = {}) => this.#call<null>('revealBoard', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -284,7 +416,8 @@ export class BattleshipsClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -292,91 +425,91 @@ export class BattleshipsClient {
 
   /** call `acknowledgeShot`. */
   async acknowledgeShot(args: AcknowledgeShotArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('acknowledgeShot', args, options)) as string;
+    return (await this.#call<string>('acknowledgeShot', args, options)).result;
   }
 
   /** call `commitBoard`. */
   async commitBoard(args: CommitBoardArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('commitBoard', args, options)) as null;
+    return (await this.#call<null>('commitBoard', args, options)).result;
   }
 
   /** call `createMatch`. */
   async createMatch(args: CreateMatchArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createMatch', args, options)) as string;
+    return (await this.#call<string>('createMatch', args, options)).result;
   }
 
   /** view `getActiveMatchId`. */
   async getActiveMatchId(options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('getActiveMatchId', {}, options)) as string | null;
+    return (await this.#view<string | null>('getActiveMatchId', {}, options)).result;
   }
 
   /** view `getCurrentTurn`. */
   async getCurrentTurn(args: GetCurrentTurnArgs, options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('getCurrentTurn', args, options)) as string | null;
+    return (await this.#view<string | null>('getCurrentTurn', args, options)).result;
   }
 
   /** view `getCurrentUser`. */
   async getCurrentUser(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getCurrentUser', {}, options)) as string;
+    return (await this.#view<string>('getCurrentUser', {}, options)).result;
   }
 
   /** view `getHistory`. */
   async getHistory(options: ViewOptions = {}): Promise<MatchRecord[]> {
-    return (await this.#view('getHistory', {}, options)) as MatchRecord[];
+    return (await this.#view<MatchRecord[]>('getHistory', {}, options)).result;
   }
 
   /** view `getIncomingShots`. */
   async getIncomingShots(args: GetIncomingShotsArgs, options: ViewOptions = {}): Promise<ShotsView> {
-    return (await this.#view('getIncomingShots', args, options)) as ShotsView;
+    return (await this.#view<ShotsView>('getIncomingShots', args, options)).result;
   }
 
   /** view `getMatchState`. */
   async getMatchState(args: GetMatchStateArgs, options: ViewOptions = {}): Promise<MatchStateView> {
-    return (await this.#view('getMatchState', args, options)) as MatchStateView;
+    return (await this.#view<MatchStateView>('getMatchState', args, options)).result;
   }
 
   /** view `getMatches`. */
   async getMatches(options: ViewOptions = {}): Promise<MatchSummary[]> {
-    return (await this.#view('getMatches', {}, options)) as MatchSummary[];
+    return (await this.#view<MatchSummary[]>('getMatches', {}, options)).result;
   }
 
   /** view `getPlayerStats`. */
   async getPlayerStats(args: GetPlayerStatsArgs, options: ViewOptions = {}): Promise<PlayerStatsView | null> {
-    return (await this.#view('getPlayerStats', args, options)) as PlayerStatsView | null;
+    return (await this.#view<PlayerStatsView | null>('getPlayerStats', args, options)).result;
   }
 
   /** view `getPlayers`. */
   async getPlayers(options: ViewOptions = {}): Promise<PlayerEntry[]> {
-    return (await this.#view('getPlayers', {}, options)) as PlayerEntry[];
+    return (await this.#view<PlayerEntry[]>('getPlayers', {}, options)).result;
   }
 
   /** view `getShots`. */
   async getShots(args: GetShotsArgs, options: ViewOptions = {}): Promise<ShotsView> {
-    return (await this.#view('getShots', args, options)) as ShotsView;
+    return (await this.#view<ShotsView>('getShots', args, options)).result;
   }
 
   /** view `getWinner`. */
   async getWinner(args: GetWinnerArgs, options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('getWinner', args, options)) as string | null;
+    return (await this.#view<string | null>('getWinner', args, options)).result;
   }
 
   /** call `proposeShot`. */
   async proposeShot(args: ProposeShotArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('proposeShot', args, options)) as null;
+    return (await this.#call<null>('proposeShot', args, options)).result;
   }
 
   /** call `registerPlayer`. */
   async registerPlayer(options: CallOptions = {}): Promise<string> {
-    return (await this.#call('registerPlayer', {}, options)) as string;
+    return (await this.#call<string>('registerPlayer', {}, options)).result;
   }
 
   /** call `revealBoard`. */
   async revealBoard(args: RevealBoardArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('revealBoard', args, options)) as null;
+    return (await this.#call<null>('revealBoard', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: BattleshipsClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

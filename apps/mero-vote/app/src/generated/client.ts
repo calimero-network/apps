@@ -270,47 +270,189 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroVoteClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroVoteClient` implements, for a test double to stand in for it. */
+export interface MeroVoteApi {
+  /** call `anchorResult`. */
+  anchorResult(args: AnchorResultArgs, options?: CallOptions): Promise<string>;
+  /** call `castBallot`. */
+  castBallot(args: CastBallotArgs, options?: CallOptions): Promise<string>;
+  /** view `ceremony`. */
+  ceremony(args: CeremonyArgs, options?: ViewOptions): Promise<Ceremony>;
+  /** call `closePoll`. */
+  closePoll(args: ClosePollArgs, options?: CallOptions): Promise<null>;
+  /** call `createPoll`. */
+  createPoll(args: CreatePollArgs, options?: CallOptions): Promise<string>;
+  /** call `fileComplaint`. */
+  fileComplaint(args: FileComplaintArgs, options?: CallOptions): Promise<null>;
+  /** view `getPoll`. */
+  getPoll(args: GetPollArgs, options?: ViewOptions): Promise<PollView>;
+  /** view `getResult`. */
+  getResult(args: GetResultArgs, options?: ViewOptions): Promise<AuditReport>;
+  /** view `getTranscript`. */
+  getTranscript(args: GetTranscriptArgs, options?: ViewOptions): Promise<Transcript>;
+  /** view `listPolls`. */
+  listPolls(options?: ViewOptions): Promise<PollSummary[]>;
+  /** call `openVoting`. */
+  openVoting(args: OpenVotingArgs, options?: CallOptions): Promise<string>;
+  /** call `publishDealing`. */
+  publishDealing(args: PublishDealingArgs, options?: CallOptions): Promise<null>;
+  /** call `publishPartial`. */
+  publishPartial(args: PublishPartialArgs, options?: CallOptions): Promise<null>;
+  /** call `publishTransportKey`. */
+  publishTransportKey(args: PublishTransportKeyArgs, options?: CallOptions): Promise<null>;
+  /** view `roster`. */
+  roster(options?: ViewOptions): Promise<Member[]>;
+  /** call `sealPoll`. */
+  sealPoll(args: SealPollArgs, options?: CallOptions): Promise<number>;
+  /** call `setName`. */
+  setName(args: SetNameArgs, options?: CallOptions): Promise<null>;
+  /** view `tallyInputs`. */
+  tallyInputs(args: TallyInputsArgs, options?: ViewOptions): Promise<TallyInputs>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<Identity>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroVoteClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroVoteRawApi {
+  /** call `anchorResult`. */
+  anchorResult(args: AnchorResultArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `castBallot`. */
+  castBallot(args: CastBallotArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `ceremony`. */
+  ceremony(args: CeremonyArgs, options?: ViewOptions): Promise<ViewAnswer<Ceremony>>;
+  /** call `closePoll`. */
+  closePoll(args: ClosePollArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `createPoll`. */
+  createPoll(args: CreatePollArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `fileComplaint`. */
+  fileComplaint(args: FileComplaintArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getPoll`. */
+  getPoll(args: GetPollArgs, options?: ViewOptions): Promise<ViewAnswer<PollView>>;
+  /** view `getResult`. */
+  getResult(args: GetResultArgs, options?: ViewOptions): Promise<ViewAnswer<AuditReport>>;
+  /** view `getTranscript`. */
+  getTranscript(args: GetTranscriptArgs, options?: ViewOptions): Promise<ViewAnswer<Transcript>>;
+  /** view `listPolls`. */
+  listPolls(options?: ViewOptions): Promise<ViewAnswer<PollSummary[]>>;
+  /** call `openVoting`. */
+  openVoting(args: OpenVotingArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `publishDealing`. */
+  publishDealing(args: PublishDealingArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `publishPartial`. */
+  publishPartial(args: PublishPartialArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `publishTransportKey`. */
+  publishTransportKey(args: PublishTransportKeyArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `roster`. */
+  roster(options?: ViewOptions): Promise<ViewAnswer<Member[]>>;
+  /** call `sealPoll`. */
+  sealPoll(args: SealPollArgs, options?: CallOptions): Promise<CallAnswer<number>>;
+  /** call `setName`. */
+  setName(args: SetNameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `tallyInputs`. */
+  tallyInputs(args: TallyInputsArgs, options?: ViewOptions): Promise<ViewAnswer<TallyInputs>>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<ViewAnswer<Identity>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroVoteClient<T extends AppCallTransport = AppTransport> implements MeroVoteApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroVoteRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      anchorResult: (args, options = {}) => this.#call<string>('anchorResult', args, options),
+      castBallot: (args, options = {}) => this.#call<string>('castBallot', args, options),
+      ceremony: (args, options = {}) => this.#view<Ceremony>('ceremony', args, options),
+      closePoll: (args, options = {}) => this.#call<null>('closePoll', args, options),
+      createPoll: (args, options = {}) => this.#call<string>('createPoll', args, options),
+      fileComplaint: (args, options = {}) => this.#call<null>('fileComplaint', args, options),
+      getPoll: (args, options = {}) => this.#view<PollView>('getPoll', args, options),
+      getResult: (args, options = {}) => this.#view<AuditReport>('getResult', args, options),
+      getTranscript: (args, options = {}) => this.#view<Transcript>('getTranscript', args, options),
+      listPolls: (options = {}) => this.#view<PollSummary[]>('listPolls', {}, options),
+      openVoting: (args, options = {}) => this.#call<string>('openVoting', args, options),
+      publishDealing: (args, options = {}) => this.#call<null>('publishDealing', args, options),
+      publishPartial: (args, options = {}) => this.#call<null>('publishPartial', args, options),
+      publishTransportKey: (args, options = {}) => this.#call<null>('publishTransportKey', args, options),
+      roster: (options = {}) => this.#view<Member[]>('roster', {}, options),
+      sealPoll: (args, options = {}) => this.#call<number>('sealPoll', args, options),
+      setName: (args, options = {}) => this.#call<null>('setName', args, options),
+      tallyInputs: (args, options = {}) => this.#view<TallyInputs>('tallyInputs', args, options),
+      whoami: (options = {}) => this.#view<Identity>('whoami', {}, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -320,7 +462,8 @@ export class MeroVoteClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -328,101 +471,101 @@ export class MeroVoteClient {
 
   /** call `anchorResult`. */
   async anchorResult(args: AnchorResultArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('anchorResult', args, options)) as string;
+    return (await this.#call<string>('anchorResult', args, options)).result;
   }
 
   /** call `castBallot`. */
   async castBallot(args: CastBallotArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('castBallot', args, options)) as string;
+    return (await this.#call<string>('castBallot', args, options)).result;
   }
 
   /** view `ceremony`. */
   async ceremony(args: CeremonyArgs, options: ViewOptions = {}): Promise<Ceremony> {
-    return (await this.#view('ceremony', args, options)) as Ceremony;
+    return (await this.#view<Ceremony>('ceremony', args, options)).result;
   }
 
   /** call `closePoll`. */
   async closePoll(args: ClosePollArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('closePoll', args, options)) as null;
+    return (await this.#call<null>('closePoll', args, options)).result;
   }
 
   /** call `createPoll`. */
   async createPoll(args: CreatePollArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createPoll', args, options)) as string;
+    return (await this.#call<string>('createPoll', args, options)).result;
   }
 
   /** call `fileComplaint`. */
   async fileComplaint(args: FileComplaintArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('fileComplaint', args, options)) as null;
+    return (await this.#call<null>('fileComplaint', args, options)).result;
   }
 
   /** view `getPoll`. */
   async getPoll(args: GetPollArgs, options: ViewOptions = {}): Promise<PollView> {
-    return (await this.#view('getPoll', args, options)) as PollView;
+    return (await this.#view<PollView>('getPoll', args, options)).result;
   }
 
   /** view `getResult`. */
   async getResult(args: GetResultArgs, options: ViewOptions = {}): Promise<AuditReport> {
-    return (await this.#view('getResult', args, options)) as AuditReport;
+    return (await this.#view<AuditReport>('getResult', args, options)).result;
   }
 
   /** view `getTranscript`. */
   async getTranscript(args: GetTranscriptArgs, options: ViewOptions = {}): Promise<Transcript> {
-    return (await this.#view('getTranscript', args, options)) as Transcript;
+    return (await this.#view<Transcript>('getTranscript', args, options)).result;
   }
 
   /** view `listPolls`. */
   async listPolls(options: ViewOptions = {}): Promise<PollSummary[]> {
-    return (await this.#view('listPolls', {}, options)) as PollSummary[];
+    return (await this.#view<PollSummary[]>('listPolls', {}, options)).result;
   }
 
   /** call `openVoting`. */
   async openVoting(args: OpenVotingArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('openVoting', args, options)) as string;
+    return (await this.#call<string>('openVoting', args, options)).result;
   }
 
   /** call `publishDealing`. */
   async publishDealing(args: PublishDealingArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('publishDealing', args, options)) as null;
+    return (await this.#call<null>('publishDealing', args, options)).result;
   }
 
   /** call `publishPartial`. */
   async publishPartial(args: PublishPartialArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('publishPartial', args, options)) as null;
+    return (await this.#call<null>('publishPartial', args, options)).result;
   }
 
   /** call `publishTransportKey`. */
   async publishTransportKey(args: PublishTransportKeyArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('publishTransportKey', args, options)) as null;
+    return (await this.#call<null>('publishTransportKey', args, options)).result;
   }
 
   /** view `roster`. */
   async roster(options: ViewOptions = {}): Promise<Member[]> {
-    return (await this.#view('roster', {}, options)) as Member[];
+    return (await this.#view<Member[]>('roster', {}, options)).result;
   }
 
   /** call `sealPoll`. */
   async sealPoll(args: SealPollArgs, options: CallOptions = {}): Promise<number> {
-    return (await this.#call('sealPoll', args, options)) as number;
+    return (await this.#call<number>('sealPoll', args, options)).result;
   }
 
   /** call `setName`. */
   async setName(args: SetNameArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setName', args, options)) as null;
+    return (await this.#call<null>('setName', args, options)).result;
   }
 
   /** view `tallyInputs`. */
   async tallyInputs(args: TallyInputsArgs, options: ViewOptions = {}): Promise<TallyInputs> {
-    return (await this.#view('tallyInputs', args, options)) as TallyInputs;
+    return (await this.#view<TallyInputs>('tallyInputs', args, options)).result;
   }
 
   /** view `whoami`. */
   async whoami(options: ViewOptions = {}): Promise<Identity> {
-    return (await this.#view('whoami', {}, options)) as Identity;
+    return (await this.#view<Identity>('whoami', {}, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroVoteClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

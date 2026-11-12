@@ -350,47 +350,279 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroUpdatesClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroUpdatesClient` implements, for a test double to stand in for it. */
+export interface MeroUpdatesApi {
+  /** call `addComment`. */
+  addComment(args: AddCommentArgs, options?: CallOptions): Promise<string>;
+  /** call `addTeammate`. */
+  addTeammate(args: AddTeammateArgs, options?: CallOptions): Promise<null>;
+  /** call `archiveCategory`. */
+  archiveCategory(args: ArchiveCategoryArgs, options?: CallOptions): Promise<null>;
+  /** call `askQuestion`. */
+  askQuestion(args: AskQuestionArgs, options?: CallOptions): Promise<string>;
+  /** call `createCategory`. */
+  createCategory(args: CreateCategoryArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteDraft`. */
+  deleteDraft(args: DeleteDraftArgs, options?: CallOptions): Promise<null>;
+  /** call `deletePost`. */
+  deletePost(args: DeletePostArgs, options?: CallOptions): Promise<null>;
+  /** call `editCategory`. */
+  editCategory(args: EditCategoryArgs, options?: CallOptions): Promise<null>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `editUpdate`. */
+  editUpdate(args: EditUpdateArgs, options?: CallOptions): Promise<null>;
+  /** view `getEngagement`. */
+  getEngagement(options?: ViewOptions): Promise<EngagementRow[]>;
+  /** view `getMe`. */
+  getMe(options?: ViewOptions): Promise<MeView>;
+  /** view `getOverview`. */
+  getOverview(options?: ViewOptions): Promise<Overview>;
+  /** view `getPost`. */
+  getPost(args: GetPostArgs, options?: ViewOptions): Promise<PostView>;
+  /** view `getSettings`. */
+  getSettings(options?: ViewOptions): Promise<Settings>;
+  /** view `listAsks`. */
+  listAsks(args: ListAsksArgs, options?: ViewOptions): Promise<AskView[]>;
+  /** view `listCategories`. */
+  listCategories(options?: ViewOptions): Promise<CategoryView[]>;
+  /** view `listComments`. */
+  listComments(args: ListCommentsArgs, options?: ViewOptions): Promise<CommentView[]>;
+  /** view `listContributions`. */
+  listContributions(args: ListContributionsArgs, options?: ViewOptions): Promise<ContributionView[]>;
+  /** view `listDrafts`. */
+  listDrafts(options?: ViewOptions): Promise<DraftView[]>;
+  /** view `listMetrics`. */
+  listMetrics(options?: ViewOptions): Promise<MetricSeries[]>;
+  /** view `listPeople`. */
+  listPeople(options?: ViewOptions): Promise<PersonView[]>;
+  /** view `listPosts`. */
+  listPosts(args: ListPostsArgs, options?: ViewOptions): Promise<PostPage>;
+  /** call `markRead`. */
+  markRead(args: MarkReadArgs, options?: CallOptions): Promise<null>;
+  /** call `offerHelp`. */
+  offerHelp(args: OfferHelpArgs, options?: CallOptions): Promise<null>;
+  /** call `publishUpdate`. */
+  publishUpdate(args: PublishUpdateArgs, options?: CallOptions): Promise<string>;
+  /** call `react`. */
+  react(args: ReactArgs, options?: CallOptions): Promise<null>;
+  /** call `removeTeammate`. */
+  removeTeammate(args: RemoveTeammateArgs, options?: CallOptions): Promise<null>;
+  /** call `saveDraft`. */
+  saveDraft(args: SaveDraftArgs, options?: CallOptions): Promise<string>;
+  /** call `setAskStatus`. */
+  setAskStatus(args: SetAskStatusArgs, options?: CallOptions): Promise<null>;
+  /** call `setMutedCategories`. */
+  setMutedCategories(args: SetMutedCategoriesArgs, options?: CallOptions): Promise<null>;
+  /** call `setOfferStatus`. */
+  setOfferStatus(args: SetOfferStatusArgs, options?: CallOptions): Promise<null>;
+  /** call `setProfile`. */
+  setProfile(args: SetProfileArgs, options?: CallOptions): Promise<null>;
+  /** call `setQuestionStatus`. */
+  setQuestionStatus(args: SetQuestionStatusArgs, options?: CallOptions): Promise<null>;
+  /** call `setSettings`. */
+  setSettings(args: SetSettingsArgs, options?: CallOptions): Promise<null>;
+  /** call `withdrawOffer`. */
+  withdrawOffer(args: WithdrawOfferArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroUpdatesClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroUpdatesRawApi {
+  /** call `addComment`. */
+  addComment(args: AddCommentArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `addTeammate`. */
+  addTeammate(args: AddTeammateArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `archiveCategory`. */
+  archiveCategory(args: ArchiveCategoryArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `askQuestion`. */
+  askQuestion(args: AskQuestionArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `createCategory`. */
+  createCategory(args: CreateCategoryArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteDraft`. */
+  deleteDraft(args: DeleteDraftArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deletePost`. */
+  deletePost(args: DeletePostArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editCategory`. */
+  editCategory(args: EditCategoryArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editUpdate`. */
+  editUpdate(args: EditUpdateArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getEngagement`. */
+  getEngagement(options?: ViewOptions): Promise<ViewAnswer<EngagementRow[]>>;
+  /** view `getMe`. */
+  getMe(options?: ViewOptions): Promise<ViewAnswer<MeView>>;
+  /** view `getOverview`. */
+  getOverview(options?: ViewOptions): Promise<ViewAnswer<Overview>>;
+  /** view `getPost`. */
+  getPost(args: GetPostArgs, options?: ViewOptions): Promise<ViewAnswer<PostView>>;
+  /** view `getSettings`. */
+  getSettings(options?: ViewOptions): Promise<ViewAnswer<Settings>>;
+  /** view `listAsks`. */
+  listAsks(args: ListAsksArgs, options?: ViewOptions): Promise<ViewAnswer<AskView[]>>;
+  /** view `listCategories`. */
+  listCategories(options?: ViewOptions): Promise<ViewAnswer<CategoryView[]>>;
+  /** view `listComments`. */
+  listComments(args: ListCommentsArgs, options?: ViewOptions): Promise<ViewAnswer<CommentView[]>>;
+  /** view `listContributions`. */
+  listContributions(args: ListContributionsArgs, options?: ViewOptions): Promise<ViewAnswer<ContributionView[]>>;
+  /** view `listDrafts`. */
+  listDrafts(options?: ViewOptions): Promise<ViewAnswer<DraftView[]>>;
+  /** view `listMetrics`. */
+  listMetrics(options?: ViewOptions): Promise<ViewAnswer<MetricSeries[]>>;
+  /** view `listPeople`. */
+  listPeople(options?: ViewOptions): Promise<ViewAnswer<PersonView[]>>;
+  /** view `listPosts`. */
+  listPosts(args: ListPostsArgs, options?: ViewOptions): Promise<ViewAnswer<PostPage>>;
+  /** call `markRead`. */
+  markRead(args: MarkReadArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `offerHelp`. */
+  offerHelp(args: OfferHelpArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `publishUpdate`. */
+  publishUpdate(args: PublishUpdateArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `react`. */
+  react(args: ReactArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `removeTeammate`. */
+  removeTeammate(args: RemoveTeammateArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `saveDraft`. */
+  saveDraft(args: SaveDraftArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `setAskStatus`. */
+  setAskStatus(args: SetAskStatusArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setMutedCategories`. */
+  setMutedCategories(args: SetMutedCategoriesArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setOfferStatus`. */
+  setOfferStatus(args: SetOfferStatusArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setProfile`. */
+  setProfile(args: SetProfileArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setQuestionStatus`. */
+  setQuestionStatus(args: SetQuestionStatusArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setSettings`. */
+  setSettings(args: SetSettingsArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `withdrawOffer`. */
+  withdrawOffer(args: WithdrawOfferArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroUpdatesClient<T extends AppCallTransport = AppTransport> implements MeroUpdatesApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroUpdatesRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      addComment: (args, options = {}) => this.#call<string>('addComment', args, options),
+      addTeammate: (args, options = {}) => this.#call<null>('addTeammate', args, options),
+      archiveCategory: (args, options = {}) => this.#call<null>('archiveCategory', args, options),
+      askQuestion: (args, options = {}) => this.#call<string>('askQuestion', args, options),
+      createCategory: (args, options = {}) => this.#call<string>('createCategory', args, options),
+      deleteComment: (args, options = {}) => this.#call<null>('deleteComment', args, options),
+      deleteDraft: (args, options = {}) => this.#call<null>('deleteDraft', args, options),
+      deletePost: (args, options = {}) => this.#call<null>('deletePost', args, options),
+      editCategory: (args, options = {}) => this.#call<null>('editCategory', args, options),
+      editComment: (args, options = {}) => this.#call<null>('editComment', args, options),
+      editUpdate: (args, options = {}) => this.#call<null>('editUpdate', args, options),
+      getEngagement: (options = {}) => this.#view<EngagementRow[]>('getEngagement', {}, options),
+      getMe: (options = {}) => this.#view<MeView>('getMe', {}, options),
+      getOverview: (options = {}) => this.#view<Overview>('getOverview', {}, options),
+      getPost: (args, options = {}) => this.#view<PostView>('getPost', args, options),
+      getSettings: (options = {}) => this.#view<Settings>('getSettings', {}, options),
+      listAsks: (args, options = {}) => this.#view<AskView[]>('listAsks', args, options),
+      listCategories: (options = {}) => this.#view<CategoryView[]>('listCategories', {}, options),
+      listComments: (args, options = {}) => this.#view<CommentView[]>('listComments', args, options),
+      listContributions: (args, options = {}) => this.#view<ContributionView[]>('listContributions', args, options),
+      listDrafts: (options = {}) => this.#view<DraftView[]>('listDrafts', {}, options),
+      listMetrics: (options = {}) => this.#view<MetricSeries[]>('listMetrics', {}, options),
+      listPeople: (options = {}) => this.#view<PersonView[]>('listPeople', {}, options),
+      listPosts: (args, options = {}) => this.#view<PostPage>('listPosts', args, options),
+      markRead: (args, options = {}) => this.#call<null>('markRead', args, options),
+      offerHelp: (args, options = {}) => this.#call<null>('offerHelp', args, options),
+      publishUpdate: (args, options = {}) => this.#call<string>('publishUpdate', args, options),
+      react: (args, options = {}) => this.#call<null>('react', args, options),
+      removeTeammate: (args, options = {}) => this.#call<null>('removeTeammate', args, options),
+      saveDraft: (args, options = {}) => this.#call<string>('saveDraft', args, options),
+      setAskStatus: (args, options = {}) => this.#call<null>('setAskStatus', args, options),
+      setMutedCategories: (args, options = {}) => this.#call<null>('setMutedCategories', args, options),
+      setOfferStatus: (args, options = {}) => this.#call<null>('setOfferStatus', args, options),
+      setProfile: (args, options = {}) => this.#call<null>('setProfile', args, options),
+      setQuestionStatus: (args, options = {}) => this.#call<null>('setQuestionStatus', args, options),
+      setSettings: (args, options = {}) => this.#call<null>('setSettings', args, options),
+      withdrawOffer: (args, options = {}) => this.#call<null>('withdrawOffer', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -400,7 +632,8 @@ export class MeroUpdatesClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -408,191 +641,191 @@ export class MeroUpdatesClient {
 
   /** call `addComment`. */
   async addComment(args: AddCommentArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addComment', args, options)) as string;
+    return (await this.#call<string>('addComment', args, options)).result;
   }
 
   /** call `addTeammate`. */
   async addTeammate(args: AddTeammateArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('addTeammate', args, options)) as null;
+    return (await this.#call<null>('addTeammate', args, options)).result;
   }
 
   /** call `archiveCategory`. */
   async archiveCategory(args: ArchiveCategoryArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('archiveCategory', args, options)) as null;
+    return (await this.#call<null>('archiveCategory', args, options)).result;
   }
 
   /** call `askQuestion`. */
   async askQuestion(args: AskQuestionArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('askQuestion', args, options)) as string;
+    return (await this.#call<string>('askQuestion', args, options)).result;
   }
 
   /** call `createCategory`. */
   async createCategory(args: CreateCategoryArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createCategory', args, options)) as string;
+    return (await this.#call<string>('createCategory', args, options)).result;
   }
 
   /** call `deleteComment`. */
   async deleteComment(args: DeleteCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteComment', args, options)) as null;
+    return (await this.#call<null>('deleteComment', args, options)).result;
   }
 
   /** call `deleteDraft`. */
   async deleteDraft(args: DeleteDraftArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteDraft', args, options)) as null;
+    return (await this.#call<null>('deleteDraft', args, options)).result;
   }
 
   /** call `deletePost`. */
   async deletePost(args: DeletePostArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deletePost', args, options)) as null;
+    return (await this.#call<null>('deletePost', args, options)).result;
   }
 
   /** call `editCategory`. */
   async editCategory(args: EditCategoryArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editCategory', args, options)) as null;
+    return (await this.#call<null>('editCategory', args, options)).result;
   }
 
   /** call `editComment`. */
   async editComment(args: EditCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editComment', args, options)) as null;
+    return (await this.#call<null>('editComment', args, options)).result;
   }
 
   /** call `editUpdate`. */
   async editUpdate(args: EditUpdateArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editUpdate', args, options)) as null;
+    return (await this.#call<null>('editUpdate', args, options)).result;
   }
 
   /** view `getEngagement`. */
   async getEngagement(options: ViewOptions = {}): Promise<EngagementRow[]> {
-    return (await this.#view('getEngagement', {}, options)) as EngagementRow[];
+    return (await this.#view<EngagementRow[]>('getEngagement', {}, options)).result;
   }
 
   /** view `getMe`. */
   async getMe(options: ViewOptions = {}): Promise<MeView> {
-    return (await this.#view('getMe', {}, options)) as MeView;
+    return (await this.#view<MeView>('getMe', {}, options)).result;
   }
 
   /** view `getOverview`. */
   async getOverview(options: ViewOptions = {}): Promise<Overview> {
-    return (await this.#view('getOverview', {}, options)) as Overview;
+    return (await this.#view<Overview>('getOverview', {}, options)).result;
   }
 
   /** view `getPost`. */
   async getPost(args: GetPostArgs, options: ViewOptions = {}): Promise<PostView> {
-    return (await this.#view('getPost', args, options)) as PostView;
+    return (await this.#view<PostView>('getPost', args, options)).result;
   }
 
   /** view `getSettings`. */
   async getSettings(options: ViewOptions = {}): Promise<Settings> {
-    return (await this.#view('getSettings', {}, options)) as Settings;
+    return (await this.#view<Settings>('getSettings', {}, options)).result;
   }
 
   /** view `listAsks`. */
   async listAsks(args: ListAsksArgs, options: ViewOptions = {}): Promise<AskView[]> {
-    return (await this.#view('listAsks', args, options)) as AskView[];
+    return (await this.#view<AskView[]>('listAsks', args, options)).result;
   }
 
   /** view `listCategories`. */
   async listCategories(options: ViewOptions = {}): Promise<CategoryView[]> {
-    return (await this.#view('listCategories', {}, options)) as CategoryView[];
+    return (await this.#view<CategoryView[]>('listCategories', {}, options)).result;
   }
 
   /** view `listComments`. */
   async listComments(args: ListCommentsArgs, options: ViewOptions = {}): Promise<CommentView[]> {
-    return (await this.#view('listComments', args, options)) as CommentView[];
+    return (await this.#view<CommentView[]>('listComments', args, options)).result;
   }
 
   /** view `listContributions`. */
   async listContributions(args: ListContributionsArgs, options: ViewOptions = {}): Promise<ContributionView[]> {
-    return (await this.#view('listContributions', args, options)) as ContributionView[];
+    return (await this.#view<ContributionView[]>('listContributions', args, options)).result;
   }
 
   /** view `listDrafts`. */
   async listDrafts(options: ViewOptions = {}): Promise<DraftView[]> {
-    return (await this.#view('listDrafts', {}, options)) as DraftView[];
+    return (await this.#view<DraftView[]>('listDrafts', {}, options)).result;
   }
 
   /** view `listMetrics`. */
   async listMetrics(options: ViewOptions = {}): Promise<MetricSeries[]> {
-    return (await this.#view('listMetrics', {}, options)) as MetricSeries[];
+    return (await this.#view<MetricSeries[]>('listMetrics', {}, options)).result;
   }
 
   /** view `listPeople`. */
   async listPeople(options: ViewOptions = {}): Promise<PersonView[]> {
-    return (await this.#view('listPeople', {}, options)) as PersonView[];
+    return (await this.#view<PersonView[]>('listPeople', {}, options)).result;
   }
 
   /** view `listPosts`. */
   async listPosts(args: ListPostsArgs, options: ViewOptions = {}): Promise<PostPage> {
-    return (await this.#view('listPosts', args, options)) as PostPage;
+    return (await this.#view<PostPage>('listPosts', args, options)).result;
   }
 
   /** call `markRead`. */
   async markRead(args: MarkReadArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('markRead', args, options)) as null;
+    return (await this.#call<null>('markRead', args, options)).result;
   }
 
   /** call `offerHelp`. */
   async offerHelp(args: OfferHelpArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('offerHelp', args, options)) as null;
+    return (await this.#call<null>('offerHelp', args, options)).result;
   }
 
   /** call `publishUpdate`. */
   async publishUpdate(args: PublishUpdateArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('publishUpdate', args, options)) as string;
+    return (await this.#call<string>('publishUpdate', args, options)).result;
   }
 
   /** call `react`. */
   async react(args: ReactArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('react', args, options)) as null;
+    return (await this.#call<null>('react', args, options)).result;
   }
 
   /** call `removeTeammate`. */
   async removeTeammate(args: RemoveTeammateArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('removeTeammate', args, options)) as null;
+    return (await this.#call<null>('removeTeammate', args, options)).result;
   }
 
   /** call `saveDraft`. */
   async saveDraft(args: SaveDraftArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('saveDraft', args, options)) as string;
+    return (await this.#call<string>('saveDraft', args, options)).result;
   }
 
   /** call `setAskStatus`. */
   async setAskStatus(args: SetAskStatusArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setAskStatus', args, options)) as null;
+    return (await this.#call<null>('setAskStatus', args, options)).result;
   }
 
   /** call `setMutedCategories`. */
   async setMutedCategories(args: SetMutedCategoriesArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setMutedCategories', args, options)) as null;
+    return (await this.#call<null>('setMutedCategories', args, options)).result;
   }
 
   /** call `setOfferStatus`. */
   async setOfferStatus(args: SetOfferStatusArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setOfferStatus', args, options)) as null;
+    return (await this.#call<null>('setOfferStatus', args, options)).result;
   }
 
   /** call `setProfile`. */
   async setProfile(args: SetProfileArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setProfile', args, options)) as null;
+    return (await this.#call<null>('setProfile', args, options)).result;
   }
 
   /** call `setQuestionStatus`. */
   async setQuestionStatus(args: SetQuestionStatusArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setQuestionStatus', args, options)) as null;
+    return (await this.#call<null>('setQuestionStatus', args, options)).result;
   }
 
   /** call `setSettings`. */
   async setSettings(args: SetSettingsArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setSettings', args, options)) as null;
+    return (await this.#call<null>('setSettings', args, options)).result;
   }
 
   /** call `withdrawOffer`. */
   async withdrawOffer(args: WithdrawOfferArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('withdrawOffer', args, options)) as null;
+    return (await this.#call<null>('withdrawOffer', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroUpdatesClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

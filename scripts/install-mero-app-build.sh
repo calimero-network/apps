@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts core's `mero-app-build` on PATH at the tag below: the tool whose
+# Puts core's `mero-app-build` on PATH at the ref below: the tool whose
 # `codegen` writes an app's typed client (`apps/<app>/app/src/generated/`) from
 # its committed ABI. `pnpm -F <app> codegen` runs it; CI's frontend job runs
 # every app's `codegen` and fails when the committed client differs.
@@ -7,28 +7,41 @@
 #   scripts/install-mero-app-build.sh          # into ~/.cargo/bin (cargo's default)
 #   MERO_APP_BUILD_ROOT=/opt/mab scripts/install-mero-app-build.sh
 #
-# The tag is the generator's, not the SDK's: it can run ahead of
-# `component-core-tag` (1.0.0-rc.18 has the AppTransport/`after`/`confirm`
-# client of core#4992 and the typed records of core#4997; earlier tags write a
-# client over the retired `CalimeroClient.call`). Moving it changes what every
-# generated client looks like, so regenerate them all in the same PR
-# (`pnpm -r codegen`). Once `component-core-tag` reaches it, keep the two equal.
+# The ref is the generator's, not the SDK's: it can run ahead of
+# `component-core-tag`. It is a tag (`1.0.0-rc.18`) or a full commit sha of
+# core; a sha is installed with `--rev`, anything else with `--tag`.
 #
-# Installs only when the binary under the root was not built from this tag
+# Now a core master commit, ahead of every tag: it has core#5011 (`raw.*`
+# returns `{result, index, events}`, the call-only `AppCallTransport`, typed
+# `InitArgs`), core#5005 (`--name` defaults from Cargo.toml, `--no-openapi`,
+# `--version`, the `<Name>Api` interface) and core#5007. core rc.19's fleet
+# bump moves it back to a tag.
+#
+# Moving it changes what every generated client looks like, so regenerate them
+# all in the same PR (`pnpm -r codegen`). Once `component-core-tag` reaches
+# it, keep the two equal.
+#
+# Installs only when the binary under the root was not built from this ref
 # (a stamp file beside it), so a cached root costs nothing.
 set -euo pipefail
 
-TAG="${MERO_APP_BUILD_TAG:-1.0.0-rc.18}"
+REF="${MERO_APP_BUILD_REF:-${MERO_APP_BUILD_TAG:-3f2bc52b0a4bf1f422c6579bf5350a347f33f9ef}}"
 ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 STAMP="$ROOT/.mero-app-build-tag"
 
-if [ -x "$ROOT/bin/mero-app-build" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$TAG" ]; then
-  echo "mero-app-build $TAG already in $ROOT/bin"
+if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+  SOURCE=(--rev "$REF")
+else
+  SOURCE=(--tag "$REF")
+fi
+
+if [ -x "$ROOT/bin/mero-app-build" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$REF" ]; then
+  echo "mero-app-build $REF already in $ROOT/bin"
   exit 0
 fi
 
 cargo install --locked --force --root "$ROOT" \
-  --git https://github.com/calimero-network/core --tag "$TAG" \
+  --git https://github.com/calimero-network/core "${SOURCE[@]}" \
   calimero-app-build
-echo "$TAG" > "$STAMP"
-echo "mero-app-build $TAG installed in $ROOT/bin"
+echo "$REF" > "$STAMP"
+echo "mero-app-build $REF installed in $ROOT/bin"
