@@ -141,4 +141,3 @@ object DocsContract {
     /** Every method the app calls: the ABI test checks each against `abi.json`. */
     val METHODS = listOf("listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment")
 }
-

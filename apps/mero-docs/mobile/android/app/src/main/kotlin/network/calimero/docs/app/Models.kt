@@ -271,7 +271,8 @@ class WorkspaceModel(
                 return Result.failure(IssueException(FolderIssue.NoAccess(DocsFormat.errorText(it))))
             }
         }
-        return attempt { backend.docs(ctx).client.listDocs(false).map(DocDto::from) }
+        val docs = backend.docs(ctx)
+        return attempt { docs.client.listDocs(false).map(DocDto::from) }
             .map { list -> list.map { DocRow(folder.id, ctx, folder.name, it) } }
     }
 
@@ -509,7 +510,8 @@ class DocumentModel(
     }
 
     private suspend fun readComments(ctx: String) {
-        val read = attempt { backend.docs(ctx).client.listComments(docId).map(CommentDto::from) }.getOrNull()
+        val docs = backend.docs(ctx)
+        val read = attempt { docs.client.listComments(docId).map(CommentDto::from) }.getOrNull()
         var list = read?.map { DocComment.of(it) } ?: _threads.value.flatMap { listOf(it.root) + it.replies }
         if (read != null) {
             val ids = list.map { it.id }.toSet()
