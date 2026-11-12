@@ -566,7 +566,55 @@
         "type": "object"
       },
       "ContextDetails": {
-        "description": "The app type `ContextDetails`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "contextName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "documentCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "participantCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/ParticipantInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "contextId",
+          "contextName",
+          "owner",
+          "isPrivate",
+          "participantCount",
+          "participants",
+          "documentCount",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ContextDetails"
       },
       "ContextJoinedEvent": {
@@ -596,7 +644,38 @@
         "type": "object"
       },
       "ContextMetadata": {
-        "description": "The app type `ContextMetadata`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "contextName": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "privateIdentity": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ParticipantRole"
+          },
+          "sharedIdentity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "contextName",
+          "role",
+          "joinedAt",
+          "privateIdentity",
+          "sharedIdentity"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ContextMetadata"
       },
       "CreateSignatureArgs": {
@@ -785,7 +864,37 @@
         "type": "object"
       },
       "DocumentChunk": {
-        "description": "The app type `DocumentChunk`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "embedding": {
+            "items": {
+              "format": "float",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "endPosition": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "startPosition": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "embedding",
+          "startPosition",
+          "endPosition"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocumentChunk"
       },
       "DocumentDeletedEvent": {
@@ -800,11 +909,115 @@
         "type": "object"
       },
       "DocumentInfo": {
-        "description": "The app type `DocumentInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "chunks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DocumentChunk"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embeddings": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "float",
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extractedText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hash": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pdfBlobId": {
+            "type": "string"
+          },
+          "requiredSigners": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "size": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentStatus"
+          },
+          "uploadedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "uploadedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hash",
+          "uploadedBy",
+          "uploadedAt",
+          "status",
+          "pdfBlobId",
+          "size",
+          "requiredSigners",
+          "embeddings",
+          "extractedText",
+          "chunks"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocumentInfo"
       },
       "DocumentSignature": {
-        "description": "The app type `DocumentSignature`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "signedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "signer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "signer",
+          "signedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocumentSignature"
       },
       "DocumentSignedEvent": {
@@ -821,6 +1034,20 @@
           "signer"
         ],
         "type": "object"
+      },
+      "DocumentStatus": {
+        "oneOf": [
+          {
+            "const": "Pending"
+          },
+          {
+            "const": "PartiallySigned"
+          },
+          {
+            "const": "FullySigned"
+          }
+        ],
+        "x-calimero-abi-type": "DocumentStatus"
       },
       "DocumentUploadedEvent": {
         "properties": {
@@ -1462,7 +1689,30 @@
         "type": "object"
       },
       "IdentityMapping": {
-        "description": "The app type `IdentityMapping`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "privateIdentity": {
+            "type": "string"
+          },
+          "sharedIdentity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "privateIdentity",
+          "sharedIdentity",
+          "contextId",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "IdentityMapping"
       },
       "InvalidError": {
@@ -1929,6 +2179,22 @@
         ],
         "type": "object"
       },
+      "ParticipantInfo": {
+        "properties": {
+          "permissionLevel": {
+            "$ref": "#/components/schemas/PermissionLevel"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "permissionLevel"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "ParticipantInfo"
+      },
       "ParticipantJoinedEvent": {
         "properties": {
           "userId": {
@@ -1966,8 +2232,35 @@
         ],
         "type": "object"
       },
+      "ParticipantRole": {
+        "oneOf": [
+          {
+            "const": "Owner"
+          },
+          {
+            "const": "Signer"
+          },
+          {
+            "const": "Viewer"
+          },
+          {
+            "const": "Unknown"
+          }
+        ],
+        "x-calimero-abi-type": "ParticipantRole"
+      },
       "PermissionLevel": {
-        "description": "The app type `PermissionLevel`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "oneOf": [
+          {
+            "const": "Read"
+          },
+          {
+            "const": "Sign"
+          },
+          {
+            "const": "Admin"
+          }
+        ],
         "x-calimero-abi-type": "PermissionLevel"
       },
       "Receipt": {
@@ -2530,7 +2823,40 @@
         "type": "object"
       },
       "SignatureRecord": {
-        "description": "The app type `SignatureRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "blobId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "blobId",
+          "size",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SignatureRecord"
       },
       "Trap": {

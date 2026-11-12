@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { MeroSignClient } from '../generated/client';
+import { MeroSignClient, type ContextDetails, type DocumentInfo } from '../generated/client';
 import {
   toContextDetails,
   toDocumentInfo,
@@ -13,7 +13,7 @@ import { withRoutes } from '@calimero-apps/connect/testing';
 
 const HEX = 'ab'.repeat(32);
 
-const WIRE_DOC = {
+const WIRE_DOC: DocumentInfo = {
   id: 'doc_1',
   name: 'NDA.pdf',
   hash: 'h1',
@@ -28,7 +28,7 @@ const WIRE_DOC = {
   chunks: null,
 };
 
-const WIRE_DETAILS = {
+const WIRE_DETAILS: ContextDetails = {
   contextId: 'app-1',
   contextName: 'Series A',
   owner: 'acct-alice',

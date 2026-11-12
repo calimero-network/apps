@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { MeroUpdatesClient } from "../generated/client";
-import { fromWire, toWire, u64 } from "./updatesClient";
+import { fromWire, toWire, toWireInput, u64 } from "./updatesClient";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 function recorder() {
@@ -32,7 +32,7 @@ describe("the contract's methods, through the generated client", () => {
   it("sends nested input in camelCase and a u64 argument as a decimal string", async () => {
     const { sent, transport } = recorder();
     const c = new MeroUpdatesClient(withRoutes(transport), "app-1");
-    await c.publishUpdate({ input: toWire(input) });
+    await c.publishUpdate({ input: toWireInput(input) });
     await c.listContributions({ since: u64(1_700_000_000_000) });
     expect(sent[0].args).toEqual({
       input: {

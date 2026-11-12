@@ -4,29 +4,99 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ContextDetails`: the ABI names it without its shape. */
-export type ContextDetails = unknown;
+/** The app type `ContextDetails`. */
+export interface ContextDetails {
+  contextId: string;
+  contextName: string;
+  owner: string;
+  isPrivate: boolean;
+  participantCount: string;
+  participants: ParticipantInfo[];
+  documentCount: string;
+  createdAt: string;
+}
 
-/** The app type `ContextMetadata`: the ABI names it without its shape. */
-export type ContextMetadata = unknown;
+/** The app type `ContextMetadata`. */
+export interface ContextMetadata {
+  contextId: string;
+  contextName: string;
+  role: ParticipantRole;
+  joinedAt: string;
+  privateIdentity: string;
+  sharedIdentity: string;
+}
 
-/** The app type `DocumentChunk`: the ABI names it without its shape. */
-export type DocumentChunk = unknown;
+/** The app type `DocumentChunk`. */
+export interface DocumentChunk {
+  text: string;
+  embedding: number[];
+  startPosition: number;
+  endPosition: number;
+}
 
-/** The app type `DocumentInfo`: the ABI names it without its shape. */
-export type DocumentInfo = unknown;
+/** The app type `DocumentInfo`. */
+export interface DocumentInfo {
+  id: string;
+  name: string;
+  hash: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  status: DocumentStatus;
+  pdfBlobId: string;
+  size: string;
+  requiredSigners: string[];
+  embeddings: number[] | null;
+  extractedText: string | null;
+  chunks: DocumentChunk[] | null;
+}
 
-/** The app type `DocumentSignature`: the ABI names it without its shape. */
-export type DocumentSignature = unknown;
+/** The app type `DocumentSignature`. */
+export interface DocumentSignature {
+  signer: string;
+  signedAt: string;
+}
 
-/** The app type `IdentityMapping`: the ABI names it without its shape. */
-export type IdentityMapping = unknown;
+/** The app type `DocumentStatus`. */
+export type DocumentStatus =
+  | 'Pending'
+  | 'PartiallySigned'
+  | 'FullySigned';
 
-/** The app type `PermissionLevel`: the ABI names it without its shape. */
-export type PermissionLevel = unknown;
+/** The app type `IdentityMapping`. */
+export interface IdentityMapping {
+  privateIdentity: string;
+  sharedIdentity: string;
+  contextId: string;
+  createdAt: string;
+}
 
-/** The app type `SignatureRecord`: the ABI names it without its shape. */
-export type SignatureRecord = unknown;
+/** The app type `ParticipantInfo`. */
+export interface ParticipantInfo {
+  userId: string;
+  permissionLevel: PermissionLevel;
+}
+
+/** The app type `ParticipantRole`. */
+export type ParticipantRole =
+  | 'Owner'
+  | 'Signer'
+  | 'Viewer'
+  | 'Unknown';
+
+/** The app type `PermissionLevel`. */
+export type PermissionLevel =
+  | 'Read'
+  | 'Sign'
+  | 'Admin';
+
+/** The app type `SignatureRecord`. */
+export interface SignatureRecord {
+  id: string;
+  name: string;
+  blobId: string;
+  size: string;
+  createdAt: string;
+}
 
 /** The arguments of `addParticipant`. */
 export interface AddParticipantArgs {

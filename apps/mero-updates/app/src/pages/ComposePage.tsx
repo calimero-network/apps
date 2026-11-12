@@ -16,7 +16,7 @@ import {
   SparkleIcon,
   XIcon,
 } from "../components/icons";
-import { fromWire, toWire, u64, type ContributionView, type DraftView, type MetricSeries, type PostPage, type PostView } from "../lib/updatesClient";
+import { fromWire, toWireInput, u64, type ContributionView, type DraftView, type MetricSeries, type PostPage, type PostView } from "../lib/updatesClient";
 import {
   TEMPLATES,
   fromPost,
@@ -155,10 +155,10 @@ export default function ComposePage() {
     try {
       let id: string;
       if (editId) {
-        await client.editUpdate({ postId: editId, input: toWire(toInput(state)) });
+        await client.editUpdate({ postId: editId, input: toWireInput(toInput(state)) });
         id = editId;
       } else {
-        id = fromWire<string>(await client.publishUpdate({ input: toWire(toInput(state)) }));
+        id = fromWire<string>(await client.publishUpdate({ input: toWireInput(toInput(state)) }));
         if (draftId) await client.deleteDraft({ draftId }).catch(() => undefined);
       }
       dirty.current = false;

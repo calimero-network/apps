@@ -5,11 +5,13 @@
  *
  * The contract is called through `MeroUpdatesClient`, which `mero-app-build
  * codegen` writes from logic/res/abi.json (`src/generated/client.ts`), with
- * camelCase arguments (a nested record through `toWire`, a u64 through
- * `u64`). The ABI names its records without their shapes, so the generated
- * types are `unknown`: every answer goes through `fromWire<T>`, which turns its
- * camelCase keys back into snake_case and its u64 strings into numbers.
+ * camelCase arguments (`UpdateInput` through `toWireInput`, a u64 through
+ * `u64`), typed from the ABI's record shapes. Every answer goes through
+ * `fromWire<T>`, which turns its camelCase keys back into snake_case and its
+ * u64 strings into numbers.
  */
+
+import type { UpdateInput as WireUpdateInput } from "../generated/client";
 
 // ── the shapes the screens render ────────────────────────────────────────────
 
@@ -292,6 +294,18 @@ export function toWire(value: unknown): unknown {
     out[camel(key)] = toWire(v);
   }
   return out;
+}
+
+/** `publishUpdate` / `editUpdate`'s `input` as the contract takes it (camelCase). */
+export function toWireInput(input: UpdateInput): WireUpdateInput {
+  return {
+    title: input.title,
+    summary: input.summary,
+    categoryId: input.category_id,
+    sections: input.sections.map(({ kind, title, body }) => ({ kind, title, body })),
+    metrics: input.metrics.map(({ name, value, unit }) => ({ name, value, unit })),
+    asks: input.asks.map(({ id, kind, title, detail }) => ({ id, kind, title, detail })),
+  };
 }
 
 /** A number the contract takes as a u64: the decimal string of its whole, non-negative part. */

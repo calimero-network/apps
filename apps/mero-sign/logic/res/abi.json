@@ -508,5 +508,264 @@
     },
     "version": 1
   },
+  "types": {
+    "ContextDetails": {
+      "fields": [
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "contextName",
+          "string"
+        ],
+        [
+          "owner",
+          "string"
+        ],
+        [
+          "isPrivate",
+          "bool"
+        ],
+        [
+          "participantCount",
+          "u64"
+        ],
+        [
+          "participants",
+          "list<ParticipantInfo>"
+        ],
+        [
+          "documentCount",
+          "u64"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ContextMetadata": {
+      "fields": [
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "contextName",
+          "string"
+        ],
+        [
+          "role",
+          "ParticipantRole"
+        ],
+        [
+          "joinedAt",
+          "u64"
+        ],
+        [
+          "privateIdentity",
+          "string"
+        ],
+        [
+          "sharedIdentity",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocumentChunk": {
+      "fields": [
+        [
+          "text",
+          "string"
+        ],
+        [
+          "embedding",
+          "list<f32>"
+        ],
+        [
+          "startPosition",
+          "u32"
+        ],
+        [
+          "endPosition",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocumentInfo": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "hash",
+          "string"
+        ],
+        [
+          "uploadedBy",
+          "string"
+        ],
+        [
+          "uploadedAt",
+          "u64"
+        ],
+        [
+          "status",
+          "DocumentStatus"
+        ],
+        [
+          "pdfBlobId",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "requiredSigners",
+          "list<string>"
+        ],
+        [
+          "embeddings",
+          "option<list<f32>>"
+        ],
+        [
+          "extractedText",
+          "option<string>"
+        ],
+        [
+          "chunks",
+          "option<list<DocumentChunk>>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocumentSignature": {
+      "fields": [
+        [
+          "signer",
+          "string"
+        ],
+        [
+          "signedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocumentStatus": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Pending"
+        },
+        {
+          "name": "PartiallySigned"
+        },
+        {
+          "name": "FullySigned"
+        }
+      ]
+    },
+    "IdentityMapping": {
+      "fields": [
+        [
+          "privateIdentity",
+          "string"
+        ],
+        [
+          "sharedIdentity",
+          "string"
+        ],
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ParticipantInfo": {
+      "fields": [
+        [
+          "userId",
+          "string"
+        ],
+        [
+          "permissionLevel",
+          "PermissionLevel"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ParticipantRole": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Owner"
+        },
+        {
+          "name": "Signer"
+        },
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Unknown"
+        }
+      ]
+    },
+    "PermissionLevel": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Read"
+        },
+        {
+          "name": "Sign"
+        },
+        {
+          "name": "Admin"
+        }
+      ]
+    },
+    "SignatureRecord": {
+      "fields": [
+        [
+          "id",
+          "u64"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "blobId",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }
