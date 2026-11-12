@@ -59,7 +59,7 @@ object CrmContract {
     val JSON = Json { ignoreUnknownKeys = true }
 
     /** An answer of the generated client as the app type [T]. */
-    inline fun <reified T> read(answer: JsonElement): T = JSON.decodeFromJsonElement(serializer<T>(), answer)
+    inline fun <reified T> read(answer: Any): T = JSON.decodeFromJsonElement(serializer<T>(), answer.asContractJson())
 }
 
 /** A u64 field as the wire carries it: a decimal string (a number is read too). */
@@ -188,3 +188,17 @@ data class StageView(
     val probability: UInt,
     val position: UInt,
 )
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

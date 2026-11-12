@@ -6,7 +6,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { BackendBlock } from '@/lib/rich/blocknote';
 import type { FolderIndexStatus } from '../useWorkspaceIndex';
 import type { FolderInfo, IndexRow } from '@/lib/workspaceIndex/types';
-import { DocsClient } from '@/lib/docsApi';
+import { MeroDocsClient } from '@/lib/docsApi';
 import { TEXT_INDEX_CONCURRENCY, useTextIndex } from '../useTextIndex';
 
 type Event = { contextId: string; type: string; data: unknown };
@@ -29,23 +29,28 @@ vi.mock('@/calimero/react', () => ({
     subscribed = { ids, handler };
   },
 }));
-vi.mock('@/lib/docsApi', () => ({
-  DocsClient: class {
-    constructor(
-      _mero: unknown,
-      private contextId: string,
-    ) {}
-    getDocument({ doc }: { doc: string }) {
-      return getDocument(this.contextId, doc);
-    }
-    getDoc({ id }: { id: string }) {
-      return getDoc(this.contextId, id);
-    }
-    getBlockDelta({ doc, block }: { doc: string; block: string }) {
-      return getBlockDelta(this.contextId, doc, block);
-    }
-  },
-}));
+// Each context's client is the real class over a fake transport whose reads
+// are the mocks above, given the context (`getDoc`'s answer on the wire:
+// camelCase, milliseconds as a decimal string).
+vi.mock('@/lib/docsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/docsApi')>();
+  const { docsOver } = await import('@/test/docsClient');
+  return {
+    ...actual,
+    MeroDocsClient: function (_transport: unknown, contextId: string) {
+      const fake = {
+        getDocument: ({ doc }: { doc: string }) => getDocument(contextId, doc),
+        getDoc: async ({ id }: { id: string }) => {
+          const { updated_at } = await getDoc(contextId, id);
+          return { id, updatedAt: String(updated_at / 1_000_000) };
+        },
+        getBlockDelta: ({ doc, block }: { doc: string; block: string }) =>
+          getBlockDelta(contextId, doc, block),
+      };
+      return docsOver(fake, contextId);
+    },
+  };
+});
 
 function row(
   folderId: string,
@@ -93,7 +98,7 @@ type Input = {
   folders: FolderInfo[];
   folderStatus: Record<string, FolderIndexStatus>;
   contextOf: (folderId: string) => string | undefined;
-  clientOf: (folderId: string) => DocsClient | undefined;
+  clientOf: (folderId: string) => MeroDocsClient | undefined;
 };
 
 function input(
@@ -107,7 +112,7 @@ function input(
     contextOf: (folderId) => (status[folderId] ? `c-${folderId}` : undefined),
     clientOf: (folderId) =>
       status[folderId]
-        ? new DocsClient(mero as never, `c-${folderId}`)
+        ? new MeroDocsClient(mero as never, `c-${folderId}`)
         : undefined,
   };
 }

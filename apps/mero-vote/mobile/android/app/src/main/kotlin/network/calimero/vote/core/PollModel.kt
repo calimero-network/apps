@@ -23,6 +23,7 @@ import network.calimero.vote.generated.TallyInputs
 import network.calimero.vote.generated.Transcript
 import network.calimero.vote.generated.TrusteeStatus
 import network.calimero.vote.generated.WirePartial
+import network.calimero.vote.generated.asContractArg
 import network.calimero.vote.generated.toVote
 import network.calimero.vote.generated.toVoteJson
 
@@ -244,7 +245,7 @@ class PollModel(
                     val pk = VoteWire.point(election.key, "election key")
                     VoteWire.ballot(VoteProtocol.castBallot(pk, pollId, me, rules, selections, rng))
                 }
-            client.castBallot(pollId, wire.toVoteJson())
+            client.castBallot(pollId, wire.toVoteJson().asContractArg())
             _selection.value = List(selections.size) { false }
         }
     }
@@ -258,7 +259,7 @@ class PollModel(
             if (!keys.save(key)) throw VoteModelException("This device can't store your trustee key.")
             _trusteeKey.value = key
             val (pub, proof) = VoteProtocol.makeTransportKey(pollId, me, e, rng)
-            client.publishTransportKey(pollId, pub.hex(), VoteWire.branch(proof).toVoteJson())
+            client.publishTransportKey(pollId, pub.hex(), VoteWire.branch(proof).toVoteJson().asContractArg())
         }
     }
 
@@ -278,7 +279,7 @@ class PollModel(
                     // The polynomial lives only inside this call.
                     VoteWire.dealing(VoteProtocol.deal(pollId, me, def.threshold.toInt(), recipients, rng))
                 }
-            client.publishDealing(pollId, wire.toVoteJson())
+            client.publishDealing(pollId, wire.toVoteJson().asContractArg())
         }
     }
 
@@ -301,7 +302,7 @@ class PollModel(
         ) {
             val e = VoteWire.scalar(key.secret, "trustee key")
             val (secret, proof) = VoteProtocol.makeComplaint(pollId, me, dealer, index, e, VoteWire.dealing(wire), rng)
-            client.fileComplaint(pollId, dealer, secret.hex(), VoteWire.branch(proof).toVoteJson())
+            client.fileComplaint(pollId, dealer, secret.hex(), VoteWire.branch(proof).toVoteJson().asContractArg())
         }
     }
 
@@ -331,7 +332,7 @@ class PollModel(
                         WirePartial(d.hex(), VoteWire.branch(proof))
                     }
                 }
-            client.publishPartial(pollId, partials.map { it.toVoteJson() })
+            client.publishPartial(pollId, partials.map { it.toVoteJson().asContractArg() })
         }
     }
 

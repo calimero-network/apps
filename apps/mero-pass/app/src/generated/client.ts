@@ -4,29 +4,82 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `AuditView`: the ABI names it without its shape. */
-export type AuditView = unknown;
+/** The app type `AuditView`. */
+export interface AuditView {
+  action: string;
+  target: string;
+  account: string;
+  device: string;
+  timestamp: string;
+  redacted: boolean;
+}
 
-/** The app type `DeviceView`: the ABI names it without its shape. */
-export type DeviceView = unknown;
+/** The app type `DeviceView`. */
+export interface DeviceView {
+  fingerprint: string;
+  publicKey: string;
+  label: string;
+  kind: string;
+  account: string;
+  addedAt: string;
+  revoked: boolean;
+}
 
-/** The app type `KeyWrapInput`: the ABI names it without its shape. */
-export type KeyWrapInput = unknown;
+/** The app type `KeyWrapInput`. */
+export interface KeyWrapInput {
+  keyId: string;
+  recipient: string;
+  wrapper: string;
+  envelope: string;
+}
 
-/** The app type `KeyWrapView`: the ABI names it without its shape. */
-export type KeyWrapView = unknown;
+/** The app type `KeyWrapView`. */
+export interface KeyWrapView {
+  keyId: string;
+  recipient: string;
+  wrapper: string;
+  envelope: string;
+  wrappedBy: string;
+}
 
-/** The app type `MemberView`: the ABI names it without its shape. */
-export type MemberView = unknown;
+/** The app type `MemberView`. */
+export interface MemberView {
+  account: string;
+  role: string;
+  devices: number;
+}
 
-/** The app type `RevisionView`: the ABI names it without its shape. */
-export type RevisionView = unknown;
+/** The app type `RevisionView`. */
+export interface RevisionView {
+  field: string;
+  previous: string;
+  replacedAt: string;
+  replacedBy: string;
+}
 
-/** The app type `SecretView`: the ABI names it without its shape. */
-export type SecretView = unknown;
+/** The app type `SecretView`. */
+export interface SecretView {
+  id: string;
+  kind: string;
+  name: string;
+  tags: string;
+  fields: Record<string, string>;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  trashed: boolean;
+  trashedAt: string;
+}
 
-/** The app type `VaultInfo`: the ABI names it without its shape. */
-export type VaultInfo = unknown;
+/** The app type `VaultInfo`. */
+export interface VaultInfo {
+  name: string;
+  currentKey: string;
+  defaultRole: string;
+  myAccount: string;
+  myRole: string;
+}
 
 /** The arguments of `addKeyWraps`. */
 export interface AddKeyWrapsArgs {

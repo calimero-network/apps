@@ -1,4 +1,4 @@
-import type { Cell as StoredCell } from '../api/spreadsheet/SpreadsheetClient';
+import type { Cell as StoredCell } from '../api/spreadsheet/types';
 
 /**
  * A cell as the grid sees it: placed at a position by its sheet's layout, with

@@ -216,7 +216,7 @@ pub struct AuditEntry {
 
 /// A secret as callers see it, fields included. A plain struct: a `Record`
 /// cannot hold a map. Times are decimal strings on the wire.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct SecretView {
     pub id: String,
     pub kind: String,
@@ -237,7 +237,7 @@ pub struct SecretView {
     pub trashed_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct RevisionView {
     pub field: String,
@@ -247,7 +247,7 @@ pub struct RevisionView {
     pub replaced_by: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceView {
     pub fingerprint: String,
@@ -261,7 +261,7 @@ pub struct DeviceView {
     pub revoked: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyWrapView {
     pub key_id: String,
@@ -273,7 +273,7 @@ pub struct KeyWrapView {
 }
 
 /// One wrap handed to `addKeyWraps`.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeyWrapInput {
     pub key_id: String,
@@ -282,7 +282,7 @@ pub struct KeyWrapInput {
     pub envelope: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct MemberView {
     pub account: String,
     /// `admin`, `editor` or `viewer`; `pending` for an account that has
@@ -293,7 +293,7 @@ pub struct MemberView {
     pub devices: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultInfo {
     pub name: String,
@@ -303,7 +303,7 @@ pub struct VaultInfo {
     pub my_role: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct AuditView {
     pub action: String,
     pub target: String,

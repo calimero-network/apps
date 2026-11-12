@@ -368,7 +368,12 @@ final class PollModelTests: XCTestCase {
     func testCreatorCeremonyStatusAndReverify() async throws {
         let (backend, script) = makeBackend()
         let honest = (Vectors.json["audits"] as! [[String: Any]]).first { $0["name"] as? String == "honest" }!
-        let transcript = try Vectors.decode(Transcript.self, honest["transcript"]!)
+        var transcript = try Vectors.decode(Transcript.self, honest["transcript"]!)
+        // The 1.0 contract's seal always carries `aggregate`, which the vectors predate; the audit
+        // recomputes it from the ballots, so its value does not matter here.
+        if transcript.state.closure != nil, transcript.state.closure?.aggregate == nil {
+            transcript.state.closure?.aggregate = []
+        }
         let def = definition(trustees: [me, bob], threshold: 2)
         script.on("whoami") { _ in Identity(account: me) }
         script.on("getPoll") { _ in

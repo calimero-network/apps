@@ -17,6 +17,7 @@ import network.calimero.updates.core.Format
 import network.calimero.updates.core.Limits
 import network.calimero.updates.core.Metrics
 import network.calimero.updates.core.UpdateTemplate
+import network.calimero.updates.core.asContractArg
 import network.calimero.updates.core.toUpdates
 import network.calimero.updates.generated.ContributionView
 import network.calimero.updates.generated.DraftView
@@ -148,10 +149,10 @@ class ComposerModel(
             val edit = editId
             val id =
                 if (edit != null) {
-                    audience.act { it.editUpdate(edit, ComponentWire.wire(input)) }
+                    audience.act { it.editUpdate(edit, ComponentWire.wire(input).asContractArg()) }
                     edit
                 } else {
-                    val published = audience.act { it.publishUpdate(ComponentWire.wire(input)) }
+                    val published = audience.act { it.publishUpdate(ComponentWire.wire(input).asContractArg()) }
                     _draftId.value?.let { draft -> runCatching { audience.client.deleteDraft(draft) } }
                     _draftId.value = null
                     published

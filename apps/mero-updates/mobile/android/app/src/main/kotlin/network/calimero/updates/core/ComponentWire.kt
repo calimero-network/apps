@@ -87,7 +87,7 @@ object ComponentWire {
     val JSON = Json { ignoreUnknownKeys = true }
 
     /** An answer of the generated client as the v1 type [T] ([incoming]). */
-    inline fun <reified T> read(answer: JsonElement): T = JSON.decodeFromString(serializer<T>(), incoming(answer.toString()))
+    inline fun <reified T> read(answer: Any): T = JSON.decodeFromString(serializer<T>(), incoming(answer.asContractJson().toString()))
 
     /** [value] (a v1 type) as the contract takes it: camelCase keys. */
     inline fun <reified T> wire(value: T): JsonElement = toWire(JSON.encodeToJsonElement(serializer<T>(), value))
@@ -142,4 +142,18 @@ object ComponentWire {
 }
 
 /** An answer of the generated client as the v1 type [T] ([ComponentWire.read]). */
-inline fun <reified T> JsonElement.toUpdates(): T = ComponentWire.read(this)
+inline fun <reified T> Any.toUpdates(): T = ComponentWire.read(this)
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

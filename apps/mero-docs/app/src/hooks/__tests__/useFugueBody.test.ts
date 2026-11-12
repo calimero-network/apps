@@ -6,7 +6,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
 import type { CalimeroError } from '@calimero-network/mero-js';
 import { nodeError } from '@/lib/__tests__/contractErrorFixture';
-import type { DocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
 
@@ -151,7 +151,7 @@ const applied = (
   token,
   spans: spans(text),
   anchor,
-  anchor_pos,
+  anchorPos: anchor_pos,
   ids: [],
 });
 const refused = (
@@ -163,7 +163,7 @@ const refused = (
   token: null,
   spans: spans(text),
   anchor,
-  anchor_pos,
+  anchorPos: anchor_pos,
   ids: [],
 });
 
@@ -198,7 +198,7 @@ function deferred<T>() {
 async function mount(client: FakeClient, editor: FakeEditor) {
   const view = renderHook(() =>
     useFugueBody({
-      client: client as unknown as DocsClient,
+      client: docsOver(client),
       docId: DOC,
       contextId: CTX,
       editor,
@@ -343,7 +343,7 @@ describe('useFugueBody', () => {
       const view = renderHook(
         ({ client, docId }: { client: FakeClient; docId: string | null }) =>
           useFugueBody({
-            client: client as unknown as DocsClient,
+            client: docsOver(client),
             docId,
             contextId: CTX,
             editor,
@@ -404,7 +404,7 @@ describe('useFugueBody', () => {
     const view = renderHook(
       ({ docId }: { docId: string }) =>
         useFugueBody({
-          client: client as unknown as DocsClient,
+          client: docsOver(client),
           docId,
           contextId: CTX,
           editor,
@@ -736,7 +736,7 @@ describe('useFugueBody', () => {
     editor.mount(document.body.appendChild(document.createElement('div')));
     renderHook(() =>
       useFugueBody({
-        client: client as unknown as DocsClient,
+        client: docsOver(client),
         docId: DOC,
         contextId: CTX,
         editor: editor as unknown as BodyEditor,
@@ -903,7 +903,7 @@ describe('useFugueBody', () => {
     editor.mount(document.body.appendChild(document.createElement('div')));
     const view = renderHook(() =>
       useFugueBody({
-        client: client as unknown as DocsClient,
+        client: docsOver(client),
         docId: DOC,
         contextId: CTX,
         editor: editor as unknown as BodyEditor,

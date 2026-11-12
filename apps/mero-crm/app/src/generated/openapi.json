@@ -222,7 +222,118 @@
         "type": "object"
       },
       "ActivityView": {
-        "description": "The app type `ActivityView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "automation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deal_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "due_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deal_id",
+          "deal_title",
+          "contact_id",
+          "kind",
+          "subject",
+          "due_at",
+          "done",
+          "done_at",
+          "owner",
+          "note",
+          "automation_id",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ActivityView"
       },
       "AddActivityArgs": {
@@ -553,7 +664,49 @@
         "type": "object"
       },
       "AutomationView": {
-        "description": "The app type `AutomationView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "due_in_days": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stage_id",
+          "kind",
+          "subject",
+          "due_in_days",
+          "enabled",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AutomationView"
       },
       "AutomationsChangedEvent": {
@@ -836,7 +989,60 @@
         "type": "object"
       },
       "ContactView": {
-        "description": "The app type `ContactView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "job_title": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "open_deals": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "won_value": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "organization",
+          "job_title",
+          "open_deals",
+          "won_value",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ContactView"
       },
       "CreateContactArgs": {
@@ -1046,7 +1252,40 @@
         "type": "object"
       },
       "DealDetail": {
-        "description": "The app type `DealDetail`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityView"
+            },
+            "type": "array"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deal": {
+            "$ref": "#/components/schemas/DealView"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/NoteView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deal",
+          "contact",
+          "activities",
+          "notes"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DealDetail"
       },
       "DealMovedEvent": {
@@ -1091,7 +1330,164 @@
         "type": "object"
       },
       "DealView": {
-        "description": "The app type `DealView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "expected_close": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_touch_at": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lost_reason": {
+            "type": "string"
+          },
+          "next_activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextActivity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_activities": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "probability": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "source": {
+            "type": "string"
+          },
+          "stage_entered_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "value": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "value",
+          "organization",
+          "contact_id",
+          "contact_name",
+          "owner",
+          "stage_id",
+          "status",
+          "lost_reason",
+          "expected_close",
+          "source",
+          "probability",
+          "stage_entered_at",
+          "closed_at",
+          "next_activity",
+          "open_activities",
+          "last_touch_at",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DealView"
       },
       "DeleteActivityArgs": {
@@ -2297,6 +2693,33 @@
         ],
         "type": "object"
       },
+      "NextActivity": {
+        "properties": {
+          "due_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "due_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "NextActivity"
+      },
       "NotFoundError": {
         "properties": {
           "id": {
@@ -2326,6 +2749,37 @@
           "id"
         ],
         "type": "object"
+      },
+      "NoteView": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "deal_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deal_id",
+          "author",
+          "body",
+          "created_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "NoteView"
       },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
@@ -2775,7 +3229,22 @@
         "type": "object"
       },
       "Settings": {
-        "description": "The app type `Settings`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "rotting_days": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "currency",
+          "rotting_days"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Settings"
       },
       "SettingsChangedEvent": {
@@ -2784,7 +3253,33 @@
         "type": "object"
       },
       "StageView": {
-        "description": "The app type `StageView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "probability": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "probability",
+          "position"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "StageView"
       },
       "StagesChangedEvent": {

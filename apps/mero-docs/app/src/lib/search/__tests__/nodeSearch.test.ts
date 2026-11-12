@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient, DocSearchPage } from '@/lib/docsApi';
+import type { DocSearchPage } from '@/lib/docsApi';
+import { docsOver, wireSearchPage } from '@/test/docsClient';
 import type { DocText } from '../../workspaceIndex/types';
 import {
   blockOf,
@@ -12,8 +13,8 @@ import {
 } from '../nodeSearch';
 
 function client(pages: DocSearchPage[]) {
-  const searchDocs = vi.fn(async () => pages.shift()!);
-  return { client: { searchDocs } as unknown as DocsClient, searchDocs };
+  const searchDocs = vi.fn(async (_args: unknown) => wireSearchPage(pages.shift()!));
+  return { client: docsOver({ searchDocs }), searchDocs };
 }
 
 const page = (ids: string[], next: number | null = null): DocSearchPage => ({
@@ -86,7 +87,7 @@ describe('searchFolder', () => {
     const hits = await searchFolder('f1', c, 'plan', 5);
     expect(searchDocs).toHaveBeenCalledWith({
       query: 'plan',
-      include_archived: false,
+      includeArchived: false,
       cursor: null,
       limit: 5,
     });
@@ -112,16 +113,16 @@ describe('folderMatches', () => {
     expect(await folderMatches(c, 'plan')).toEqual(['a', 'b', 'c']);
     expect(searchDocs).toHaveBeenLastCalledWith({
       query: 'plan',
-      include_archived: true,
+      includeArchived: true,
       cursor: 2,
       limit: NODE_FILTER_PAGE,
     });
   });
 
   it('stops after a bounded number of pages', async () => {
-    const endless = {
-      searchDocs: vi.fn(async () => page(['x'], 1)),
-    } as unknown as DocsClient;
+    const endless = docsOver({
+      searchDocs: vi.fn(async () => wireSearchPage(page(['x'], 1))),
+    });
     const ids = await folderMatches(endless, 'plan');
     expect(ids.length).toBe(10);
   });

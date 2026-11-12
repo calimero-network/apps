@@ -15,41 +15,1223 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct VoteClient: Sendable {
-    /// The app type `AuditReport`: the ABI names it without its shape, so it is its JSON.
-    public typealias AuditReport = JSONValue
 
-    /// The app type `Ceremony`: the ABI names it without its shape, so it is its JSON.
-    public typealias Ceremony = JSONValue
+    /// The app type `Anchor`.
+    public struct Anchor: Codable, Sendable, Equatable {
+        public var digest: String
+        public var network: String
+        public var reference: String
+        public var anchored_at: UInt64
 
-    /// The app type `Identity`: the ABI names it without its shape, so it is its JSON.
-    public typealias Identity = JSONValue
+        public init(
+            digest: String,
+            network: String,
+            reference: String,
+            anchored_at: UInt64
+        ) {
+            self.digest = digest
+            self.network = network
+            self.reference = reference
+            self.anchored_at = anchored_at
+        }
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("digest"))
+            let v1 = try fields.decode(String.self, forKey: Key("network"))
+            let v2 = try fields.decode(String.self, forKey: Key("reference"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("anchored_at")).value
+            self.digest = v0
+            self.network = v1
+            self.reference = v2
+            self.anchored_at = v3
+        }
 
-    /// The app type `PollSummary`: the ABI names it without its shape, so it is its JSON.
-    public typealias PollSummary = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.digest, forKey: Key("digest"))
+            try fields.encode(self.network, forKey: Key("network"))
+            try fields.encode(self.reference, forKey: Key("reference"))
+            try fields.encode(DecimalString(self.anchored_at), forKey: Key("anchored_at"))
+        }
+    }
 
-    /// The app type `PollView`: the ABI names it without its shape, so it is its JSON.
-    public typealias PollView = JSONValue
+    /// The app type `AuditReport`.
+    public struct AuditReport: Codable, Sendable, Equatable {
+        public var poll_id: String
+        public var phase: Phase
+        public var verified: Bool
+        public var checks: [Check]
+        public var counts: [UInt32]?
+        public var counted_ballots: UInt32
+        public var decrypted_by: [String]
+        public var transcript_digest: String?
+        public var anchor: Anchor?
+        public var uncounted: [String]
 
-    /// The app type `TallyInputs`: the ABI names it without its shape, so it is its JSON.
-    public typealias TallyInputs = JSONValue
+        public init(
+            poll_id: String,
+            phase: Phase,
+            verified: Bool,
+            checks: [Check],
+            counts: [UInt32]? = nil,
+            counted_ballots: UInt32,
+            decrypted_by: [String],
+            transcript_digest: String? = nil,
+            anchor: Anchor? = nil,
+            uncounted: [String]
+        ) {
+            self.poll_id = poll_id
+            self.phase = phase
+            self.verified = verified
+            self.checks = checks
+            self.counts = counts
+            self.counted_ballots = counted_ballots
+            self.decrypted_by = decrypted_by
+            self.transcript_digest = transcript_digest
+            self.anchor = anchor
+            self.uncounted = uncounted
+        }
 
-    /// The app type `Transcript`: the ABI names it without its shape, so it is its JSON.
-    public typealias Transcript = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("poll_id"))
+            let v1 = try fields.decode(Phase.self, forKey: Key("phase"))
+            let v2 = try fields.decode(Bool.self, forKey: Key("verified"))
+            let v3 = try fields.decode([Check].self, forKey: Key("checks"))
+            let v4 = try fields.decodeIfPresent([UInt32].self, forKey: Key("counts"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("counted_ballots"))
+            let v6 = try fields.decode([String].self, forKey: Key("decrypted_by"))
+            let v7 = try fields.decodeIfPresent(String.self, forKey: Key("transcript_digest"))
+            let v8 = try fields.decodeIfPresent(Anchor.self, forKey: Key("anchor"))
+            let v9 = try fields.decode([String].self, forKey: Key("uncounted"))
+            self.poll_id = v0
+            self.phase = v1
+            self.verified = v2
+            self.checks = v3
+            self.counts = v4
+            self.counted_ballots = v5
+            self.decrypted_by = v6
+            self.transcript_digest = v7
+            self.anchor = v8
+            self.uncounted = v9
+        }
 
-    /// The app type `WireBallot`: the ABI names it without its shape, so it is its JSON.
-    public typealias WireBallot = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.poll_id, forKey: Key("poll_id"))
+            try fields.encode(self.phase, forKey: Key("phase"))
+            try fields.encode(self.verified, forKey: Key("verified"))
+            try fields.encode(self.checks, forKey: Key("checks"))
+            try fields.encode(self.counts, forKey: Key("counts"))
+            try fields.encode(self.counted_ballots, forKey: Key("counted_ballots"))
+            try fields.encode(self.decrypted_by, forKey: Key("decrypted_by"))
+            try fields.encode(self.transcript_digest, forKey: Key("transcript_digest"))
+            try fields.encode(self.anchor, forKey: Key("anchor"))
+            try fields.encode(self.uncounted, forKey: Key("uncounted"))
+        }
+    }
 
-    /// The app type `WireBranch`: the ABI names it without its shape, so it is its JSON.
-    public typealias WireBranch = JSONValue
+    /// The app type `Ceremony`.
+    public struct Ceremony: Codable, Sendable, Equatable {
+        public var threshold: UInt32
+        public var trustees: [CeremonyTrustee]
+        public var complaints: [ComplaintView]
 
-    /// The app type `WireDealing`: the ABI names it without its shape, so it is its JSON.
-    public typealias WireDealing = JSONValue
+        public init(
+            threshold: UInt32,
+            trustees: [CeremonyTrustee],
+            complaints: [ComplaintView]
+        ) {
+            self.threshold = threshold
+            self.trustees = trustees
+            self.complaints = complaints
+        }
 
-    /// The app type `WirePartial`: the ABI names it without its shape, so it is its JSON.
-    public typealias WirePartial = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt32.self, forKey: Key("threshold"))
+            let v1 = try fields.decode([CeremonyTrustee].self, forKey: Key("trustees"))
+            let v2 = try fields.decode([ComplaintView].self, forKey: Key("complaints"))
+            self.threshold = v0
+            self.trustees = v1
+            self.complaints = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.threshold, forKey: Key("threshold"))
+            try fields.encode(self.trustees, forKey: Key("trustees"))
+            try fields.encode(self.complaints, forKey: Key("complaints"))
+        }
+    }
+
+    /// The app type `CeremonyTrustee`.
+    public struct CeremonyTrustee: Codable, Sendable, Equatable {
+        public var account: String
+        public var index: UInt32
+        public var transport: String?
+        public var dealing: WireDealing?
+
+        public init(
+            account: String,
+            index: UInt32,
+            transport: String? = nil,
+            dealing: WireDealing? = nil
+        ) {
+            self.account = account
+            self.index = index
+            self.transport = transport
+            self.dealing = dealing
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("index"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("transport"))
+            let v3 = try fields.decodeIfPresent(WireDealing.self, forKey: Key("dealing"))
+            self.account = v0
+            self.index = v1
+            self.transport = v2
+            self.dealing = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.index, forKey: Key("index"))
+            try fields.encode(self.transport, forKey: Key("transport"))
+            try fields.encode(self.dealing, forKey: Key("dealing"))
+        }
+    }
+
+    /// The app type `Check`.
+    public struct Check: Codable, Sendable, Equatable {
+        public var name: String
+        public var ok: Bool
+        public var detail: String
+
+        public init(
+            name: String,
+            ok: Bool,
+            detail: String
+        ) {
+            self.name = name
+            self.ok = ok
+            self.detail = detail
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(Bool.self, forKey: Key("ok"))
+            let v2 = try fields.decode(String.self, forKey: Key("detail"))
+            self.name = v0
+            self.ok = v1
+            self.detail = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.ok, forKey: Key("ok"))
+            try fields.encode(self.detail, forKey: Key("detail"))
+        }
+    }
+
+    /// The app type `Closure`.
+    public struct Closure: Codable, Sendable, Equatable {
+        public var counted: [CountedBallot]
+        public var aggregate: [WireCiphertext]
+        public var closed_at: UInt64
+
+        public init(
+            counted: [CountedBallot],
+            aggregate: [WireCiphertext],
+            closed_at: UInt64
+        ) {
+            self.counted = counted
+            self.aggregate = aggregate
+            self.closed_at = closed_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([CountedBallot].self, forKey: Key("counted"))
+            let v1 = try fields.decode([WireCiphertext].self, forKey: Key("aggregate"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("closed_at")).value
+            self.counted = v0
+            self.aggregate = v1
+            self.closed_at = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.counted, forKey: Key("counted"))
+            try fields.encode(self.aggregate, forKey: Key("aggregate"))
+            try fields.encode(DecimalString(self.closed_at), forKey: Key("closed_at"))
+        }
+    }
+
+    /// The app type `ComplaintView`.
+    public struct ComplaintView: Codable, Sendable, Equatable {
+        public var recipient: String
+        public var dealer: String
+        public var valid: Bool
+
+        public init(
+            recipient: String,
+            dealer: String,
+            valid: Bool
+        ) {
+            self.recipient = recipient
+            self.dealer = dealer
+            self.valid = valid
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("recipient"))
+            let v1 = try fields.decode(String.self, forKey: Key("dealer"))
+            let v2 = try fields.decode(Bool.self, forKey: Key("valid"))
+            self.recipient = v0
+            self.dealer = v1
+            self.valid = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.recipient, forKey: Key("recipient"))
+            try fields.encode(self.dealer, forKey: Key("dealer"))
+            try fields.encode(self.valid, forKey: Key("valid"))
+        }
+    }
+
+    /// The app type `CountedBallot`.
+    public struct CountedBallot: Codable, Sendable, Equatable {
+        public var voter: String
+        public var digest: String
+        public var frozen: String
+
+        public init(
+            voter: String,
+            digest: String,
+            frozen: String
+        ) {
+            self.voter = voter
+            self.digest = digest
+            self.frozen = frozen
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("voter"))
+            let v1 = try fields.decode(String.self, forKey: Key("digest"))
+            let v2 = try fields.decode(String.self, forKey: Key("frozen"))
+            self.voter = v0
+            self.digest = v1
+            self.frozen = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.voter, forKey: Key("voter"))
+            try fields.encode(self.digest, forKey: Key("digest"))
+            try fields.encode(self.frozen, forKey: Key("frozen"))
+        }
+    }
+
+    /// The app type `Election`.
+    public struct Election: Codable, Sendable, Equatable {
+        public var key: String
+        public var threshold: UInt32
+        public var transport: [String]
+        public var qualified: [QualifiedDealing]
+        public var disqualified: [String]
+        public var opened_at: UInt64
+
+        public init(
+            key: String,
+            threshold: UInt32,
+            transport: [String],
+            qualified: [QualifiedDealing],
+            disqualified: [String],
+            opened_at: UInt64
+        ) {
+            self.key = key
+            self.threshold = threshold
+            self.transport = transport
+            self.qualified = qualified
+            self.disqualified = disqualified
+            self.opened_at = opened_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("key"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("threshold"))
+            let v2 = try fields.decode([String].self, forKey: Key("transport"))
+            let v3 = try fields.decode([QualifiedDealing].self, forKey: Key("qualified"))
+            let v4 = try fields.decode([String].self, forKey: Key("disqualified"))
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("opened_at")).value
+            self.key = v0
+            self.threshold = v1
+            self.transport = v2
+            self.qualified = v3
+            self.disqualified = v4
+            self.opened_at = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.key, forKey: Key("key"))
+            try fields.encode(self.threshold, forKey: Key("threshold"))
+            try fields.encode(self.transport, forKey: Key("transport"))
+            try fields.encode(self.qualified, forKey: Key("qualified"))
+            try fields.encode(self.disqualified, forKey: Key("disqualified"))
+            try fields.encode(DecimalString(self.opened_at), forKey: Key("opened_at"))
+        }
+    }
+
+    /// The app type `Identity`.
+    public struct Identity: Codable, Sendable, Equatable {
+        public var account: String
+
+        public init(
+            account: String
+        ) {
+            self.account = account
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            self.account = v0
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var account: String
+        public var name: String
+
+        public init(
+            account: String,
+            name: String
+        ) {
+            self.account = account
+            self.name = name
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            self.account = v0
+            self.name = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.name, forKey: Key("name"))
+        }
+    }
+
+    /// The app type `Phase`.
+    public enum Phase: Codable, Sendable, Equatable {
+        /// `KeyCeremony`.
+        case keyCeremony
+        /// `Voting`.
+        case voting
+        /// `Closing`.
+        case closing
+        /// `Closed`.
+        case closed
+
+        public init(from decoder: Decoder) throws {
+            if let name = try? decoder.singleValueContainer().decode(String.self) {
+                switch name {
+                case "KeyCeremony":
+                    self = .keyCeremony
+                case "Voting":
+                    self = .voting
+                case "Closing":
+                    self = .closing
+                case "Closed":
+                    self = .closed
+                default:
+                    throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Phase: unknown variant \(name)"))
+                }
+                return
+            }
+            let container = try decoder.container(keyedBy: Key.self)
+            guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Phase: expected one variant"))
+            }
+            switch key.stringValue {
+            case "KeyCeremony":
+                self = .keyCeremony
+            case "Voting":
+                self = .voting
+            case "Closing":
+                self = .closing
+            case "Closed":
+                self = .closed
+            default:
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "Phase: unknown variant \(key.stringValue)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .keyCeremony:
+                var single = encoder.singleValueContainer()
+                try single.encode("KeyCeremony")
+            case .voting:
+                var single = encoder.singleValueContainer()
+                try single.encode("Voting")
+            case .closing:
+                var single = encoder.singleValueContainer()
+                try single.encode("Closing")
+            case .closed:
+                var single = encoder.singleValueContainer()
+                try single.encode("Closed")
+            }
+        }
+    }
+
+    /// The app type `PollDefinition`.
+    public struct PollDefinition: Codable, Sendable, Equatable {
+        public var title: String
+        public var description: String
+        public var options: [String]
+        public var min_choices: UInt32
+        public var max_choices: UInt32
+        public var trustees: [String]
+        public var threshold: UInt32
+        public var voters: [String]
+        public var creator: String
+        public var created_at: UInt64
+        public var closes_at: UInt64?
+
+        public init(
+            title: String,
+            description: String,
+            options: [String],
+            min_choices: UInt32,
+            max_choices: UInt32,
+            trustees: [String],
+            threshold: UInt32,
+            voters: [String],
+            creator: String,
+            created_at: UInt64,
+            closes_at: UInt64? = nil
+        ) {
+            self.title = title
+            self.description = description
+            self.options = options
+            self.min_choices = min_choices
+            self.max_choices = max_choices
+            self.trustees = trustees
+            self.threshold = threshold
+            self.voters = voters
+            self.creator = creator
+            self.created_at = created_at
+            self.closes_at = closes_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("title"))
+            let v1 = try fields.decode(String.self, forKey: Key("description"))
+            let v2 = try fields.decode([String].self, forKey: Key("options"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("min_choices"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("max_choices"))
+            let v5 = try fields.decode([String].self, forKey: Key("trustees"))
+            let v6 = try fields.decode(UInt32.self, forKey: Key("threshold"))
+            let v7 = try fields.decode([String].self, forKey: Key("voters"))
+            let v8 = try fields.decode(String.self, forKey: Key("creator"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            let v10 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("closes_at"))?.value
+            self.title = v0
+            self.description = v1
+            self.options = v2
+            self.min_choices = v3
+            self.max_choices = v4
+            self.trustees = v5
+            self.threshold = v6
+            self.voters = v7
+            self.creator = v8
+            self.created_at = v9
+            self.closes_at = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.options, forKey: Key("options"))
+            try fields.encode(self.min_choices, forKey: Key("min_choices"))
+            try fields.encode(self.max_choices, forKey: Key("max_choices"))
+            try fields.encode(self.trustees, forKey: Key("trustees"))
+            try fields.encode(self.threshold, forKey: Key("threshold"))
+            try fields.encode(self.voters, forKey: Key("voters"))
+            try fields.encode(self.creator, forKey: Key("creator"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+            try fields.encode(self.closes_at.map { DecimalString($0) }, forKey: Key("closes_at"))
+        }
+    }
+
+    /// The app type `PollState`.
+    public struct PollState: Codable, Sendable, Equatable {
+        public var phase: Phase
+        public var election: Election?
+        public var closing_at: UInt64?
+        public var closure: Closure?
+        public var anchor: Anchor?
+
+        public init(
+            phase: Phase,
+            election: Election? = nil,
+            closing_at: UInt64? = nil,
+            closure: Closure? = nil,
+            anchor: Anchor? = nil
+        ) {
+            self.phase = phase
+            self.election = election
+            self.closing_at = closing_at
+            self.closure = closure
+            self.anchor = anchor
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Phase.self, forKey: Key("phase"))
+            let v1 = try fields.decodeIfPresent(Election.self, forKey: Key("election"))
+            let v2 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("closing_at"))?.value
+            let v3 = try fields.decodeIfPresent(Closure.self, forKey: Key("closure"))
+            let v4 = try fields.decodeIfPresent(Anchor.self, forKey: Key("anchor"))
+            self.phase = v0
+            self.election = v1
+            self.closing_at = v2
+            self.closure = v3
+            self.anchor = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.phase, forKey: Key("phase"))
+            try fields.encode(self.election, forKey: Key("election"))
+            try fields.encode(self.closing_at.map { DecimalString($0) }, forKey: Key("closing_at"))
+            try fields.encode(self.closure, forKey: Key("closure"))
+            try fields.encode(self.anchor, forKey: Key("anchor"))
+        }
+    }
+
+    /// The app type `PollSummary`.
+    public struct PollSummary: Codable, Sendable, Equatable {
+        public var poll_id: String
+        public var title: String
+        public var creator: String
+        public var phase: Phase
+        public var created_at: UInt64
+        public var ballots: UInt32
+
+        public init(
+            poll_id: String,
+            title: String,
+            creator: String,
+            phase: Phase,
+            created_at: UInt64,
+            ballots: UInt32
+        ) {
+            self.poll_id = poll_id
+            self.title = title
+            self.creator = creator
+            self.phase = phase
+            self.created_at = created_at
+            self.ballots = ballots
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("poll_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("title"))
+            let v2 = try fields.decode(String.self, forKey: Key("creator"))
+            let v3 = try fields.decode(Phase.self, forKey: Key("phase"))
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            let v5 = try fields.decode(UInt32.self, forKey: Key("ballots"))
+            self.poll_id = v0
+            self.title = v1
+            self.creator = v2
+            self.phase = v3
+            self.created_at = v4
+            self.ballots = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.poll_id, forKey: Key("poll_id"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.creator, forKey: Key("creator"))
+            try fields.encode(self.phase, forKey: Key("phase"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+            try fields.encode(self.ballots, forKey: Key("ballots"))
+        }
+    }
+
+    /// The app type `PollView`.
+    public struct PollView: Codable, Sendable, Equatable {
+        public var poll_id: String
+        public var definition: PollDefinition
+        public var state: PollState
+        public var trustees: [TrusteeStatus]
+        public var turnout: [Turnout]
+        public var my_digest: String?
+        public var can_vote: Bool
+
+        public init(
+            poll_id: String,
+            definition: PollDefinition,
+            state: PollState,
+            trustees: [TrusteeStatus],
+            turnout: [Turnout],
+            my_digest: String? = nil,
+            can_vote: Bool
+        ) {
+            self.poll_id = poll_id
+            self.definition = definition
+            self.state = state
+            self.trustees = trustees
+            self.turnout = turnout
+            self.my_digest = my_digest
+            self.can_vote = can_vote
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("poll_id"))
+            let v1 = try fields.decode(PollDefinition.self, forKey: Key("definition"))
+            let v2 = try fields.decode(PollState.self, forKey: Key("state"))
+            let v3 = try fields.decode([TrusteeStatus].self, forKey: Key("trustees"))
+            let v4 = try fields.decode([Turnout].self, forKey: Key("turnout"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("my_digest"))
+            let v6 = try fields.decode(Bool.self, forKey: Key("can_vote"))
+            self.poll_id = v0
+            self.definition = v1
+            self.state = v2
+            self.trustees = v3
+            self.turnout = v4
+            self.my_digest = v5
+            self.can_vote = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.poll_id, forKey: Key("poll_id"))
+            try fields.encode(self.definition, forKey: Key("definition"))
+            try fields.encode(self.state, forKey: Key("state"))
+            try fields.encode(self.trustees, forKey: Key("trustees"))
+            try fields.encode(self.turnout, forKey: Key("turnout"))
+            try fields.encode(self.my_digest, forKey: Key("my_digest"))
+            try fields.encode(self.can_vote, forKey: Key("can_vote"))
+        }
+    }
+
+    /// The app type `QualifiedDealing`.
+    public struct QualifiedDealing: Codable, Sendable, Equatable {
+        public var dealer: String
+        public var dealing: WireDealing
+
+        public init(
+            dealer: String,
+            dealing: WireDealing
+        ) {
+            self.dealer = dealer
+            self.dealing = dealing
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("dealer"))
+            let v1 = try fields.decode(WireDealing.self, forKey: Key("dealing"))
+            self.dealer = v0
+            self.dealing = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.dealer, forKey: Key("dealer"))
+            try fields.encode(self.dealing, forKey: Key("dealing"))
+        }
+    }
+
+    /// The app type `TallyInputs`.
+    public struct TallyInputs: Codable, Sendable, Equatable {
+        public var aggregate: [WireCiphertext]
+        public var counted: UInt32
+
+        public init(
+            aggregate: [WireCiphertext],
+            counted: UInt32
+        ) {
+            self.aggregate = aggregate
+            self.counted = counted
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([WireCiphertext].self, forKey: Key("aggregate"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("counted"))
+            self.aggregate = v0
+            self.counted = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.aggregate, forKey: Key("aggregate"))
+            try fields.encode(self.counted, forKey: Key("counted"))
+        }
+    }
+
+    /// The app type `Transcript`.
+    public struct Transcript: Codable, Sendable, Equatable {
+        public var `protocol`: String
+        public var poll_id: String
+        public var definition: PollDefinition
+        public var state: PollState
+        public var ballots: [TranscriptBallot]
+        public var partials: [TranscriptPartial]
+        public var report: AuditReport
+
+        public init(
+            `protocol`: String,
+            poll_id: String,
+            definition: PollDefinition,
+            state: PollState,
+            ballots: [TranscriptBallot],
+            partials: [TranscriptPartial],
+            report: AuditReport
+        ) {
+            self.`protocol` = `protocol`
+            self.poll_id = poll_id
+            self.definition = definition
+            self.state = state
+            self.ballots = ballots
+            self.partials = partials
+            self.report = report
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("protocol"))
+            let v1 = try fields.decode(String.self, forKey: Key("poll_id"))
+            let v2 = try fields.decode(PollDefinition.self, forKey: Key("definition"))
+            let v3 = try fields.decode(PollState.self, forKey: Key("state"))
+            let v4 = try fields.decode([TranscriptBallot].self, forKey: Key("ballots"))
+            let v5 = try fields.decode([TranscriptPartial].self, forKey: Key("partials"))
+            let v6 = try fields.decode(AuditReport.self, forKey: Key("report"))
+            self.`protocol` = v0
+            self.poll_id = v1
+            self.definition = v2
+            self.state = v3
+            self.ballots = v4
+            self.partials = v5
+            self.report = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.`protocol`, forKey: Key("protocol"))
+            try fields.encode(self.poll_id, forKey: Key("poll_id"))
+            try fields.encode(self.definition, forKey: Key("definition"))
+            try fields.encode(self.state, forKey: Key("state"))
+            try fields.encode(self.ballots, forKey: Key("ballots"))
+            try fields.encode(self.partials, forKey: Key("partials"))
+            try fields.encode(self.report, forKey: Key("report"))
+        }
+    }
+
+    /// The app type `TranscriptBallot`.
+    public struct TranscriptBallot: Codable, Sendable, Equatable {
+        public var voter: String
+        public var digest: String
+        public var ballot: WireBallot
+        public var endorsed: Bool
+
+        public init(
+            voter: String,
+            digest: String,
+            ballot: WireBallot,
+            endorsed: Bool
+        ) {
+            self.voter = voter
+            self.digest = digest
+            self.ballot = ballot
+            self.endorsed = endorsed
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("voter"))
+            let v1 = try fields.decode(String.self, forKey: Key("digest"))
+            let v2 = try fields.decode(WireBallot.self, forKey: Key("ballot"))
+            let v3 = try fields.decode(Bool.self, forKey: Key("endorsed"))
+            self.voter = v0
+            self.digest = v1
+            self.ballot = v2
+            self.endorsed = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.voter, forKey: Key("voter"))
+            try fields.encode(self.digest, forKey: Key("digest"))
+            try fields.encode(self.ballot, forKey: Key("ballot"))
+            try fields.encode(self.endorsed, forKey: Key("endorsed"))
+        }
+    }
+
+    /// The app type `TranscriptPartial`.
+    public struct TranscriptPartial: Codable, Sendable, Equatable {
+        public var trustee: String
+        public var index: UInt32
+        public var options: [WirePartial]
+
+        public init(
+            trustee: String,
+            index: UInt32,
+            options: [WirePartial]
+        ) {
+            self.trustee = trustee
+            self.index = index
+            self.options = options
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("trustee"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("index"))
+            let v2 = try fields.decode([WirePartial].self, forKey: Key("options"))
+            self.trustee = v0
+            self.index = v1
+            self.options = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.trustee, forKey: Key("trustee"))
+            try fields.encode(self.index, forKey: Key("index"))
+            try fields.encode(self.options, forKey: Key("options"))
+        }
+    }
+
+    /// The app type `TrusteeStatus`.
+    public struct TrusteeStatus: Codable, Sendable, Equatable {
+        public var account: String
+        public var index: UInt32
+        public var transport_published: Bool
+        public var dealing_published: Bool
+        public var complaints_against: UInt32
+        public var qualified: Bool?
+        public var partial_published: Bool
+
+        public init(
+            account: String,
+            index: UInt32,
+            transport_published: Bool,
+            dealing_published: Bool,
+            complaints_against: UInt32,
+            qualified: Bool? = nil,
+            partial_published: Bool
+        ) {
+            self.account = account
+            self.index = index
+            self.transport_published = transport_published
+            self.dealing_published = dealing_published
+            self.complaints_against = complaints_against
+            self.qualified = qualified
+            self.partial_published = partial_published
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("index"))
+            let v2 = try fields.decode(Bool.self, forKey: Key("transport_published"))
+            let v3 = try fields.decode(Bool.self, forKey: Key("dealing_published"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("complaints_against"))
+            let v5 = try fields.decodeIfPresent(Bool.self, forKey: Key("qualified"))
+            let v6 = try fields.decode(Bool.self, forKey: Key("partial_published"))
+            self.account = v0
+            self.index = v1
+            self.transport_published = v2
+            self.dealing_published = v3
+            self.complaints_against = v4
+            self.qualified = v5
+            self.partial_published = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.index, forKey: Key("index"))
+            try fields.encode(self.transport_published, forKey: Key("transport_published"))
+            try fields.encode(self.dealing_published, forKey: Key("dealing_published"))
+            try fields.encode(self.complaints_against, forKey: Key("complaints_against"))
+            try fields.encode(self.qualified, forKey: Key("qualified"))
+            try fields.encode(self.partial_published, forKey: Key("partial_published"))
+        }
+    }
+
+    /// The app type `Turnout`.
+    public struct Turnout: Codable, Sendable, Equatable {
+        public var voter: String
+        public var digest: String
+        public var cast_at: UInt64
+
+        public init(
+            voter: String,
+            digest: String,
+            cast_at: UInt64
+        ) {
+            self.voter = voter
+            self.digest = digest
+            self.cast_at = cast_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("voter"))
+            let v1 = try fields.decode(String.self, forKey: Key("digest"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("cast_at")).value
+            self.voter = v0
+            self.digest = v1
+            self.cast_at = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.voter, forKey: Key("voter"))
+            try fields.encode(self.digest, forKey: Key("digest"))
+            try fields.encode(DecimalString(self.cast_at), forKey: Key("cast_at"))
+        }
+    }
+
+    /// The app type `WireBallot`.
+    public struct WireBallot: Codable, Sendable, Equatable {
+        public var choices: [WireChoice]
+        public var sum_proof: [WireBranch]
+
+        public init(
+            choices: [WireChoice],
+            sum_proof: [WireBranch]
+        ) {
+            self.choices = choices
+            self.sum_proof = sum_proof
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([WireChoice].self, forKey: Key("choices"))
+            let v1 = try fields.decode([WireBranch].self, forKey: Key("sum_proof"))
+            self.choices = v0
+            self.sum_proof = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.choices, forKey: Key("choices"))
+            try fields.encode(self.sum_proof, forKey: Key("sum_proof"))
+        }
+    }
+
+    /// The app type `WireBranch`.
+    public struct WireBranch: Codable, Sendable, Equatable {
+        public var c: String
+        public var z: String
+
+        public init(
+            c: String,
+            z: String
+        ) {
+            self.c = c
+            self.z = z
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("c"))
+            let v1 = try fields.decode(String.self, forKey: Key("z"))
+            self.c = v0
+            self.z = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.c, forKey: Key("c"))
+            try fields.encode(self.z, forKey: Key("z"))
+        }
+    }
+
+    /// The app type `WireChoice`.
+    public struct WireChoice: Codable, Sendable, Equatable {
+        public var a: String
+        public var b: String
+        public var proof: [WireBranch]
+
+        public init(
+            a: String,
+            b: String,
+            proof: [WireBranch]
+        ) {
+            self.a = a
+            self.b = b
+            self.proof = proof
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("a"))
+            let v1 = try fields.decode(String.self, forKey: Key("b"))
+            let v2 = try fields.decode([WireBranch].self, forKey: Key("proof"))
+            self.a = v0
+            self.b = v1
+            self.proof = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.a, forKey: Key("a"))
+            try fields.encode(self.b, forKey: Key("b"))
+            try fields.encode(self.proof, forKey: Key("proof"))
+        }
+    }
+
+    /// The app type `WireCiphertext`.
+    public struct WireCiphertext: Codable, Sendable, Equatable {
+        public var a: String
+        public var b: String
+
+        public init(
+            a: String,
+            b: String
+        ) {
+            self.a = a
+            self.b = b
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("a"))
+            let v1 = try fields.decode(String.self, forKey: Key("b"))
+            self.a = v0
+            self.b = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.a, forKey: Key("a"))
+            try fields.encode(self.b, forKey: Key("b"))
+        }
+    }
+
+    /// The app type `WireDealing`.
+    public struct WireDealing: Codable, Sendable, Equatable {
+        public var commitments: [String]
+        public var proof: WireBranch
+        public var shares: [WireEncShare]
+
+        public init(
+            commitments: [String],
+            proof: WireBranch,
+            shares: [WireEncShare]
+        ) {
+            self.commitments = commitments
+            self.proof = proof
+            self.shares = shares
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([String].self, forKey: Key("commitments"))
+            let v1 = try fields.decode(WireBranch.self, forKey: Key("proof"))
+            let v2 = try fields.decode([WireEncShare].self, forKey: Key("shares"))
+            self.commitments = v0
+            self.proof = v1
+            self.shares = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.commitments, forKey: Key("commitments"))
+            try fields.encode(self.proof, forKey: Key("proof"))
+            try fields.encode(self.shares, forKey: Key("shares"))
+        }
+    }
+
+    /// The app type `WireEncShare`.
+    public struct WireEncShare: Codable, Sendable, Equatable {
+        public var r: String
+        public var v: String
+
+        public init(
+            r: String,
+            v: String
+        ) {
+            self.r = r
+            self.v = v
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("r"))
+            let v1 = try fields.decode(String.self, forKey: Key("v"))
+            self.r = v0
+            self.v = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.r, forKey: Key("r"))
+            try fields.encode(self.v, forKey: Key("v"))
+        }
+    }
+
+    /// The app type `WirePartial`.
+    public struct WirePartial: Codable, Sendable, Equatable {
+        public var d: String
+        public var proof: WireBranch
+
+        public init(
+            d: String,
+            proof: WireBranch
+        ) {
+            self.d = d
+            self.proof = proof
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("d"))
+            let v1 = try fields.decode(WireBranch.self, forKey: Key("proof"))
+            self.d = v0
+            self.proof = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.d, forKey: Key("d"))
+            try fields.encode(self.proof, forKey: Key("proof"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

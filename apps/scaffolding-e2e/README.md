@@ -153,14 +153,19 @@ owner holds every first seat v1 gave the context creator.
   invitations are org invites (`components/InviteCard.tsx`, a passkey step-up,
   redeemed after sign-in, which opens that org's instance). The pending invite
   is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out.
-- `src/api/rpc.ts` is the **one adapter**: the sections keep calling v1's method
-  names with v1's arguments, and it picks `client.view` or `client.call` from the
-  ABI (`src/api/abi.ts`), renames to camelCase and converts 64-bit integers both
-  ways; `api/kvStore.ts` turns record results back into v1's shape. So the
-  sections are unchanged apart from copy. `abi.test.ts` checks that `abi.ts` is
-  the committed ABI, that the adapter calls every method with the ABI's
-  parameter names, and that **every method is reachable from a screen** (it
-  replaces `scripts/check-contract-calls.mjs`).
+- The contract is called through `ScaffoldingE2eClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F scaffolding-e2e codegen` after a contract change, and CI fails when
+  it is stale). `src/api/kvStore.ts` has one function per contract method for
+  the sections, each calling the class with the ABI's argument names (`u64` for
+  64-bit integers) and answering the envelope the sections display;
+  `src/api/rpc.ts` builds that envelope (`run`), folds contract errors into it
+  and turns 64-bit results back into numbers (`int`), and `v1Record` turns
+  record results back into v1's shape. So the sections are unchanged apart from
+  copy. `client.test.ts` checks the class against the committed ABI;
+  `abi.test.ts` that every method is called with the ABI's parameter names, and
+  that **every method is reachable from a screen** (it replaces
+  `scripts/check-contract-calls.mjs`).
 - Blobs go to the open instance (`client.uploadBlob` / `downloadBlob`);
   presence is `client.publishPresence` / `presenceStream`.
 - **Setup** (was the node/namespace/context wizard) shows the open instance,

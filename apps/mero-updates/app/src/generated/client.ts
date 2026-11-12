@@ -4,47 +4,234 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `AskView`: the ABI names it without its shape. */
-export type AskView = unknown;
+/** The app type `AskInput`. */
+export interface AskInput {
+  id: string | null;
+  kind: string;
+  title: string;
+  detail: string;
+}
 
-/** The app type `CategoryView`: the ABI names it without its shape. */
-export type CategoryView = unknown;
+/** The app type `AskView`. */
+export interface AskView {
+  id: string;
+  postId: string;
+  postTitle: string;
+  kind: string;
+  title: string;
+  detail: string;
+  status: string;
+  createdAt: string;
+  offerCount: string;
+  offers: OfferView[];
+  myOffer: OfferView | null;
+}
 
-/** The app type `CommentView`: the ABI names it without its shape. */
-export type CommentView = unknown;
+/** The app type `CategoryView`. */
+export interface CategoryView {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  updateCount: string;
+  unreadCount: string;
+  muted: boolean;
+}
 
-/** The app type `ContributionView`: the ABI names it without its shape. */
-export type ContributionView = unknown;
+/** The app type `CommentView`. */
+export interface CommentView {
+  id: string;
+  postId: string;
+  parentId: string;
+  author: string;
+  authorName: string;
+  authorIsTeam: boolean;
+  body: string;
+  createdAt: string;
+  editedAt: string;
+}
 
-/** The app type `DraftView`: the ABI names it without its shape. */
-export type DraftView = unknown;
+/** The app type `ContributionView`. */
+export interface ContributionView {
+  askId: string;
+  askTitle: string;
+  askKind: string;
+  account: string;
+  name: string;
+  firm: string;
+  note: string;
+  acceptedAt: string;
+}
 
-/** The app type `EngagementRow`: the ABI names it without its shape. */
-export type EngagementRow = unknown;
+/** The app type `DraftView`. */
+export interface DraftView {
+  id: string;
+  title: string;
+  payload: string;
+  updatedAt: string;
+}
 
-/** The app type `MeView`: the ABI names it without its shape. */
-export type MeView = unknown;
+/** The app type `EngagementRow`. */
+export interface EngagementRow {
+  postId: string;
+  title: string;
+  categoryId: string;
+  publishedAt: string;
+  readers: ReaderView[];
+  notRead: ReaderView[];
+  reactions: string;
+  comments: string;
+  offers: string;
+}
 
-/** The app type `MetricSeries`: the ABI names it without its shape. */
-export type MetricSeries = unknown;
+/** The app type `MeView`. */
+export interface MeView {
+  account: string;
+  name: string;
+  firm: string;
+  isAdmin: boolean;
+  isTeam: boolean;
+  muted: string[];
+}
 
-/** The app type `Overview`: the ABI names it without its shape. */
-export type Overview = unknown;
+/** The app type `Metric`. */
+export interface Metric {
+  name: string;
+  value: string;
+  unit: string;
+}
 
-/** The app type `PersonView`: the ABI names it without its shape. */
-export type PersonView = unknown;
+/** The app type `MetricPoint`. */
+export interface MetricPoint {
+  postId: string;
+  postTitle: string;
+  at: string;
+  value: string;
+}
 
-/** The app type `PostPage`: the ABI names it without its shape. */
-export type PostPage = unknown;
+/** The app type `MetricSeries`. */
+export interface MetricSeries {
+  name: string;
+  unit: string;
+  points: MetricPoint[];
+}
 
-/** The app type `PostView`: the ABI names it without its shape. */
-export type PostView = unknown;
+/** The app type `OfferView`. */
+export interface OfferView {
+  askId: string;
+  account: string;
+  name: string;
+  firm: string;
+  note: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
-/** The app type `Settings`: the ABI names it without its shape. */
-export type Settings = unknown;
+/** The app type `Overview`. */
+export interface Overview {
+  companyName: string;
+  cadenceDays: number;
+  lastUpdateAt: string;
+  nextDueAt: string;
+  updatesTotal: string;
+  unreadUpdates: string;
+  openAsks: string;
+  openQuestions: string;
+  people: string;
+  isTeam: boolean;
+}
 
-/** The app type `UpdateInput`: the ABI names it without its shape. */
-export type UpdateInput = unknown;
+/** The app type `PersonView`. */
+export interface PersonView {
+  account: string;
+  name: string;
+  firm: string;
+  isAdmin: boolean;
+  isTeam: boolean;
+  joinedAt: string;
+  updatesRead: string;
+  updatesTotal: string;
+  lastReadAt: string;
+  comments: string;
+  offers: string;
+  acceptedOffers: string;
+}
+
+/** The app type `PostCard`. */
+export interface PostCard {
+  id: string;
+  kind: string;
+  author: string;
+  authorName: string;
+  authorIsTeam: boolean;
+  title: string;
+  summary: string;
+  categoryId: string;
+  status: string;
+  createdAt: string;
+  editedAt: string;
+  commentCount: string;
+  askCount: string;
+  openAskCount: string;
+  metricCount: string;
+  readCount: string;
+  readByMe: boolean;
+  reactions: ReactionCount[];
+}
+
+/** The app type `PostPage`. */
+export interface PostPage {
+  items: PostCard[];
+  nextCursor: string | null;
+}
+
+/** The app type `PostView`. */
+export interface PostView {
+  card: PostCard;
+  sections: Section[];
+  metrics: Metric[];
+  asks: AskView[];
+}
+
+/** The app type `ReactionCount`. */
+export interface ReactionCount {
+  emoji: string;
+  count: string;
+  mine: boolean;
+}
+
+/** The app type `ReaderView`. */
+export interface ReaderView {
+  account: string;
+  name: string;
+  firm: string;
+  firstAt: string;
+}
+
+/** The app type `Section`. */
+export interface Section {
+  kind: string;
+  title: string;
+  body: string;
+}
+
+/** The app type `Settings`. */
+export interface Settings {
+  companyName: string;
+  cadenceDays: number;
+  updatedAt: string;
+}
+
+/** The app type `UpdateInput`. */
+export interface UpdateInput {
+  title: string;
+  summary: string;
+  categoryId: string;
+  sections: Section[];
+  metrics: Metric[];
+  asks: AskInput[];
+}
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

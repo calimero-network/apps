@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { docTextFromBlocks } from '@/lib/search/docText';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 import { useTextMatch } from '../useTextMatch';
@@ -25,20 +25,19 @@ const rows = [
 ];
 
 // f1's node answers from its index; f2's runs with search off.
-const f1 = {
-  searchDocs: vi.fn(async () => ({
+const f1Search = vi.fn(async (_args: unknown) => ({
     hits: [{ id: 'a', title: 'Notes', snippet: '', score: 1, archived: false }],
     total: 1,
-    next_cursor: null,
-  })),
-} as unknown as DocsClient;
-const f2 = {
+    nextCursor: null,
+  }));
+const f1 = docsOver({ searchDocs: f1Search });
+const f2 = docsOver({
   searchDocs: vi.fn(async () => {
     throw new Error(
       'search_query is only available in a view on a node with search',
     );
   }),
-} as unknown as DocsClient;
+});
 
 const texts = new Map([
   [
@@ -105,9 +104,9 @@ describe('useTextMatch', () => {
         [rowKey('f1', 'a'), rowKey('f1', 'b'), rowKey('f2', 'd')].sort(),
       ),
     );
-    expect(vi.mocked(f1.searchDocs)).toHaveBeenCalledWith({
+    expect(f1Search).toHaveBeenCalledWith({
       query: 'budget',
-      include_archived: true,
+      includeArchived: true,
       cursor: null,
       limit: 100,
     });

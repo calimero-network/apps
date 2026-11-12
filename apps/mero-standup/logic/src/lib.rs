@@ -151,7 +151,7 @@ pub struct Profile {
 // ── Views (what methods return) ──────────────────────────────────────────────
 
 /// Someone named in a view, with the name they chose ("" if none).
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonView {
     pub account: String,
@@ -159,7 +159,7 @@ pub struct PersonView {
 }
 
 /// An offer to help with a blocker.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct HelpView {
     pub account: String,
@@ -170,14 +170,14 @@ pub struct HelpView {
 }
 
 /// A tag and how many decisions carry it.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct TagCount {
     pub tag: String,
     pub count: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateView {
     pub day: String,
@@ -197,7 +197,7 @@ pub struct UpdateView {
 }
 
 /// Everyone's standup for one day.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DayView {
     pub day: String,
@@ -205,7 +205,7 @@ pub struct DayView {
     pub updates: Vec<UpdateView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DaySummary {
     pub day: String,
@@ -216,7 +216,7 @@ pub struct DaySummary {
 }
 
 /// Days with at least one update, newest first.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DayPage {
     pub days: Vec<DaySummary>,
@@ -225,7 +225,7 @@ pub struct DayPage {
 }
 
 /// Someone who has taken part: posted an update or named themselves.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberView {
     pub account: String,
@@ -234,7 +234,7 @@ pub struct MemberView {
     pub last_day: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DecisionView {
     pub id: String,
@@ -255,7 +255,7 @@ pub struct DecisionView {
     pub from_day: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DecisionPage {
     pub items: Vec<DecisionView>,

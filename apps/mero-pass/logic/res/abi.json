@@ -379,5 +379,227 @@
     },
     "version": 1
   },
+  "types": {
+    "AuditView": {
+      "fields": [
+        [
+          "action",
+          "string"
+        ],
+        [
+          "target",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "device",
+          "string"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ],
+        [
+          "redacted",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DeviceView": {
+      "fields": [
+        [
+          "fingerprint",
+          "string"
+        ],
+        [
+          "publicKey",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "addedAt",
+          "u64"
+        ],
+        [
+          "revoked",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "KeyWrapInput": {
+      "fields": [
+        [
+          "keyId",
+          "string"
+        ],
+        [
+          "recipient",
+          "string"
+        ],
+        [
+          "wrapper",
+          "string"
+        ],
+        [
+          "envelope",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "KeyWrapView": {
+      "fields": [
+        [
+          "keyId",
+          "string"
+        ],
+        [
+          "recipient",
+          "string"
+        ],
+        [
+          "wrapper",
+          "string"
+        ],
+        [
+          "envelope",
+          "string"
+        ],
+        [
+          "wrappedBy",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ],
+        [
+          "devices",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RevisionView": {
+      "fields": [
+        [
+          "field",
+          "string"
+        ],
+        [
+          "previous",
+          "string"
+        ],
+        [
+          "replacedAt",
+          "u64"
+        ],
+        [
+          "replacedBy",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SecretView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "tags",
+          "string"
+        ],
+        [
+          "fields",
+          "BTreeMap<String,String>"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ],
+        [
+          "updatedBy",
+          "string"
+        ],
+        [
+          "trashed",
+          "bool"
+        ],
+        [
+          "trashedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "VaultInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "currentKey",
+          "string"
+        ],
+        [
+          "defaultRole",
+          "string"
+        ],
+        [
+          "myAccount",
+          "string"
+        ],
+        [
+          "myRole",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

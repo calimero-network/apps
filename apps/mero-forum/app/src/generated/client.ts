@@ -4,14 +4,44 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `CommentPage`: the ABI names it without its shape. */
-export type CommentPage = unknown;
+/** The app type `CommentPage`. */
+export interface CommentPage {
+  items: CommentView[];
+  nextCursor: string | null;
+}
 
-/** The app type `PostPage`: the ABI names it without its shape. */
-export type PostPage = unknown;
+/** The app type `CommentView`. */
+export interface CommentView {
+  id: string;
+  postId: string;
+  author: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  editedAt: string;
+  score: string;
+  myVote: number;
+}
 
-/** The app type `PostView`: the ABI names it without its shape. */
-export type PostView = unknown;
+/** The app type `PostPage`. */
+export interface PostPage {
+  items: PostView[];
+  nextCursor: string | null;
+}
+
+/** The app type `PostView`. */
+export interface PostView {
+  id: string;
+  author: string;
+  authorName: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  editedAt: string;
+  score: string;
+  commentCount: string;
+  myVote: number;
+}
 
 /** The arguments of `createComment`. */
 export interface CreateCommentArgs {

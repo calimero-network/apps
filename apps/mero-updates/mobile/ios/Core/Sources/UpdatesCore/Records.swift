@@ -3,17 +3,24 @@ import MeroKit
 
 // The audience's types, as the v1 client typed them (snake_case fields, u64s as numbers). The calls
 // are the generated `UpdatesClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root),
-// which speaks the component ABI; until the logic derives `AbiType` the ABI names these types
-// without their shape, so the client takes and answers their JSON and `ComponentWire` converts it
-// (`JSONValue.decoded(as:)`, `JSONValue.wire(_:)`).
+// which speaks the component ABI and takes and answers its own typed records; `ComponentWire`
+// converts between them and these types through their JSON (`decoded(as:)`, `JSONValue.wire(_:)`,
+// `converted()`).
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the types below), read through
     /// ``ComponentWire/incoming(_:)``.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try JSONDecoder().decode(type, from: try ComponentWire.incoming(MeroJSON.encode(self)))
     }
 
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    public func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
+    }
+}
+
+extension JSONValue {
     /// `value` (one of the types below) as the contract takes it: camelCase keys.
     public static func wire<T: Encodable>(_ value: T) throws -> JSONValue {
         let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])

@@ -161,11 +161,14 @@ as in v1.
   (`src/session.ts`, `src/sessionContext.tsx`): a passkey sign-in or sign-up
   modal, the session stored per app and per target. The dev server runs on
   exactly `http://localhost:5173/` (`pnpm dev:local`).
-- `src/api/spreadsheet/SpreadsheetClient.ts` is the typed adapter: v1's class,
-  method names and parameter shapes, mapped to `client.call` / `client.view`
-  with the ABI's names; it turns decimal strings back into numbers and owns the
-  linked-workbook relay. `SpreadsheetClient.test.ts` checks its method list and
-  argument names against the committed `logic/res/abi.json`.
+- The contract is called through `MeroSheetsClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-sheets codegen` after a contract change, and CI fails when it is
+  stale), with the ABI's argument names; `src/client.test.ts` checks it against
+  the ABI. `src/api/spreadsheet/workbook.ts` builds it for a workbook over a
+  transport that turns the answers' decimal strings back into numbers, and owns
+  the linked-workbook relay (`publishRange`, `relay`, `unpublish`, and the relay
+  after an edit to a linked sheet); `workbook.test.ts` covers both.
 - `src/lib/workspaces.ts`: workspaces are orgs, spreadsheets are instances
   (`listApps` by the dev bundle or the package, `createApp(name, source, { org })`),
   invitations are org invites (`invite` is a passkey step-up). The first

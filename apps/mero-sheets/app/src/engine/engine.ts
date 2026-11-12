@@ -1,5 +1,5 @@
 // Lazy loader for the committed wasm-pack (--target web) recalc engine.
-import type { FunctionDef, NamedRange, SheetLayout } from '../api/spreadsheet/SpreadsheetClient';
+import type { FunctionDef, NamedRange, SheetLayout } from '../api/spreadsheet/types';
 import type { Order } from './derive';
 import init, {
   condition_describe as wasmConditionDescribe,

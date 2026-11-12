@@ -280,5 +280,210 @@
     },
     "version": 1
   },
+  "types": {
+    "ChunkView": {
+      "fields": [
+        [
+          "seq",
+          "u64"
+        ],
+        [
+          "from",
+          "string"
+        ],
+        [
+          "track",
+          "u8"
+        ],
+        [
+          "isKeyframe",
+          "bool"
+        ],
+        [
+          "codec",
+          "string"
+        ],
+        [
+          "width",
+          "u16"
+        ],
+        [
+          "height",
+          "u16"
+        ],
+        [
+          "timestampUs",
+          "u64"
+        ],
+        [
+          "dataB64",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DecodedFrame": {
+      "fields": [
+        [
+          "seq",
+          "u64"
+        ],
+        [
+          "from",
+          "string"
+        ],
+        [
+          "track",
+          "u8"
+        ],
+        [
+          "width",
+          "u16"
+        ],
+        [
+          "height",
+          "u16"
+        ],
+        [
+          "pixels",
+          "bytes"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "encodedBytes",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LiveStats": {
+      "fields": [
+        [
+          "liveChunks",
+          "u32"
+        ],
+        [
+          "liveBytes",
+          "u64"
+        ],
+        [
+          "prunedChunks",
+          "u64"
+        ],
+        [
+          "senders",
+          "list<SenderStats>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "memberId",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "joinedAt",
+          "u64"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SenderCursor": {
+      "fields": [
+        [
+          "from",
+          "string"
+        ],
+        [
+          "afterSeq",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SenderStats": {
+      "fields": [
+        [
+          "from",
+          "string"
+        ],
+        [
+          "nextSeq",
+          "u64"
+        ],
+        [
+          "oldestLive",
+          "u64"
+        ],
+        [
+          "lastKeyframe",
+          "u64"
+        ],
+        [
+          "newestAt",
+          "u64"
+        ],
+        [
+          "pruned",
+          "u64"
+        ],
+        [
+          "liveChunks",
+          "u32"
+        ],
+        [
+          "liveBytes",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "StreamStats": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "memberCount",
+          "u32"
+        ],
+        [
+          "liveFragments",
+          "u32"
+        ],
+        [
+          "nextSeq",
+          "u64"
+        ],
+        [
+          "oldestLiveSeq",
+          "u64"
+        ],
+        [
+          "prunedFrames",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

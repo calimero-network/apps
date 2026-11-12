@@ -406,5 +406,629 @@
     },
     "version": 1
   },
+  "types": {
+    "Anchor": {
+      "fields": [
+        [
+          "digest",
+          "string"
+        ],
+        [
+          "network",
+          "string"
+        ],
+        [
+          "reference",
+          "string"
+        ],
+        [
+          "anchored_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AuditReport": {
+      "fields": [
+        [
+          "poll_id",
+          "string"
+        ],
+        [
+          "phase",
+          "Phase"
+        ],
+        [
+          "verified",
+          "bool"
+        ],
+        [
+          "checks",
+          "list<Check>"
+        ],
+        [
+          "counts",
+          "option<list<u32>>"
+        ],
+        [
+          "counted_ballots",
+          "u32"
+        ],
+        [
+          "decrypted_by",
+          "list<string>"
+        ],
+        [
+          "transcript_digest",
+          "option<string>"
+        ],
+        [
+          "anchor",
+          "option<Anchor>"
+        ],
+        [
+          "uncounted",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Ceremony": {
+      "fields": [
+        [
+          "threshold",
+          "u32"
+        ],
+        [
+          "trustees",
+          "list<CeremonyTrustee>"
+        ],
+        [
+          "complaints",
+          "list<ComplaintView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CeremonyTrustee": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "index",
+          "u32"
+        ],
+        [
+          "transport",
+          "option<string>"
+        ],
+        [
+          "dealing",
+          "option<WireDealing>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Check": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "ok",
+          "bool"
+        ],
+        [
+          "detail",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Closure": {
+      "fields": [
+        [
+          "counted",
+          "list<CountedBallot>"
+        ],
+        [
+          "aggregate",
+          "list<WireCiphertext>"
+        ],
+        [
+          "closed_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ComplaintView": {
+      "fields": [
+        [
+          "recipient",
+          "string"
+        ],
+        [
+          "dealer",
+          "string"
+        ],
+        [
+          "valid",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CountedBallot": {
+      "fields": [
+        [
+          "voter",
+          "string"
+        ],
+        [
+          "digest",
+          "string"
+        ],
+        [
+          "frozen",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Election": {
+      "fields": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "threshold",
+          "u32"
+        ],
+        [
+          "transport",
+          "list<string>"
+        ],
+        [
+          "qualified",
+          "list<QualifiedDealing>"
+        ],
+        [
+          "disqualified",
+          "list<string>"
+        ],
+        [
+          "opened_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Identity": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Phase": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "KeyCeremony"
+        },
+        {
+          "name": "Voting"
+        },
+        {
+          "name": "Closing"
+        },
+        {
+          "name": "Closed"
+        }
+      ]
+    },
+    "PollDefinition": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "options",
+          "list<string>"
+        ],
+        [
+          "min_choices",
+          "u32"
+        ],
+        [
+          "max_choices",
+          "u32"
+        ],
+        [
+          "trustees",
+          "list<string>"
+        ],
+        [
+          "threshold",
+          "u32"
+        ],
+        [
+          "voters",
+          "list<string>"
+        ],
+        [
+          "creator",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64"
+        ],
+        [
+          "closes_at",
+          "option<u64>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PollState": {
+      "fields": [
+        [
+          "phase",
+          "Phase"
+        ],
+        [
+          "election",
+          "option<Election>"
+        ],
+        [
+          "closing_at",
+          "option<u64>"
+        ],
+        [
+          "closure",
+          "option<Closure>"
+        ],
+        [
+          "anchor",
+          "option<Anchor>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PollSummary": {
+      "fields": [
+        [
+          "poll_id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "creator",
+          "string"
+        ],
+        [
+          "phase",
+          "Phase"
+        ],
+        [
+          "created_at",
+          "u64"
+        ],
+        [
+          "ballots",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PollView": {
+      "fields": [
+        [
+          "poll_id",
+          "string"
+        ],
+        [
+          "definition",
+          "PollDefinition"
+        ],
+        [
+          "state",
+          "PollState"
+        ],
+        [
+          "trustees",
+          "list<TrusteeStatus>"
+        ],
+        [
+          "turnout",
+          "list<Turnout>"
+        ],
+        [
+          "my_digest",
+          "option<string>"
+        ],
+        [
+          "can_vote",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "QualifiedDealing": {
+      "fields": [
+        [
+          "dealer",
+          "string"
+        ],
+        [
+          "dealing",
+          "WireDealing"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TallyInputs": {
+      "fields": [
+        [
+          "aggregate",
+          "list<WireCiphertext>"
+        ],
+        [
+          "counted",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Transcript": {
+      "fields": [
+        [
+          "protocol",
+          "string"
+        ],
+        [
+          "poll_id",
+          "string"
+        ],
+        [
+          "definition",
+          "PollDefinition"
+        ],
+        [
+          "state",
+          "PollState"
+        ],
+        [
+          "ballots",
+          "list<TranscriptBallot>"
+        ],
+        [
+          "partials",
+          "list<TranscriptPartial>"
+        ],
+        [
+          "report",
+          "AuditReport"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TranscriptBallot": {
+      "fields": [
+        [
+          "voter",
+          "string"
+        ],
+        [
+          "digest",
+          "string"
+        ],
+        [
+          "ballot",
+          "WireBallot"
+        ],
+        [
+          "endorsed",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TranscriptPartial": {
+      "fields": [
+        [
+          "trustee",
+          "string"
+        ],
+        [
+          "index",
+          "u32"
+        ],
+        [
+          "options",
+          "list<WirePartial>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TrusteeStatus": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "index",
+          "u32"
+        ],
+        [
+          "transport_published",
+          "bool"
+        ],
+        [
+          "dealing_published",
+          "bool"
+        ],
+        [
+          "complaints_against",
+          "u32"
+        ],
+        [
+          "qualified",
+          "option<bool>"
+        ],
+        [
+          "partial_published",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Turnout": {
+      "fields": [
+        [
+          "voter",
+          "string"
+        ],
+        [
+          "digest",
+          "string"
+        ],
+        [
+          "cast_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireBallot": {
+      "fields": [
+        [
+          "choices",
+          "list<WireChoice>"
+        ],
+        [
+          "sum_proof",
+          "list<WireBranch>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireBranch": {
+      "fields": [
+        [
+          "c",
+          "string"
+        ],
+        [
+          "z",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireChoice": {
+      "fields": [
+        [
+          "a",
+          "string"
+        ],
+        [
+          "b",
+          "string"
+        ],
+        [
+          "proof",
+          "list<WireBranch>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireCiphertext": {
+      "fields": [
+        [
+          "a",
+          "string"
+        ],
+        [
+          "b",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireDealing": {
+      "fields": [
+        [
+          "commitments",
+          "list<string>"
+        ],
+        [
+          "proof",
+          "WireBranch"
+        ],
+        [
+          "shares",
+          "list<WireEncShare>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WireEncShare": {
+      "fields": [
+        [
+          "r",
+          "string"
+        ],
+        [
+          "v",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WirePartial": {
+      "fields": [
+        [
+          "d",
+          "string"
+        ],
+        [
+          "proof",
+          "WireBranch"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

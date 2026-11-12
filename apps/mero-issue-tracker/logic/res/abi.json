@@ -388,5 +388,124 @@
     },
     "version": 1
   },
+  "types": {
+    "Comment": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "issueId",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "option<u64>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "IssueDetail": {
+      "fields": [
+        [
+          "issue",
+          "IssueView"
+        ],
+        [
+          "comments",
+          "list<Comment>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "IssueView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "impact",
+          "string"
+        ],
+        [
+          "repro",
+          "string"
+        ],
+        [
+          "resolutionCriteria",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "priority",
+          "string"
+        ],
+        [
+          "assignee",
+          "option<string>"
+        ],
+        [
+          "labels",
+          "list<string>"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RepoInfo": {
+      "fields": [
+        [
+          "repoUrl",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "StatusCount": {
+      "fields": [
+        [
+          "status",
+          "string"
+        ],
+        [
+          "count",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

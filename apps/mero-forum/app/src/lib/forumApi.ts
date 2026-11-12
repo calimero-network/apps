@@ -2,15 +2,21 @@
  * The ONE place the forum contract's answers are adapted to the shapes the
  * screens use. The contract is called through `MeroForumClient`, which
  * `mero-app-build codegen` writes from logic/res/abi.json
- * (`src/generated/client.ts`); the ABI names its records without their shapes,
- * so the generated types are `unknown` and each read passes its answer through
- * the adapter for its shape below.
+ * (`src/generated/client.ts`) and types its records from the ABI; each read
+ * passes its answer through the adapter for its shape below.
  *
  * The component contract answers camelCase records with 64-bit integers as
  * decimal strings (`"createdAt": "1700000000000"`, `"score": "-1"`). The
  * screens were written against v1's generated client: snake_case fields and
  * plain numbers. Converting here keeps every screen as it was.
  */
+
+import type {
+  CommentPage as WireCommentPage,
+  CommentView as WireComment,
+  PostPage as WirePostPage,
+  PostView as WirePost,
+} from "../generated/client";
 
 // ── what the screens use (v1's shapes) ───────────────────────────────────────
 
@@ -52,40 +58,12 @@ export interface CommentPage {
   next_cursor: string | null;
 }
 
-// ── what the contract answers ────────────────────────────────────────────────
+// ── what the contract answers (the generated client's types) ─────────────────
+
+export type { WireComment, WirePost };
 
 /** A u64 / i64 travels as a decimal string. */
 type Int = string;
-
-export interface WirePost {
-  id: string;
-  author: string;
-  authorName: string;
-  title: string;
-  body: string;
-  createdAt: Int;
-  editedAt: Int;
-  score: Int;
-  commentCount: Int;
-  myVote: number;
-}
-
-export interface WireComment {
-  id: string;
-  postId: string;
-  author: string;
-  authorName: string;
-  body: string;
-  createdAt: Int;
-  editedAt: Int;
-  score: Int;
-  myVote: number;
-}
-
-interface WirePage<T> {
-  items: T[];
-  nextCursor: string | null;
-}
 
 /** A decimal string as a number. Timestamps and scores are well inside 2^53. */
 export function int(value: Int | number): number {
@@ -122,16 +100,14 @@ export function toCommentView(c: WireComment): CommentView {
 }
 
 /** `getPost`'s answer. */
-export const toPost = (v: unknown): PostView => toPostView(v as WirePost);
+export const toPost = (v: WirePost): PostView => toPostView(v);
 
 /** `listPosts`'s answer. */
-export function toPostPage(v: unknown): PostPage {
-  const page = v as WirePage<WirePost>;
+export function toPostPage(page: WirePostPage): PostPage {
   return { items: page.items.map(toPostView), next_cursor: page.nextCursor };
 }
 
 /** `listComments`'s answer. */
-export function toCommentPage(v: unknown): CommentPage {
-  const page = v as WirePage<WireComment>;
+export function toCommentPage(page: WireCommentPage): CommentPage {
   return { items: page.items.map(toCommentView), next_cursor: page.nextCursor };
 }

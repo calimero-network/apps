@@ -60,9 +60,9 @@ public struct PassVaultAPI: VaultScreenAPI {
         Int(
             try await client.addKeyWraps(
                 wraps: wraps.map {
-                    try JSONValue(
-                        encoding: KeyWrapInput(
-                            keyId: $0.keyId, recipient: $0.recipient, wrapper: $0.wrapper, envelope: $0.envelope))
+                    try KeyWrapInput(
+                        keyId: $0.keyId, recipient: $0.recipient, wrapper: $0.wrapper, envelope: $0.envelope
+                    ).converted() as PassClient.KeyWrapInput
                 }))
     }
 

@@ -29,10 +29,9 @@ extension ForumClient {
     }
 }
 
-extension JSONValue {
-    /// This answer as the app type `T` (one of the types below). The ABI names `PostView`,
-    /// `PostPage` and `CommentPage` without their shape until the logic derives `AbiType`, so the
-    /// generated client answers their JSON and the types below read it.
+extension Encodable {
+    /// This answer as the app type `T` (one of the types below), read through its JSON: the
+    /// generated client answers its own typed records (`PostView`, `PostPage`, `CommentPage`).
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }

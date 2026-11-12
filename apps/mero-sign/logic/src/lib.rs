@@ -79,7 +79,7 @@ pub struct Info {
 }
 
 /// A saved signature image (private library).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureRecord {
     /// Below 2^53, a decimal string on the wire.
@@ -96,7 +96,7 @@ pub struct SignatureRecord {
 }
 
 /// Participant roles in shared contexts, as recorded in the private library.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub enum ParticipantRole {
     Owner,
     Signer,
@@ -105,7 +105,7 @@ pub enum ParticipantRole {
 }
 
 /// A shared agreement the owner of a private library joined.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextMetadata {
     /// The agreement's app id.
@@ -121,7 +121,7 @@ pub struct ContextMetadata {
 
 /// Which identity the owner uses in a joined agreement. Under 1.0 both are
 /// the owner's account; kept so v1 clients read the same record.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct IdentityMapping {
     pub private_identity: String,
@@ -133,7 +133,7 @@ pub struct IdentityMapping {
 }
 
 /// A document chunk with its embedding, for semantic search.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentChunk {
     pub text: String,
@@ -143,7 +143,7 @@ pub struct DocumentChunk {
 }
 
 /// Permission levels for participants.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub enum PermissionLevel {
     Read,
     Sign,
@@ -162,7 +162,7 @@ impl PermissionLevel {
 
 /// Document status, derived from the document's signatures. `FullySigned` is
 /// terminal: the signers a document waits for are fixed at upload.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub enum DocumentStatus {
     Pending,
     PartiallySigned,
@@ -228,7 +228,7 @@ pub struct SignedVersion {
 /// A document as read: its current version and status. `embeddings`,
 /// `extractedText` and `chunks` are always `null` (as in v1's
 /// `list_documents`); search reads them in place.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfo {
     pub id: String,
@@ -248,7 +248,7 @@ pub struct DocumentInfo {
 }
 
 /// A signature on a document, as read.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSignature {
     pub signer: String,
@@ -257,7 +257,7 @@ pub struct DocumentSignature {
 }
 
 /// A participant and their level.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ParticipantInfo {
     pub user_id: String,
@@ -265,7 +265,7 @@ pub struct ParticipantInfo {
 }
 
 /// Detailed information about an agreement.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextDetails {
     pub context_id: String,

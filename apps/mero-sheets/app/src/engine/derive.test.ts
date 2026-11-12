@@ -4,7 +4,7 @@ import {
   deriveSheetCells, diffComputed,
   type GridCell, type Overlay, type OverlayEntry, type Placement,
 } from './derive';
-import type { Cell } from '../api/spreadsheet/SpreadsheetClient';
+import type { Cell } from '../api/spreadsheet/types';
 
 const cell = (sheet: string, row: string, col: string, raw: string, computed = raw, format = ''): Cell => ({
   id: `${sheet}|${row}|${col}`, sheet_id: sheet, row_id: row, col_id: col,

@@ -4,17 +4,48 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `IssueDetail`: the ABI names it without its shape. */
-export type IssueDetail = unknown;
+/** The app type `Comment`. */
+export interface Comment {
+  id: string;
+  issueId: string;
+  author: string;
+  body: string;
+  createdAt: string;
+  editedAt: string | null;
+}
 
-/** The app type `IssueView`: the ABI names it without its shape. */
-export type IssueView = unknown;
+/** The app type `IssueDetail`. */
+export interface IssueDetail {
+  issue: IssueView;
+  comments: Comment[];
+}
 
-/** The app type `RepoInfo`: the ABI names it without its shape. */
-export type RepoInfo = unknown;
+/** The app type `IssueView`. */
+export interface IssueView {
+  id: string;
+  title: string;
+  summary: string;
+  impact: string;
+  repro: string;
+  resolutionCriteria: string;
+  status: string;
+  priority: string;
+  assignee: string | null;
+  labels: string[];
+  createdBy: string;
+  createdAt: string;
+}
 
-/** The app type `StatusCount`: the ABI names it without its shape. */
-export type StatusCount = unknown;
+/** The app type `RepoInfo`. */
+export interface RepoInfo {
+  repoUrl: string;
+}
+
+/** The app type `StatusCount`. */
+export interface StatusCount {
+  status: string;
+  count: string;
+}
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

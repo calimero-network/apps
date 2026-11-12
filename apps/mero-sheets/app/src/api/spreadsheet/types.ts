@@ -1,7 +1,7 @@
 /**
  * The contract's argument and answer shapes, as the frontend sees them: v1's
  * field names (snake_case) and numbers. On the wire every 64-bit integer is a
- * decimal string; `SpreadsheetClient` converts them back (see `./SpreadsheetClient`).
+ * decimal string; `workbook` converts them back on the way in (see `./workbook`).
  */
 
 /**

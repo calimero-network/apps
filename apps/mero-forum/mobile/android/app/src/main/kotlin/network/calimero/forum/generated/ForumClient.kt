@@ -41,15 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `CommentPage`: the ABI names it without its shape, so it is its JSON. */
-typealias CommentPage = JsonElement
-
-/** The app type `PostPage`: the ABI names it without its shape, so it is its JSON. */
-typealias PostPage = JsonElement
-
-/** The app type `PostView`: the ABI names it without its shape, so it is its JSON. */
-typealias PostView = JsonElement
-
 /**
  * The app's methods.
  *
@@ -200,7 +191,7 @@ class ForumClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PostView.serializer(),
         )
 
     /** view `listComments`. */
@@ -220,7 +211,7 @@ class ForumClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            CommentPage.serializer(),
         )
 
     /** view `listPosts`. */
@@ -240,7 +231,7 @@ class ForumClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PostPage.serializer(),
         )
 
     /** call `moderateComment`. */
@@ -531,6 +522,195 @@ class ForumClient private constructor(
         }
     }
 
+    /** The app type `CommentPage`. */
+    data class CommentPage(
+        val items: List<CommentView>,
+        val nextCursor: String? = null,
+    ) {
+        companion object {
+            /** `CommentPage`'s JSON form. */
+            fun serializer(): KSerializer<CommentPage> = Wire
+
+            private object Wire : KSerializer<CommentPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CommentPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("items", encode(ListSerializer(CommentView.serializer()), value.items))
+                            put("nextCursor", encode(String.serializer().nullable, value.nextCursor))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CommentPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CommentPage")
+                    return CommentPage(
+                        items = field(fields, "items", ListSerializer(CommentView.serializer())),
+                        nextCursor = field(fields, "nextCursor", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CommentView`. */
+    data class CommentView(
+        val id: String,
+        val postId: String,
+        val author: String,
+        val authorName: String,
+        val body: String,
+        val createdAt: ULong,
+        val editedAt: ULong,
+        val score: Long,
+        val myVote: Byte,
+    ) {
+        companion object {
+            /** `CommentView`'s JSON form. */
+            fun serializer(): KSerializer<CommentView> = Wire
+
+            private object Wire : KSerializer<CommentView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CommentView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("postId", encode(String.serializer(), value.postId))
+                            put("author", encode(String.serializer(), value.author))
+                            put("authorName", encode(String.serializer(), value.authorName))
+                            put("body", encode(String.serializer(), value.body))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("editedAt", encode(U64AsString, value.editedAt))
+                            put("score", encode(I64AsString, value.score))
+                            put("myVote", encode(Byte.serializer(), value.myVote))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CommentView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CommentView")
+                    return CommentView(
+                        id = field(fields, "id", String.serializer()),
+                        postId = field(fields, "postId", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        authorName = field(fields, "authorName", String.serializer()),
+                        body = field(fields, "body", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        editedAt = field(fields, "editedAt", U64AsString),
+                        score = field(fields, "score", I64AsString),
+                        myVote = field(fields, "myVote", Byte.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PostPage`. */
+    data class PostPage(
+        val items: List<PostView>,
+        val nextCursor: String? = null,
+    ) {
+        companion object {
+            /** `PostPage`'s JSON form. */
+            fun serializer(): KSerializer<PostPage> = Wire
+
+            private object Wire : KSerializer<PostPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PostPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("items", encode(ListSerializer(PostView.serializer()), value.items))
+                            put("nextCursor", encode(String.serializer().nullable, value.nextCursor))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PostPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PostPage")
+                    return PostPage(
+                        items = field(fields, "items", ListSerializer(PostView.serializer())),
+                        nextCursor = field(fields, "nextCursor", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PostView`. */
+    data class PostView(
+        val id: String,
+        val author: String,
+        val authorName: String,
+        val title: String,
+        val body: String,
+        val createdAt: ULong,
+        val editedAt: ULong,
+        val score: Long,
+        val commentCount: ULong,
+        val myVote: Byte,
+    ) {
+        companion object {
+            /** `PostView`'s JSON form. */
+            fun serializer(): KSerializer<PostView> = Wire
+
+            private object Wire : KSerializer<PostView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PostView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("author", encode(String.serializer(), value.author))
+                            put("authorName", encode(String.serializer(), value.authorName))
+                            put("title", encode(String.serializer(), value.title))
+                            put("body", encode(String.serializer(), value.body))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("editedAt", encode(U64AsString, value.editedAt))
+                            put("score", encode(I64AsString, value.score))
+                            put("commentCount", encode(U64AsString, value.commentCount))
+                            put("myVote", encode(Byte.serializer(), value.myVote))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PostView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PostView")
+                    return PostView(
+                        id = field(fields, "id", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        authorName = field(fields, "authorName", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        body = field(fields, "body", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        editedAt = field(fields, "editedAt", U64AsString),
+                        score = field(fields, "score", I64AsString),
+                        commentCount = field(fields, "commentCount", U64AsString),
+                        myVote = field(fields, "myVote", Byte.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -597,5 +777,11 @@ class ForumClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

@@ -19,7 +19,7 @@ final class WireTests: XCTestCase {
         let (backend, script) = makeBackend()
         for method in Self.calls + Self.views { script.raw(method) { _ in Data("null".utf8) } }
         let client = VoteClient.make(contract: backend.contract, contextId: ctx)
-        let branch = try JSONValue(encoding: WireBranch(c: "00", z: "00"))
+        let branch: VoteClient.WireBranch = try WireBranch(c: "00", z: "00").converted()
         _ = try? await client.whoami().decoded(as: Identity.self)
         _ = try? await client.roster().map({ try $0.decoded(as: Member.self) })
         _ = try? await client.listPolls().map({ try $0.decoded(as: PollSummary.self) })
@@ -35,10 +35,10 @@ final class WireTests: XCTestCase {
         try await client.publishTransportKey(pollId: pollId, key: "00", proof: branch)
         try await client.publishDealing(
             pollId: pollId,
-            dealing: try JSONValue(encoding: WireDealing(commitments: [], proof: WireBranch(c: "00", z: "00"), shares: [])))
+            dealing: try WireDealing(commitments: [], proof: WireBranch(c: "00", z: "00"), shares: []).converted())
         try await client.fileComplaint(pollId: pollId, dealer: bob, secret: "00", proof: branch)
         _ = try? await client.openVoting(pollId: pollId)
-        _ = try? await client.castBallot(pollId: pollId, ballot: try JSONValue(encoding: WireBallot(choices: [], sumProof: [])))
+        _ = try? await client.castBallot(pollId: pollId, ballot: try WireBallot(choices: [], sumProof: []).converted())
         try await client.closePoll(pollId: pollId)
         _ = try? await client.sealPoll(pollId: pollId)
         try await client.publishPartial(pollId: pollId, partials: [])

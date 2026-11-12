@@ -15,17 +15,224 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct IssueTrackerClient: Sendable {
-    /// The app type `IssueDetail`: the ABI names it without its shape, so it is its JSON.
-    public typealias IssueDetail = JSONValue
 
-    /// The app type `IssueView`: the ABI names it without its shape, so it is its JSON.
-    public typealias IssueView = JSONValue
+    /// The app type `Comment`.
+    public struct Comment: Codable, Sendable, Equatable {
+        public var id: String
+        public var issueId: String
+        public var author: String
+        public var body: String
+        public var createdAt: UInt64
+        public var editedAt: UInt64?
 
-    /// The app type `RepoInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias RepoInfo = JSONValue
+        public init(
+            id: String,
+            issueId: String,
+            author: String,
+            body: String,
+            createdAt: UInt64,
+            editedAt: UInt64? = nil
+        ) {
+            self.id = id
+            self.issueId = issueId
+            self.author = author
+            self.body = body
+            self.createdAt = createdAt
+            self.editedAt = editedAt
+        }
 
-    /// The app type `StatusCount`: the ABI names it without its shape, so it is its JSON.
-    public typealias StatusCount = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("issueId"))
+            let v2 = try fields.decode(String.self, forKey: Key("author"))
+            let v3 = try fields.decode(String.self, forKey: Key("body"))
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v5 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("editedAt"))?.value
+            self.id = v0
+            self.issueId = v1
+            self.author = v2
+            self.body = v3
+            self.createdAt = v4
+            self.editedAt = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.issueId, forKey: Key("issueId"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.body, forKey: Key("body"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(self.editedAt.map { DecimalString($0) }, forKey: Key("editedAt"))
+        }
+    }
+
+    /// The app type `IssueDetail`.
+    public struct IssueDetail: Codable, Sendable, Equatable {
+        public var issue: IssueView
+        public var comments: [Comment]
+
+        public init(
+            issue: IssueView,
+            comments: [Comment]
+        ) {
+            self.issue = issue
+            self.comments = comments
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(IssueView.self, forKey: Key("issue"))
+            let v1 = try fields.decode([Comment].self, forKey: Key("comments"))
+            self.issue = v0
+            self.comments = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.issue, forKey: Key("issue"))
+            try fields.encode(self.comments, forKey: Key("comments"))
+        }
+    }
+
+    /// The app type `IssueView`.
+    public struct IssueView: Codable, Sendable, Equatable {
+        public var id: String
+        public var title: String
+        public var summary: String
+        public var impact: String
+        public var repro: String
+        public var resolutionCriteria: String
+        public var status: String
+        public var priority: String
+        public var assignee: String?
+        public var labels: [String]
+        public var createdBy: String
+        public var createdAt: UInt64
+
+        public init(
+            id: String,
+            title: String,
+            summary: String,
+            impact: String,
+            repro: String,
+            resolutionCriteria: String,
+            status: String,
+            priority: String,
+            assignee: String? = nil,
+            labels: [String],
+            createdBy: String,
+            createdAt: UInt64
+        ) {
+            self.id = id
+            self.title = title
+            self.summary = summary
+            self.impact = impact
+            self.repro = repro
+            self.resolutionCriteria = resolutionCriteria
+            self.status = status
+            self.priority = priority
+            self.assignee = assignee
+            self.labels = labels
+            self.createdBy = createdBy
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("title"))
+            let v2 = try fields.decode(String.self, forKey: Key("summary"))
+            let v3 = try fields.decode(String.self, forKey: Key("impact"))
+            let v4 = try fields.decode(String.self, forKey: Key("repro"))
+            let v5 = try fields.decode(String.self, forKey: Key("resolutionCriteria"))
+            let v6 = try fields.decode(String.self, forKey: Key("status"))
+            let v7 = try fields.decode(String.self, forKey: Key("priority"))
+            let v8 = try fields.decodeIfPresent(String.self, forKey: Key("assignee"))
+            let v9 = try fields.decode([String].self, forKey: Key("labels"))
+            let v10 = try fields.decode(String.self, forKey: Key("createdBy"))
+            let v11 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.id = v0
+            self.title = v1
+            self.summary = v2
+            self.impact = v3
+            self.repro = v4
+            self.resolutionCriteria = v5
+            self.status = v6
+            self.priority = v7
+            self.assignee = v8
+            self.labels = v9
+            self.createdBy = v10
+            self.createdAt = v11
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.summary, forKey: Key("summary"))
+            try fields.encode(self.impact, forKey: Key("impact"))
+            try fields.encode(self.repro, forKey: Key("repro"))
+            try fields.encode(self.resolutionCriteria, forKey: Key("resolutionCriteria"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.priority, forKey: Key("priority"))
+            try fields.encode(self.assignee, forKey: Key("assignee"))
+            try fields.encode(self.labels, forKey: Key("labels"))
+            try fields.encode(self.createdBy, forKey: Key("createdBy"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
+
+    /// The app type `RepoInfo`.
+    public struct RepoInfo: Codable, Sendable, Equatable {
+        public var repoUrl: String
+
+        public init(
+            repoUrl: String
+        ) {
+            self.repoUrl = repoUrl
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("repoUrl"))
+            self.repoUrl = v0
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.repoUrl, forKey: Key("repoUrl"))
+        }
+    }
+
+    /// The app type `StatusCount`.
+    public struct StatusCount: Codable, Sendable, Equatable {
+        public var status: String
+        public var count: UInt64
+
+        public init(
+            status: String,
+            count: UInt64
+        ) {
+            self.status = status
+            self.count = count
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("status"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("count")).value
+            self.status = v0
+            self.count = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(DecimalString(self.count), forKey: Key("count"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

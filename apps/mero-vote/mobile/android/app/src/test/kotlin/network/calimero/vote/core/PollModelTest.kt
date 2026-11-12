@@ -41,7 +41,9 @@ class PollModelTest {
     ): PollView {
         val state =
             when (phase) {
-                Phase.Closed -> transcript.state
+                // The 1.0 contract's seal always carries `aggregate`, which the vectors predate.
+                Phase.Closed ->
+                    transcript.state.copy(closure = transcript.state.closure?.let { it.copy(aggregate = it.aggregate ?: emptyList()) })
                 Phase.KeyCeremony -> transcript.state.copy(phase = phase, election = null, closure = null)
                 else -> transcript.state.copy(phase = phase, closure = null, election = transcript.state.election.takeIf { withElection })
             }
@@ -220,7 +222,7 @@ class PollModelTest {
     fun `re-verifying the honest transcript agrees with the node`() =
         runTest {
             val (backend, script) = makeBackend(ME)
-            script.put("getTranscript") { Vectors.audit("honest")["transcript"]!! }
+            script.put("getTranscript") { Vectors.contractTranscript() }
             val model = model(backend)
             model.reverify()
             val audit = model.localAudit.value!!

@@ -9,7 +9,7 @@
  * contract's own evaluator (passed in, so this stays pure).
  */
 import type { CSSProperties } from 'react';
-import type { Rule, RuleInput } from '../api/spreadsheet/SpreadsheetClient';
+import type { Rule, RuleInput } from '../api/spreadsheet/types';
 import type { Rect } from './refs';
 
 export type Style = Readonly<Record<string, string>>;

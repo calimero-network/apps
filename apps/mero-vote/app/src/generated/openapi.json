@@ -278,6 +278,33 @@
       }
     },
     "schemas": {
+      "Anchor": {
+        "properties": {
+          "anchored_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "digest",
+          "network",
+          "reference",
+          "anchored_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Anchor"
+      },
       "AnchorResultArgs": {
         "description": "The arguments of `anchorResult`, by name.",
         "properties": {
@@ -371,7 +398,90 @@
         "type": "object"
       },
       "AuditReport": {
-        "description": "The app type `AuditReport`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Anchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            },
+            "type": "array"
+          },
+          "counted_ballots": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "items": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer",
+                  "x-calimero-type": "u32"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decrypted_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "poll_id": {
+            "type": "string"
+          },
+          "transcript_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uncounted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "poll_id",
+          "phase",
+          "verified",
+          "checks",
+          "counts",
+          "counted_ballots",
+          "decrypted_by",
+          "transcript_digest",
+          "anchor",
+          "uncounted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AuditReport"
       },
       "BallotCastEvent": {
@@ -619,7 +729,32 @@
         "type": "object"
       },
       "Ceremony": {
-        "description": "The app type `Ceremony`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "complaints": {
+            "items": {
+              "$ref": "#/components/schemas/ComplaintView"
+            },
+            "type": "array"
+          },
+          "threshold": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "trustees": {
+            "items": {
+              "$ref": "#/components/schemas/CeremonyTrustee"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "threshold",
+          "trustees",
+          "complaints"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Ceremony"
       },
       "CeremonyArgs": {
@@ -680,6 +815,67 @@
         ],
         "type": "object"
       },
+      "CeremonyTrustee": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "dealing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WireDealing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "index": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "index",
+          "transport",
+          "dealing"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "CeremonyTrustee"
+      },
+      "Check": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "detail"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Check"
+      },
       "ClosePollArgs": {
         "description": "The arguments of `closePoll`, by name.",
         "properties": {
@@ -736,6 +932,35 @@
         ],
         "type": "object"
       },
+      "Closure": {
+        "properties": {
+          "aggregate": {
+            "items": {
+              "$ref": "#/components/schemas/WireCiphertext"
+            },
+            "type": "array"
+          },
+          "closed_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "counted": {
+            "items": {
+              "$ref": "#/components/schemas/CountedBallot"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "counted",
+          "aggregate",
+          "closed_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Closure"
+      },
       "ComplaintFiledEvent": {
         "properties": {
           "dealer": {
@@ -754,6 +979,26 @@
           "recipient"
         ],
         "type": "object"
+      },
+      "ComplaintView": {
+        "properties": {
+          "dealer": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recipient",
+          "dealer",
+          "valid"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "ComplaintView"
       },
       "Confirm": {
         "description": "The passkey's approval of this exact call: the 412's challenge id and the WebAuthn assertion over its challenge.",
@@ -833,6 +1078,26 @@
           "details"
         ],
         "type": "object"
+      },
+      "CountedBallot": {
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "frozen": {
+            "type": "string"
+          },
+          "voter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "voter",
+          "digest",
+          "frozen"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "CountedBallot"
       },
       "CreatePollArgs": {
         "description": "The arguments of `createPoll`, by name.",
@@ -974,6 +1239,53 @@
           "trustee"
         ],
         "type": "object"
+      },
+      "Election": {
+        "properties": {
+          "disqualified": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key": {
+            "type": "string"
+          },
+          "opened_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "qualified": {
+            "items": {
+              "$ref": "#/components/schemas/QualifiedDealing"
+            },
+            "type": "array"
+          },
+          "threshold": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "transport": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "threshold",
+          "transport",
+          "qualified",
+          "disqualified",
+          "opened_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Election"
       },
       "EventFrame": {
         "oneOf": [
@@ -1453,7 +1765,15 @@
         "type": "object"
       },
       "Identity": {
-        "description": "The app type `Identity`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Identity"
       },
       "InvalidError": {
@@ -1521,7 +1841,19 @@
         "type": "object"
       },
       "Member": {
-        "description": "The app type `Member`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Member"
       },
       "MemberNamedEvent": {
@@ -1617,6 +1949,23 @@
         ],
         "type": "object"
       },
+      "Phase": {
+        "oneOf": [
+          {
+            "const": "KeyCeremony"
+          },
+          {
+            "const": "Voting"
+          },
+          {
+            "const": "Closing"
+          },
+          {
+            "const": "Closed"
+          }
+        ],
+        "x-calimero-abi-type": "Phase"
+      },
       "PhaseError": {
         "properties": {
           "message": {
@@ -1650,6 +1999,89 @@
         ],
         "type": "object"
       },
+      "PollDefinition": {
+        "properties": {
+          "closes_at": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "max_choices": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "min_choices": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "threshold": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "trustees": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "voters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "options",
+          "min_choices",
+          "max_choices",
+          "trustees",
+          "threshold",
+          "voters",
+          "creator",
+          "created_at",
+          "closes_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PollDefinition"
+      },
       "PollSealedEvent": {
         "properties": {
           "counted": {
@@ -1668,12 +2100,150 @@
         ],
         "type": "object"
       },
+      "PollState": {
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Anchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "closing_at": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "closure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Closure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "election": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Election"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          }
+        },
+        "required": [
+          "phase",
+          "election",
+          "closing_at",
+          "closure",
+          "anchor"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PollState"
+      },
       "PollSummary": {
-        "description": "The app type `PollSummary`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "ballots": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "created_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "poll_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "poll_id",
+          "title",
+          "creator",
+          "phase",
+          "created_at",
+          "ballots"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PollSummary"
       },
       "PollView": {
-        "description": "The app type `PollView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "can_vote": {
+            "type": "boolean"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PollDefinition"
+          },
+          "my_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "poll_id": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PollState"
+          },
+          "trustees": {
+            "items": {
+              "$ref": "#/components/schemas/TrusteeStatus"
+            },
+            "type": "array"
+          },
+          "turnout": {
+            "items": {
+              "$ref": "#/components/schemas/Turnout"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "poll_id",
+          "definition",
+          "state",
+          "trustees",
+          "turnout",
+          "my_digest",
+          "can_vote"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PollView"
       },
       "PublishDealingArgs": {
@@ -1862,6 +2432,22 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "QualifiedDealing": {
+        "properties": {
+          "dealer": {
+            "type": "string"
+          },
+          "dealing": {
+            "$ref": "#/components/schemas/WireDealing"
+          }
+        },
+        "required": [
+          "dealer",
+          "dealing"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "QualifiedDealing"
       },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
@@ -2066,7 +2652,25 @@
         "type": "object"
       },
       "TallyInputs": {
-        "description": "The app type `TallyInputs`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "aggregate": {
+            "items": {
+              "$ref": "#/components/schemas/WireCiphertext"
+            },
+            "type": "array"
+          },
+          "counted": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "aggregate",
+          "counted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TallyInputs"
       },
       "TallyInputsArgs": {
@@ -2128,8 +2732,96 @@
         "type": "object"
       },
       "Transcript": {
-        "description": "The app type `Transcript`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "ballots": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptBallot"
+            },
+            "type": "array"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PollDefinition"
+          },
+          "partials": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptPartial"
+            },
+            "type": "array"
+          },
+          "poll_id": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/AuditReport"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PollState"
+          }
+        },
+        "required": [
+          "protocol",
+          "poll_id",
+          "definition",
+          "state",
+          "ballots",
+          "partials",
+          "report"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Transcript"
+      },
+      "TranscriptBallot": {
+        "properties": {
+          "ballot": {
+            "$ref": "#/components/schemas/WireBallot"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "endorsed": {
+            "type": "boolean"
+          },
+          "voter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "voter",
+          "digest",
+          "ballot",
+          "endorsed"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "TranscriptBallot"
+      },
+      "TranscriptPartial": {
+        "properties": {
+          "index": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/WirePartial"
+            },
+            "type": "array"
+          },
+          "trustee": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trustee",
+          "index",
+          "options"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "TranscriptPartial"
       },
       "TransportKeyPublishedEvent": {
         "properties": {
@@ -2173,6 +2865,78 @@
           "details"
         ],
         "type": "object"
+      },
+      "TrusteeStatus": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "complaints_against": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "dealing_published": {
+            "type": "boolean"
+          },
+          "index": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "partial_published": {
+            "type": "boolean"
+          },
+          "qualified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transport_published": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "index",
+          "transport_published",
+          "dealing_published",
+          "complaints_against",
+          "qualified",
+          "partial_published"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "TrusteeStatus"
+      },
+      "Turnout": {
+        "properties": {
+          "cast_at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "voter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "voter",
+          "digest",
+          "cast_at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Turnout"
       },
       "VotingOpenedEvent": {
         "properties": {
@@ -2236,19 +3000,138 @@
         "type": "object"
       },
       "WireBallot": {
-        "description": "The app type `WireBallot`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/WireChoice"
+            },
+            "type": "array"
+          },
+          "sum_proof": {
+            "items": {
+              "$ref": "#/components/schemas/WireBranch"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "choices",
+          "sum_proof"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WireBallot"
       },
       "WireBranch": {
-        "description": "The app type `WireBranch`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "c": {
+            "type": "string"
+          },
+          "z": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "c",
+          "z"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WireBranch"
       },
+      "WireChoice": {
+        "properties": {
+          "a": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          },
+          "proof": {
+            "items": {
+              "$ref": "#/components/schemas/WireBranch"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "proof"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "WireChoice"
+      },
+      "WireCiphertext": {
+        "properties": {
+          "a": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "WireCiphertext"
+      },
       "WireDealing": {
-        "description": "The app type `WireDealing`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "commitments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/WireBranch"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/WireEncShare"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "commitments",
+          "proof",
+          "shares"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WireDealing"
       },
+      "WireEncShare": {
+        "properties": {
+          "r": {
+            "type": "string"
+          },
+          "v": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "r",
+          "v"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "WireEncShare"
+      },
       "WirePartial": {
-        "description": "The app type `WirePartial`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "d": {
+            "type": "string"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/WireBranch"
+          }
+        },
+        "required": [
+          "d",
+          "proof"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WirePartial"
       }
     },

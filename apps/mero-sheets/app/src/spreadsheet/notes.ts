@@ -5,7 +5,7 @@
  * Positions count characters as the contract does (Unicode scalar values),
  * not UTF-16 units, so an emoji is one position on both sides.
  */
-import type { Span } from '../api/spreadsheet/SpreadsheetClient';
+import type { Span } from '../api/spreadsheet/types';
 
 export type { Span };
 

@@ -427,8 +427,86 @@
         "type": "object"
       },
       "CommentPage": {
-        "description": "The app type `CommentPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentView"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CommentPage"
+      },
+      "CommentView": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "editedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "myVote": {
+            "maximum": 127,
+            "minimum": -128,
+            "type": "integer",
+            "x-calimero-type": "i8"
+          },
+          "postId": {
+            "type": "string"
+          },
+          "score": {
+            "description": "A i64 as a decimal string (-9223372036854775808..=9223372036854775807).",
+            "pattern": "^(0|-?[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "i64"
+          }
+        },
+        "required": [
+          "id",
+          "postId",
+          "author",
+          "authorName",
+          "body",
+          "createdAt",
+          "editedAt",
+          "score",
+          "myVote"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "CommentView"
       },
       "CommentVotedEvent": {
         "properties": {
@@ -1606,11 +1684,92 @@
         "type": "object"
       },
       "PostPage": {
-        "description": "The app type `PostPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostView"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PostPage"
       },
       "PostView": {
-        "description": "The app type `PostView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "commentCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "editedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "myVote": {
+            "maximum": 127,
+            "minimum": -128,
+            "type": "integer",
+            "x-calimero-type": "i8"
+          },
+          "score": {
+            "description": "A i64 as a decimal string (-9223372036854775808..=9223372036854775807).",
+            "pattern": "^(0|-?[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "i64"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "authorName",
+          "title",
+          "body",
+          "createdAt",
+          "editedAt",
+          "score",
+          "commentCount",
+          "myVote"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PostView"
       },
       "ProfileSetEvent": {

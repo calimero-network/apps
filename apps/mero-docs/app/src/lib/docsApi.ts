@@ -1,22 +1,26 @@
-// The contract's methods, typed, over mero-js 28's CalimeroClient.
+// The shapes the hooks and screens read, and the conversions to them.
 //
-// Replaces the abi-codegen clients v1 generated from the two services'
-// ABIs (`src/generated/{docs,registry}`). The method names, argument objects
-// and results keep the shapes those clients had, so the hooks reading them did
-// not change; this file does the conversion to and from the component's wire:
+// The contract is called through `MeroDocsClient` (`src/generated/client.ts`,
+// which `mero-app-build codegen` writes from `logic/res/abi.json`). One
+// component serves both kinds of instance, a folder's docs instance and a
+// workspace's registry instance, so the same class reaches both.
 //
-// - method and argument names are camelCase (`list_docs { include_archived }`
-//   → `listDocs { includeArchived }`), results' fields too;
+// The hooks were written against v1's abi-codegen clients, and keep those
+// shapes. The ABI names its records without their shapes, so the generated
+// answers are `unknown`, and the few that differ from v1's pass through a
+// `to*` below:
+//
+// - results' fields are camelCase on the wire; `DocDto`, `CommentDto`,
+//   `ViewDto`, the search page and the `*On` answers keep v1's snake_case;
 // - 64-bit integers arrive as decimal strings, and timestamps in milliseconds
 //   where v1 used nanoseconds: `created_at` / `updated_at` are converted back;
-// - a read is a `view`, a write a `call` (logged, answered with its result);
-// - one component serves both kinds of instance: a folder's docs instance
-//   (`DocsClient`) and a workspace's registry instance (`RegistryClient`).
+// - change steps carry `attributes` only where one was given (`wireOps`).
 //
-// `docsApi.test.ts` checks the method lists and parameter names against the
-// committed `logic/res/abi.json`.
+// `client.test.ts` checks the generated class against the committed ABI.
 
-import { type ClientRoutes } from '@calimero-apps/connect';
+import { MeroDocsClient, type Change as WireChange } from '@/generated/client';
+
+export { MeroDocsClient };
 
 // ---------------------------------------------------------------- shapes
 
@@ -127,15 +131,15 @@ export interface ViewDto {
 
 // ---------------------------------------------------------------- wire
 
-type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
-
 /** Milliseconds (a decimal string) as v1's nanoseconds. */
 export function msToNs(ms: unknown): number {
-  const n = typeof ms === 'string' ? Number(ms) : typeof ms === 'number' ? ms : 0;
+  const n =
+    typeof ms === 'string' ? Number(ms) : typeof ms === 'number' ? ms : 0;
   return Number.isFinite(n) ? n * 1_000_000 : 0;
 }
 
-const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v ?? 0) || 0);
+const num = (v: unknown): number =>
+  typeof v === 'number' ? v : Number(v ?? 0) || 0;
 
 function docOf(raw: unknown): DocDto {
   const d = (raw ?? {}) as Record<string, unknown>;
@@ -163,7 +167,9 @@ function commentOf(raw: unknown): CommentDto {
   };
 }
 
-function appliedOf<T extends { anchorPos?: number | null }>(raw: T): Omit<T, 'anchorPos'> & { anchor_pos: number | null } {
+function appliedOf<T extends { anchorPos?: number | null }>(
+  raw: T,
+): Omit<T, 'anchorPos'> & { anchor_pos: number | null } {
   const { anchorPos, ...rest } = raw;
   return { ...rest, anchor_pos: anchorPos ?? null };
 }
@@ -177,272 +183,68 @@ function opsOf(ops: Change[]): unknown[] {
   });
 }
 
-abstract class Instance {
-  protected readonly transport: Transport;
+// ---------------------------------------------------------------- answers
 
-  constructor(
-    client: Transport | { client: Transport },
-    protected readonly appId: string,
-  ) {
-    this.transport = 'client' in client ? client.client : client;
-  }
+/** `getDoc`'s answer. */
+export const toDoc = (raw: unknown): DocDto => docOf(raw);
+/** `listDocs`'s answer. */
+export const toDocs = (rows: unknown): DocDto[] =>
+  ((rows as unknown[] | null) ?? []).map(docOf);
+/** `getComment`'s answer. */
+export const toComment = (raw: unknown): CommentDto => commentOf(raw);
+/** `listComments`'s answer. */
+export const toComments = (rows: unknown): CommentDto[] =>
+  ((rows as unknown[] | null) ?? []).map(commentOf);
+/** `commentCount`'s answer (a u64). */
+export const toCount = (raw: unknown): number => num(raw);
 
-  protected async view<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await this.transport.apps.view({ app: this.appId, method, args })).result as T;
-  }
-
-  protected async call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await this.transport.apps.call({ app: this.appId, method, args })).result as T;
-  }
+/** `searchDocs`'s answer. */
+export function toSearchPage(raw: unknown): DocSearchPage {
+  const page = raw as {
+    hits?: DocSearchHit[];
+    total?: unknown;
+    nextCursor?: number | null;
+  } | null;
+  return {
+    hits: page?.hits ?? [],
+    total: num(page?.total),
+    next_cursor: page?.nextCursor ?? null,
+  };
 }
 
-// ---------------------------------------------------------------- docs
+/** `applyDeltaOn`'s answer. */
+export const toApplied = (raw: unknown): Applied =>
+  appliedOf(raw as Applied & { anchorPos?: number | null }) as Applied;
+/** `titleApplyDeltaOn`'s answer. */
+export const toTitleApplied = (raw: unknown): TitleApplied =>
+  appliedOf(
+    raw as TitleApplied & { anchorPos?: number | null },
+  ) as TitleApplied;
 
-/** A folder's docs instance. */
-export class DocsClient extends Instance {
-  // documents
-  createDoc(p: { title: string }): Promise<string> {
-    return this.call('createDoc', p);
-  }
-  async getDoc(p: { id: string }): Promise<DocDto> {
-    return docOf(await this.view('getDoc', p));
-  }
-  async listDocs(p: { include_archived: boolean }): Promise<DocDto[]> {
-    const rows = await this.view<unknown[]>('listDocs', { includeArchived: p.include_archived });
-    return (rows ?? []).map(docOf);
-  }
-  async searchDocs(p: {
-    query: string;
-    include_archived: boolean;
-    cursor: number | null;
-    limit: number | null;
-  }): Promise<DocSearchPage> {
-    const page = await this.view<{ hits?: DocSearchHit[]; total?: unknown; nextCursor?: number | null }>(
-      'searchDocs',
-      { query: p.query, includeArchived: p.include_archived, cursor: p.cursor, limit: p.limit },
-    );
-    return { hits: page?.hits ?? [], total: num(page?.total), next_cursor: page?.nextCursor ?? null };
-  }
-  async editDoc(p: { id: string; title: string }): Promise<void> {
-    await this.call('editDoc', p);
-  }
-  async archiveDoc(p: { id: string }): Promise<void> {
-    await this.call('archiveDoc', p);
-  }
-  async unarchiveDoc(p: { id: string }): Promise<void> {
-    await this.call('unarchiveDoc', p);
-  }
-  async deleteDoc(p: { id: string }): Promise<void> {
-    await this.call('deleteDoc', p);
-  }
-  async addTag(p: { id: string; tag: string }): Promise<void> {
-    await this.call('addTag', p);
-  }
-  async removeTag(p: { id: string; tag: string }): Promise<void> {
-    await this.call('removeTag', p);
-  }
+/** `listTags`'s answer. */
+export const toTags = (rows: unknown): TagDto[] =>
+  (rows as TagDto[] | null) ?? [];
 
-  // title
-  getTitle(p: { doc: string }): Promise<string> {
-    return this.view('getTitle', p);
-  }
-  getTitleState(p: { doc: string }): Promise<TitleState> {
-    return this.view('getTitleState', p);
-  }
-  titleApplyDelta(p: { doc: string; ops: Change[] }): Promise<string> {
-    return this.call('titleApplyDelta', { doc: p.doc, ops: opsOf(p.ops) });
-  }
-  async titleApplyDeltaOn(p: {
-    doc: string;
-    base: string;
-    ops: Change[];
-    anchor: string | null;
-  }): Promise<TitleApplied> {
-    const raw = await this.call<TitleApplied & { anchorPos?: number | null }>('titleApplyDeltaOn', {
-      doc: p.doc,
-      base: p.base,
-      ops: opsOf(p.ops),
-      anchor: p.anchor,
-    });
-    return appliedOf(raw) as TitleApplied;
-  }
-  titleUndo(p: { doc: string; token: string }): Promise<string> {
-    return this.call('titleUndo', p);
-  }
-  titleAnchorAt(p: { doc: string; position: number; before: boolean }): Promise<string> {
-    return this.view('titleAnchorAt', p);
-  }
-  titleResolve(p: { doc: string; anchors: string[] }): Promise<Array<number | null>> {
-    return this.view('titleResolve', p);
-  }
-
-  // body structure
-  insertBlock(p: { doc: string; after: string | null; kind: string; depth: number }): Promise<string> {
-    return this.call('insertBlock', p);
-  }
-  async deleteBlock(p: { doc: string; block: string }): Promise<void> {
-    await this.call('deleteBlock', p);
-  }
-  async moveBlock(p: { doc: string; block: string; after: string | null }): Promise<void> {
-    await this.call('moveBlock', p);
-  }
-  async setKind(p: { doc: string; block: string; kind: string }): Promise<void> {
-    await this.call('setKind', p);
-  }
-  async setDepth(p: { doc: string; block: string; depth: number }): Promise<void> {
-    await this.call('setDepth', p);
-  }
-  async setAttr(p: { doc: string; block: string; key: string; value: string | null }): Promise<void> {
-    await this.call('setAttr', p);
-  }
-  splitBlock(p: { doc: string; block: string; at: number }): Promise<string> {
-    return this.call('splitBlock', p);
-  }
-  async mergeBlocks(p: { doc: string; first: string; second: string }): Promise<void> {
-    await this.call('mergeBlocks', p);
-  }
-
-  // body text
-  applyDelta(p: { doc: string; block: string; ops: Change[] }): Promise<string> {
-    return this.call('applyDelta', { doc: p.doc, block: p.block, ops: opsOf(p.ops) });
-  }
-  async applyDeltaOn(p: {
-    doc: string;
-    block: string;
-    base: string;
-    ops: Change[];
-    anchor: string | null;
-  }): Promise<Applied> {
-    const raw = await this.call<Applied & { anchorPos?: number | null }>('applyDeltaOn', {
-      doc: p.doc,
-      block: p.block,
-      base: p.base,
-      ops: opsOf(p.ops),
-      anchor: p.anchor,
-    });
-    return appliedOf(raw) as Applied;
-  }
-  undo(p: { doc: string; block: string; token: string }): Promise<string> {
-    return this.call('undo', p);
-  }
-  mark(p: {
-    doc: string;
-    block: string;
-    start: number;
-    end: number;
-    key: string;
-    value: string | null;
-  }): Promise<string | null> {
-    return this.call('mark', p);
-  }
-
-  // body reads
-  getDocument(p: { doc: string }): Promise<Block[]> {
-    return this.view('getDocument', p);
-  }
-  getBlock(p: { doc: string; block: string }): Promise<Block | null> {
-    return this.view('getBlock', p);
-  }
-  getBlockDelta(p: { doc: string; block: string }): Promise<Span[]> {
-    return this.view('getBlockDelta', p);
-  }
-  getText(p: { doc: string; block: string }): Promise<string> {
-    return this.view('getText', p);
-  }
-  listBlocks(p: { doc: string }): Promise<string[]> {
-    return this.view('listBlocks', p);
-  }
-  getStateDigest(p: { doc: string }): Promise<string> {
-    return this.view('getStateDigest', p);
-  }
-  passageCount(p: { doc: string; block: string; needle: string }): Promise<number> {
-    return this.view('passageCount', p);
-  }
-  anchorAt(p: { doc: string; block: string; position: number; before: boolean }): Promise<string> {
-    return this.view('anchorAt', p);
-  }
-  resolveIds(p: { doc: string; block: string; anchors: string[] }): Promise<Array<number | null>> {
-    return this.view('resolveIds', p);
-  }
-
-  // comments
-  addComment(p: { doc_id: string; body: string }): Promise<string> {
-    return this.call('addComment', { docId: p.doc_id, body: p.body });
-  }
-  async listComments(p: { doc_id: string }): Promise<CommentDto[]> {
-    return ((await this.view<unknown[]>('listComments', { docId: p.doc_id })) ?? []).map(commentOf);
-  }
-  async getComment(p: { id: string }): Promise<CommentDto> {
-    return commentOf(await this.view('getComment', p));
-  }
-  async commentCount(): Promise<number> {
-    return num(await this.view('commentCount'));
-  }
-  commentSchemaVersion(p: { id: string }): Promise<number | null> {
-    return this.view('commentSchemaVersion', p);
-  }
-  async editComment(p: { id: string; body: string }): Promise<void> {
-    await this.call('editComment', p);
-  }
-  async deleteComment(p: { id: string }): Promise<void> {
-    await this.call('deleteComment', p);
-  }
+/** `listViews`'s answer. */
+export function toViews(rows: unknown): ViewDto[] {
+  return ((rows as Array<Record<string, unknown>> | null) ?? []).map((v) => ({
+    id: String(v.id ?? ''),
+    name: String(v.name ?? ''),
+    query: String(v.query ?? ''),
+    created_by: String(v.createdBy ?? ''),
+  }));
 }
 
-// ---------------------------------------------------------------- registry
+/** `getDocument`'s answer. */
+export const toBlocks = (raw: unknown): Block[] => raw as Block[];
+/** `getBlock`'s answer. */
+export const toBlock = (raw: unknown): Block | null => raw as Block | null;
+/** `getBlockDelta`'s answer. */
+export const toSpans = (raw: unknown): Span[] => raw as Span[];
+/** `getTitleState`'s answer. */
+export const toTitleState = (raw: unknown): TitleState => raw as TitleState;
 
-/** A workspace's registry instance: owner, managers, tags, saved views. */
-export class RegistryClient extends Instance {
-  getOwner(): Promise<string> {
-    return this.view('getOwner');
-  }
-  async addManager(p: { member: string }): Promise<void> {
-    await this.call('addManager', p);
-  }
-  async removeManager(p: { member: string }): Promise<void> {
-    await this.call('removeManager', p);
-  }
-  listManagers(): Promise<string[]> {
-    return this.view('listManagers');
-  }
-  async setTag(p: { key: string; name: string; color: string }): Promise<void> {
-    await this.call('setTag', p);
-  }
-  async deleteTag(p: { key: string }): Promise<void> {
-    await this.call('deleteTag', p);
-  }
-  async listTags(): Promise<TagDto[]> {
-    return (await this.view<TagDto[]>('listTags')) ?? [];
-  }
-  async saveView(p: { id: string; name: string; query: string }): Promise<void> {
-    await this.call('saveView', p);
-  }
-  async deleteView(p: { id: string }): Promise<void> {
-    await this.call('deleteView', p);
-  }
-  async listViews(): Promise<ViewDto[]> {
-    const rows = (await this.view<Array<Record<string, unknown>>>('listViews')) ?? [];
-    return rows.map((v) => ({
-      id: String(v.id ?? ''),
-      name: String(v.name ?? ''),
-      query: String(v.query ?? ''),
-      created_by: String(v.createdBy ?? ''),
-    }));
-  }
-}
-
-/** The contract method each adapter method calls (for the ABI test). */
-export const DOCS_METHODS = [
-  'createDoc', 'getDoc', 'listDocs', 'searchDocs', 'editDoc', 'archiveDoc', 'unarchiveDoc', 'deleteDoc',
-  'addTag', 'removeTag', 'getTitle', 'getTitleState', 'titleApplyDelta', 'titleApplyDeltaOn', 'titleUndo',
-  'titleAnchorAt', 'titleResolve', 'insertBlock', 'deleteBlock', 'moveBlock', 'setKind', 'setDepth',
-  'setAttr', 'splitBlock', 'mergeBlocks', 'applyDelta', 'applyDeltaOn', 'undo', 'mark', 'getDocument',
-  'getBlock', 'getBlockDelta', 'getText', 'listBlocks', 'getStateDigest', 'passageCount', 'anchorAt',
-  'resolveIds', 'addComment', 'listComments', 'getComment', 'commentCount', 'commentSchemaVersion',
-  'editComment', 'deleteComment',
-] as const;
-
-export const REGISTRY_METHODS = [
-  'getOwner', 'addManager', 'removeManager', 'listManagers', 'setTag', 'deleteTag', 'listTags',
-  'saveView', 'deleteView', 'listViews',
-] as const;
+/** Change steps as the contract takes them (`applyDelta*`, `titleApplyDelta*`). */
+export const wireOps = (ops: Change[]): WireChange[] =>
+  // The ABI types `attributes` as required; serde reads a missing Option as None.
+  opsOf(ops) as WireChange[];

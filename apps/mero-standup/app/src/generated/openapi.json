@@ -812,11 +812,74 @@
         "type": "object"
       },
       "DayPage": {
-        "description": "The app type `DayPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DaySummary"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "days",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DayPage"
       },
+      "DaySummary": {
+        "properties": {
+          "blocked": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "day": {
+            "type": "string"
+          },
+          "updates": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "day",
+          "updates",
+          "blocked"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "DaySummary"
+      },
       "DayView": {
-        "description": "The app type `DayView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "day",
+          "updates"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DayView"
       },
       "DecisionLoggedEvent": {
@@ -831,11 +894,94 @@
         "type": "object"
       },
       "DecisionPage": {
-        "description": "The app type `DecisionPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionView"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DecisionPage"
       },
       "DecisionView": {
-        "description": "The app type `DecisionView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "fromDay": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "supersededBy": {
+            "type": "string"
+          },
+          "supersedes": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "with": {
+            "items": {
+              "$ref": "#/components/schemas/PersonView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "authorName",
+          "title",
+          "decision",
+          "rationale",
+          "supersedes",
+          "supersededBy",
+          "createdAt",
+          "tags",
+          "with",
+          "fromDay"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DecisionView"
       },
       "EmptyError": {
@@ -1243,6 +1389,33 @@
         ],
         "type": "object"
       },
+      "HelpView": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "note",
+          "at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "HelpView"
+      },
       "HelpWithdrawnEvent": {
         "properties": {
           "author": {
@@ -1533,7 +1706,23 @@
         "type": "object"
       },
       "MemberView": {
-        "description": "The app type `MemberView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "lastDay": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "lastDay"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemberView"
       },
       "MembersArgs": {
@@ -1735,6 +1924,22 @@
         "properties": {},
         "required": [],
         "type": "object"
+      },
+      "PersonView": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PersonView"
       },
       "PostUpdateArgs": {
         "description": "The arguments of `postUpdate`, by name.",
@@ -1962,7 +2167,22 @@
         "type": "object"
       },
       "TagCount": {
-        "description": "The app type `TagCount`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "tag": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TagCount"
       },
       "TagsArgs": {
@@ -2174,7 +2394,56 @@
         "type": "object"
       },
       "UpdateView": {
-        "description": "The app type `UpdateView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "blockers": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "day": {
+            "type": "string"
+          },
+          "done": {
+            "type": "string"
+          },
+          "editedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "helpers": {
+            "items": {
+              "$ref": "#/components/schemas/HelpView"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "author",
+          "authorName",
+          "done",
+          "next",
+          "blockers",
+          "createdAt",
+          "editedAt",
+          "helpers"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "UpdateView"
       },
       "WhoamiArgs": {

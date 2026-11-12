@@ -41,30 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `AuditView`: the ABI names it without its shape, so it is its JSON. */
-typealias AuditView = JsonElement
-
-/** The app type `DeviceView`: the ABI names it without its shape, so it is its JSON. */
-typealias DeviceView = JsonElement
-
-/** The app type `KeyWrapInput`: the ABI names it without its shape, so it is its JSON. */
-typealias KeyWrapInput = JsonElement
-
-/** The app type `KeyWrapView`: the ABI names it without its shape, so it is its JSON. */
-typealias KeyWrapView = JsonElement
-
-/** The app type `MemberView`: the ABI names it without its shape, so it is its JSON. */
-typealias MemberView = JsonElement
-
-/** The app type `RevisionView`: the ABI names it without its shape, so it is its JSON. */
-typealias RevisionView = JsonElement
-
-/** The app type `SecretView`: the ABI names it without its shape, so it is its JSON. */
-typealias SecretView = JsonElement
-
-/** The app type `VaultInfo`: the ABI names it without its shape, so it is its JSON. */
-typealias VaultInfo = JsonElement
-
 /**
  * The app's methods.
  *
@@ -96,7 +72,7 @@ class PassClient private constructor(
         invokeCall(
             "addKeyWraps",
             buildJsonObject {
-                put("wraps", encode(ListSerializer(JsonElement.serializer()), wraps))
+                put("wraps", encode(ListSerializer(KeyWrapInput.serializer()), wraps))
             },
             idempotencyKey,
             UInt.serializer(),
@@ -134,7 +110,7 @@ class PassClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(AuditView.serializer()),
         )
 
     /** view `getSecret`. */
@@ -150,7 +126,7 @@ class PassClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer().nullable,
+            SecretView.serializer().nullable,
         )
 
     /** view `keyWrapsFor`. */
@@ -166,7 +142,7 @@ class PassClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(KeyWrapView.serializer()),
         )
 
     /** view `listDevices`. */
@@ -179,7 +155,7 @@ class PassClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(DeviceView.serializer()),
         )
 
     /** view `listMembers`. */
@@ -192,7 +168,7 @@ class PassClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MemberView.serializer()),
         )
 
     /** view `listSecrets`. */
@@ -205,7 +181,7 @@ class PassClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(SecretView.serializer()),
         )
 
     /** call `purgeSecret`. */
@@ -332,7 +308,7 @@ class PassClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(RevisionView.serializer()),
         )
 
     /** call `setDefaultRole`. */
@@ -415,7 +391,7 @@ class PassClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            VaultInfo.serializer(),
         )
 
     /** view `vaultName`. */
@@ -584,6 +560,381 @@ class PassClient private constructor(
         }
     }
 
+    /** The app type `AuditView`. */
+    data class AuditView(
+        val action: String,
+        val target: String,
+        val account: String,
+        val device: String,
+        val timestamp: ULong,
+        val redacted: Boolean,
+    ) {
+        companion object {
+            /** `AuditView`'s JSON form. */
+            fun serializer(): KSerializer<AuditView> = Wire
+
+            private object Wire : KSerializer<AuditView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: AuditView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("action", encode(String.serializer(), value.action))
+                            put("target", encode(String.serializer(), value.target))
+                            put("account", encode(String.serializer(), value.account))
+                            put("device", encode(String.serializer(), value.device))
+                            put("timestamp", encode(U64AsString, value.timestamp))
+                            put("redacted", encode(Boolean.serializer(), value.redacted))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): AuditView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "AuditView")
+                    return AuditView(
+                        action = field(fields, "action", String.serializer()),
+                        target = field(fields, "target", String.serializer()),
+                        account = field(fields, "account", String.serializer()),
+                        device = field(fields, "device", String.serializer()),
+                        timestamp = field(fields, "timestamp", U64AsString),
+                        redacted = field(fields, "redacted", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DeviceView`. */
+    data class DeviceView(
+        val fingerprint: String,
+        val publicKey: String,
+        val label: String,
+        val kind: String,
+        val account: String,
+        val addedAt: ULong,
+        val revoked: Boolean,
+    ) {
+        companion object {
+            /** `DeviceView`'s JSON form. */
+            fun serializer(): KSerializer<DeviceView> = Wire
+
+            private object Wire : KSerializer<DeviceView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DeviceView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("fingerprint", encode(String.serializer(), value.fingerprint))
+                            put("publicKey", encode(String.serializer(), value.publicKey))
+                            put("label", encode(String.serializer(), value.label))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("account", encode(String.serializer(), value.account))
+                            put("addedAt", encode(U64AsString, value.addedAt))
+                            put("revoked", encode(Boolean.serializer(), value.revoked))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DeviceView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DeviceView")
+                    return DeviceView(
+                        fingerprint = field(fields, "fingerprint", String.serializer()),
+                        publicKey = field(fields, "publicKey", String.serializer()),
+                        label = field(fields, "label", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        account = field(fields, "account", String.serializer()),
+                        addedAt = field(fields, "addedAt", U64AsString),
+                        revoked = field(fields, "revoked", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `KeyWrapInput`. */
+    data class KeyWrapInput(
+        val keyId: String,
+        val recipient: String,
+        val wrapper: String,
+        val envelope: String,
+    ) {
+        companion object {
+            /** `KeyWrapInput`'s JSON form. */
+            fun serializer(): KSerializer<KeyWrapInput> = Wire
+
+            private object Wire : KSerializer<KeyWrapInput> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: KeyWrapInput,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("keyId", encode(String.serializer(), value.keyId))
+                            put("recipient", encode(String.serializer(), value.recipient))
+                            put("wrapper", encode(String.serializer(), value.wrapper))
+                            put("envelope", encode(String.serializer(), value.envelope))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): KeyWrapInput {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "KeyWrapInput")
+                    return KeyWrapInput(
+                        keyId = field(fields, "keyId", String.serializer()),
+                        recipient = field(fields, "recipient", String.serializer()),
+                        wrapper = field(fields, "wrapper", String.serializer()),
+                        envelope = field(fields, "envelope", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `KeyWrapView`. */
+    data class KeyWrapView(
+        val keyId: String,
+        val recipient: String,
+        val wrapper: String,
+        val envelope: String,
+        val wrappedBy: String,
+    ) {
+        companion object {
+            /** `KeyWrapView`'s JSON form. */
+            fun serializer(): KSerializer<KeyWrapView> = Wire
+
+            private object Wire : KSerializer<KeyWrapView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: KeyWrapView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("keyId", encode(String.serializer(), value.keyId))
+                            put("recipient", encode(String.serializer(), value.recipient))
+                            put("wrapper", encode(String.serializer(), value.wrapper))
+                            put("envelope", encode(String.serializer(), value.envelope))
+                            put("wrappedBy", encode(String.serializer(), value.wrappedBy))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): KeyWrapView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "KeyWrapView")
+                    return KeyWrapView(
+                        keyId = field(fields, "keyId", String.serializer()),
+                        recipient = field(fields, "recipient", String.serializer()),
+                        wrapper = field(fields, "wrapper", String.serializer()),
+                        envelope = field(fields, "envelope", String.serializer()),
+                        wrappedBy = field(fields, "wrappedBy", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MemberView`. */
+    data class MemberView(
+        val account: String,
+        val role: String,
+        val devices: UInt,
+    ) {
+        companion object {
+            /** `MemberView`'s JSON form. */
+            fun serializer(): KSerializer<MemberView> = Wire
+
+            private object Wire : KSerializer<MemberView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MemberView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("role", encode(String.serializer(), value.role))
+                            put("devices", encode(UInt.serializer(), value.devices))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MemberView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MemberView")
+                    return MemberView(
+                        account = field(fields, "account", String.serializer()),
+                        role = field(fields, "role", String.serializer()),
+                        devices = field(fields, "devices", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `RevisionView`. */
+    data class RevisionView(
+        val field: String,
+        val previous: String,
+        val replacedAt: ULong,
+        val replacedBy: String,
+    ) {
+        companion object {
+            /** `RevisionView`'s JSON form. */
+            fun serializer(): KSerializer<RevisionView> = Wire
+
+            private object Wire : KSerializer<RevisionView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: RevisionView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("field", encode(String.serializer(), value.field))
+                            put("previous", encode(String.serializer(), value.previous))
+                            put("replacedAt", encode(U64AsString, value.replacedAt))
+                            put("replacedBy", encode(String.serializer(), value.replacedBy))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): RevisionView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "RevisionView")
+                    return RevisionView(
+                        field = field(fields, "field", String.serializer()),
+                        previous = field(fields, "previous", String.serializer()),
+                        replacedAt = field(fields, "replacedAt", U64AsString),
+                        replacedBy = field(fields, "replacedBy", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `SecretView`. */
+    data class SecretView(
+        val id: String,
+        val kind: String,
+        val name: String,
+        val tags: String,
+        val fields: Map<String, String>,
+        val createdAt: ULong,
+        val createdBy: String,
+        val updatedAt: ULong,
+        val updatedBy: String,
+        val trashed: Boolean,
+        val trashedAt: ULong,
+    ) {
+        companion object {
+            /** `SecretView`'s JSON form. */
+            fun serializer(): KSerializer<SecretView> = Wire
+
+            private object Wire : KSerializer<SecretView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SecretView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("name", encode(String.serializer(), value.name))
+                            put("tags", encode(String.serializer(), value.tags))
+                            put("fields", encode(MapSerializer(String.serializer(), String.serializer()), value.fields))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("createdBy", encode(String.serializer(), value.createdBy))
+                            put("updatedAt", encode(U64AsString, value.updatedAt))
+                            put("updatedBy", encode(String.serializer(), value.updatedBy))
+                            put("trashed", encode(Boolean.serializer(), value.trashed))
+                            put("trashedAt", encode(U64AsString, value.trashedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SecretView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SecretView")
+                    return SecretView(
+                        id = field(fields, "id", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        tags = field(fields, "tags", String.serializer()),
+                        fields = field(fields, "fields", MapSerializer(String.serializer(), String.serializer())),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        createdBy = field(fields, "createdBy", String.serializer()),
+                        updatedAt = field(fields, "updatedAt", U64AsString),
+                        updatedBy = field(fields, "updatedBy", String.serializer()),
+                        trashed = field(fields, "trashed", Boolean.serializer()),
+                        trashedAt = field(fields, "trashedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `VaultInfo`. */
+    data class VaultInfo(
+        val name: String,
+        val currentKey: String,
+        val defaultRole: String,
+        val myAccount: String,
+        val myRole: String,
+    ) {
+        companion object {
+            /** `VaultInfo`'s JSON form. */
+            fun serializer(): KSerializer<VaultInfo> = Wire
+
+            private object Wire : KSerializer<VaultInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: VaultInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("currentKey", encode(String.serializer(), value.currentKey))
+                            put("defaultRole", encode(String.serializer(), value.defaultRole))
+                            put("myAccount", encode(String.serializer(), value.myAccount))
+                            put("myRole", encode(String.serializer(), value.myRole))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): VaultInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "VaultInfo")
+                    return VaultInfo(
+                        name = field(fields, "name", String.serializer()),
+                        currentKey = field(fields, "currentKey", String.serializer()),
+                        defaultRole = field(fields, "defaultRole", String.serializer()),
+                        myAccount = field(fields, "myAccount", String.serializer()),
+                        myRole = field(fields, "myRole", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -650,5 +1001,11 @@ class PassClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }
