@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useCalimero } from '../calimero';
 import type { MeroPassClient } from '../generated/client';
-import type { DeviceWire, MemberWire } from '../lib/meroPass';
 import { shortAccount, useMemberNames } from '../lib/names';
 import { toDevice, toMember } from '../lib/vaultApi';
 import { deviceKeeper } from '../lib/deviceKey';
@@ -70,8 +69,8 @@ export default function VaultPeople({
         client.listMembers(),
         client.listDevices(),
       ]);
-      setMembers((m as MemberWire[]).map(toMember));
-      setDevices((d as DeviceWire[]).map(toDevice));
+      setMembers(m.map(toMember));
+      setDevices(d.map(toDevice));
       setError(null);
     } catch (e) {
       setError(describeError(e));

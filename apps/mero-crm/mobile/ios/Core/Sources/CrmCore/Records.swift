@@ -22,7 +22,7 @@ extension CrmClient {
     ]
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the types below).
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))

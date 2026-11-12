@@ -2,10 +2,19 @@
  * The pipeline's contract is called through `MeroCrmClient`, which
  * `mero-app-build codegen` writes from logic/res/abi.json
  * (`src/generated/client.ts`): camelCase arguments, u64s as decimal strings
- * (`u64`, `optU64` below). The ABI names its records without their shapes, so
- * the generated types are `unknown`: each answer passes through the `to*`
- * below into v1's shapes, which the screens were written against.
+ * (`u64`, `optU64` below). It types the records from the ABI; each answer
+ * passes through the `to*` below into v1's shapes, which the screens were
+ * written against.
  */
+
+import type {
+  ActivityView as WireActivity,
+  AutomationView as WireAutomation,
+  ContactView as WireContact,
+  DealDetail as WireDealDetail,
+  DealView as WireDeal,
+  NoteView as WireNote,
+} from './generated/client';
 
 // ── what the screens render ──────────────────────────────────────────────────
 //
@@ -114,19 +123,7 @@ export interface Settings {
   rotting_days: number;
 }
 
-// ── the wire ─────────────────────────────────────────────────────────────────
-
-type Wire<T, K extends keyof T> = Omit<T, K> & { [P in K]: T[P] extends number ? string : string | null };
-
-type WireNext = Wire<NextActivity, 'due_at'>;
-type WireDeal = Omit<
-  Wire<DealView, 'value' | 'expected_close' | 'stage_entered_at' | 'closed_at' | 'last_touch_at' | 'created_at'>,
-  'next_activity'
-> & { next_activity: WireNext | null };
-type WireContact = Wire<ContactView, 'won_value' | 'created_at'>;
-type WireActivity = Wire<ActivityView, 'due_at' | 'done_at' | 'created_at'>;
-type WireNote = Wire<NoteView, 'created_at'>;
-type WireAutomation = Wire<AutomationView, 'created_at'>;
+// ── the wire: the generated client's types (u64 as a decimal string) ───────────
 
 /** A u64 as the wire carries it (a decimal string) as a number. */
 function int(value: string | number): number {
@@ -179,21 +176,20 @@ export function optU64(n: number | null | undefined): string | null {
 // ── answers, in the screens' shapes ──────────────────────────────────────────
 
 /** `getSettings`'s answer. */
-export const toSettings = (v: unknown): Settings => v as Settings;
+export const toSettings = (v: Settings): Settings => v;
 /** `listStages`'s answer (pipeline order). */
-export const toStages = (v: unknown): StageView[] => v as StageView[];
+export const toStages = (v: StageView[]): StageView[] => v;
 /** `listDeals`'s answer. */
-export const toDeals = (v: unknown): DealView[] => (v as WireDeal[]).map(fromWireDeal);
+export const toDeals = (v: WireDeal[]): DealView[] => v.map(fromWireDeal);
 /** `listContacts`'s answer. */
-export const toContacts = (v: unknown): ContactView[] => (v as WireContact[]).map(fromWireContact);
+export const toContacts = (v: WireContact[]): ContactView[] => v.map(fromWireContact);
 /** `listActivities`'s answer. */
-export const toActivities = (v: unknown): ActivityView[] => (v as WireActivity[]).map(fromWireActivity);
+export const toActivities = (v: WireActivity[]): ActivityView[] => v.map(fromWireActivity);
 /** `listAutomations`'s answer. */
-export const toAutomations = (v: unknown): AutomationView[] => (v as WireAutomation[]).map(fromWireAutomation);
+export const toAutomations = (v: WireAutomation[]): AutomationView[] => v.map(fromWireAutomation);
 
 /** `getDeal`'s answer. */
-export function toDealDetail(v: unknown): DealDetail {
-  const d = v as { deal: WireDeal; contact: WireContact | null; activities: WireActivity[]; notes: WireNote[] };
+export function toDealDetail(d: WireDealDetail): DealDetail {
   return {
     deal: fromWireDeal(d.deal),
     contact: d.contact ? fromWireContact(d.contact) : null,

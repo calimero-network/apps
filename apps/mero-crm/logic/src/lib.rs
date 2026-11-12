@@ -205,7 +205,7 @@ pub struct Automation {
 // every integration read them. The one wire difference is that a `u64` is a
 // decimal string (D20).
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct StageView {
     pub id: String,
     pub name: String,
@@ -214,7 +214,7 @@ pub struct StageView {
 }
 
 /// The earliest open activity on a deal: the "next step" the board shows.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct NextActivity {
     pub id: String,
     pub kind: String,
@@ -223,7 +223,7 @@ pub struct NextActivity {
     pub due_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct DealView {
     pub id: String,
     pub title: String,
@@ -256,7 +256,7 @@ pub struct DealView {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct ContactView {
     pub id: String,
     pub name: String,
@@ -272,7 +272,7 @@ pub struct ContactView {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct ActivityView {
     pub id: String,
     pub deal_id: Option<String>,
@@ -294,7 +294,7 @@ pub struct ActivityView {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct NoteView {
     pub id: String,
     pub deal_id: String,
@@ -304,7 +304,7 @@ pub struct NoteView {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct AutomationView {
     pub id: String,
     pub stage_id: String,
@@ -318,7 +318,7 @@ pub struct AutomationView {
 }
 
 /// A deal with everything the detail page shows.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct DealDetail {
     pub deal: DealView,
     pub contact: Option<ContactView>,
@@ -328,7 +328,7 @@ pub struct DealDetail {
     pub notes: Vec<NoteView>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Settings {
     pub currency: String,
     pub rotting_days: u32,

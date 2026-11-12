@@ -4,26 +4,112 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ActivityView`: the ABI names it without its shape. */
-export type ActivityView = unknown;
+/** The app type `ActivityView`. */
+export interface ActivityView {
+  id: string;
+  deal_id: string | null;
+  deal_title: string | null;
+  contact_id: string | null;
+  kind: string;
+  subject: string;
+  due_at: string;
+  done: boolean;
+  done_at: string | null;
+  owner: string | null;
+  note: string;
+  automation_id: string | null;
+  created_by: string;
+  created_at: string;
+}
 
-/** The app type `AutomationView`: the ABI names it without its shape. */
-export type AutomationView = unknown;
+/** The app type `AutomationView`. */
+export interface AutomationView {
+  id: string;
+  stage_id: string;
+  kind: string;
+  subject: string;
+  due_in_days: number;
+  enabled: boolean;
+  created_by: string;
+  created_at: string;
+}
 
-/** The app type `ContactView`: the ABI names it without its shape. */
-export type ContactView = unknown;
+/** The app type `ContactView`. */
+export interface ContactView {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  organization: string;
+  job_title: string;
+  open_deals: number;
+  won_value: string;
+  created_by: string;
+  created_at: string;
+}
 
-/** The app type `DealDetail`: the ABI names it without its shape. */
-export type DealDetail = unknown;
+/** The app type `DealDetail`. */
+export interface DealDetail {
+  deal: DealView;
+  contact: ContactView | null;
+  activities: ActivityView[];
+  notes: NoteView[];
+}
 
-/** The app type `DealView`: the ABI names it without its shape. */
-export type DealView = unknown;
+/** The app type `DealView`. */
+export interface DealView {
+  id: string;
+  title: string;
+  value: string;
+  organization: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  owner: string | null;
+  stage_id: string;
+  status: string;
+  lost_reason: string;
+  expected_close: string | null;
+  source: string;
+  probability: number;
+  stage_entered_at: string;
+  closed_at: string | null;
+  next_activity: NextActivity | null;
+  open_activities: number;
+  last_touch_at: string | null;
+  created_by: string;
+  created_at: string;
+}
 
-/** The app type `Settings`: the ABI names it without its shape. */
-export type Settings = unknown;
+/** The app type `NextActivity`. */
+export interface NextActivity {
+  id: string;
+  kind: string;
+  subject: string;
+  due_at: string;
+}
 
-/** The app type `StageView`: the ABI names it without its shape. */
-export type StageView = unknown;
+/** The app type `NoteView`. */
+export interface NoteView {
+  id: string;
+  deal_id: string;
+  author: string;
+  body: string;
+  created_at: string;
+}
+
+/** The app type `Settings`. */
+export interface Settings {
+  currency: string;
+  rotting_days: number;
+}
+
+/** The app type `StageView`. */
+export interface StageView {
+  id: string;
+  name: string;
+  probability: number;
+  position: number;
+}
 
 /** The arguments of `addActivity`. */
 export interface AddActivityArgs {

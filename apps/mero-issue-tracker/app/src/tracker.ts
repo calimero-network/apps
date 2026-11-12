@@ -1,10 +1,18 @@
 /**
  * The board's contract is called through `MeroIssueTrackerClient`, which
  * `mero-app-build codegen` writes from logic/res/abi.json
- * (`src/generated/client.ts`). The ABI names its records without their shapes,
- * so the generated types are `unknown`: each answer passes through the
- * `fromWire*` / `to*` below into the shapes the screens use.
+ * (`src/generated/client.ts`), which types its records from the ABI; each
+ * answer passes through the `fromWire*` / `to*` below into the shapes the
+ * screens use.
  */
+
+import type {
+  Comment as WireComment,
+  IssueDetail as WireIssueDetail,
+  IssueView as WireIssue,
+  RepoInfo,
+  StatusCount as WireStatusCount,
+} from './generated/client';
 
 // ── what the views render ────────────────────────────────────────────────────
 //
@@ -59,31 +67,7 @@ export interface NewIssue {
   labels: string[];
 }
 
-// ── the wire ─────────────────────────────────────────────────────────────────
-
-interface WireIssue {
-  id: string;
-  title: string;
-  summary: string;
-  impact: string;
-  repro: string;
-  resolutionCriteria: string;
-  status: string;
-  priority: string;
-  assignee: string | null;
-  labels: string[];
-  createdBy: string;
-  createdAt: string;
-}
-
-interface WireComment {
-  id: string;
-  issueId: string;
-  author: string;
-  body: string;
-  createdAt: string;
-  editedAt: string | null;
-}
+// ── the wire: the generated client's types (camelCase, u64 as a decimal string) ──
 
 /** A u64 as the wire carries it (a decimal string) as a number: milliseconds and counts fit. */
 function int(value: string | number): number {
@@ -121,17 +105,16 @@ export function fromWireComment(w: WireComment): CommentView {
 // ── answers, in the screens' shapes ──────────────────────────────────────────
 
 /** `listIssues`'s answer. */
-export const toIssues = (v: unknown): IssueView[] => (v as WireIssue[]).map(fromWireIssue);
+export const toIssues = (v: WireIssue[]): IssueView[] => v.map(fromWireIssue);
 
 /** `getIssue`'s answer. */
-export function toIssueDetail(v: unknown): IssueDetail {
-  const d = v as { issue: WireIssue; comments: WireComment[] };
+export function toIssueDetail(d: WireIssueDetail): IssueDetail {
   return { issue: fromWireIssue(d.issue), comments: d.comments.map(fromWireComment) };
 }
 
 /** `getStatusCounts`'s answer. */
-export const toStatusCounts = (v: unknown): StatusCount[] =>
-  (v as Array<{ status: string; count: string }>).map((c) => ({ status: c.status, count: int(c.count) }));
+export const toStatusCounts = (v: WireStatusCount[]): StatusCount[] =>
+  v.map((c) => ({ status: c.status, count: int(c.count) }));
 
 /** `getRepoInfo`'s answer. */
-export const toRepoInfo = (v: unknown): { repoUrl: string } => v as { repoUrl: string };
+export const toRepoInfo = (v: RepoInfo): { repoUrl: string } => v;

@@ -10,6 +10,7 @@ import network.calimero.pass.generated.PassWireDecoding
 import network.calimero.pass.generated.RevisionView
 import network.calimero.pass.generated.SecretView
 import network.calimero.pass.generated.VaultInfo
+import network.calimero.pass.generated.asContractArg
 import network.calimero.pass.generated.client.PassClient
 import network.calimero.pass.generated.toPass
 
@@ -54,7 +55,7 @@ class PassVaultAPI(
     override suspend fun wrappedPairs(): List<String> = client.wrappedPairs()
 
     override suspend fun addKeyWraps(wraps: List<WrapRecord>): Int =
-        client.addKeyWraps(wraps.map { PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput(it.keyId, it.recipient, it.wrapper, it.envelope)) }).toInt()
+        client.addKeyWraps(wraps.map { PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput(it.keyId, it.recipient, it.wrapper, it.envelope)).asContractArg<PassClient.KeyWrapInput>() }).toInt()
 
     override suspend fun rotateKey(keyId: String) = client.rotateKey(keyId)
 
