@@ -4,23 +4,55 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ChannelRecord`: the ABI names it without its shape. */
-export type ChannelRecord = unknown;
+/** The app type `ChannelRecord`. */
+export interface ChannelRecord {
+  contextId: string;
+  name: string;
+  topic: string;
+  createdBy: string;
+  registeredAt: string;
+}
 
-/** The app type `FileRecord`: the ABI names it without its shape. */
-export type FileRecord = unknown;
+/** The app type `FileRecord`. */
+export interface FileRecord {
+  id: string;
+  name: string;
+  blobId: string;
+  size: string;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
 
-/** The app type `Identity`: the ABI names it without its shape. */
-export type Identity = unknown;
+/** The app type `Identity`. */
+export interface Identity {
+  deviceId: string;
+  accountId: string;
+}
 
-/** The app type `MemberRecord`: the ABI names it without its shape. */
-export type MemberRecord = unknown;
+/** The app type `MemberRecord`. */
+export interface MemberRecord {
+  identity: string;
+  role: string;
+}
 
-/** The app type `WorkspaceInfo`: the ABI names it without its shape. */
-export type WorkspaceInfo = unknown;
+/** The app type `WorkspaceInfo`. */
+export interface WorkspaceInfo {
+  name: string;
+  admin: string;
+  channelCount: string;
+  groupCount: string;
+  memberCount: string;
+}
 
-/** The app type `WsGroupRecord`: the ABI names it without its shape. */
-export type WsGroupRecord = unknown;
+/** The app type `WsGroupRecord`. */
+export interface WsGroupRecord {
+  groupId: string;
+  name: string;
+  description: string;
+  createdBy: string;
+  registeredAt: string;
+}
 
 /** The arguments of `aclDocSet`. */
 export interface AclDocSetArgs {

@@ -3099,7 +3099,34 @@
         "type": "object"
       },
       "ChannelRecord": {
-        "description": "The app type `ChannelRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "registeredAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "topic": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "name",
+          "topic",
+          "createdBy",
+          "registeredAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ChannelRecord"
       },
       "ChannelRegisteredEvent": {
@@ -4408,7 +4435,45 @@
         "type": "object"
       },
       "FileRecord": {
-        "description": "The app type `FileRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "blobId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "uploadedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "uploadedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "blobId",
+          "size",
+          "mimeType",
+          "uploadedBy",
+          "uploadedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FileRecord"
       },
       "FileUploadedEvent": {
@@ -5622,7 +5687,19 @@
         "type": "object"
       },
       "Identity": {
-        "description": "The app type `Identity`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "accountId"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Identity"
       },
       "IncrementCounterArgs": {
@@ -5995,7 +6072,19 @@
         "type": "object"
       },
       "MemberRecord": {
-        "description": "The app type `MemberRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "role"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemberRecord"
       },
       "MemberRoleSetEvent": {
@@ -9392,7 +9481,40 @@
         "type": "object"
       },
       "WorkspaceInfo": {
-        "description": "The app type `WorkspaceInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "admin": {
+            "type": "string"
+          },
+          "channelCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "groupCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "memberCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "admin",
+          "channelCount",
+          "groupCount",
+          "memberCount"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WorkspaceInfo"
       },
       "WorkspaceInitializedEvent": {
@@ -9519,7 +9641,34 @@
         "type": "object"
       },
       "WsGroupRecord": {
-        "description": "The app type `WsGroupRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdBy": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "registeredAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "groupId",
+          "name",
+          "description",
+          "createdBy",
+          "registeredAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WsGroupRecord"
       },
       "WsInitArgs": {
