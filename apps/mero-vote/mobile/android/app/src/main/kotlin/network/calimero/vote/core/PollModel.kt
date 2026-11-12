@@ -15,12 +15,16 @@ import network.calimero.vote.crypto.VoteProtocol
 import network.calimero.vote.generated.AuditReport
 import network.calimero.vote.generated.Ceremony
 import network.calimero.vote.generated.CountedBallot
+import network.calimero.vote.generated.Identity
 import network.calimero.vote.generated.Phase
 import network.calimero.vote.generated.PollDefinition
 import network.calimero.vote.generated.PollView
+import network.calimero.vote.generated.TallyInputs
 import network.calimero.vote.generated.Transcript
 import network.calimero.vote.generated.TrusteeStatus
 import network.calimero.vote.generated.WirePartial
+import network.calimero.vote.generated.toVote
+import network.calimero.vote.generated.toVoteJson
 
 /** A share dealt to me, and whether it opens against its dealer's commitments. */
 data class ReceivedShare(
@@ -79,12 +83,12 @@ class PollModel(
     suspend fun load() {
         if (_view.value == null) _phase.value = LoadPhase.Loading
         attempt {
-            if (account == null) account = client.whoami().account
-            val v = client.getPoll(pollId)
+            if (account == null) account = client.whoami().toVote<Identity>().account
+            val v = client.getPoll(pollId).toVote<PollView>()
             _view.value = v
             if (_selection.value.size != v.definition.options.size) _selection.value = List(v.definition.options.size) { false }
-            _report.value = if (v.state.phase == Phase.Closed) client.getResult(pollId) else null
-            _ceremony.value = if (v.state.phase == Phase.KeyCeremony) client.ceremony(pollId) else null
+            _report.value = if (v.state.phase == Phase.Closed) client.getResult(pollId).toVote<AuditReport>() else null
+            _ceremony.value = if (v.state.phase == Phase.KeyCeremony) client.ceremony(pollId).toVote<Ceremony>() else null
             val me = account
             if (me != null && _trusteeKey.value == null) _trusteeKey.value = keys.load(group.contextId, pollId, me)
             _phase.value = LoadPhase.Loaded
@@ -240,7 +244,7 @@ class PollModel(
                     val pk = VoteWire.point(election.key, "election key")
                     VoteWire.ballot(VoteProtocol.castBallot(pk, pollId, me, rules, selections, rng))
                 }
-            client.castBallot(pollId, wire)
+            client.castBallot(pollId, wire.toVoteJson())
             _selection.value = List(selections.size) { false }
         }
     }
@@ -254,7 +258,7 @@ class PollModel(
             if (!keys.save(key)) throw VoteModelException("This device can't store your trustee key.")
             _trusteeKey.value = key
             val (pub, proof) = VoteProtocol.makeTransportKey(pollId, me, e, rng)
-            client.publishTransportKey(pollId, pub.hex(), VoteWire.branch(proof))
+            client.publishTransportKey(pollId, pub.hex(), VoteWire.branch(proof).toVoteJson())
         }
     }
 
@@ -274,7 +278,7 @@ class PollModel(
                     // The polynomial lives only inside this call.
                     VoteWire.dealing(VoteProtocol.deal(pollId, me, def.threshold.toInt(), recipients, rng))
                 }
-            client.publishDealing(pollId, wire)
+            client.publishDealing(pollId, wire.toVoteJson())
         }
     }
 
@@ -297,7 +301,7 @@ class PollModel(
         ) {
             val e = VoteWire.scalar(key.secret, "trustee key")
             val (secret, proof) = VoteProtocol.makeComplaint(pollId, me, dealer, index, e, VoteWire.dealing(wire), rng)
-            client.fileComplaint(pollId, dealer, secret.hex(), VoteWire.branch(proof))
+            client.fileComplaint(pollId, dealer, secret.hex(), VoteWire.branch(proof).toVoteJson())
         }
     }
 
@@ -319,7 +323,7 @@ class PollModel(
                         )
                 x += s
             }
-            val inputs = client.tallyInputs(pollId)
+            val inputs = client.tallyInputs(pollId).toVote<TallyInputs>()
             val partials =
                 withContext(crypto) {
                     inputs.aggregate.mapIndexed { j, ct ->
@@ -327,7 +331,7 @@ class PollModel(
                         WirePartial(d.hex(), VoteWire.branch(proof))
                     }
                 }
-            client.publishPartial(pollId, partials)
+            client.publishPartial(pollId, partials.map { it.toVoteJson() })
         }
     }
 
@@ -367,14 +371,14 @@ class PollModel(
         _busy.value = "verify"
         error.value = null
         attempt {
-            val transcript = client.getTranscript(pollId)
+            val transcript = client.getTranscript(pollId).toVote<Transcript>()
             withContext(crypto) { TranscriptAudit.verify(transcript) }
         }.onSuccess { _localAudit.value = it }.onFailure { error.value = VoteErrorText.describe(it) }
         _busy.value = null
     }
 
     /** The transcript as pretty JSON, for sharing. */
-    suspend fun transcriptJson(): String = pretty.encodeToString(Transcript.serializer(), client.getTranscript(pollId))
+    suspend fun transcriptJson(): String = pretty.encodeToString(Transcript.serializer(), client.getTranscript(pollId).toVote<Transcript>())
 
     private companion object {
         val pretty =

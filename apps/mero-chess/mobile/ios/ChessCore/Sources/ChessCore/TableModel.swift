@@ -125,7 +125,7 @@ public final class TableModel: ObservableObject {
         reading = true
         defer { reading = false }
         do {
-            let next = try await client.table(now: nowMillis()).named
+            let next = try await client.table(now: nowMillis()).decoded(as: TableView.self).named
             apply(next)
             error = nil
         } catch is CancellationError {
@@ -153,7 +153,7 @@ public final class TableModel: ObservableObject {
         guard let view else { return }
         let signature = "\(view.gamesPlayed):\(view.result)"
         guard signature != pastSignature else { return }
-        if let rows = try? await client.history() {
+        if let rows = try? await client.history().map({ try $0.decoded(as: GameSummary.self) }) {
             past = rows
             pastSignature = signature
         }

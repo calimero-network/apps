@@ -11,11 +11,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import network.calimero.merraria.contract.Edit
-import network.calimero.merraria.contract.MerrariaClient
+import network.calimero.merraria.contract.MerrariaContract
 import network.calimero.merraria.contract.PlayerView
 import network.calimero.merraria.contract.TileEntry
 import network.calimero.merraria.contract.Transform
 import network.calimero.merraria.contract.WorldMeta
+import network.calimero.merraria.contract.allOverrides
+import network.calimero.merraria.generated.MerrariaClient
 
 // The bridge between the app and the bundled web game (`app/src/native/host.ts`, which documents
 // the protocol). Both directions are one JSON object per message. Same messages, same spelling as
@@ -258,16 +260,16 @@ class BridgeDispatcher(
         }
         return when (method) {
             "get_overrides" -> encode(ListSerializer(TileEntry.serializer()), client.allOverrides())
-            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(u32(decode(NowArgs.serializer(), argsJson).now)))
-            "world_meta" -> encode(WorldMeta.serializer(), client.worldMeta())
+            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(u32(decode(NowArgs.serializer(), argsJson).now)).map { MerrariaContract.read(PlayerView.serializer(), it) })
+            "world_meta" -> encode(WorldMeta.serializer(), MerrariaContract.read(WorldMeta.serializer(), client.worldMeta()))
             "heartbeat" -> {
                 val args = decode(HeartbeatArgs.serializer(), argsJson)
-                client.heartbeat(args.t, u32(args.now))
+                client.heartbeat(MerrariaContract.json(Transform.serializer(), args.t), u32(args.now))
                 "null"
             }
             "join" -> {
                 val args = decode(JoinArgs.serializer(), argsJson)
-                encode(PlayerView.serializer(), client.join(args.name, u32(args.now)))
+                encode(PlayerView.serializer(), MerrariaContract.read(PlayerView.serializer(), client.join(args.name, u32(args.now))))
             }
             "leave" -> {
                 client.leave(u32(decode(NowArgs.serializer(), argsJson).now))
@@ -275,7 +277,7 @@ class BridgeDispatcher(
             }
             else -> {
                 val args = decode(SetTilesArgs.serializer(), argsJson)
-                encode(UInt.serializer(), client.setTiles(args.edits, u32(args.now)))
+                encode(UInt.serializer(), client.setTiles(args.edits.map { MerrariaContract.json(Edit.serializer(), it) }, u32(args.now)))
             }
         }
     }

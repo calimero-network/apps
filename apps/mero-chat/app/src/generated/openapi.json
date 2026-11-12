@@ -265,6 +265,40 @@
         "description": "The app type `AttachmentInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
         "x-calimero-abi-type": "AttachmentInput"
       },
+      "AttachmentView": {
+        "properties": {
+          "blobId": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "uploadedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "name",
+          "mimeType",
+          "size",
+          "blobId",
+          "uploadedAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "AttachmentView"
+      },
       "BannedError": {
         "properties": {
           "message": {
@@ -480,8 +514,46 @@
         "type": "object"
       },
       "ContextInfo": {
-        "description": "The app type `ContextInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextType": {
+            "$ref": "#/components/schemas/ContextType"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "contextType",
+          "description",
+          "createdAt",
+          "creator"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ContextInfo"
+      },
+      "ContextType": {
+        "oneOf": [
+          {
+            "const": "Channel"
+          },
+          {
+            "const": "Dm"
+          }
+        ],
+        "x-calimero-abi-type": "ContextType"
       },
       "DeleteDraftArgs": {
         "description": "The arguments of `deleteDraft`, by name.",
@@ -858,7 +930,32 @@
         "type": "object"
       },
       "FullMessageResponse": {
-        "description": "The app type `FullMessageResponse`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageView"
+            },
+            "type": "array"
+          },
+          "startPosition": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "totalCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "totalCount",
+          "messages",
+          "startPosition"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FullMessageResponse"
       },
       "GetChannelInfoArgs": {
@@ -1791,7 +1888,132 @@
         "type": "object"
       },
       "MessageView": {
-        "description": "The app type `MessageView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "editedOn": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentView"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentView"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "mentions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mentionsUsernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "parentMessageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reactions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sender": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "threadCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "threadLastTimestamp": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "timestamp": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "index",
+          "timestamp",
+          "sender",
+          "mentions",
+          "mentionsUsernames",
+          "files",
+          "images",
+          "id",
+          "text",
+          "editedOn",
+          "reactions",
+          "deleted",
+          "threadCount",
+          "threadLastTimestamp",
+          "parentMessageId"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MessageView"
       },
       "NotFoundError": {
@@ -1862,7 +2084,20 @@
         "type": "object"
       },
       "Role": {
-        "description": "The app type `Role`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "oneOf": [
+          {
+            "const": "User"
+          },
+          {
+            "const": "Mod"
+          },
+          {
+            "const": "Admin"
+          },
+          {
+            "const": "Banned"
+          }
+        ],
         "x-calimero-abi-type": "Role"
       },
       "RoleUpdatedEvent": {
@@ -1935,6 +2170,79 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "SearchHit": {
+        "properties": {
+          "anchorTimestamp": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matchEnd": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "matchStart": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "parentMessageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sender": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "parentMessageId",
+          "index",
+          "timestamp",
+          "anchorTimestamp",
+          "sender",
+          "snippet",
+          "matchStart",
+          "matchEnd"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SearchHit"
       },
       "SearchMessagesArgs": {
         "description": "The arguments of `searchMessages`, by name.",
@@ -2099,7 +2407,43 @@
         "type": "object"
       },
       "SearchPage": {
-        "description": "The app type `SearchPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "frontierTimestamp": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hits",
+          "nextCursor",
+          "frontierTimestamp"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SearchPage"
       },
       "SendMessageArgs": {
@@ -2503,7 +2847,30 @@
         "type": "object"
       },
       "UserProfile": {
-        "description": "The app type `UserProfile`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identity": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "username",
+          "avatar"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "UserProfile"
       }
     },

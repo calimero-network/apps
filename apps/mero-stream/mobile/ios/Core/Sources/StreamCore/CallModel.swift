@@ -262,7 +262,7 @@ public final class CallModel: ObservableObject {
     }
 
     public func refreshMembers() async {
-        if let list = try? await client.getMembers() { members = list }
+        if let list = try? await client.getMembers().map({ try $0.decoded(as: Member.self) }) { members = list }
     }
 
     private func membersLoop() async {

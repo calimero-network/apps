@@ -1,8 +1,8 @@
 /**
  * Why edits vanish silently.
  *
- * Every contract mutation in this app is fired as `rpcCall(...).catch(() => {})`.
- * `rpcCall` throws a useful message; the call sites throw it away. The local store
+ * Every contract mutation in this app is fired as `design(board).method(...).catch(() => {})`.
+ * The call throws a useful message; the call sites throw it away. The local store
  * is already updated by then, so the UI looks correct until the next sync from the
  * contract quietly replaces it — the edit is simply gone, with nothing on screen
  * having said so.

@@ -6,7 +6,7 @@
 #
 # The non-UI layer (typed contract client, board helpers, view models) is the local SwiftPM package
 # in ChessCore/, tested on macOS with `swift test --package-path ChessCore` (no simulator). The
-# swift-sdk is pinned to its v2.0.0 release. Keep it equal to the version in
+# swift-sdk is pinned to its v4.1.0 release. Keep it equal to the version in
 # ChessCore/Package.swift.
 #
 # Sign-in (Calimero 1.0): the cluster's node URL and a passkey, over the sealed channel after the
@@ -25,7 +25,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   ChessCore:
     path: ChessCore
 

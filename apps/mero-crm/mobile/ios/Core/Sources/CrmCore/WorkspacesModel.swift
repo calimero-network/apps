@@ -181,7 +181,7 @@ public final class WorkspacesModel: ObservableObject {
         // Like the web: a new pipeline starts in USD, and a failed switch stays
         // USD until changed in Settings.
         if code != "USD" {
-            try? await CrmClient(backend: backend, contextId: contextId).setCurrency(currency: code)
+            try? await CrmClient(backend: backend, app: contextId).setCurrency(currency: code)
         }
         return PipelineRef(namespaceId: namespaceId, contextId: contextId, name: label, workspaceName: workspaceName)
     }

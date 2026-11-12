@@ -8,7 +8,7 @@
 # touch-control mapping) is the local SwiftPM package in MerrariaCore/, tested on macOS with
 # `swift test --package-path MerrariaCore` (no simulator). The game itself is the web app's engine,
 # built into ../game/www (../scripts/build-game.sh) and shipped as a folder resource.
-# The swift-sdk is pinned to its v2.0.0 release (Calimero 1.0); bump `exactVersion` for a new
+# The swift-sdk is pinned to its v4.1.0 release (Calimero 1.0); bump `exactVersion` for a new
 # release. Keep it equal to the version in MerrariaCore/Package.swift.
 name: Merraria
 
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   MerrariaCore:
     path: MerrariaCore
 

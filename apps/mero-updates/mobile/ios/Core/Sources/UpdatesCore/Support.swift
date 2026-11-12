@@ -1,15 +1,11 @@
 import Foundation
 import MeroKit
 
-// The generated client declares its own `ContextContractCalling` (it imports
-// nothing); MeroKit's bound contract has exactly its two methods.
-extension BoundContextContract: ContextContractCalling {}
-
 extension UpdatesClient {
     /// The client for one audience (an app instance), over the account's
-    /// cluster session, speaking the component ABI (``ComponentWire``).
+    /// cluster session.
     public init(backend: any MeroAppBackend, contextId: String) {
-        self.init(transport: ComponentWire(backend.contract.bound(to: contextId)))
+        self.init(backend: backend, app: contextId)
     }
 }
 

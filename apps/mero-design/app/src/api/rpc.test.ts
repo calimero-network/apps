@@ -10,7 +10,10 @@ import {
   listGroupMembers,
   listOtherTeams,
   listTeams,
-  rpcCall,
+  design,
+  i64,
+  optI64,
+  readElements,
   uploadBlob,
 } from "./rpc";
 import { withRoutes } from "@calimero-apps/connect/testing";
@@ -31,18 +34,18 @@ function bind(client: object) {
 
 afterEach(() => bindApi(null));
 
-describe("rpcCall", () => {
+describe("the board's contract", () => {
   it("fails loudly before anyone is signed in", async () => {
-    await expect(rpcCall("b", "get_board", {})).rejects.toThrow(/Not signed in/);
+    await expect(design("b").getBoard()).rejects.toThrow(/Not signed in/);
   });
 
   it("sends a call through the log and a view to a node, on the component's wire", async () => {
     const call = vi.fn().mockResolvedValue({ index: 2, result: "e1", events: [] });
     const view = vi.fn().mockResolvedValue({ index: 2, result: "admin" });
     const after = bind(withRoutes({ call, view }));
-    await rpcCall("board-1", "set_layer_index", { id: "e1", index: 0, updated_at: 9 });
+    await design("board-1").setLayerIndex({ id: "e1", index: 0, updatedAt: i64(9) });
     expect(call).toHaveBeenCalledWith("board-1", "setLayerIndex", { id: "e1", index: 0, updatedAt: "9" });
-    expect(await rpcCall("board-1", "my_role", {})).toBe("admin");
+    expect(await design("board-1").myRole()).toBe("admin");
     expect(view).toHaveBeenCalledWith("board-1", "myRole", {});
     expect(after).toHaveBeenCalledTimes(2);
   });
@@ -54,7 +57,7 @@ describe("rpcCall", () => {
       .mockResolvedValueOnce({ index: 1, result: { items: [el("a"), el("b")], nextCursor: "c1" } })
       .mockResolvedValueOnce({ index: 1, result: { items: [el("c")], nextCursor: null } });
     bind({ view });
-    const els = await rpcCall<Array<{ id: string }>>("board-1", "get_elements", {});
+    const els = await readElements(design("board-1"));
     expect(els.map((e) => e.id)).toEqual(["a", "b", "c"]);
     expect(view).toHaveBeenNthCalledWith(1, "board-1", "getElementsPage", { cursor: null, limit: 1000 });
     expect(view).toHaveBeenNthCalledWith(2, "board-1", "getElementsPage", { cursor: "c1", limit: 1000 });
@@ -66,7 +69,18 @@ describe("rpcCall", () => {
       fields: { message: "view-only: editor or admin access is required to modify this board" },
     });
     bind(withRoutes({ call: vi.fn().mockRejectedValue(refusal) }));
-    await expect(rpcCall("board-1", "delete_element", { id: "e" })).rejects.toThrow(/^view-only/);
+    await expect(design("board-1").deleteElement({ id: "e" })).rejects.toThrow(/^view-only/);
+  });
+
+  it("sends 64-bit integers as decimal strings and refuses anything that is not one", () => {
+    expect(i64(1727000010000)).toBe("1727000010000");
+    expect(i64(-12.6)).toBe("-12");
+    expect(i64(5n)).toBe("5");
+    expect(i64("42")).toBe("42");
+    expect(optI64(null)).toBeNull();
+    expect(optI64(undefined)).toBeNull();
+    expect(() => i64("soon")).toThrow(/must be an integer/);
+    expect(() => i64(Number.NaN)).toThrow(/must be an integer/);
   });
 });
 

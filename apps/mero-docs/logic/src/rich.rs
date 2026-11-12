@@ -49,7 +49,7 @@ pub type AttrDelta = BTreeMap<String, Option<String>>;
 /// `{"insert": "text"}` or `{"delete": 2}`. A `retain` or `insert` step may
 /// carry `attributes`: an object of formatting (a `null` value removes a key),
 /// or `null` for none. An insert's `attributes` are its complete set.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(untagged)]
 pub enum Change {
     /// Keeps `retain` characters, optionally changing their formatting.
@@ -69,7 +69,7 @@ pub enum Change {
 }
 
 /// A run of equally formatted characters.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Span {
     pub text: String,
     pub attributes: Attrs,
@@ -77,7 +77,7 @@ pub struct Span {
 
 /// A run of consecutive character ids. `replica` is always `"0"`: one leader
 /// mints every id. `counter` is the run's first id.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Run {
     pub replica: String,
     pub counter: u32,

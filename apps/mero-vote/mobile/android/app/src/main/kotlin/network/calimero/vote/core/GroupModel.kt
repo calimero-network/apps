@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.isActive
+import network.calimero.vote.generated.Identity
 import network.calimero.vote.generated.Member
 import network.calimero.vote.generated.Phase
 import network.calimero.vote.generated.PollSummary
+import network.calimero.vote.generated.toVote
 import kotlin.coroutines.coroutineContext
 
 /** What the new-poll sheet collects. (Swift `PollDraft`; the web's `CreatePoll`.) */
@@ -96,9 +98,9 @@ class GroupModel(
         if (_me.value == null && _polls.value.isEmpty()) _phase.value = LoadPhase.Loading
         attempt {
             coroutineScope {
-                val who = async { client.whoami() }
-                val members = async { client.roster() }
-                val list = async { client.listPolls() }
+                val who = async { client.whoami().toVote<Identity>() }
+                val members = async { client.roster().map { it.toVote<Member>() } }
+                val list = async { client.listPolls().map { it.toVote<PollSummary>() } }
                 Triple(who.await(), members.await(), list.await())
             }
         }.onSuccess { (w, r, p) ->

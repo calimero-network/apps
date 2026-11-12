@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FormView, ResponseView } from "./formsApi";
+import { type FormView, type ResponseView, toResponse, toResponses } from "./formsApi";
 import { isLinked } from "./lib/crm";
 import { ago, answerText, fromMillis, headline, isNew, toCsv, valueOf } from "./lib/fields";
 import { shortAccount } from "./lib/people";
@@ -28,7 +28,7 @@ export function Responses({
   /** Opens the tab where the form is linked to a CRM pipeline. */
   onConnect: () => void;
 }) {
-  const responses = useRead(workspace.client, workspace.version, (c) => c.listResponses({ form_id: form.id }), [form.id]);
+  const responses = useRead(workspace.client, workspace.version, (c) => c.listResponses({ formId: form.id }).then(toResponses), [form.id]);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -333,7 +333,7 @@ function ResponsePanel({
           <button
             className="ghost"
             disabled={busy !== null}
-            onClick={() => run("archive", () => workspace.act((c) => c.setArchived({ id: response.id, archived: !response.archived })))}
+            onClick={() => run("archive", () => workspace.act((c) => c.setArchived({ id: response.id, archived: !response.archived }).then(toResponse)))}
           >
             {response.archived ? "Unarchive" : "Archive"}
           </button>

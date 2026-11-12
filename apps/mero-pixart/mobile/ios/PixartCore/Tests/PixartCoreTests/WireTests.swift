@@ -15,7 +15,7 @@ final class WireTests: XCTestCase {
 
     func testIntegerArgumentsGoOutAsDecimalStrings() async throws {
         let backend = InMemoryAppBackend(account: "acct_1")
-        let client = PixartClient(transport: backend.contract.bound(to: "app-1"))
+        let client = PixartClient(backend: backend, app: "app-1")
         _ = try? await client.updateCursor(x: -12, y: 9_007_199_254_740_993, updatedAt: 42)
         let cursor = try args(backend, "updateCursor")
         XCTAssertEqual(cursor["x"] as? String, "-12")
@@ -25,7 +25,7 @@ final class WireTests: XCTestCase {
         _ = try? await client.updateLayer(id: "l1", visible: false, x: 5, updatedAt: 7)
         let layer = try args(backend, "updateLayer")
         XCTAssertEqual(layer["x"] as? String, "5")
-        XCTAssertNil(layer["y"], "an unset optional is left out")
+        XCTAssertTrue(layer["y"] is NSNull, "an unset optional goes out as null, which the contract reads as none")
         XCTAssertEqual(layer["visible"] as? Bool, false)
         XCTAssertEqual(backend.recording.calls("updateLayer").first?.path, .execute)
 

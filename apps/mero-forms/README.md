@@ -258,7 +258,9 @@ bundle (`frontend-dir`).
 logic/src/lib.rs            the contract
 logic/tests/harness.rs      TestApp tests: every method, keys, links, captchas, access
 logic/scenarios/            neutral steps: run by cargo test and on merod local
-app/src/formsApi.ts         the typed adapter: v1's method names and shapes over CalimeroClient
+app/src/generated/          MeroFormsClient: `mero-app-build codegen` from logic/res/abi.json (`pnpm -F mero-forms codegen`)
+app/src/formsApi.ts         the screens' shapes (`to*` / `from*`) and formsTransport (refusals as v1's Error)
+app/src/client.test.ts      the generated client against the committed ABI
 app/src/crmApi.ts           the Mero CRM calls the hand-off makes
 app/src/FormsHome.tsx       templates and the form list
 app/src/FormView.tsx        one form: Responses, Edit, Preview, Connect

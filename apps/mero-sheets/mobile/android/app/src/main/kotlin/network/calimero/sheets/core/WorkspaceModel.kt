@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
-import network.calimero.sheets.generated.SheetsClient
+import network.calimero.sheets.generated.Project
+import network.calimero.sheets.generated.client.SheetsClient
+import network.calimero.sheets.generated.toSheets
 import kotlin.coroutines.cancellation.CancellationException
 
 /** One spreadsheet: a context bound directly to the workspace's namespace root. */
@@ -128,7 +130,8 @@ class WorkspaceModel(
                                 async {
                                     id to
                                         try {
-                                            client(id).getProject().name.trim()
+                                            val project = client(id).getProject().toSheets<Project>()
+                                            project.name.trim()
                                         } catch (e: CancellationException) {
                                             throw e
                                         } catch (_: Exception) {

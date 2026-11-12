@@ -3,8 +3,9 @@ package network.calimero.issues.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueTrackerContract
 import network.calimero.issues.contract.IssueView
+import network.calimero.issues.generated.IssueTrackerClient
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The list's filters: the web app's Status / Priority / Assignee / Label chips. */
@@ -92,7 +93,7 @@ class IssuesModel(
         val s = _state.value
         if (s.issues.isEmpty() && s.phase != LoadPhase.Loaded) update { copy(phase = LoadPhase.Loading) }
         try {
-            val list = client.listIssues().sortedByDescending { it.createdAt }
+            val list = client.listIssues().map { IssueTrackerContract.read<IssueView>(it) }.sortedByDescending { it.createdAt }
             update { copy(issues = list, phase = LoadPhase.Loaded, notice = null) }
         } catch (e: CancellationException) {
             throw e

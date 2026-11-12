@@ -34,7 +34,7 @@ import network.calimero.docs.core.DocComment
 import network.calimero.docs.core.DocDto
 import network.calimero.docs.core.DocSearchPage
 import network.calimero.docs.core.DocTarget
-import network.calimero.docs.core.DocsClient
+import network.calimero.docs.core.DocsContract
 import network.calimero.docs.core.DocsDirectory
 import network.calimero.docs.core.DocsFormat
 import network.calimero.docs.core.DocumentReader
@@ -393,7 +393,7 @@ class WireTest {
         val root = Json.parseToJsonElement(file.readText()).jsonObject
         Assume.assumeTrue("logic/res/abi.json is not the component ABI yet", root.containsKey("abiVersion"))
         val methods = root["methods"]!!.jsonObject
-        for (name in DocsClient.METHODS) assertNotNull("$name is not in the ABI", methods[name])
+        for (name in DocsContract.METHODS) assertNotNull("$name is not in the ABI", methods[name])
         assertEquals("view", methods["listDocs"]!!.jsonObject["kind"]!!.jsonPrimitive.content)
         assertEquals("call", methods["addComment"]!!.jsonObject["kind"]!!.jsonPrimitive.content)
         val params = methods["addComment"]!!.jsonObject["params"]!!.jsonArray.map { it.jsonArray[0].jsonPrimitive.content }

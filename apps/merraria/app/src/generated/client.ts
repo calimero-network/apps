@@ -4,20 +4,53 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `Edit`: the ABI names it without its shape. */
-export type Edit = unknown;
+/** The app type `Edit`. */
+export interface Edit {
+  x: number;
+  y: number;
+  t: number;
+}
 
-/** The app type `OverridesPage`: the ABI names it without its shape. */
-export type OverridesPage = unknown;
+/** The app type `OverridesPage`. */
+export interface OverridesPage {
+  items: TileEntry[];
+  next: string | null;
+}
 
-/** The app type `PlayerView`: the ABI names it without its shape. */
-export type PlayerView = unknown;
+/** The app type `PlayerView`. */
+export interface PlayerView {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  dir: number;
+  sel: number;
+  action: string;
+  online: boolean;
+}
 
-/** The app type `Transform`: the ABI names it without its shape. */
-export type Transform = unknown;
+/** The app type `TileEntry`. */
+export interface TileEntry {
+  k: string;
+  t: number;
+}
 
-/** The app type `WorldMeta`: the ABI names it without its shape. */
-export type WorldMeta = unknown;
+/** The app type `Transform`. */
+export interface Transform {
+  name: string;
+  x: number;
+  y: number;
+  dir: number;
+  sel: number;
+  action: string;
+}
+
+/** The app type `WorldMeta`. */
+export interface WorldMeta {
+  name: string;
+  seed: number;
+  createdAt: number;
+}
 
 /** The arguments of `createWorld`. */
 export interface CreateWorldArgs {

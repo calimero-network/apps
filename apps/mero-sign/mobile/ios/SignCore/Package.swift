@@ -17,10 +17,10 @@ let package = Package(
         .library(name: "SignCore", targets: ["SignCore"]),
     ],
     dependencies: [
-        // swift-sdk v2.0.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        // swift-sdk v4.1.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "2.0.0"),
+            exact: "4.1.0"),
     ],
     targets: [
         .target(
@@ -28,9 +28,9 @@ let package = Package(
             dependencies: [
                 .product(name: "MeroKit", package: "swift-sdk"),
             ]),
-        // Sources/SignCore/Generated/SignClient.swift is written from the
-        // component ABI (../../logic/res/abi.json) and takes MeroKit's
-        // `ContextContractCalling`; ContractSurfaceTests pins it to the ABI.
+        // Sources/SignCore/Generated/SignClient.swift is generated from the
+        // component ABI (../../../logic/res/abi.json) by scripts/mobile-codegen.sh;
+        // ContractSurfaceTests pins it to the ABI.
         .testTarget(
             name: "SignCoreTests",
             dependencies: [

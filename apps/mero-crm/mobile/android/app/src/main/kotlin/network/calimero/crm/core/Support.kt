@@ -11,6 +11,7 @@ import com.calimero.mero.PasskeyCancelled
 import com.calimero.mero.ReleaseDeadlineError
 import com.calimero.mero.UnavailableError
 import com.calimero.mero.WrongNode
+import com.calimero.mero.app.ContextContractCalling
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.PasskeyRequired
 import com.calimero.mero.app.SignedOutException
@@ -21,8 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import network.calimero.crm.generated.ContextContractCalling
-import network.calimero.crm.generated.CrmClient
+import network.calimero.crm.generated.client.CrmClient
 import java.io.IOException
 
 /** The client for one pipeline (one app instance), over the account's node session. */
@@ -30,8 +30,7 @@ fun crmClient(
     backend: MeroAppBackend,
     contextId: String,
 ): CrmClient {
-    // The generated client declares its own `ContextContractCalling`; the SDK's bound contract
-    // has exactly its two methods.
+    // The SDK's bound contract, each request off the main thread.
     val bound = backend.contract.bound(contextId)
     return CrmClient(
         object : ContextContractCalling {
