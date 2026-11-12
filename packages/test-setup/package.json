@@ -1,0 +1,25 @@
+{
+  "name": "@calimero-apps/test-setup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The vitest setup every app's frontend tests share: how long Testing Library's findBy*/waitFor wait, 1 s locally and 5 s on CI.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "sideEffects": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

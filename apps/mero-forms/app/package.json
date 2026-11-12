@@ -26,6 +26,7 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "catalog:",

@@ -20,6 +20,7 @@
     "uqr": "^0.1.2"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "^25.6.0",

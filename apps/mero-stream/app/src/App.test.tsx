@@ -232,8 +232,9 @@ describe("App", () => {
       expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "guest" })),
     );
     await waitFor(() => expect((screen.getByTestId("people-dialog") as HTMLDialogElement).open).toBe(true));
-    const input = screen.getByTestId("username-input") as HTMLInputElement;
-    expect(input.value).toBe("Alice from Globex");
+    // The dialog opens (useDialogOpen's effect) before PeopleDialog's own effect
+    // re-seeds the draft from the suggestion, so the value lands a render later.
+    await waitFor(() => expect((screen.getByTestId("username-input") as HTMLInputElement).value).toBe("Alice from Globex"));
     fireEvent.click(screen.getByTestId("username-submit"));
     await waitFor(() =>
       expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice from Globex" }),

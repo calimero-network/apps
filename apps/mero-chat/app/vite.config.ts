@@ -10,7 +10,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: "./src/test/setup.ts",
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     exclude: ["**/node_modules/**", "**/e2e/**"],
   },
   server: {
