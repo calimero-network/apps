@@ -1,4 +1,4 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
+import type { AppTransport } from "../generated/client";
 
 /**
  * The calendar the data layer talks to, for the code that cannot use hooks:
@@ -7,7 +7,7 @@ import { type ClientRoutes } from "@calimero-apps/connect";
  * instance here (v1 did the same with `setContextId()` and the node session).
  */
 export interface Binding {
-  client: ClientRoutes<{ apps: "call" | "view" }> | null;
+  client: AppTransport | null;
   /** The open calendar: an app instance id. */
   app: string;
   /** Runs after every request: keeps a refreshed session stored. */

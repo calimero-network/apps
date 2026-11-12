@@ -1,4 +1,5 @@
-import { calendar, messageOf, type Calendar, type EventFields } from "../calendar";
+import { MeroCalendarClient } from "../../generated/client";
+import { eventArgs, messageOf, toEvents, toMembers, updateArgs, type EventFields } from "../calendar";
 import { getBinding, type Binding } from "../binding";
 import {
   ApiResponse,
@@ -46,17 +47,17 @@ export class ClientApiDataSource implements ClientApi {
    */
   constructor(private readonly binding: () => Binding = getBinding) {}
 
-  private cal(): Calendar {
+  private cal(): MeroCalendarClient {
     const { client, app, after } = this.binding();
     if (!client) throw new Error("Not connected");
     if (!app) throw new Error("No active calendar");
-    return calendar(client, app, after);
+    return new MeroCalendarClient(client, app, { after });
   }
 
   async getEvents(): ApiResponse<GetEventsResponse> {
     try {
       const cal = this.cal();
-      const [shared, priv] = await Promise.all([cal.getEvents(), cal.getPrivateEvents()]);
+      const [shared, priv] = await Promise.all([cal.getEvents().then(toEvents), cal.getPrivateEvents().then(toEvents)]);
       return {
         data: [
           ...parseEvents(shared.map((e) => ({ ...e, private: false }))),
@@ -71,7 +72,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async getMembers(): ApiResponse<GetMembersResponse> {
     try {
-      return { data: await this.cal().getMembers(), error: null };
+      return { data: toMembers(await this.cal().getMembers()), error: null };
     } catch (error) {
       return fail(error, "getMembers");
     }
@@ -83,8 +84,8 @@ export class ClientApiDataSource implements ClientApi {
       // The contract routes a peerless event to private on its own; a private
       // one keeps its peers out.
       const id = event.private
-        ? await cal.createPrivateEvent(fields(event))
-        : await cal.createEvent(fields(event));
+        ? await cal.createPrivateEvent({ eventData: eventArgs(fields(event)) })
+        : await cal.createEvent({ eventData: eventArgs(fields(event)) });
       if (!id) return { error: { code: 500, message: "Event ID is missing" } };
       return { data: id, error: null };
     } catch (error) {
@@ -105,8 +106,8 @@ export class ClientApiDataSource implements ClientApi {
         peers: eventData.peers,
       };
       const id = eventData.private
-        ? await cal.updatePrivateEvent(eventId, update)
-        : await cal.updateEvent(eventId, update);
+        ? await cal.updatePrivateEvent({ eventId, eventData: updateArgs(update) })
+        : await cal.updateEvent({ eventId, eventData: updateArgs(update) });
       if (!id) return { error: { code: 500, message: "Event ID is missing" } };
       return { data: id, error: null };
     } catch (error) {
@@ -117,7 +118,7 @@ export class ClientApiDataSource implements ClientApi {
   async deleteEvent(eventId: string, isPrivate: boolean): ApiResponse<DeleteEventResponse> {
     try {
       const cal = this.cal();
-      const id = isPrivate ? await cal.deletePrivateEvent(eventId) : await cal.deleteEvent(eventId);
+      const id = isPrivate ? await cal.deletePrivateEvent({ eventId }) : await cal.deleteEvent({ eventId });
       if (!id) return { error: { code: 500, message: "Event ID is missing" } };
       return { data: id, error: null };
     } catch (error) {
@@ -127,7 +128,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async setUsername(username: string): ApiResponse<null> {
     try {
-      await this.cal().setUsername(username);
+      await this.cal().setUsername({ username });
       return { data: null, error: null };
     } catch (error) {
       return fail(error, "setUsername");
