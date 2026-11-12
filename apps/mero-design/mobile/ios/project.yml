@@ -8,7 +8,7 @@
 # builder, the view models) is the local SwiftPM package DesignCore/, which
 # `swift test --package-path DesignCore` builds and tests on macOS.
 #
-# The swift-sdk is pinned to its v2.0.0 release (`exactVersion`). Keep the pins
+# The swift-sdk is pinned to its v4.1.0 release (`exactVersion`). Keep the pins
 # here, in DesignCore/Package.swift and in DesignCore/Package.resolved equal.
 #
 # Sign-in (Calimero 1.0): the person enters the cluster's node URL (or it is
@@ -28,7 +28,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   DesignCore:
     path: DesignCore
 
