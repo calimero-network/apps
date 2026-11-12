@@ -27,6 +27,7 @@ import network.calimero.vote.generated.WireBallot
 import network.calimero.vote.generated.WireBranch
 import network.calimero.vote.generated.WireCiphertext
 import network.calimero.vote.generated.WireDealing
+import network.calimero.vote.generated.asContractArg
 import network.calimero.vote.generated.toVote
 import network.calimero.vote.generated.toVoteJson
 import org.junit.Assert.assertEquals
@@ -61,11 +62,11 @@ class WireTest {
             runCatching { client.getTranscript(poll).toVote<Transcript>() }
             client.setName("Ada")
             runCatching { client.createPoll("Q", "", listOf("A", "B"), 1u, 1u, listOf(ME), 1u, emptyList()) }
-            client.publishTransportKey(poll, "00", branch.toVoteJson())
-            client.publishDealing(poll, WireDealing(emptyList(), branch, emptyList()).toVoteJson())
-            client.fileComplaint(poll, BOB, "00", branch.toVoteJson())
+            client.publishTransportKey(poll, "00", branch.toVoteJson().asContractArg())
+            client.publishDealing(poll, WireDealing(emptyList(), branch, emptyList()).toVoteJson().asContractArg())
+            client.fileComplaint(poll, BOB, "00", branch.toVoteJson().asContractArg())
             runCatching { client.openVoting(poll) }
-            runCatching { client.castBallot(poll, WireBallot(emptyList(), emptyList()).toVoteJson()) }
+            runCatching { client.castBallot(poll, WireBallot(emptyList(), emptyList()).toVoteJson().asContractArg()) }
             client.closePoll(poll)
             runCatching { client.sealPoll(poll) }
             client.publishPartial(poll, emptyList())

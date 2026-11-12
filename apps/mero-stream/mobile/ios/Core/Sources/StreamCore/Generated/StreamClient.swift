@@ -15,23 +15,370 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct StreamClient: Sendable {
-    /// The app type `ChunkView`: the ABI names it without its shape, so it is its JSON.
-    public typealias ChunkView = JSONValue
 
-    /// The app type `DecodedFrame`: the ABI names it without its shape, so it is its JSON.
-    public typealias DecodedFrame = JSONValue
+    /// The app type `ChunkView`.
+    public struct ChunkView: Codable, Sendable, Equatable {
+        public var seq: UInt64
+        public var from: String
+        public var track: UInt8
+        public var isKeyframe: Bool
+        public var codec: String
+        public var width: UInt16
+        public var height: UInt16
+        public var timestampUs: UInt64
+        public var dataB64: String
+        public var createdAt: UInt64
 
-    /// The app type `LiveStats`: the ABI names it without its shape, so it is its JSON.
-    public typealias LiveStats = JSONValue
+        public init(
+            seq: UInt64,
+            from: String,
+            track: UInt8,
+            isKeyframe: Bool,
+            codec: String,
+            width: UInt16,
+            height: UInt16,
+            timestampUs: UInt64,
+            dataB64: String,
+            createdAt: UInt64
+        ) {
+            self.seq = seq
+            self.from = from
+            self.track = track
+            self.isKeyframe = isKeyframe
+            self.codec = codec
+            self.width = width
+            self.height = height
+            self.timestampUs = timestampUs
+            self.dataB64 = dataB64
+            self.createdAt = createdAt
+        }
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("seq")).value
+            let v1 = try fields.decode(String.self, forKey: Key("from"))
+            let v2 = try fields.decode(UInt8.self, forKey: Key("track"))
+            let v3 = try fields.decode(Bool.self, forKey: Key("isKeyframe"))
+            let v4 = try fields.decode(String.self, forKey: Key("codec"))
+            let v5 = try fields.decode(UInt16.self, forKey: Key("width"))
+            let v6 = try fields.decode(UInt16.self, forKey: Key("height"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("timestampUs")).value
+            let v8 = try fields.decode(String.self, forKey: Key("dataB64"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.seq = v0
+            self.from = v1
+            self.track = v2
+            self.isKeyframe = v3
+            self.codec = v4
+            self.width = v5
+            self.height = v6
+            self.timestampUs = v7
+            self.dataB64 = v8
+            self.createdAt = v9
+        }
 
-    /// The app type `SenderCursor`: the ABI names it without its shape, so it is its JSON.
-    public typealias SenderCursor = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.seq), forKey: Key("seq"))
+            try fields.encode(self.from, forKey: Key("from"))
+            try fields.encode(self.track, forKey: Key("track"))
+            try fields.encode(self.isKeyframe, forKey: Key("isKeyframe"))
+            try fields.encode(self.codec, forKey: Key("codec"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(DecimalString(self.timestampUs), forKey: Key("timestampUs"))
+            try fields.encode(self.dataB64, forKey: Key("dataB64"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
 
-    /// The app type `StreamStats`: the ABI names it without its shape, so it is its JSON.
-    public typealias StreamStats = JSONValue
+    /// The app type `DecodedFrame`.
+    public struct DecodedFrame: Codable, Sendable, Equatable {
+        public var seq: UInt64
+        public var from: String
+        public var track: UInt8
+        public var width: UInt16
+        public var height: UInt16
+        public var pixels: Data
+        public var createdAt: UInt64
+        public var encodedBytes: UInt32
+
+        public init(
+            seq: UInt64,
+            from: String,
+            track: UInt8,
+            width: UInt16,
+            height: UInt16,
+            pixels: Data,
+            createdAt: UInt64,
+            encodedBytes: UInt32
+        ) {
+            self.seq = seq
+            self.from = from
+            self.track = track
+            self.width = width
+            self.height = height
+            self.pixels = pixels
+            self.createdAt = createdAt
+            self.encodedBytes = encodedBytes
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("seq")).value
+            let v1 = try fields.decode(String.self, forKey: Key("from"))
+            let v2 = try fields.decode(UInt8.self, forKey: Key("track"))
+            let v3 = try fields.decode(UInt16.self, forKey: Key("width"))
+            let v4 = try fields.decode(UInt16.self, forKey: Key("height"))
+            let v5 = try fields.decode(Base64URL.self, forKey: Key("pixels")).data
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v7 = try fields.decode(UInt32.self, forKey: Key("encodedBytes"))
+            self.seq = v0
+            self.from = v1
+            self.track = v2
+            self.width = v3
+            self.height = v4
+            self.pixels = v5
+            self.createdAt = v6
+            self.encodedBytes = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.seq), forKey: Key("seq"))
+            try fields.encode(self.from, forKey: Key("from"))
+            try fields.encode(self.track, forKey: Key("track"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(Base64URL(self.pixels), forKey: Key("pixels"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(self.encodedBytes, forKey: Key("encodedBytes"))
+        }
+    }
+
+    /// The app type `LiveStats`.
+    public struct LiveStats: Codable, Sendable, Equatable {
+        public var liveChunks: UInt32
+        public var liveBytes: UInt64
+        public var prunedChunks: UInt64
+        public var senders: [SenderStats]
+
+        public init(
+            liveChunks: UInt32,
+            liveBytes: UInt64,
+            prunedChunks: UInt64,
+            senders: [SenderStats]
+        ) {
+            self.liveChunks = liveChunks
+            self.liveBytes = liveBytes
+            self.prunedChunks = prunedChunks
+            self.senders = senders
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt32.self, forKey: Key("liveChunks"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("liveBytes")).value
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("prunedChunks")).value
+            let v3 = try fields.decode([SenderStats].self, forKey: Key("senders"))
+            self.liveChunks = v0
+            self.liveBytes = v1
+            self.prunedChunks = v2
+            self.senders = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.liveChunks, forKey: Key("liveChunks"))
+            try fields.encode(DecimalString(self.liveBytes), forKey: Key("liveBytes"))
+            try fields.encode(DecimalString(self.prunedChunks), forKey: Key("prunedChunks"))
+            try fields.encode(self.senders, forKey: Key("senders"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var memberId: String
+        public var username: String
+        public var joinedAt: UInt64
+        public var updatedAt: UInt64
+
+        public init(
+            memberId: String,
+            username: String,
+            joinedAt: UInt64,
+            updatedAt: UInt64
+        ) {
+            self.memberId = memberId
+            self.username = username
+            self.joinedAt = joinedAt
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("memberId"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("joinedAt")).value
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("updatedAt")).value
+            self.memberId = v0
+            self.username = v1
+            self.joinedAt = v2
+            self.updatedAt = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.memberId, forKey: Key("memberId"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(DecimalString(self.joinedAt), forKey: Key("joinedAt"))
+            try fields.encode(DecimalString(self.updatedAt), forKey: Key("updatedAt"))
+        }
+    }
+
+    /// The app type `SenderCursor`.
+    public struct SenderCursor: Codable, Sendable, Equatable {
+        public var from: String
+        public var afterSeq: UInt64
+
+        public init(
+            from: String,
+            afterSeq: UInt64
+        ) {
+            self.from = from
+            self.afterSeq = afterSeq
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("from"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("afterSeq")).value
+            self.from = v0
+            self.afterSeq = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.from, forKey: Key("from"))
+            try fields.encode(DecimalString(self.afterSeq), forKey: Key("afterSeq"))
+        }
+    }
+
+    /// The app type `SenderStats`.
+    public struct SenderStats: Codable, Sendable, Equatable {
+        public var from: String
+        public var nextSeq: UInt64
+        public var oldestLive: UInt64
+        public var lastKeyframe: UInt64
+        public var newestAt: UInt64
+        public var pruned: UInt64
+        public var liveChunks: UInt32
+        public var liveBytes: UInt64
+
+        public init(
+            from: String,
+            nextSeq: UInt64,
+            oldestLive: UInt64,
+            lastKeyframe: UInt64,
+            newestAt: UInt64,
+            pruned: UInt64,
+            liveChunks: UInt32,
+            liveBytes: UInt64
+        ) {
+            self.from = from
+            self.nextSeq = nextSeq
+            self.oldestLive = oldestLive
+            self.lastKeyframe = lastKeyframe
+            self.newestAt = newestAt
+            self.pruned = pruned
+            self.liveChunks = liveChunks
+            self.liveBytes = liveBytes
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("from"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("nextSeq")).value
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("oldestLive")).value
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("lastKeyframe")).value
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("newestAt")).value
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("pruned")).value
+            let v6 = try fields.decode(UInt32.self, forKey: Key("liveChunks"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("liveBytes")).value
+            self.from = v0
+            self.nextSeq = v1
+            self.oldestLive = v2
+            self.lastKeyframe = v3
+            self.newestAt = v4
+            self.pruned = v5
+            self.liveChunks = v6
+            self.liveBytes = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.from, forKey: Key("from"))
+            try fields.encode(DecimalString(self.nextSeq), forKey: Key("nextSeq"))
+            try fields.encode(DecimalString(self.oldestLive), forKey: Key("oldestLive"))
+            try fields.encode(DecimalString(self.lastKeyframe), forKey: Key("lastKeyframe"))
+            try fields.encode(DecimalString(self.newestAt), forKey: Key("newestAt"))
+            try fields.encode(DecimalString(self.pruned), forKey: Key("pruned"))
+            try fields.encode(self.liveChunks, forKey: Key("liveChunks"))
+            try fields.encode(DecimalString(self.liveBytes), forKey: Key("liveBytes"))
+        }
+    }
+
+    /// The app type `StreamStats`.
+    public struct StreamStats: Codable, Sendable, Equatable {
+        public var name: String
+        public var memberCount: UInt32
+        public var liveFragments: UInt32
+        public var nextSeq: UInt64
+        public var oldestLiveSeq: UInt64
+        public var prunedFrames: UInt64
+
+        public init(
+            name: String,
+            memberCount: UInt32,
+            liveFragments: UInt32,
+            nextSeq: UInt64,
+            oldestLiveSeq: UInt64,
+            prunedFrames: UInt64
+        ) {
+            self.name = name
+            self.memberCount = memberCount
+            self.liveFragments = liveFragments
+            self.nextSeq = nextSeq
+            self.oldestLiveSeq = oldestLiveSeq
+            self.prunedFrames = prunedFrames
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("memberCount"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("liveFragments"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("nextSeq")).value
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("oldestLiveSeq")).value
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("prunedFrames")).value
+            self.name = v0
+            self.memberCount = v1
+            self.liveFragments = v2
+            self.nextSeq = v3
+            self.oldestLiveSeq = v4
+            self.prunedFrames = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.memberCount, forKey: Key("memberCount"))
+            try fields.encode(self.liveFragments, forKey: Key("liveFragments"))
+            try fields.encode(DecimalString(self.nextSeq), forKey: Key("nextSeq"))
+            try fields.encode(DecimalString(self.oldestLiveSeq), forKey: Key("oldestLiveSeq"))
+            try fields.encode(DecimalString(self.prunedFrames), forKey: Key("prunedFrames"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

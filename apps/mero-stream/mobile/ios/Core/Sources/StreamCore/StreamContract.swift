@@ -66,7 +66,7 @@ extension StreamClient {
     }
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (`Member`).
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))

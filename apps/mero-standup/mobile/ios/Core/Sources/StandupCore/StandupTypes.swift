@@ -22,9 +22,9 @@ import MeroKit
 /// `query` runs a view (a method the app declared `read_only`) and `execute`
 /// runs everything else. Both take the arguments as a JSON object and return
 /// the JSON the method produced.
-extension JSONValue {
-    /// This answer as the app type `T` (one of the types below). The ABI names them without their
-    /// shape until the logic derives `AbiType`, so the generated `StandupClient` answers their JSON.
+extension Encodable {
+    /// This answer as the app type `T` (one of the types below), read through its JSON: the
+    /// generated `StandupClient` answers its own typed records.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }

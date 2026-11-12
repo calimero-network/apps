@@ -2,10 +2,12 @@ package network.calimero.stream.core
 
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.serializer
 import network.calimero.stream.generated.StreamClient
 
 /**
@@ -20,8 +22,9 @@ data class Member(
     val updatedAt: Long,
 ) {
     companion object {
-        /** A member from the contract's JSON. */
-        fun from(json: JsonElement): Member {
+        /** A member from the contract's answer (the generated client's `Member`, or its JSON). */
+        fun from(answer: Any): Member {
+            val json = answer.asContractJson()
             val o = json as? JsonObject ?: throw SerializationException("a member is not an object: $json")
             val id = (o["memberId"] as? JsonPrimitive)?.contentOrNull ?: throw SerializationException("a member has no memberId")
             return Member(
@@ -61,3 +64,17 @@ fun streamClient(
     backend: MeroAppBackend,
     contextId: String,
 ): StreamClient = StreamClient(backend, contextId)
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

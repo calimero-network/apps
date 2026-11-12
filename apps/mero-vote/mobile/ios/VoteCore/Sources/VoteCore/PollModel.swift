@@ -198,7 +198,7 @@ public final class PollModel: ObservableObject {
                     pk: pk, pollId: pollId, voter: me, rules: rules, selections: selections, rng: rng)
                 return VoteWire.ballot(ballot)
             }.value
-            _ = try await client.castBallot(pollId: pollId, ballot: try JSONValue(encoding: wire))
+            _ = try await client.castBallot(pollId: pollId, ballot: try wire.converted())
             selection = Array(repeating: false, count: selections.count)
         }
     }
@@ -213,7 +213,7 @@ public final class PollModel: ObservableObject {
             trusteeKey = key
             let (pub, proof) = VoteProtocol.makeTransportKey(pollId: pollId, trustee: me, e: e, rng: rng)
             try await client.publishTransportKey(
-                pollId: pollId, key: pub.hex, proof: try JSONValue(encoding: VoteWire.branch(proof)))
+                pollId: pollId, key: pub.hex, proof: try VoteWire.branch(proof).converted())
         }
     }
 
@@ -234,7 +234,7 @@ public final class PollModel: ObservableObject {
                 let d = try VoteProtocol.deal(pollId: pollId, dealer: me, threshold: threshold, recipients: keys, rng: rng)
                 return VoteWire.dealing(d)
             }.value
-            try await client.publishDealing(pollId: pollId, dealing: try JSONValue(encoding: wire))
+            try await client.publishDealing(pollId: pollId, dealing: try wire.converted())
         }
     }
 
@@ -248,7 +248,7 @@ public final class PollModel: ObservableObject {
             let (secret, proof) = try VoteProtocol.makeComplaint(
                 pollId: pollId, recipient: me, dealer: dealer, index: index, e: e, try VoteWire.dealing(wire), rng: rng)
             try await client.fileComplaint(
-                pollId: pollId, dealer: dealer, secret: secret.hex, proof: try JSONValue(encoding: VoteWire.branch(proof)))
+                pollId: pollId, dealer: dealer, secret: secret.hex, proof: try VoteWire.branch(proof).converted())
         }
     }
 
@@ -279,7 +279,7 @@ public final class PollModel: ObservableObject {
                     return WirePartial(d: d.hex, proof: VoteWire.branch(proof))
                 }
             }.value
-            try await client.publishPartial(pollId: pollId, partials: try partials.map { try JSONValue(encoding: $0) })
+            try await client.publishPartial(pollId: pollId, partials: try partials.map { try $0.converted() as VoteClient.WirePartial })
         }
     }
 

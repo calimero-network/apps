@@ -15,26 +15,412 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct StandupClient: Sendable {
-    /// The app type `DayPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias DayPage = JSONValue
 
-    /// The app type `DayView`: the ABI names it without its shape, so it is its JSON.
-    public typealias DayView = JSONValue
+    /// The app type `DayPage`.
+    public struct DayPage: Codable, Sendable, Equatable {
+        public var days: [DaySummary]
+        public var nextCursor: String?
 
-    /// The app type `DecisionPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias DecisionPage = JSONValue
+        public init(
+            days: [DaySummary],
+            nextCursor: String? = nil
+        ) {
+            self.days = days
+            self.nextCursor = nextCursor
+        }
 
-    /// The app type `DecisionView`: the ABI names it without its shape, so it is its JSON.
-    public typealias DecisionView = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([DaySummary].self, forKey: Key("days"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("nextCursor"))
+            self.days = v0
+            self.nextCursor = v1
+        }
 
-    /// The app type `MemberView`: the ABI names it without its shape, so it is its JSON.
-    public typealias MemberView = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.days, forKey: Key("days"))
+            try fields.encode(self.nextCursor, forKey: Key("nextCursor"))
+        }
+    }
 
-    /// The app type `TagCount`: the ABI names it without its shape, so it is its JSON.
-    public typealias TagCount = JSONValue
+    /// The app type `DaySummary`.
+    public struct DaySummary: Codable, Sendable, Equatable {
+        public var day: String
+        public var updates: UInt32
+        public var blocked: UInt32
 
-    /// The app type `UpdateView`: the ABI names it without its shape, so it is its JSON.
-    public typealias UpdateView = JSONValue
+        public init(
+            day: String,
+            updates: UInt32,
+            blocked: UInt32
+        ) {
+            self.day = day
+            self.updates = updates
+            self.blocked = blocked
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("day"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("updates"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("blocked"))
+            self.day = v0
+            self.updates = v1
+            self.blocked = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.day, forKey: Key("day"))
+            try fields.encode(self.updates, forKey: Key("updates"))
+            try fields.encode(self.blocked, forKey: Key("blocked"))
+        }
+    }
+
+    /// The app type `DayView`.
+    public struct DayView: Codable, Sendable, Equatable {
+        public var day: String
+        public var updates: [UpdateView]
+
+        public init(
+            day: String,
+            updates: [UpdateView]
+        ) {
+            self.day = day
+            self.updates = updates
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("day"))
+            let v1 = try fields.decode([UpdateView].self, forKey: Key("updates"))
+            self.day = v0
+            self.updates = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.day, forKey: Key("day"))
+            try fields.encode(self.updates, forKey: Key("updates"))
+        }
+    }
+
+    /// The app type `DecisionPage`.
+    public struct DecisionPage: Codable, Sendable, Equatable {
+        public var items: [DecisionView]
+        public var nextCursor: String?
+
+        public init(
+            items: [DecisionView],
+            nextCursor: String? = nil
+        ) {
+            self.items = items
+            self.nextCursor = nextCursor
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([DecisionView].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("nextCursor"))
+            self.items = v0
+            self.nextCursor = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.nextCursor, forKey: Key("nextCursor"))
+        }
+    }
+
+    /// The app type `DecisionView`.
+    public struct DecisionView: Codable, Sendable, Equatable {
+        public var id: String
+        public var author: String
+        public var authorName: String
+        public var title: String
+        public var decision: String
+        public var rationale: String
+        public var supersedes: String
+        public var supersededBy: String
+        public var createdAt: UInt64
+        public var tags: [String]
+        public var with: [PersonView]
+        public var fromDay: String
+
+        public init(
+            id: String,
+            author: String,
+            authorName: String,
+            title: String,
+            decision: String,
+            rationale: String,
+            supersedes: String,
+            supersededBy: String,
+            createdAt: UInt64,
+            tags: [String],
+            with: [PersonView],
+            fromDay: String
+        ) {
+            self.id = id
+            self.author = author
+            self.authorName = authorName
+            self.title = title
+            self.decision = decision
+            self.rationale = rationale
+            self.supersedes = supersedes
+            self.supersededBy = supersededBy
+            self.createdAt = createdAt
+            self.tags = tags
+            self.with = with
+            self.fromDay = fromDay
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("author"))
+            let v2 = try fields.decode(String.self, forKey: Key("authorName"))
+            let v3 = try fields.decode(String.self, forKey: Key("title"))
+            let v4 = try fields.decode(String.self, forKey: Key("decision"))
+            let v5 = try fields.decode(String.self, forKey: Key("rationale"))
+            let v6 = try fields.decode(String.self, forKey: Key("supersedes"))
+            let v7 = try fields.decode(String.self, forKey: Key("supersededBy"))
+            let v8 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v9 = try fields.decode([String].self, forKey: Key("tags"))
+            let v10 = try fields.decode([PersonView].self, forKey: Key("with"))
+            let v11 = try fields.decode(String.self, forKey: Key("fromDay"))
+            self.id = v0
+            self.author = v1
+            self.authorName = v2
+            self.title = v3
+            self.decision = v4
+            self.rationale = v5
+            self.supersedes = v6
+            self.supersededBy = v7
+            self.createdAt = v8
+            self.tags = v9
+            self.with = v10
+            self.fromDay = v11
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.authorName, forKey: Key("authorName"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.decision, forKey: Key("decision"))
+            try fields.encode(self.rationale, forKey: Key("rationale"))
+            try fields.encode(self.supersedes, forKey: Key("supersedes"))
+            try fields.encode(self.supersededBy, forKey: Key("supersededBy"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(self.tags, forKey: Key("tags"))
+            try fields.encode(self.with, forKey: Key("with"))
+            try fields.encode(self.fromDay, forKey: Key("fromDay"))
+        }
+    }
+
+    /// The app type `HelpView`.
+    public struct HelpView: Codable, Sendable, Equatable {
+        public var account: String
+        public var name: String
+        public var note: String
+        public var at: UInt64
+
+        public init(
+            account: String,
+            name: String,
+            note: String,
+            at: UInt64
+        ) {
+            self.account = account
+            self.name = name
+            self.note = note
+            self.at = at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("note"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("at")).value
+            self.account = v0
+            self.name = v1
+            self.note = v2
+            self.at = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.note, forKey: Key("note"))
+            try fields.encode(DecimalString(self.at), forKey: Key("at"))
+        }
+    }
+
+    /// The app type `MemberView`.
+    public struct MemberView: Codable, Sendable, Equatable {
+        public var account: String
+        public var name: String
+        public var lastDay: String
+
+        public init(
+            account: String,
+            name: String,
+            lastDay: String
+        ) {
+            self.account = account
+            self.name = name
+            self.lastDay = lastDay
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("lastDay"))
+            self.account = v0
+            self.name = v1
+            self.lastDay = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.lastDay, forKey: Key("lastDay"))
+        }
+    }
+
+    /// The app type `PersonView`.
+    public struct PersonView: Codable, Sendable, Equatable {
+        public var account: String
+        public var name: String
+
+        public init(
+            account: String,
+            name: String
+        ) {
+            self.account = account
+            self.name = name
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            self.account = v0
+            self.name = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.name, forKey: Key("name"))
+        }
+    }
+
+    /// The app type `TagCount`.
+    public struct TagCount: Codable, Sendable, Equatable {
+        public var tag: String
+        public var count: UInt32
+
+        public init(
+            tag: String,
+            count: UInt32
+        ) {
+            self.tag = tag
+            self.count = count
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("tag"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("count"))
+            self.tag = v0
+            self.count = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.tag, forKey: Key("tag"))
+            try fields.encode(self.count, forKey: Key("count"))
+        }
+    }
+
+    /// The app type `UpdateView`.
+    public struct UpdateView: Codable, Sendable, Equatable {
+        public var day: String
+        public var author: String
+        public var authorName: String
+        public var done: String
+        public var next: String
+        public var blockers: String
+        public var createdAt: UInt64
+        public var editedAt: UInt64
+        public var helpers: [HelpView]
+
+        public init(
+            day: String,
+            author: String,
+            authorName: String,
+            done: String,
+            next: String,
+            blockers: String,
+            createdAt: UInt64,
+            editedAt: UInt64,
+            helpers: [HelpView]
+        ) {
+            self.day = day
+            self.author = author
+            self.authorName = authorName
+            self.done = done
+            self.next = next
+            self.blockers = blockers
+            self.createdAt = createdAt
+            self.editedAt = editedAt
+            self.helpers = helpers
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("day"))
+            let v1 = try fields.decode(String.self, forKey: Key("author"))
+            let v2 = try fields.decode(String.self, forKey: Key("authorName"))
+            let v3 = try fields.decode(String.self, forKey: Key("done"))
+            let v4 = try fields.decode(String.self, forKey: Key("next"))
+            let v5 = try fields.decode(String.self, forKey: Key("blockers"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("editedAt")).value
+            let v8 = try fields.decode([HelpView].self, forKey: Key("helpers"))
+            self.day = v0
+            self.author = v1
+            self.authorName = v2
+            self.done = v3
+            self.next = v4
+            self.blockers = v5
+            self.createdAt = v6
+            self.editedAt = v7
+            self.helpers = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.day, forKey: Key("day"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.authorName, forKey: Key("authorName"))
+            try fields.encode(self.done, forKey: Key("done"))
+            try fields.encode(self.next, forKey: Key("next"))
+            try fields.encode(self.blockers, forKey: Key("blockers"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(DecimalString(self.editedAt), forKey: Key("editedAt"))
+            try fields.encode(self.helpers, forKey: Key("helpers"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)
