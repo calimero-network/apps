@@ -340,19 +340,20 @@ class ModelTest {
 class WireTest {
     @Test fun docViewTimestampsAreMillisecondStrings() {
         val doc =
-            DocDto.from(
-                Json.parseToJsonElement(
-                    """{"id":"doc-1","title":"T","tags":["k"],"archived":false,"createdAt":"1700000000123",""" +
-                        """"updatedAt":"1700000000456","createdBy":"a","updatedBy":"b","canDelete":true}""",
-                ),
+            Json.decodeFromString(
+                DocDto.serializer(),
+                """{"id":"doc-1","title":"T","tags":["k"],"archived":false,"createdAt":"1700000000123",""" +
+                    """"updatedAt":"1700000000456","createdBy":"a","updatedBy":"b","canDelete":true}""",
             )
-        assertEquals(1_700_000_000_123_000_000uL, doc.createdAt)
-        assertEquals(1_700_000_000_456_000_000uL, doc.updatedAt)
+        assertEquals(1_700_000_000_123uL, doc.createdAt)
+        assertEquals(1_700_000_000_456uL, doc.updatedAt)
+        // The screens show them in nanoseconds, as the web adapter does.
+        assertEquals(1_700_000_000_456_000_000uL, DocsFormat.nanos(doc.updatedAt))
         assertTrue(doc.canDelete)
     }
 
     @Test fun searchPageTotalIsADecimalString() {
-        val page = DocSearchPage.from(Json.parseToJsonElement("""{"hits":[],"total":"12","nextCursor":20}"""))
+        val page = Json.decodeFromString(DocSearchPage.serializer(), """{"hits":[],"total":"12","nextCursor":20}""")
         assertEquals(12uL, page.total)
         assertEquals(20u, page.nextCursor)
     }

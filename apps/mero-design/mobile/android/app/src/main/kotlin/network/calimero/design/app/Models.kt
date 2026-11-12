@@ -155,7 +155,7 @@ class BoardsModel(
             coroutineScope {
                 _boards.value
                     .map { b ->
-                        async { b.contextId to attempt { backend.designClient(b.contextId).getBoard().toDesign<BoardInfo>() }.getOrNull() }
+                        async { b.contextId to attempt { backend.designClient(b.contextId).getBoard() }.getOrNull() }
                     }.awaitAll()
             }.mapNotNull { (id, info) -> info?.let { id to it } }.toMap()
         _boards.update { list ->
@@ -354,7 +354,7 @@ class BoardModel(
 
     private suspend fun loadRest() {
         coroutineScope {
-            val info = async { attempt { client.getBoard().toDesign<BoardInfo>() }.getOrNull() }
+            val info = async { attempt { client.getBoard() }.getOrNull() }
             val members = async { attempt { client.getMembers().map { it.toDesign<Member>() } }.getOrNull() }
             val role = async { attempt { client.myRole() }.getOrNull() }
             val cursors = async { attempt { client.getCursors().map { it.toDesign<CursorState>() } }.getOrNull() }

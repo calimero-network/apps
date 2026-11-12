@@ -2,23 +2,24 @@ import Foundation
 import MeroKit
 
 // The document's types, as the contract (`../../logic/res/abi.json`) answers them. The calls are
-// the generated `PixartClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root); until
-// the logic derives `AbiType` the ABI names these types without their shape, so the client answers
-// their JSON and they read it (`JSONValue.decoded(as:)`).
+// the generated `PixartClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root), and so
+// are the types the ABI describes (`DocumentInfo`, `MemberRole`). The ABI still leaves `Layer`,
+// `CursorState` and `Member` `unknown`, so the client answers their JSON and the types here read it
+// (`JSONValue.decoded(as:)`).
 
 extension Encodable {
-    /// This answer as the app type `T` (one of the types below).
+    /// This answer as the app type `T`: one of the types below the ABI still leaves `unknown`,
+    /// which the generated client answers as JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
-    }
-
-    /// This value as the generated client's type `T` (an argument), through its JSON.
-    public func converted<T: Decodable>() throws -> T {
-        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 
 // MARK: - Types
+
+public typealias DocumentInfo = PixartClient.DocumentInfo
+/// A member with their effective role.
+public typealias MemberRole = PixartClient.MemberRole
 
 public struct Adjustments: Codable, Sendable, Equatable {
     /// -100..=100, 0 = neutral
@@ -83,28 +84,6 @@ public struct CursorState: Codable, Sendable, Equatable {
         self.x = x
         self.y = y
         self.updatedAt = updatedAt
-    }
-}
-
-public struct DocumentInfo: Codable, Sendable, Equatable {
-    public var name: String
-    public var description: String
-    public var width: UInt32
-    public var height: UInt32
-    public var background: String
-    public var layerCount: UInt32
-    public var memberCount: UInt32
-    public var owner: String?
-
-    public init(name: String, description: String, width: UInt32, height: UInt32, background: String, layerCount: UInt32, memberCount: UInt32, owner: String? = nil) {
-        self.name = name
-        self.description = description
-        self.width = width
-        self.height = height
-        self.background = background
-        self.layerCount = layerCount
-        self.memberCount = memberCount
-        self.owner = owner
     }
 }
 
@@ -205,17 +184,6 @@ public struct Member: Codable, Sendable, Equatable {
         self.avatar = avatar
         self.joinedAt = joinedAt
         self.usernameUpdatedAt = usernameUpdatedAt
-    }
-}
-
-/// A member paired with their effective role, for the settings/members UI.
-public struct MemberRole: Codable, Sendable, Equatable {
-    public var member: String
-    public var role: String
-
-    public init(member: String, role: String) {
-        self.member = member
-        self.role = role
     }
 }
 

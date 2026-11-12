@@ -34,7 +34,7 @@ public struct DocComment: Identifiable, Equatable, Sendable {
     public init(_ dto: CommentDto) {
         let parsed = CommentBody.parse(dto.body)
         self.init(
-            id: dto.id, author: dto.author, createdAt: dto.createdAt, text: parsed.text, blockId: parsed.blockId,
+            id: dto.id, author: dto.author, createdAt: DocsFormat.nanos(millis: dto.createdAt), text: parsed.text, blockId: parsed.blockId,
             replyTo: parsed.replyTo)
     }
 }

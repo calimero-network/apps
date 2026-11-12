@@ -113,7 +113,7 @@ public final class BoardsModel: ObservableObject {
         let backend = backend
         let infos = await withTaskGroup(of: (String, BoardInfo?).self) { group in
             for b in boards {
-                group.addTask { (b.contextId, try? await backend.designClient(b.contextId).getBoard().decoded(as: BoardInfo.self)) }
+                group.addTask { (b.contextId, try? await backend.designClient(b.contextId).getBoard()) }
             }
             var out: [String: BoardInfo] = [:]
             for await (id, info) in group { if let info { out[id] = info } }
@@ -315,7 +315,7 @@ public final class BoardModel: ObservableObject {
     }
 
     private func loadRest() async {
-        async let info = try? client.getBoard().decoded(as: BoardInfo.self)
+        async let info = try? client.getBoard()
         async let members = try? client.getMembers().map { try $0.decoded(as: Member.self) }
         async let role = try? client.myRole()
         async let cursors = try? client.getCursors().map { try $0.decoded(as: CursorState.self) }

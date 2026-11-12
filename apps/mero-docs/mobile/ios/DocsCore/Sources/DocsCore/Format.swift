@@ -49,6 +49,13 @@ public enum DocsFormat {
         return out.isEmpty ? "?" : out
     }
 
+    /// A timestamp off the wire (milliseconds) in the nanoseconds the screens use (`msToNs` in
+    /// the web adapter); 0 when it would not fit.
+    public static func nanos(millis: UInt64) -> UInt64 {
+        let (out, overflow) = millis.multipliedReportingOverflow(by: 1_000_000)
+        return overflow ? 0 : out
+    }
+
     /// "just now", "5m ago", "3h ago", "2d ago", or a date, from nanoseconds.
     public static func relativeTime(nanos: UInt64, now: Date = Date()) -> String {
         guard nanos > 0 else { return "" }

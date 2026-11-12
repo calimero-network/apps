@@ -2,45 +2,28 @@ import Foundation
 import MeroKit
 
 // The board's types, as the contract (`../../../logic/res/abi.json`) answers them. The calls are the
-// generated `DesignClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root); until the
-// logic derives `AbiType` the ABI names these types without their shape, so the client takes and
-// answers their JSON and they read and write it (`JSONValue.decoded(as:)`, `JSONValue(encoding:)`).
+// generated `DesignClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root), and so are
+// the types the ABI describes (`BoardInfo`, `LabelUpdate`, `MemberRole`, below). The ABI still
+// leaves `Element`, `ElementPatch`, `Comment`, `CursorState` and `Member` `unknown`, so the client
+// takes and answers their JSON and the types here read and write it (`JSONValue.decoded(as:)`,
+// `JSONValue(encoding:)`).
 
 extension Encodable {
-    /// This answer as the app type `T` (one of the types below).
+    /// This answer as the app type `T`: one of the types below the ABI still leaves `unknown`
+    /// (their u64/i64 fields have no shape in it yet), which the generated client answers as JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
-    }
-
-    /// This value as the generated client's type `T` (an argument), through its JSON.
-    public func converted<T: Decodable>() throws -> T {
-        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 
 // MARK: - Types
 
 /// Board summary: name, description, counts and owner.
-public struct BoardInfo: Codable, Sendable, Equatable {
-    /// The board's name.
-    public var name: String
-    /// The board's description; may be empty.
-    public var description: String
-    /// How many elements are on the canvas.
-    public var elementCount: UInt32
-    /// How many members have joined.
-    public var memberCount: UInt32
-    /// The owner's member id (account id).
-    public var owner: String?
-
-    public init(name: String, description: String, elementCount: UInt32, memberCount: UInt32, owner: String? = nil) {
-        self.name = name
-        self.description = description
-        self.elementCount = elementCount
-        self.memberCount = memberCount
-        self.owner = owner
-    }
-}
+public typealias BoardInfo = DesignClient.BoardInfo
+/// One element's new label in an `updateElementLabels` call; a `nil` label clears it.
+public typealias LabelUpdate = DesignClient.LabelUpdate
+/// A member with their effective role (`admin`, `editor` or `viewer`).
+public typealias MemberRole = DesignClient.MemberRole
 
 /// A comment pinned at a canvas point, with its replies.
 public struct Comment: Codable, Sendable, Equatable {
@@ -401,19 +384,6 @@ public struct ElementPatch: Codable, Sendable, Equatable {
     }
 }
 
-/// One element's new label in an `update_element_labels` call.
-public struct LabelUpdate: Codable, Sendable, Equatable {
-    /// The element to rename; an unknown id is skipped.
-    public var id: String
-    /// The new label, as for `update_element_label`; `null` clears it.
-    public var label: String?
-
-    public init(id: String, label: String? = nil) {
-        self.id = id
-        self.label = label
-    }
-}
-
 /// A board member: someone who has called `join`.
 public struct Member: Codable, Sendable, Equatable {
     /// Member id: the member's account id (64 hex), the id roles and ownership name.
@@ -433,22 +403,6 @@ public struct Member: Codable, Sendable, Equatable {
         self.avatar = avatar
         self.joinedAt = joinedAt
         self.usernameUpdatedAt = usernameUpdatedAt
-    }
-}
-
-/// A member with their effective role.
-public struct MemberRole: Codable, Sendable, Equatable {
-    /// Member id (account id).
-    public var member: String
-    /// `"admin"`, `"editor"` or `"viewer"`.
-    public var role: String
-    /// The member's account id; always equal to `member`.
-    public var account: String?
-
-    public init(member: String, role: String, account: String? = nil) {
-        self.member = member
-        self.role = role
-        self.account = account
     }
 }
 

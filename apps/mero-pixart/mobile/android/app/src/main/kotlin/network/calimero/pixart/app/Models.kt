@@ -150,7 +150,7 @@ class ProjectsModel(
         val docs: Map<String, DocumentInfo> =
             coroutineScope {
                 _projects.value
-                    .map { p -> async { p.contextId to attempt { backend.pixartClient(p.contextId).getDocument().toPixart<DocumentInfo>() }.getOrNull() } }
+                    .map { p -> async { p.contextId to attempt { backend.pixartClient(p.contextId).getDocument() }.getOrNull() } }
                     .awaitAll()
             }.mapNotNull { (id, doc) -> doc?.let { id to it } }.toMap()
         _projects.update { list ->
@@ -179,7 +179,7 @@ class ProjectsModel(
         try {
             val client = backend.pixartClient(contextId)
             val layers = attempt { client.getLayers().map { it.toPixart<Layer>() } }.getOrNull() ?: return
-            val doc = attempt { client.getDocument().toPixart<DocumentInfo>() }.getOrNull() ?: return
+            val doc = attempt { client.getDocument() }.getOrNull() ?: return
             val ops = LayerStack.drawOps(layers)
             val images = blobs.bitmaps(LayerStack.blobIds(ops), contextId)
             val scale = min(1.0, THUMB_SIDE / max(w, h).toDouble())
@@ -360,7 +360,7 @@ class ArtworkModel(
     private suspend fun read(): Boolean {
         val (d, l) =
             coroutineScope {
-                val doc = async { client.getDocument().toPixart<DocumentInfo>() }
+                val doc = async { client.getDocument() }
                 val list = async { client.getLayers().map { it.toPixart<Layer>() } }
                 doc.await() to list.await()
             }

@@ -104,7 +104,7 @@ public final class ProjectsModel: ObservableObject {
         let backend = backend
         let docs = await withTaskGroup(of: (String, DocumentInfo?).self) { group in
             for p in projects {
-                group.addTask { (p.contextId, try? await backend.pixartClient(p.contextId).getDocument().decoded(as: DocumentInfo.self)) }
+                group.addTask { (p.contextId, try? await backend.pixartClient(p.contextId).getDocument()) }
             }
             var out: [String: DocumentInfo] = [:]
             for await (id, doc) in group { if let doc { out[id] = doc } }
@@ -131,7 +131,7 @@ public final class ProjectsModel: ObservableObject {
         defer { thumbing.remove(contextId) }
         let client = backend.pixartClient(contextId)
         guard let layers = try? await client.getLayers().map({ try $0.decoded(as: Layer.self) }),
-            let doc = try? await client.getDocument().decoded(as: DocumentInfo.self)
+            let doc = try? await client.getDocument()
         else { return }
         let ops = LayerStack.drawOps(layers)
         let images = await blobs.bitmaps(LayerStack.blobIds(ops), contextId: contextId)
@@ -310,7 +310,7 @@ public final class ArtworkModel: ObservableObject {
         async let doc = client.getDocument()
         async let list = client.getLayers()
         let (dj, lj) = try await (doc, list)
-        let d = try dj.decoded(as: DocumentInfo.self)
+        let d = dj
         let l = try lj.map { try $0.decoded(as: Layer.self) }
         let changed = d != document || l != layers
         document = d

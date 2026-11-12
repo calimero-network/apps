@@ -211,6 +211,12 @@ object DocsFormat {
         return out.ifEmpty { "?" }
     }
 
+    /**
+     * A timestamp off the wire (milliseconds) in the nanoseconds the screens use (`msToNs` in the
+     * web adapter); 0 when it would not fit.
+     */
+    fun nanos(millis: ULong): ULong = if (millis > ULong.MAX_VALUE / NANOS_PER_MILLI.toULong()) 0u else millis * NANOS_PER_MILLI.toULong()
+
     /** "just now", "5m ago", "3h ago", "2d ago", or a date, from nanoseconds. */
     fun relativeTime(
         nanos: ULong,

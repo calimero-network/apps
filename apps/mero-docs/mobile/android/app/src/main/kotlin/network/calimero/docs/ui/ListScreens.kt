@@ -546,7 +546,7 @@ fun DocRowView(
     snippet: String = "",
     onClick: () -> Unit,
 ) {
-    val updated = DocsFormat.relativeTime(row.doc.updatedAt)
+    val updated = DocsFormat.relativeTime(DocsFormat.nanos(row.doc.updatedAt))
     val meta =
         listOfNotNull(if (showFolder) row.folderName else null, if (updated.isEmpty()) null else "Updated $updated")
             .joinToString(" · ")

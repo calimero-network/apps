@@ -432,7 +432,7 @@ struct DocLink: View {
     }
 
     private var meta: String {
-        let when = DocsFormat.relativeTime(nanos: row.doc.updatedAt)
+        let when = DocsFormat.relativeTime(nanos: DocsFormat.nanos(millis: row.doc.updatedAt))
         let parts = [showFolder ? row.folderName : nil, when.isEmpty ? nil : "Updated \(when)"].compactMap { $0 }
         return parts.isEmpty ? "Document" : parts.joined(separator: " · ")
     }
