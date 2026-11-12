@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TEMPLATES, ago } from "./lib/fields";
 import { Icon } from "./ui";
 import { useRead, type Workspace } from "./useWorkspace";
+import { toForm, toForms, fromFields } from "./formsApi";
 
 /** Every form in the workspace, and a way to start a new one. */
 export function FormsHome({
@@ -11,7 +12,7 @@ export function FormsHome({
   workspace: Workspace;
   onOpen: (formId: string, tab?: "responses" | "edit") => void;
 }) {
-  const forms = useRead(workspace.client, workspace.version, (c) => c.listForms(), []);
+  const forms = useRead(workspace.client, workspace.version, (c) => c.listForms().then(toForms), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export function FormsHome({
       const description = template?.description ?? "";
       const id = await workspace.act((c) => c.createForm({ title, description }));
       if (template) {
-        await workspace.act((c) => c.updateForm({ form_id: id, title, description, fields: template.fields }));
+        await workspace.act((c) => c.updateForm({ formId: id, title, description, fields: fromFields(template.fields) }).then(toForm));
       }
       onOpen(id, "edit");
     } catch (e) {

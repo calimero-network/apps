@@ -278,5 +278,192 @@
     },
     "version": 1
   },
+  "types": {
+    "GameSummary": {
+      "fields": [
+        [
+          "index",
+          "u32"
+        ],
+        [
+          "startedAt",
+          "u64"
+        ],
+        [
+          "result",
+          "string"
+        ],
+        [
+          "reason",
+          "string"
+        ],
+        [
+          "plies",
+          "u32"
+        ],
+        [
+          "white",
+          "string"
+        ],
+        [
+          "black",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MoveView": {
+      "fields": [
+        [
+          "ply",
+          "u32"
+        ],
+        [
+          "uci",
+          "string"
+        ],
+        [
+          "san",
+          "string"
+        ],
+        [
+          "by",
+          "string"
+        ],
+        [
+          "at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayerView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "online",
+          "bool"
+        ],
+        [
+          "color",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SeatView": {
+      "fields": [
+        [
+          "seat",
+          "string"
+        ],
+        [
+          "member",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "online",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TableView": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "game",
+          "u32"
+        ],
+        [
+          "fen",
+          "string"
+        ],
+        [
+          "sideToMove",
+          "string"
+        ],
+        [
+          "moves",
+          "list<MoveView>"
+        ],
+        [
+          "legalMoves",
+          "list<string>"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "result",
+          "string"
+        ],
+        [
+          "reason",
+          "string"
+        ],
+        [
+          "check",
+          "bool"
+        ],
+        [
+          "claimableDraw",
+          "string"
+        ],
+        [
+          "white",
+          "SeatView"
+        ],
+        [
+          "black",
+          "SeatView"
+        ],
+        [
+          "me",
+          "string"
+        ],
+        [
+          "myColor",
+          "string"
+        ],
+        [
+          "myTurn",
+          "bool"
+        ],
+        [
+          "drawOfferFrom",
+          "string"
+        ],
+        [
+          "players",
+          "list<PlayerView>"
+        ],
+        [
+          "gamesPlayed",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

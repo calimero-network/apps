@@ -2,32 +2,6 @@
 import Foundation
 import MeroKit
 
-/// The generated client declares its own `ContextContractCalling` (it imports
-/// nothing); MeroKit's bound contract has exactly its two methods. This is the
-/// bridge between the two.
-public struct CrmTransport: CrmGenerated.ContextContractCalling {
-    public let inner: any MeroKit.ContextContractCalling
-
-    public init(_ inner: any MeroKit.ContextContractCalling) {
-        self.inner = inner
-    }
-
-    public func query(method: String, argsJSON: Data) async throws -> Data {
-        try await inner.query(method: method, argsJSON: argsJSON)
-    }
-
-    public func execute(method: String, argsJSON: Data) async throws -> Data {
-        try await inner.execute(method: method, argsJSON: argsJSON)
-    }
-}
-
-extension CrmClient {
-    /// The client for one pipeline (one context), over the account's node session.
-    public init(backend: any MeroAppBackend, contextId: String) {
-        self.init(transport: CrmTransport(backend.contract.bound(to: contextId)))
-    }
-}
-
 extension DealView: Identifiable {}
 extension ContactView: Identifiable {}
 extension ActivityView: Identifiable {}

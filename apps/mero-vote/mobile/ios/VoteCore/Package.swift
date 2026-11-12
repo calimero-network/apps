@@ -17,10 +17,10 @@ let package = Package(
         .library(name: "VoteCore", targets: ["VoteCore", "VoteCrypto"]),
     ],
     dependencies: [
-        // swift-sdk v2.0.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        // swift-sdk v4.1.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "2.0.0"),
+            exact: "4.1.0"),
     ],
     targets: [
         // ristretto255 and the mero-vote protocol, with no dependencies but
@@ -28,7 +28,8 @@ let package = Package(
         // Always optimised, even in a Debug build: field arithmetic at -Onone
         // is ~15x slower, which turns a two-second ballot into half a minute.
         .target(name: "VoteCrypto", swiftSettings: [.unsafeFlags(["-O"])]),
-        // `VoteClient.swift` is generated (../../scripts/regenerate-client.sh).
+        // Sources/VoteCore/Generated/VoteClient.swift is generated from ../../../logic/res/abi.json
+        // by scripts/mobile-codegen.sh at the repo root.
         .target(
             name: "VoteCore",
             dependencies: [

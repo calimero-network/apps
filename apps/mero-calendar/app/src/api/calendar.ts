@@ -1,5 +1,12 @@
 import { AppError } from "@calimero-network/mero-js";
 
+import type {
+  CalendarEvent,
+  CreateBookingLink,
+  CreateCalendarEvent,
+  UpdateCalendarEvent,
+} from "../generated/client";
+
 /**
  * The calendar contract (`logic/`), typed, and the one adapter that turns its
  * Calimero 1.0 answers back into the shapes the screens were written for.
@@ -15,10 +22,9 @@ import { AppError } from "@calimero-network/mero-js";
  *
  * The contract is called through `MeroCalendarClient`, which `mero-app-build
  * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`;
- * `client.test.ts` checks it against the ABI). The ABI names its records
- * without their shapes, so the generated types are `unknown`: each answer
- * passes through the `to*` here, and each record argument through
- * `eventArgs` / `updateArgs` / `linkArgs`.
+ * `client.test.ts` checks it against the ABI), typed from the ABI's record
+ * shapes: each answer passes through the `to*` here, and each record argument
+ * through `eventArgs` / `updateArgs` / `linkArgs`.
  */
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
@@ -36,18 +42,7 @@ export const BOOKING_GUEST_METHODS = [
 // ── Shapes (as the screens use them) ─────────────────────────────────────────
 
 /** An event as the contract answers it (v1's field names). */
-export interface WireEvent {
-  id: string;
-  title: string;
-  description: string;
-  owner: string;
-  start: string;
-  end: string;
-  event_type: string;
-  color: string;
-  peers: string[];
-  private: boolean;
-}
+export type WireEvent = CalendarEvent;
 
 /** What a create or update sends. `peers` are account ids. */
 export interface EventFields {
@@ -247,16 +242,21 @@ export function messageOf(error: unknown): string {
 
 // ── The contract ─────────────────────────────────────────────────────────────
 
-/** Only the fields an update names: the contract refuses unknown keys, and null means "unchanged". */
-export function updateArgs(update: EventUpdate): Raw {
-  const out: Raw = {};
+/**
+ * Only the fields an update names: the contract refuses unknown keys, and null
+ * means "unchanged". Every field of `UpdateCalendarEvent` is `#[serde(default)]`,
+ * so the contract takes one left out, but the ABI does not record `default` and
+ * types each as present: the one cast below says what the contract accepts.
+ */
+export function updateArgs(update: EventUpdate): UpdateCalendarEvent {
+  const out: Partial<UpdateCalendarEvent> = {};
   for (const key of ["title", "description", "start", "end", "event_type", "color", "peers"] as const) {
-    if (update[key] !== undefined) out[key] = update[key];
+    if (update[key] !== undefined) (out as Raw)[key] = update[key];
   }
-  return out;
+  return out as UpdateCalendarEvent;
 }
 
-export function eventArgs(event: EventFields): Raw {
+export function eventArgs(event: EventFields): CreateCalendarEvent {
   return {
     title: event.title,
     description: event.description,
@@ -269,12 +269,12 @@ export function eventArgs(event: EventFields): Raw {
 }
 
 /** `createBookingLink`'s `link` argument: its expiry a u64. */
-export function linkArgs(link: CreateBookingLinkArgs): Raw {
+export function linkArgs(link: CreateBookingLinkArgs): CreateBookingLink {
   return { ...link, expiresAtMs: link.expiresAtMs === null ? null : u64(link.expiresAtMs) };
 }
 
 /** `getEvents` / `getPrivateEvents`'s answer. */
-export const toEvents = (v: unknown): WireEvent[] => (v as WireEvent[] | null) ?? [];
+export const toEvents = (v: WireEvent[] | null): WireEvent[] => v ?? [];
 /** `getMembers`' answer. */
 export const toMembers = (v: unknown): WireMember[] => ((v as unknown[] | null) ?? []).map(toMember);
 /** `listBookingLinks`' answer. */

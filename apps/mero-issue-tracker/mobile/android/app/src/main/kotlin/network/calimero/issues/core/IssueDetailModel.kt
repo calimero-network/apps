@@ -4,8 +4,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.issues.contract.CommentView
-import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueDetail
+import network.calimero.issues.contract.IssueTrackerContract
 import network.calimero.issues.contract.IssueView
+import network.calimero.issues.generated.IssueTrackerClient
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The Edit sheet's four sections. */
@@ -54,7 +56,7 @@ class IssueDetailModel(
     suspend fun load() {
         if (_state.value.issue == null) update { copy(phase = LoadPhase.Loading) }
         try {
-            val detail = client.getIssue(issueId)
+            val detail = IssueTrackerContract.read<IssueDetail>(client.getIssue(issueId))
             update { copy(issue = detail.issue, comments = detail.comments.sortedBy { it.createdAt }, phase = LoadPhase.Loaded) }
         } catch (e: CancellationException) {
             throw e

@@ -1,78 +1,66 @@
 #!/usr/bin/env python3
-"""A job that downloads another job's artifact must not have a NARROWER gate
-than its producer.
+"""A job that downloads another job's artifact must still run when it should.
 
 GitHub skips a job whose `needs:` dependency was skipped, whatever that job's
-own `if:` says. So when a producer's `if:` is stricter than a consumer's, the
-consumer silently never runs on the difference between them — no failure, just
-a check that reads "skipping" next to a green PR.
+own `if:` says, unless that `if:` carries a status function. So a consumer gated
+more narrowly by its producer silently never runs: no failure, just a check
+that reads "skipping" next to a green PR. That is not hypothetical: in ci.yml's
+v1 pipeline `wasm` was gated on contract changes only while `browser` (which
+downloaded its bundle) was gated on frontend changes too, and every
+frontend-only PR got zero browser e2e (#35).
 
-That is not hypothetical: `wasm` was gated on contract changes only while
-`browser` (which `needs:` it and downloads `mpk-<app>-<sha>`) was gated on
-frontend changes too. Every frontend-only PR got zero browser e2e, including
-the login-wiring change in #35.
+components.yml has one such link: `e2e` downloads `component-<app>-<sha>` from
+`rust`. `rust` runs only for apps whose contract changed, while `e2e` also runs
+when only the JS that drives a node changed (packages/merod-local, a mero-js
+pin), building the wasm itself in those legs (`build: true`). This asserts:
 
-This asserts the producer's condition is not stricter than its consumers', by
-comparing the SET of `needs.changes.outputs.*` flags each one accepts.
+  * `e2e` needs `rust` and still runs when `rust` was SKIPPED (an empty rust
+    matrix), but not when it failed or was cancelled;
+  * the artifact download is limited to legs that do not build (`!matrix.build`),
+    and the build steps to the legs that do;
+  * every leg's wasm comes from one of the two: scripts/ci-scope.py marks a
+    leg `build: false` exactly when its app is in the `rust` matrix (pinned by
+    scripts/tests/ci-scope-test.py).
 """
 
 import pathlib
 import re
 import sys
 
-CI = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml"
-
-# consumer -> the job whose uploaded artifact it downloads
-ARTIFACT_DEPS = {"browser": "wasm", "e2e": "wasm", "journey": "wasm"}
-
-src = CI.read_text()
-
-
-def job_conditions(text):
-    """Map job name -> the `if:` expression on that job (not on its steps)."""
-    out = {}
-    job = None
-    for line in text.splitlines():
-        m = re.match(r"^  ([a-z0-9-]+):\s*$", line)
-        if m:
-            job = m.group(1)
-            continue
-        m = re.match(r"^    if:\s*(.+?)\s*$", line)
-        if m and job:
-            out.setdefault(job, m.group(1))
-    return out
-
-
-def flags(expr):
-    """The set of `changes` outputs the expression accepts as a trigger."""
-    return set(re.findall(r"needs\.changes\.outputs\.([a-z_]+)\s*==\s*'true'", expr))
-
-
-conds = job_conditions(src)
+WF = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/components.yml"
+src = WF.read_text()
 failures = []
 
-for consumer, producer in ARTIFACT_DEPS.items():
-    if consumer not in conds:
-        failures.append(f"{consumer}: no job-level `if:` found — did the job get renamed?")
-        continue
-    if producer not in conds:
-        failures.append(f"{producer}: no job-level `if:` found — did the job get renamed?")
-        continue
 
-    missing = flags(conds[consumer]) - flags(conds[producer])
-    if missing:
-        failures.append(
-            f"`{producer}` (producer) does not run for: {', '.join(sorted(missing))}\n"
-            f"    but `{consumer}` (consumer) does, and it `needs: {producer}` to\n"
-            f"    download its artifact — so `{consumer}` will be SKIPPED, not run,\n"
-            f"    on exactly those changes. Widen `{producer}`'s `if:` to cover them."
-        )
+def check(name, ok):
+    print(f"  {'ok  ' if ok else 'FAIL'} {name}")
+    if not ok:
+        failures.append(name)
+
+
+def job_block(text, name):
+    m = re.search(rf"^  {name}:\n(.*?)(?=^  [a-z0-9-]+:\n|\Z)", text, re.M | re.S)
+    return m.group(1) if m else ""
+
+
+e2e = job_block(src, "e2e")
+rust = job_block(src, "rust")
+check("components.yml has `rust` and `e2e` jobs", bool(e2e) and bool(rust))
+check("e2e needs rust", re.search(r"^    needs: \[[^\]]*\brust\b[^\]]*\]", e2e, re.M) is not None)
+
+cond = re.search(r"^    if: >-\n((?:      .*\n)+)", e2e, re.M)
+cond = " ".join(cond.group(1).split()) if cond else (re.search(r"^    if: (.+)$", e2e, re.M) or [None, ""])[1]
+check("e2e's `if:` carries a status function (else a skipped rust skips it)", "!cancelled()" in cond)
+check("e2e runs when rust was skipped", "needs.rust.result == 'skipped'" in cond)
+check("e2e runs when rust succeeded", "needs.rust.result == 'success'" in cond)
+check("e2e does not run on a failed rust", "'failure'" not in cond)
+
+dl = re.search(r"- if: \$\{\{ !matrix\.build \}\}\n\s+uses: actions/download-artifact@v4\n\s+with:\n\s+name: component-\$\{\{ matrix\.app \}\}-", e2e)
+check("only `build: false` legs download rust's artifact", dl is not None)
+check("`build: true` legs run the release build", re.search(r"name: Release build\n\s+if: matrix\.build\n", e2e) is not None)
+check("rust uploads that artifact", "name: component-${{ matrix.app }}-${{ github.sha }}" in rust)
 
 if failures:
-    print("producer/consumer gate mismatch in .github/workflows/ci.yml:\n")
-    for f in failures:
-        print(f"  ✗ {f}")
+    print(f"\n{len(failures)} producer/consumer gate check(s) failed in {WF.name}")
     sys.exit(1)
-
-for consumer, producer in ARTIFACT_DEPS.items():
-    print(f"ok: {producer} covers every trigger of {consumer}")
+print("ok")

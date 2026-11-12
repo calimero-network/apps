@@ -1,15 +1,16 @@
 package network.calimero.issues.core
 
+import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import network.calimero.issues.contract.CommentView
-import network.calimero.issues.contract.ContextContractCalling
 import network.calimero.issues.contract.IssueDetail
-import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueTrackerContract
 import network.calimero.issues.contract.StatusCount
+import network.calimero.issues.generated.IssueTrackerClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -65,8 +66,8 @@ class ContractWireTest {
     }
 
     @Test fun `method lists match the ABI`() {
-        assertEquals(abi.filterValues { it.first == "call" }.keys, IssueTrackerClient.CALLS.toSet())
-        assertEquals(abi.filterValues { it.first == "view" }.keys, IssueTrackerClient.VIEWS.toSet())
+        assertEquals(abi.filterValues { it.first == "call" }.keys, IssueTrackerContract.CALLS.toSet())
+        assertEquals(abi.filterValues { it.first == "view" }.keys, IssueTrackerContract.VIEWS.toSet())
     }
 
     @Test fun `every call sends the ABI's argument names`() =
@@ -108,7 +109,7 @@ class ContractWireTest {
             """{"id":"issue-1","title":"T","summary":"S","impact":"I","repro":"R","resolutionCriteria":"C","status":"Open",""" +
                 """"priority":"low","assignee":null,"labels":["ci"],"createdBy":"acc","createdAt":"1767225600000"}"""
         val detail =
-            IssueTrackerClient.json.decodeFromString(
+            IssueTrackerContract.json.decodeFromString(
                 IssueDetail.serializer(),
                 """{"issue":$issue,"comments":[{"id":"c","issueId":"issue-1","author":"acc","body":"b","createdAt":"5","editedAt":null}]}""",
             )
@@ -116,12 +117,12 @@ class ContractWireTest {
         assertEquals("C", detail.issue.resolutionCriteria)
         assertNull(detail.comments[0].editedAt)
         val counts =
-            IssueTrackerClient.json.decodeFromString(
+            IssueTrackerContract.json.decodeFromString(
                 kotlinx.serialization.builtins.ListSerializer(StatusCount.serializer()),
                 """[{"status":"Open","count":"3"},{"status":"Done","count":0}]""",
             )
         assertEquals(listOf(3uL, 0uL), counts.map { it.count })
-        val out = IssueTrackerClient.json.encodeToString(CommentView.serializer(), detail.comments[0])
+        val out = IssueTrackerContract.json.encodeToString(CommentView.serializer(), detail.comments[0])
         assertTrue(out, out.contains(""""createdAt":"5""""))
     }
 }

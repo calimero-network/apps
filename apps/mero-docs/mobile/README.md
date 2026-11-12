@@ -114,11 +114,14 @@ Authors show as "You" or a short id.
 
 ### The contract
 
-`DocsClient` (`ios/DocsCore/Sources/DocsCore/DocsClient.swift`, `android/…/core/DocsClient.kt`)
-is the read and comment half of the web's typed adapter (`../app/src/lib/docsApi.ts`) over the
-component ABI (`../logic/res/abi.json`): `listDocs`, `getDoc`, `searchDocs`, `getDocument`,
-`listComments` and `addComment`, with camelCase arguments. 64-bit values arrive as decimal
-strings and timestamps in milliseconds; like the web adapter, it hands the screens nanoseconds. A
+`DocsClient` (`ios/DocsCore/Sources/DocsCore/Generated/`, `android/…/docs/generated/`) is
+generated from the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`
+(`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale
+one). The apps call the read and comment half of the web's typed adapter
+(`../app/src/lib/docsApi.ts`): `listDocs`, `getDoc`, `searchDocs`, `getDocument`, `listComments`
+and `addComment`, with camelCase arguments. Until the logic derives `AbiType` the client answers
+their JSON, which `DocsShapes.swift` / `core/DocsShapes.kt` read: 64-bit values arrive as decimal
+strings and timestamps in milliseconds; like the web adapter, they hand the screens nanoseconds. A
 test on each platform checks every method, and `addComment`'s parameters, against `abi.json`
 (skipped while that file is still the v1 ABI).
 

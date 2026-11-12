@@ -79,6 +79,11 @@ export interface InitArgs {
   name?: string | null;
 }
 
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  name?: string | null;
+}
+
 /** The arguments of `encodeFrame`. */
 export interface EncodeFrameArgs {
   raw: string;

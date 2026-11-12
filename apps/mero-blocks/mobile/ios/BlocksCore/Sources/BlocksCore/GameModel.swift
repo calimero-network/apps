@@ -37,7 +37,7 @@ public final class GameModel: ObservableObject {
     public init(backend: any MeroAppBackend, world: WorldRef, myId: String, playerName: String, sensitivity: Double) {
         self.backend = backend
         self.world = world
-        router = BridgeRouter(client: BlocksClient(transport: backend.contract.bound(to: world.contextId)))
+        router = BridgeRouter(client: BlocksClient(backend: backend, app: world.contextId))
         start = GameStart(
             contextId: world.contextId, myId: myId, name: BlocksText.playerName(playerName), worldName: world.name,
             sensitivity: min(max(sensitivity, BlocksConstants.sensitivityRange.lowerBound), BlocksConstants.sensitivityRange.upperBound))

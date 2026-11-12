@@ -1,16 +1,12 @@
 package network.calimero.stream.core
 
-import com.calimero.mero.app.ContextContractCalling
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.put
+import network.calimero.stream.generated.StreamClient
 
 /**
  * A member of a room's call, as the contract's `getMembers` and `join` answer. [memberId] is the
@@ -45,46 +41,23 @@ data class Member(
 }
 
 /**
- * The room contract (`../../logic`, `res/abi.json`), bound to one room's app instance. Only the
- * methods the phone calls: the probe's in-WASM codec and chunk paths are measurement tools the web
- * keeps. Names and arguments are the component ABI's: camelCase, u64 as a decimal string.
- * (Identical to the iOS `StreamClient`.)
+ * The room contract (`../../logic`, `res/abi.json`) is [StreamClient], generated from it by core's
+ * `mero-app-build codegen` (`scripts/mobile-codegen.sh`). The phone calls only `join` and
+ * `getMembers`: the probe's in-WASM codec and chunk paths are measurement tools the web keeps.
+ * Until the logic derives `AbiType`, the ABI names `Member` without its shape, so the client answers
+ * its JSON and [Member.from] reads it. (Identical to the iOS `StreamContract.swift`.)
  */
-class StreamClient(
-    private val transport: ContextContractCalling,
-) {
-    /** Record (or rename) the caller in the room. [now] is unix seconds. */
-    suspend fun join(
-        username: String,
-        now: Long,
-    ): Member {
-        val args =
-            buildJsonObject {
-                put("username", username)
-                put("now", now.toString())
-            }
-        return Member.from(Json.parseToJsonElement(transport.execute("join", args.toString())))
-    }
-
-    /** Everyone who joined the room, in account order (a view). */
-    suspend fun getMembers(): List<Member> {
-        val answer = Json.parseToJsonElement(transport.query("getMembers", "{}"))
-        val list = answer as? JsonArray ?: throw SerializationException("getMembers answered $answer")
-        return list.map(Member::from)
-    }
-
-    companion object {
-        /** Every contract method this client calls, with its parameters in ABI order. */
-        val METHODS: Map<String, List<String>> =
-            mapOf(
-                "join" to listOf("username", "now"),
-                "getMembers" to emptyList(),
-            )
-    }
+object StreamContract {
+    /** Every contract method the app calls, with its parameters in ABI order. */
+    val METHODS: Map<String, List<String>> =
+        mapOf(
+            "join" to listOf("username", "now"),
+            "getMembers" to emptyList(),
+        )
 }
 
 /** The client for one room's call (app instance), through the signed-in backend. */
 fun streamClient(
     backend: MeroAppBackend,
     contextId: String,
-): StreamClient = StreamClient(backend.contract.bound(contextId))
+): StreamClient = StreamClient(backend, contextId)

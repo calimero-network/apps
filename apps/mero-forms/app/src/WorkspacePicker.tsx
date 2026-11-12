@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { askAnOwnerCopy, canCreateIn, describeError, orgsWithApp, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
-import { FormsClient } from "./formsApi";
+import { formsClient } from "./formsApi";
 import { createWorkspace, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { useSignedIn } from "./sessionContext";
@@ -65,7 +65,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
     try {
       const made = await createWorkspace(client, source, title, org || null, () => passkey());
       // Name it right away. Best effort: an unnamed workspace still works.
-      await new FormsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
+      await formsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
       onOpen(made);
     } catch (e) {
       setError(describeError(e));
@@ -89,7 +89,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
     const title = name.trim() || target.name || "Workspace";
     try {
       const made = await createWorkspace(client, source, title, target.orgId, () => passkey());
-      await new FormsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
+      await formsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
       onOpen(made);
     } finally {
       after();

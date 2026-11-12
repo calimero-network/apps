@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { rpcCall } from "../api/rpc";
+import { design, readElements } from "../api/rpc";
 import type { Element } from "../types";
 import {
   buildBoardPreviewSvg,
@@ -21,7 +21,7 @@ const recent = new Map<string, { at: number; read: Promise<Element[]> }>();
 function readBoard(contextId: string): Promise<Element[]> {
   const hit = recent.get(contextId);
   if (hit && Date.now() - hit.at < SHARE_MS) return hit.read;
-  const read = schedule(() => rpcCall<Element[]>(contextId, "get_elements", {}))
+  const read = schedule(() => readElements(design(contextId)))
     .then((els) => (Array.isArray(els) ? els : []));
   // A failure is not shared: the next picture asks again.
   read.catch(() => recent.delete(contextId));

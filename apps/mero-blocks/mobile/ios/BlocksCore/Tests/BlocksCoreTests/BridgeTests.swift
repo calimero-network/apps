@@ -119,7 +119,9 @@ final class BridgeRouterTests: XCTestCase {
             case "worldMeta": return .object(["name": "Lime Valley", "seed": "1337", "createdAt": "1730000000"])
             case "getOverrides":
                 // Two pages: the router follows `next`.
-                if call.args["cursor"] == nil { return .object(["items": .array([.object(["k": "1,2,3", "b": 8])]), "next": "p2"]) }
+                // The generated client sends an unset `option` argument as `null`, which the
+                // contract reads as none, as it does a missing key.
+                if call.args["cursor"] == nil || call.args["cursor"] == .null { return .object(["items": .array([.object(["k": "1,2,3", "b": 8])]), "next": "p2"]) }
                 return .object(["items": .array([.object(["k": "4,5,6", "b": 2])]), "next": .null])
             case "getPlayers":
                 return .object([
@@ -140,7 +142,7 @@ final class BridgeRouterTests: XCTestCase {
             default: return .null
             }
         }
-        router = BridgeRouter(client: BlocksClient(transport: recording.bound(to: contextId)))
+        router = BridgeRouter(client: BlocksClient(contract: recording.bound(to: contextId)))
     }
 
     private func json(_ data: Data) throws -> Any {
@@ -160,12 +162,15 @@ final class BridgeRouterTests: XCTestCase {
         XCTAssertEqual(rows.first?["name"] as? String, "Ana")
         XCTAssertEqual(rows.first?["online"] as? Bool, true)
         // u64 on the component wire is a decimal string.
-        XCTAssertEqual(recording.calls("getPlayers").first?.args, .object(["now": "1730000001"]))
+        XCTAssertEqual(
+            recording.calls("getPlayers").first?.args, .object(["now": "1730000001", "cursor": .null, "limit": .null]))
 
         // Both pages, as one list: the page's shape.
         let overrides = try await router.handle(op: .query, method: "get_overrides", argsJSON: Data("{}".utf8))
         XCTAssertEqual((try json(overrides) as? [[String: Any]])?.compactMap { $0["b"] as? Int }, [8, 2])
-        XCTAssertEqual(recording.calls("getOverrides").map(\.args), [.object([:]), .object(["cursor": "p2"])])
+        XCTAssertEqual(
+            recording.calls("getOverrides").map(\.args),
+            [.object(["cursor": .null, "limit": .null]), .object(["cursor": "p2", "limit": .null])])
 
         // A page built against the component ABI may use its names.
         _ = try await router.handle(op: .query, method: "worldMeta", argsJSON: Data("{}".utf8))

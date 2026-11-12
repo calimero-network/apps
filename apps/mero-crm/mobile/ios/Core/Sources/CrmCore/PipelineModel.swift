@@ -56,7 +56,7 @@ public final class PipelineModel: ObservableObject {
     public init(pipeline: PipelineRef, backend: any MeroAppBackend) {
         self.pipeline = pipeline
         self.backend = backend
-        self.client = CrmClient(backend: backend, contextId: pipeline.contextId)
+        self.client = CrmClient(backend: backend, app: pipeline.contextId)
         self.me = Account.canonical(backend.account) ?? backend.account.lowercased()
     }
 
@@ -81,12 +81,13 @@ public final class PipelineModel: ObservableObject {
             async let au = client.listAutomations()
             async let se = client.getSettings()
             let (s, d, c, a, u, t) = try await (st, ds, cs, ac, au, se)
-            stages = s.sorted { $0.position < $1.position }
-            deals = d
-            contacts = c.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            activities = a
-            automations = u
-            settings = t
+            stages = try s.map { try $0.decoded(as: StageView.self) }.sorted { $0.position < $1.position }
+            deals = try d.map { try $0.decoded(as: DealView.self) }
+            contacts = try c.map { try $0.decoded(as: ContactView.self) }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            activities = try a.map { try $0.decoded(as: ActivityView.self) }
+            automations = try u.map { try $0.decoded(as: AutomationView.self) }
+            settings = try t.decoded(as: Settings.self)
             hasLoaded = true
             warmingUp = false
             error = nil
@@ -163,7 +164,7 @@ public final class PipelineModel: ObservableObject {
 
     /// One deal with its person, activities and notes.
     public func detail(_ dealId: String) async throws -> DealDetail {
-        try await client.getDeal(dealId: dealId)
+        try await client.getDeal(dealId: dealId).decoded(as: DealDetail.self)
     }
 
     // MARK: People and ownership

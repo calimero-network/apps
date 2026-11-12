@@ -1,66 +1,32 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
+import {
+  MeroFormsClient,
+  type AnswerInput as WireAnswerInput,
+  type AppCallTransport,
+  type AppTransport,
+  type CaptchaPass as WireCaptchaPass,
+  type CrmLink as WireCrmLink,
+  type Field as WireField,
+} from "./generated/client";
 
 /**
- * The forms contract, typed (no client is generated from a component ABI
- * yet), and the ONE place its answers are adapted to the shapes the screens
- * use.
+ * The forms contract is called through `MeroFormsClient`
+ * (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+ * `logic/res/abi.json`): camelCase arguments, 64-bit integers as decimal
+ * strings. This file is what sits around it:
  *
- * The screens were written against v1's generated `FormsClient`: snake_case
- * argument objects and results, plain numbers. The component contract takes
- * camelCase arguments and answers camelCase records with 64-bit integers as
- * decimal strings. This class keeps v1's method names and shapes and converts
- * both ways, so the screens stay as they were. Timestamps are now milliseconds
- * (v1's were nanoseconds).
+ * - the shapes the screens use. The screens were written against v1's
+ *   `FormsClient`: snake_case records and plain numbers. The generated client
+ *   types the records from the ABI; each answer passes through a `to*` below,
+ *   which reads it defensively, and `from*` builds a record argument, checked
+ *   against the generated argument types.
+ *   Timestamps are milliseconds (v1's were nanoseconds).
+ * - `formsTransport`, the one adapter on the wire: a refusal comes back as an
+ *   `AppError` (`appCode` + `fields.message`) and is rethrown as a plain
+ *   `Error` carrying v1's message (`asError`), which is what the screens show
+ *   and what `publicRefusal` matches on.
  *
- * A refusal comes back as an `AppError` (`appCode` + `fields.message`). It is
- * rethrown as a plain `Error` carrying v1's message, which is what the screens
- * show and what `publicRefusal` matches on.
- *
- * `formsApi.test.ts` asserts CALLS and VIEWS are exactly the committed
- * `logic/res/abi.json`'s, with the same parameter names.
+ * `client.test.ts` checks the generated class against the committed ABI.
  */
-export const CALLS = [
-  "addTeamMember",
-  "clearCaptchaSecret",
-  "createForm",
-  "createLink",
-  "deleteForm",
-  "deleteLink",
-  "forgetFormKey",
-  "recordCrmDeal",
-  "registerFormKey",
-  "removeTeamMember",
-  "setArchived",
-  "setCaptchaKey",
-  "setCaptchaSecret",
-  "setCrmLink",
-  "setFormOpen",
-  "setFormPublic",
-  "setLinkCap",
-  "setWorkspaceName",
-  "submitResponse",
-  "submitViaLink",
-  "updateForm",
-] as const;
-export const VIEWS = [
-  "amIAdmin",
-  "amITeam",
-  "captchaSettings",
-  "fieldKinds",
-  "getForm",
-  "getResponse",
-  "linkForm",
-  "listFormKeys",
-  "listForms",
-  "listLinks",
-  "listResponses",
-  "listTeam",
-  "myAccount",
-  "workspaceName",
-] as const;
-
-type Call = (typeof CALLS)[number];
-type View = (typeof VIEWS)[number];
 
 // ── what the screens use (v1's shapes) ───────────────────────────────────────
 
@@ -214,7 +180,7 @@ export const toField = (f: Raw): Field => ({
   options: Array.isArray(f.options) ? (f.options as string[]) : [],
 });
 
-const fromField = (f: Field) => ({
+const fromField = (f: Field): WireField => ({
   id: f.id,
   kind: f.kind,
   label: f.label,
@@ -233,7 +199,7 @@ export const toCrmLink = (l: Raw | undefined): CrmLink => ({
   title_field: str(l?.titleField),
 });
 
-const fromCrmLink = (l: CrmLink) => ({
+const fromCrmLink = (l: CrmLink): WireCrmLink => ({
   contextId: l.context_id,
   stageId: l.stage_id,
   nameField: l.name_field,
@@ -250,7 +216,7 @@ const toAnswer = (a: Raw): Answer => ({
   values: Array.isArray(a.values) ? (a.values as string[]) : [],
 });
 
-const fromAnswers = (answers: AnswerInput[]) => answers.map((a) => ({ fieldId: a.field_id, values: a.values }));
+const fromAnswers = (answers: AnswerInput[]): WireAnswerInput[] => answers.map((a) => ({ fieldId: a.field_id, values: a.values }));
 
 export const toFormView = (f: Raw): FormView => ({
   id: str(f.id),
@@ -347,181 +313,74 @@ export function asError(e: unknown): unknown {
   return err;
 }
 
-export type Transport = ClientRoutes<{ apps: "call" | "view" }>;
+// ── answers and record arguments, at the call sites ──────────────────────────
+
+/** `getForm`'s answer, and every call that answers the form it changed. */
+export const toForm = (v: unknown): FormView => toFormView(v as Raw);
+/** `listForms`'s answer. */
+export const toForms = (v: unknown): FormSummary[] => list(v, toSummary);
+/** `getResponse`'s answer, and `setArchived`'s and `recordCrmDeal`'s. */
+export const toResponse = (v: unknown): ResponseView => toResponseView(v as Raw);
+/** `listResponses`'s answer. */
+export const toResponses = (v: unknown): ResponseView[] => list(v, toResponseView);
+/** `createLink`'s and `deleteLink`'s answer. */
+export const toLink = (v: unknown): LinkView => toLinkView(v as Raw);
+/** `listLinks`'s answer. */
+export const toLinks = (v: unknown): LinkView[] => list(v, toLinkView);
+/** `linkForm`'s answer. */
+export const toLinkForm = (v: unknown): LinkFormView => toLinkFormView(v as Raw);
+/** `listFormKeys`'s answer. */
+export const toFormKeys = (v: unknown): FormKeyView[] => list(v, toKeyView);
+/** `listTeam`'s answer. */
+export const toTeam = (v: unknown): TeamMember[] => list(v, (m) => ({ account: str(m.account), admin: m.admin === true }));
+/** `captchaSettings`'s answer, and the captcha secret calls'. */
+export const toCaptcha = (v: unknown): CaptchaSettings => toCaptchaSettings(v as Raw);
+
+/** A form's fields as `updateForm` takes them. */
+export const fromFields = (fields: Field[]) => fields.map(fromField);
+export { fromCrmLink, fromAnswers };
+/** A captcha pass as `submitViaLink` takes it: its expiry as a decimal string. */
+export const fromCaptchaPass = (pass: CaptchaPass | null): WireCaptchaPass | null =>
+  pass ? { nonce: pass.nonce, expiresMs: String(pass.expires_ms), signature: pass.signature } : null;
+
+/** Ignores a call's answer, for the calls the screens only wait for. */
+export const done = (): void => undefined;
+
+// ── the client ───────────────────────────────────────────────────────────────
+
+/** Rethrows a refusal with v1's message (`asError`). */
+function rethrow(e: unknown): never {
+  throw asError(e);
+}
 
 /**
- * The workspace at app instance `app`, with v1's generated client's method
- * names and argument shapes. `after` runs after every request (the session
- * store syncs a refreshed session there).
+ * `client` with every contract refusal turned into v1's `Error` (`asError`),
+ * for `MeroFormsClient` to call through. Events pass through when `client`
+ * has them.
  */
-export class FormsClient {
-  constructor(
-    private readonly client: Transport,
-    readonly app: string,
-    private readonly after: () => void = () => {},
-  ) {}
-
-  private async call<T>(method: Call, args: Raw = {}): Promise<T> {
-    try {
-      return (await this.client.apps.call({ app: this.app, method, args })).result as T;
-    } catch (e) {
-      throw asError(e);
-    } finally {
-      this.after();
-    }
-  }
-
-  private async view<T>(method: View, args: Raw = {}): Promise<T> {
-    try {
-      return (await this.client.apps.view({ app: this.app, method, args })).result as T;
-    } catch (e) {
-      throw asError(e);
-    } finally {
-      this.after();
-    }
-  }
-
-  // forms
-  createForm(p: { title: string; description: string }): Promise<string> {
-    return this.call("createForm", { title: p.title, description: p.description });
-  }
-  async updateForm(p: { form_id: string; title: string; description: string; fields: Field[] }): Promise<FormView> {
-    return toFormView(
-      await this.call<Raw>("updateForm", {
-        formId: p.form_id,
-        title: p.title,
-        description: p.description,
-        fields: p.fields.map(fromField),
-      }),
-    );
-  }
-  async setFormOpen(p: { form_id: string; open: boolean }): Promise<FormView> {
-    return toFormView(await this.call<Raw>("setFormOpen", { formId: p.form_id, open: p.open }));
-  }
-  async setCrmLink(p: { form_id: string; link: CrmLink }): Promise<FormView> {
-    return toFormView(await this.call<Raw>("setCrmLink", { formId: p.form_id, link: fromCrmLink(p.link) }));
-  }
-  async deleteForm(p: { form_id: string }): Promise<void> {
-    await this.call("deleteForm", { formId: p.form_id });
-  }
-  async getForm(p: { form_id: string }): Promise<FormView> {
-    return toFormView(await this.view<Raw>("getForm", { formId: p.form_id }));
-  }
-  async listForms(): Promise<FormSummary[]> {
-    return list(await this.view<unknown>("listForms"), toSummary);
-  }
-  fieldKinds(): Promise<string[]> {
-    return this.view("fieldKinds");
-  }
-
-  // responses
-  submitResponse(p: { form_id: string; answers: AnswerInput[]; source: string }): Promise<string> {
-    return this.call("submitResponse", { formId: p.form_id, answers: fromAnswers(p.answers), source: p.source });
-  }
-  async listResponses(p: { form_id: string }): Promise<ResponseView[]> {
-    return list(await this.view<unknown>("listResponses", { formId: p.form_id }), toResponseView);
-  }
-  async getResponse(p: { id: string }): Promise<ResponseView> {
-    return toResponseView(await this.view<Raw>("getResponse", { id: p.id }));
-  }
-  async setArchived(p: { id: string; archived: boolean }): Promise<ResponseView> {
-    return toResponseView(await this.call<Raw>("setArchived", { id: p.id, archived: p.archived }));
-  }
-  async recordCrmDeal(p: { id: string; crm_context: string; crm_deal: string }): Promise<ResponseView> {
-    return toResponseView(
-      await this.call<Raw>("recordCrmDeal", { id: p.id, crmContext: p.crm_context, crmDeal: p.crm_deal }),
-    );
-  }
-
-  // public links
-  async setFormPublic(p: { form_id: string; public: boolean }): Promise<FormView> {
-    return toFormView(await this.call<Raw>("setFormPublic", { formId: p.form_id, public: p.public }));
-  }
-  async setLinkCap(p: { form_id: string; per_hour: number }): Promise<FormView> {
-    return toFormView(await this.call<Raw>("setLinkCap", { formId: p.form_id, perHour: p.per_hour }));
-  }
-  async setCaptchaKey(p: { form_id: string; key: string }): Promise<FormView> {
-    return toFormView(await this.call<Raw>("setCaptchaKey", { formId: p.form_id, key: p.key }));
-  }
-  async createLink(p: { form_id: string; link: string; grant_id: string; label: string }): Promise<LinkView> {
-    return toLinkView(
-      await this.call<Raw>("createLink", { formId: p.form_id, link: p.link, grantId: p.grant_id, label: p.label }),
-    );
-  }
-  async deleteLink(p: { link: string }): Promise<LinkView> {
-    return toLinkView(await this.call<Raw>("deleteLink", { link: p.link }));
-  }
-  async listLinks(p: { form_id: string }): Promise<LinkView[]> {
-    return list(await this.view<unknown>("listLinks", { formId: p.form_id }), toLinkView);
-  }
-  async linkForm(p: { link: string }): Promise<LinkFormView> {
-    return toLinkFormView(await this.view<Raw>("linkForm", { link: p.link }));
-  }
-  submitViaLink(p: {
-    link: string;
-    answers: AnswerInput[];
-    captcha: CaptchaPass | null;
-    captcha_token: string | null;
-  }): Promise<string> {
-    return this.call("submitViaLink", {
-      link: p.link,
-      answers: fromAnswers(p.answers),
-      captcha: p.captcha
-        ? { nonce: p.captcha.nonce, expiresMs: String(p.captcha.expires_ms), signature: p.captcha.signature }
-        : null,
-      captchaToken: p.captcha_token,
-    });
-  }
-
-  // team
-  async listTeam(): Promise<TeamMember[]> {
-    return list(await this.view<unknown>("listTeam"), (m) => ({ account: str(m.account), admin: m.admin === true }));
-  }
-  async addTeamMember(p: { who: string }): Promise<void> {
-    await this.call("addTeamMember", { who: p.who });
-  }
-  async removeTeamMember(p: { who: string }): Promise<void> {
-    await this.call("removeTeamMember", { who: p.who });
-  }
-
-  // captcha secret
-  async setCaptchaSecret(p: { site_key: string; secret: string }): Promise<CaptchaSettings> {
-    return toCaptchaSettings(await this.call<Raw>("setCaptchaSecret", { siteKey: p.site_key, secret: p.secret }));
-  }
-  async clearCaptchaSecret(): Promise<CaptchaSettings> {
-    return toCaptchaSettings(await this.call<Raw>("clearCaptchaSecret"));
-  }
-  async captchaSettings(): Promise<CaptchaSettings> {
-    return toCaptchaSettings(await this.view<Raw>("captchaSettings"));
-  }
-
-  // workspace name
-  workspaceName(): Promise<string> {
-    return this.view("workspaceName");
-  }
-  async setWorkspaceName(p: { name: string }): Promise<void> {
-    await this.call("setWorkspaceName", { name: p.name });
-  }
-
-  // form keys
-  async registerFormKey(p: { account: string; form_id: string; label: string }): Promise<void> {
-    await this.call("registerFormKey", { account: p.account, formId: p.form_id, label: p.label });
-  }
-  async forgetFormKey(p: { account: string }): Promise<void> {
-    await this.call("forgetFormKey", { account: p.account });
-  }
-  async listFormKeys(): Promise<FormKeyView[]> {
-    return list(await this.view<unknown>("listFormKeys"), toKeyView);
-  }
-
-  // identity
-  amITeam(): Promise<boolean> {
-    return this.view("amITeam");
-  }
-  amIAdmin(): Promise<boolean> {
-    return this.view("amIAdmin");
-  }
-  myAccount(): Promise<string> {
-    return this.view("myAccount");
-  }
+export function formsTransport(client: AppCallTransport & Partial<Pick<AppTransport, "events">>): AppTransport {
+  return {
+    apps: {
+      call: (args, options) => client.apps.call(args, options).catch(rethrow),
+      view: (args, options) => client.apps.view(args, options).catch(rethrow),
+    },
+    events: (app, from, signal) => {
+      if (!client.events) throw new Error("this client has no event stream");
+      return client.events(app, from, signal);
+    },
+  };
 }
+
+/**
+ * The workspace at app instance `app`. `after` runs after every request (the
+ * session store syncs a refreshed session there).
+ */
+export function formsClient(
+  client: AppCallTransport & Partial<Pick<AppTransport, "events">>,
+  app: string,
+  after?: () => void,
+): MeroFormsClient {
+  return new MeroFormsClient(formsTransport(client), app, after ? { after } : {});
+}
+
+export { MeroFormsClient };

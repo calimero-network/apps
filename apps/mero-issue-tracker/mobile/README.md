@@ -37,10 +37,13 @@ web app's `app/src/tracker.ts` does:
 - a refusal is `422 APP_ERROR {code, fields}`: `NotFound {id}`, `Invalid {message}`,
   `Forbidden {message}`, shown in plain words.
 
-abi-codegen has no target for a component ABI yet, so the typed clients are written by hand:
-`ios/Core/Sources/IssueTrackerCore/Contract/IssueTrackerClient.swift` and
-`android/app/src/main/kotlin/network/calimero/issues/contract/IssueTrackerClient.kt`. Their wire
-tests (`ContractWireTests`, `ContractWireTest`) pin the method list and every argument name to the ABI.
+The typed clients are generated from `../logic/res/abi.json` by core's `mero-app-build codegen`
+(`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale one):
+`ios/Core/Sources/IssueTrackerCore/Generated/IssueTrackerClient.swift` and
+`android/app/src/main/kotlin/network/calimero/issues/generated/IssueTrackerClient.kt`. Until the
+logic derives `AbiType`, the ABI names the answer types without their shape, so the client answers
+their JSON and `Contract/IssueTrackerContract.swift` / `contract/IssueTrackerContract.kt` read it,
+with the method lists the wire tests (`ContractWireTests`, `ContractWireTest`) pin to the ABI.
 
 ### Sign-in
 
@@ -118,9 +121,8 @@ Left out, and why:
 - **Repository names.** `MeroAppBackend.listContexts` returns ids only. The creator's device
   remembers the name it gave; everyone else sees the name derived from the repo's GitHub URL
   (`acme/core` → `core`), else `Repo <id prefix>`.
-- **Contract client protocol.** The clients declare their own `ContextContractCalling`; iOS adopts
-  it for `BoundContextContract` in an extension, Android wraps the SDK's bound contract in
-  `BoundTransport`.
+- **Contract client protocol.** The generated clients take the SDK's `ContextContractCalling`, so
+  the bound contract (`contract.bound(to:)`) goes straight in.
 
 ## CI
 

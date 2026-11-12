@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { packArgs, unpackResult } from "./rpc";
+import { bindApi } from "./client";
+import { design, readElements, readElementsByIds, wireElement, wireLabel, wireLabels } from "./rpc";
+import { withRoutes } from "@calimero-apps/connect/testing";
 import { useCanvasStore } from "../store/canvasStore";
 import { META_SEPARATOR } from "../utils/elementMeta";
 import type { Element } from "../types";
@@ -14,35 +16,45 @@ const el: Element = {
 describe("the RPC wire packs and unpacks element extras", () => {
   beforeEach(() => useCanvasStore.setState({ elements: [el] }));
 
-  it("add_element sends the extras inside label and no extra fields", () => {
-    const args = packArgs("add_element", { element: el }) as { element: Element };
-    expect(args.element.label).toBe(`grp/Box${META_SEPARATOR}s=dashed`);
-    expect(args.element).not.toHaveProperty("strokeStyle");
+  it("addElement sends the extras inside label and no extra fields", () => {
+    const wire = wireElement(el);
+    expect(wire.label).toBe(`grp/Box${META_SEPARATOR}s=dashed`);
+    expect(wire).not.toHaveProperty("strokeStyle");
   });
 
   it("a rename keeps the element's extras, read from the store", () => {
-    const args = packArgs("update_element_label", { id: "e1", label: "grp/Renamed", updated_at: 1 });
-    expect(args.label).toBe(`grp/Renamed${META_SEPARATOR}s=dashed`);
+    expect(wireLabel("e1", "grp/Renamed")).toBe(`grp/Renamed${META_SEPARATOR}s=dashed`);
+    expect(wireLabels([{ id: "e1", label: "grp/Renamed" }, { id: "gone", label: null }])).toEqual([
+      { id: "e1", label: `grp/Renamed${META_SEPARATOR}s=dashed` },
+      { id: "gone", label: null },
+    ]);
   });
 
-  it("an explicit __element wins and is not sent to the node", () => {
-    const args = packArgs("update_element_label", {
-      id: "e1", label: "grp/Box", updated_at: 1, __element: { ...el, strokeStyle: "dotted" },
-    });
-    expect(args.label).toBe(`grp/Box${META_SEPARATOR}s=dotted`);
-    expect(args).not.toHaveProperty("__element");
+  it("an explicit element wins over the store's copy", () => {
+    expect(wireLabel("e1", "grp/Box", { ...el, strokeStyle: "dotted" })).toBe(`grp/Box${META_SEPARATOR}s=dotted`);
   });
 
-  it("other methods pass through untouched", () => {
-    const a = { id: "e1", fill: "#fff" };
-    expect(packArgs("update_element", a)).toBe(a);
-  });
-
-  it("get_elements and get_element come back unpacked", () => {
+  it("the element reads come back unpacked", async () => {
     const wire = { ...el, strokeStyle: undefined, label: `grp/Box${META_SEPARATOR}s=dotted&b=box` };
-    const [one] = unpackResult("get_elements", [wire]) as Element[];
-    expect(one).toMatchObject({ label: "grp/Box", strokeStyle: "dotted", box: "box" });
-    expect(unpackResult("get_element", wire)).toMatchObject({ label: "grp/Box", box: "box" });
-    expect(unpackResult("get_comments", [wire])).toEqual([wire]);
+    const view = vi.fn(async (_app: string, method: string) => ({
+      index: 1,
+      result: method === "getElementsPage" ? { items: [wire], nextCursor: null } : [wire],
+    }));
+    bindApi({
+      client: withRoutes({ view }),
+      accountId: "acct",
+      source: "bundle",
+      passkey: () => ({ create: vi.fn(), get: vi.fn() }),
+      after: () => {},
+      scope: "local:acct",
+    });
+    try {
+      const [one] = await readElements(design("b"));
+      expect(one).toMatchObject({ label: "grp/Box", strokeStyle: "dotted", box: "box" });
+      const [byId] = (await readElementsByIds(design("b"), ["e1"])) ?? [];
+      expect(byId).toMatchObject({ label: "grp/Box", box: "box" });
+    } finally {
+      bindApi(null);
+    }
   });
 });

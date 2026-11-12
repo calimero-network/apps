@@ -99,14 +99,18 @@ extension AgreementDirectory {
         async let detailsCall = sign.getContextDetails(contextIdStr: agreement.contextId)
         async let meCall = sign.whoami()
         async let documentsCall = sign.listDocuments()
-        let (details, rawMe, documents) = try await (detailsCall, meCall, documentsCall)
-        let me = SignIds.hex(rawMe)
+        let (detailsJSON, rawMe, documentsJSON) = try await (detailsCall, meCall, documentsCall)
+        let details = try detailsJSON.decoded(as: ContextDetails.self)
+        let documents = try documentsJSON.map { try $0.decoded(as: DocumentInfo.self) }
+        let me = SignIds.hex(ContractBytes.text(rawMe))
         let level = details.participants.first { SignIds.same($0.userId, me) }?.permissionLevel
         let entries = try await withThrowingTaskGroup(of: (Int, DocumentEntry).self) { group in
             for (index, document) in documents.enumerated() {
                 group.addTask {
                     let needs = document.status != .fullySigned || signaturesForCompleted
-                    let signatures = needs ? try await sign.getDocumentSignatures(documentId: document.id) : []
+                    let signatures = needs ? try await sign.getDocumentSignatures(documentId: document.id).map {
+                            try $0.decoded(as: DocumentSignature.self)
+                        } : []
                     return (
                         index,
                         DocumentEntry(

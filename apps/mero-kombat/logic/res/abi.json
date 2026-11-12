@@ -247,5 +247,175 @@
     },
     "version": 1
   },
+  "types": {
+    "ArenaView": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "matchIndex",
+          "u32"
+        ],
+        [
+          "round",
+          "u32"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "roundResults",
+          "list<string>"
+        ],
+        [
+          "winner",
+          "string"
+        ],
+        [
+          "flawless",
+          "bool"
+        ],
+        [
+          "p1",
+          "FighterView"
+        ],
+        [
+          "p2",
+          "FighterView"
+        ],
+        [
+          "me",
+          "string"
+        ],
+        [
+          "mySeat",
+          "string"
+        ],
+        [
+          "hits",
+          "list<HitView>"
+        ],
+        [
+          "matchActions",
+          "u32"
+        ],
+        [
+          "totalActions",
+          "u64"
+        ],
+        [
+          "maxHp",
+          "u32"
+        ],
+        [
+          "roundsToWin",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FighterView": {
+      "fields": [
+        [
+          "seat",
+          "string"
+        ],
+        [
+          "member",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "fighter",
+          "string"
+        ],
+        [
+          "hp",
+          "u32"
+        ],
+        [
+          "roundsWon",
+          "u32"
+        ],
+        [
+          "matchesWon",
+          "u32"
+        ],
+        [
+          "online",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "HitView": {
+      "fields": [
+        [
+          "by",
+          "string"
+        ],
+        [
+          "id",
+          "u32"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "damage",
+          "u32"
+        ],
+        [
+          "blocked",
+          "bool"
+        ],
+        [
+          "at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MatchSummary": {
+      "fields": [
+        [
+          "index",
+          "u32"
+        ],
+        [
+          "startedAt",
+          "u64"
+        ],
+        [
+          "winner",
+          "string"
+        ],
+        [
+          "flawless",
+          "bool"
+        ],
+        [
+          "rounds",
+          "list<string>"
+        ],
+        [
+          "actions",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

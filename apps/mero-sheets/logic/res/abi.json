@@ -1181,5 +1181,900 @@
     },
     "version": 1
   },
+  "types": {
+    "ActivityEntry": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "at",
+          "u64"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "count",
+          "u32"
+        ],
+        [
+          "changes",
+          "list<CellChange>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Attachment": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "blob_id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "mime",
+          "string"
+        ],
+        [
+          "created_by",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AxisEntryView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "pos",
+          "string"
+        ],
+        [
+          "deleted",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AxisOp": {
+      "content": "payload",
+      "kind": "enum",
+      "tag": "name",
+      "variants": [
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ],
+            [
+              "pos",
+              "string"
+            ]
+          ],
+          "name": "InsertRow"
+        },
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ],
+            [
+              "pos",
+              "string"
+            ]
+          ],
+          "name": "InsertCol"
+        },
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ]
+          ],
+          "name": "DeleteRow"
+        },
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ]
+          ],
+          "name": "DeleteCol"
+        },
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ]
+          ],
+          "name": "RestoreRow"
+        },
+        {
+          "fields": [
+            [
+              "id",
+              "string"
+            ]
+          ],
+          "name": "RestoreCol"
+        }
+      ]
+    },
+    "AxisSize": {
+      "fields": [
+        [
+          "axis",
+          "string"
+        ],
+        [
+          "id",
+          "string"
+        ],
+        [
+          "size",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Cell": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "raw_value",
+          "string"
+        ],
+        [
+          "computed_value",
+          "string"
+        ],
+        [
+          "format",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64"
+        ],
+        [
+          "last_editor",
+          "string"
+        ],
+        [
+          "last_edited_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CellChange": {
+      "fields": [
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "before_raw",
+          "string"
+        ],
+        [
+          "before_format",
+          "string"
+        ],
+        [
+          "after_raw",
+          "string"
+        ],
+        [
+          "after_format",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CellOp": {
+      "content": "payload",
+      "kind": "enum",
+      "tag": "name",
+      "variants": [
+        {
+          "fields": [
+            [
+              "row_id",
+              "string"
+            ],
+            [
+              "col_id",
+              "string"
+            ],
+            [
+              "raw_value",
+              "string"
+            ]
+          ],
+          "name": "Set"
+        },
+        {
+          "fields": [
+            [
+              "row_id",
+              "string"
+            ],
+            [
+              "col_id",
+              "string"
+            ],
+            [
+              "format",
+              "string"
+            ]
+          ],
+          "name": "Format"
+        },
+        {
+          "fields": [
+            [
+              "row_id",
+              "string"
+            ],
+            [
+              "col_id",
+              "string"
+            ]
+          ],
+          "name": "Clear"
+        }
+      ]
+    },
+    "CellStyle": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "style",
+          "BTreeMap<String,String>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Chart": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "chart",
+          "ChartInput"
+        ],
+        [
+          "created_by",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ChartInput": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "top_row_id",
+          "string"
+        ],
+        [
+          "left_col_id",
+          "string"
+        ],
+        [
+          "bottom_row_id",
+          "string"
+        ],
+        [
+          "right_col_id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Comment": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "mentions",
+          "list<string>"
+        ],
+        [
+          "parent",
+          "string"
+        ],
+        [
+          "resolved",
+          "bool"
+        ],
+        [
+          "created_at",
+          "u64"
+        ],
+        [
+          "updated_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FunctionDef": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "category",
+          "string"
+        ],
+        [
+          "syntax",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "example",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Link": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "source_context",
+          "string"
+        ],
+        [
+          "source_name",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "rows",
+          "u32"
+        ],
+        [
+          "cols",
+          "u32"
+        ],
+        [
+          "updated_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LinkPush": {
+      "fields": [
+        [
+          "publication_id",
+          "string"
+        ],
+        [
+          "target_context",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "source_name",
+          "string"
+        ],
+        [
+          "rows",
+          "u32"
+        ],
+        [
+          "cols",
+          "u32"
+        ],
+        [
+          "values",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "nickname",
+          "string"
+        ],
+        [
+          "joined_at",
+          "u64"
+        ],
+        [
+          "updated_at",
+          "u64"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "NamedRange": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "target",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "NoteChange": {
+      "kind": "enum",
+      "untagged": true,
+      "variants": [
+        {
+          "fields": [
+            [
+              "retain",
+              "usize"
+            ],
+            [
+              "attributes",
+              "option<Attrs>"
+            ]
+          ],
+          "name": "Retain"
+        },
+        {
+          "fields": [
+            [
+              "insert",
+              "string"
+            ],
+            [
+              "attributes",
+              "option<Attrs>"
+            ]
+          ],
+          "name": "Insert"
+        },
+        {
+          "fields": [
+            [
+              "delete",
+              "usize"
+            ]
+          ],
+          "name": "Delete"
+        }
+      ]
+    },
+    "NotedCell": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "preview",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Project": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Protection": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "top_row_id",
+          "string"
+        ],
+        [
+          "left_col_id",
+          "string"
+        ],
+        [
+          "bottom_row_id",
+          "string"
+        ],
+        [
+          "right_col_id",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "editors",
+          "list<string>"
+        ],
+        [
+          "created_by",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Publication": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "top_row_id",
+          "string"
+        ],
+        [
+          "left_col_id",
+          "string"
+        ],
+        [
+          "bottom_row_id",
+          "string"
+        ],
+        [
+          "right_col_id",
+          "string"
+        ],
+        [
+          "target_context",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "created_by",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Rule": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "rule",
+          "RuleInput"
+        ],
+        [
+          "created_by",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RuleInput": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "top_row_id",
+          "string"
+        ],
+        [
+          "left_col_id",
+          "string"
+        ],
+        [
+          "bottom_row_id",
+          "string"
+        ],
+        [
+          "right_col_id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "condition",
+          "string"
+        ],
+        [
+          "args",
+          "list<string>"
+        ],
+        [
+          "style",
+          "BTreeMap<String,String>"
+        ],
+        [
+          "strict",
+          "bool"
+        ],
+        [
+          "recipients",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Sheet": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "position",
+          "u32"
+        ],
+        [
+          "created_at",
+          "u64"
+        ],
+        [
+          "linked_from",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SheetLayout": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "rows",
+          "list<AxisEntryView>"
+        ],
+        [
+          "cols",
+          "list<AxisEntryView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SheetView": {
+      "fields": [
+        [
+          "sheet_id",
+          "string"
+        ],
+        [
+          "frozen_rows",
+          "u32"
+        ],
+        [
+          "frozen_cols",
+          "u32"
+        ],
+        [
+          "sizes",
+          "list<AxisSize>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Span": {
+      "fields": [
+        [
+          "text",
+          "string"
+        ],
+        [
+          "attributes",
+          "BTreeMap<String,String>",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "StyleOp": {
+      "fields": [
+        [
+          "row_id",
+          "string"
+        ],
+        [
+          "col_id",
+          "string"
+        ],
+        [
+          "field",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

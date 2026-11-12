@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CrmLink, Field, FormView } from "./formsApi";
+import { type CrmLink, type Field, type FormView, toForm, fromCrmLink } from "./formsApi";
 import { NO_LINK, isLinked } from "./lib/crm";
 import { parsePipelineId } from "./lib/pipelines";
 import { shortAccount } from "./lib/people";
@@ -69,7 +69,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
     setError(null);
     setSaved(false);
     workspace
-      .act((c) => c.setCrmLink({ form_id: form.id, link }))
+      .act((c) => c.setCrmLink({ formId: form.id, link: fromCrmLink(link) }).then(toForm))
       .then(() => setSaved(true))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusy(false));

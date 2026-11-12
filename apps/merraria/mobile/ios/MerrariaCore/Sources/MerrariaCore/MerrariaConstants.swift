@@ -97,6 +97,6 @@ public enum MerrariaText {
 extension MerrariaClient {
     /// `MerrariaClient` for `contextId` in the account's backend.
     public static func bound(_ backend: any MeroAppBackend, contextId: String) -> MerrariaClient {
-        MerrariaClient(transport: backend.contract.bound(to: contextId))
+        MerrariaClient(backend: backend, app: contextId)
     }
 }

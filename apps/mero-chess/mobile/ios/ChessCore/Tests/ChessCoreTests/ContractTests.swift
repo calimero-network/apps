@@ -108,7 +108,7 @@ final class ContractTests: XCTestCase {
             }
         }
         let client = MeroChessClient.bound(backend, contextId: "app1")
-        let view = try await client.table(now: 9)
+        let view = try await client.table(now: 9).decoded(as: TableView.self)
         XCTAssertEqual(backend.recording.calls("table").first?.path, .query)
         XCTAssertEqual(backend.recording.calls("table").first?.args, .object(["now": .string("9")]))
         XCTAssertEqual(view.createdAt, 1_700_000_000_000)
@@ -117,7 +117,7 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(view.legalMoves, ["e7e5"])
         XCTAssertTrue(view.myTurn)
         XCTAssertEqual(view.myColor, "black")
-        let past = try await client.history()
+        let past = try await client.history().map { try $0.decoded(as: GameSummary.self) }
         XCTAssertEqual(past.first?.startedAt, 1_700_000_000_000)
         XCTAssertEqual(past.first?.plies, 12)
     }

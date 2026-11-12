@@ -77,5 +77,5 @@ code, then opens the page in the system browser, which shows the same code and r
 
 ### The SDK pin
 
-The swift-sdk is pinned to its `v2.0.0` release (Calimero 1.0) in `project.yml`,
+The swift-sdk is pinned to its `v4.1.0` release (Calimero 1.0) in `project.yml`,
 `Core/Package.swift` and `Core/Package.resolved`; bump all three together.

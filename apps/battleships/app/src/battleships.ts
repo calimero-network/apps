@@ -1,7 +1,13 @@
 import { AppError } from '@calimero-network/mero-js';
 import { describeError } from '@calimero-apps/connect';
 
-import { BattleshipsClient, type AppTransport } from './generated/client';
+import {
+  BattleshipsClient,
+  type AppTransport,
+  type MatchRecord as WireMatchRecord,
+  type MatchSummary as WireMatchSummary,
+  type PlayerStatsView as WirePlayerStats,
+} from './generated/client';
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = 'com.calimero.battleships';
@@ -39,11 +45,6 @@ export interface PlayerStatsView {
   games_played: number;
 }
 
-export interface PlayerEntry {
-  account: string;
-  player: string;
-}
-
 export interface ShotsView {
   size: number;
   shots: number[];
@@ -68,22 +69,13 @@ export interface MatchStateView {
 }
 
 // ── The wire ─────────────────────────────────────────────────────────────────
+//
+// The contract's own shapes, as the generated client types them from the ABI:
+// every u64 a decimal string.
 
-type U64 = string;
+export type { WireMatchRecord, WireMatchSummary, WirePlayerStats };
 
-export interface WireMatchSummary extends Omit<MatchSummary, 'created_ms'> {
-  created_ms: U64;
-}
-export interface WireMatchRecord extends Omit<MatchRecord, 'finished_ms'> {
-  finished_ms: U64;
-}
-export interface WirePlayerStats {
-  wins: U64;
-  losses: U64;
-  games_played: U64;
-}
-
-const num = (v: U64 | number): number => (typeof v === 'number' ? v : Number(v));
+const num = (v: string | number): number => (typeof v === 'number' ? v : Number(v));
 
 export const toMatchSummary = (w: WireMatchSummary): MatchSummary => ({
   ...w,
@@ -111,9 +103,11 @@ export function base64url(bytes: Uint8Array): string {
 // The lobby's contract is called through `BattleshipsClient`, which
 // `mero-app-build codegen` writes from logic/res/abi.json
 // (`src/generated/client.ts`): camelCase arguments, bytes as base64url
-// (`base64url` above). The ABI names its records without their shapes, so the
-// generated types are `unknown`: the shapes above type them, and the `to*`
-// functions convert them, where they are read.
+// (`base64url` above). The ABI describes its records, so the generated client
+// types what the contract answers; the `to*` functions convert them to the
+// shapes the screens use, where they are read. `ShotsView` stays undescribed
+// (its `shots` is a JSON array of bytes, which the ABI cannot spell), so it is
+// typed where it is read.
 
 /** A lobby's contract, and the highest log index its answers reflected (0 before the first). */
 export interface Lobby {

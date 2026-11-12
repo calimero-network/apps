@@ -58,14 +58,14 @@ public final class PollModel: ObservableObject {
     public func load() async {
         if view == nil { phase = .loading }
         do {
-            if me == nil { me = try await client.whoami().account }
-            let v = try await client.getPoll(pollId: pollId)
+            if me == nil { me = try await client.whoami().decoded(as: Identity.self).account }
+            let v = try await client.getPoll(pollId: pollId).decoded(as: PollView.self)
             view = v
             if selection.count != v.definition.options.count {
                 selection = Array(repeating: false, count: v.definition.options.count)
             }
-            report = v.state.phase == .closed ? try await client.getResult(pollId: pollId) : nil
-            ceremony = v.state.phase == .keyCeremony ? try await client.ceremony(pollId: pollId) : nil
+            report = v.state.phase == .closed ? try await client.getResult(pollId: pollId).decoded(as: AuditReport.self) : nil
+            ceremony = v.state.phase == .keyCeremony ? try await client.ceremony(pollId: pollId).decoded(as: Ceremony.self) : nil
             if let me, trusteeKey == nil {
                 trusteeKey = keys.load(contextId: group.contextId, pollId: pollId, account: me)
             }
@@ -198,7 +198,7 @@ public final class PollModel: ObservableObject {
                     pk: pk, pollId: pollId, voter: me, rules: rules, selections: selections, rng: rng)
                 return VoteWire.ballot(ballot)
             }.value
-            _ = try await client.castBallot(pollId: pollId, ballot: wire)
+            _ = try await client.castBallot(pollId: pollId, ballot: try JSONValue(encoding: wire))
             selection = Array(repeating: false, count: selections.count)
         }
     }
@@ -212,7 +212,8 @@ public final class PollModel: ObservableObject {
             guard keys.save(key) else { throw VoteModelError.message("This device can't store your trustee key.") }
             trusteeKey = key
             let (pub, proof) = VoteProtocol.makeTransportKey(pollId: pollId, trustee: me, e: e, rng: rng)
-            try await client.publishTransportKey(pollId: pollId, key: pub.hex, proof: VoteWire.branch(proof))
+            try await client.publishTransportKey(
+                pollId: pollId, key: pub.hex, proof: try JSONValue(encoding: VoteWire.branch(proof)))
         }
     }
 
@@ -233,7 +234,7 @@ public final class PollModel: ObservableObject {
                 let d = try VoteProtocol.deal(pollId: pollId, dealer: me, threshold: threshold, recipients: keys, rng: rng)
                 return VoteWire.dealing(d)
             }.value
-            try await client.publishDealing(pollId: pollId, dealing: wire)
+            try await client.publishDealing(pollId: pollId, dealing: try JSONValue(encoding: wire))
         }
     }
 
@@ -246,7 +247,8 @@ public final class PollModel: ObservableObject {
             let e = try VoteWire.scalar(key.secret, "trustee key")
             let (secret, proof) = try VoteProtocol.makeComplaint(
                 pollId: pollId, recipient: me, dealer: dealer, index: index, e: e, try VoteWire.dealing(wire), rng: rng)
-            try await client.fileComplaint(pollId: pollId, dealer: dealer, secret: secret.hex, proof: VoteWire.branch(proof))
+            try await client.fileComplaint(
+                pollId: pollId, dealer: dealer, secret: secret.hex, proof: try JSONValue(encoding: VoteWire.branch(proof)))
         }
     }
 
@@ -268,7 +270,7 @@ public final class PollModel: ObservableObject {
                 }
                 x = x + s
             }
-            let inputs = try await client.tallyInputs(pollId: pollId)
+            let inputs = try await client.tallyInputs(pollId: pollId).decoded(as: TallyInputs.self)
             let combined = x
             let partials = try await Task.detached(priority: .userInitiated) {
                 try inputs.aggregate.enumerated().map { j, ct -> WirePartial in
@@ -277,7 +279,7 @@ public final class PollModel: ObservableObject {
                     return WirePartial(d: d.hex, proof: VoteWire.branch(proof))
                 }
             }.value
-            try await client.publishPartial(pollId: pollId, partials: partials)
+            try await client.publishPartial(pollId: pollId, partials: try partials.map { try JSONValue(encoding: $0) })
         }
     }
 
@@ -329,7 +331,7 @@ public final class PollModel: ObservableObject {
         busy = "verify"
         error = nil
         do {
-            let transcript = try await client.getTranscript(pollId: pollId)
+            let transcript = try await client.getTranscript(pollId: pollId).decoded(as: Transcript.self)
             localAudit = await Task.detached(priority: .userInitiated) { TranscriptAudit.verify(transcript) }.value
         } catch {
             self.error = VoteErrorText.describe(error)
@@ -339,7 +341,7 @@ public final class PollModel: ObservableObject {
 
     /// The transcript as pretty JSON, for sharing.
     public func transcriptJSON() async throws -> String {
-        let transcript = try await client.getTranscript(pollId: pollId)
+        let transcript = try await client.getTranscript(pollId: pollId).decoded(as: Transcript.self)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return String(decoding: try encoder.encode(transcript), as: UTF8.self)

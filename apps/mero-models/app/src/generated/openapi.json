@@ -2016,7 +2016,55 @@
         "type": "object"
       },
       "SceneInfo": {
-        "description": "The app type `SceneInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "environment": {
+            "$ref": "#/components/schemas/Environment"
+          },
+          "me": {
+            "type": "string"
+          },
+          "member_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "mesh_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "my_role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "object_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "texture_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "name",
+          "environment",
+          "object_count",
+          "mesh_count",
+          "texture_count",
+          "member_count",
+          "me",
+          "my_role"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SceneInfo"
       },
       "SceneObject": {

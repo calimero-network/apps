@@ -113,7 +113,7 @@ public final class BoardsModel: ObservableObject {
         let backend = backend
         let infos = await withTaskGroup(of: (String, BoardInfo?).self) { group in
             for b in boards {
-                group.addTask { (b.contextId, try? await backend.designClient(b.contextId).getBoard()) }
+                group.addTask { (b.contextId, try? await backend.designClient(b.contextId).getBoard().decoded(as: BoardInfo.self)) }
             }
             var out: [String: BoardInfo] = [:]
             for await (id, info) in group { if let info { out[id] = info } }
@@ -306,7 +306,7 @@ public final class BoardModel: ObservableObject {
     // MARK: Reads
 
     private func loadElements() async throws {
-        let els = try await client.getElements()
+        let els = try await client.allElements()
         if els != elements || scene == .empty {
             elements = els
             scene = BoardScene(elements: els, measure: measure)
@@ -315,10 +315,10 @@ public final class BoardModel: ObservableObject {
     }
 
     private func loadRest() async {
-        async let info = try? client.getBoard()
-        async let members = try? client.getMembers()
+        async let info = try? client.getBoard().decoded(as: BoardInfo.self)
+        async let members = try? client.getMembers().map { try $0.decoded(as: Member.self) }
         async let role = try? client.myRole()
-        async let cursors = try? client.getCursors()
+        async let cursors = try? client.getCursors().map { try $0.decoded(as: CursorState.self) }
         await loadComments()
         if let info = await info, let n = info.name.trimmingCharacters(in: .whitespaces).nonEmpty { name = n }
         if let members = await members { self.members = members }
@@ -327,7 +327,7 @@ public final class BoardModel: ObservableObject {
     }
 
     private func loadComments() async {
-        let read = try? await client.getComments()
+        let read = try? await client.getComments().map { try $0.decoded(as: Comment.self) }
         var list = read ?? comments
         if read != nil {
             let ids = Set(list.map(\.id))
@@ -376,7 +376,7 @@ public final class BoardModel: ObservableObject {
     private func joinRosterIfNeeded(_ name: String?) async throws {
         guard myName == nil, let name = name?.trimmingCharacters(in: .whitespaces).nonEmpty else { return }
         try await client.join(username: name, avatar: nil, timestamp: millis())
-        if let list = try? await client.getMembers() { members = list }
+        if let list = try? await client.getMembers().map({ try $0.decoded(as: Member.self) }) { members = list }
         if myName == nil {
             members.append(Member(id: backend.account, username: name, avatar: nil, joinedAt: millis(), usernameUpdatedAt: millis()))
         }

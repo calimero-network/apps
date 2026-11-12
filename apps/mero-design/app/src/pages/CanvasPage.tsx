@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, getBlob, getNodeIdentity, uploadBlob } from "../api/rpc";
+import { getBlob, getNodeIdentity, uploadBlob, design, i64, readElements, wireElement } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
@@ -213,16 +213,16 @@ export default function CanvasPage() {
 
     function tryLoad() {
       if (cancelled) return;
-      rpcCall<Element[]>(projectId!, "get_elements", {})
+      readElements(design(projectId!))
         .then((els) => {
           if (cancelled) return;
           setElements(Array.isArray(els) ? els : []);
           setSyncStatus("ready");
           setSyncError(null);
-          rpcCall<CanvasComment[]>(projectId!, "get_comments", {})
+          (design(projectId!).getComments() as Promise<CanvasComment[]>)
             .then((cs) => { if (!cancelled) setComments(Array.isArray(cs) ? cs : []); })
             .catch(() => {});
-          rpcCall<CursorState[]>(projectId!, "get_cursors", {})
+          (design(projectId!).getCursors() as Promise<CursorState[]>)
             .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
             .catch(() => {});
         })
@@ -283,7 +283,7 @@ export default function CanvasPage() {
     // Guard against a slow get_members from the previous project repopulating the
     // roster (and mislabeling cursors) after the user switched canvases.
     let cancelled = false;
-    rpcCall<Member[]>(projectId, "get_members", {})
+    (design(projectId).getMembers() as Promise<Member[]>)
       .then((ms) => {
         if (cancelled) return;
         const list = Array.isArray(ms) ? ms : [];
@@ -311,13 +311,13 @@ export default function CanvasPage() {
   async function joinBoardAs(username: string) {
     if (!projectId || !myIdentity) return;
     // The member id is the caller's account, set by the contract.
-    await rpcCall(projectId, "join", {
+    await design(projectId).join({
       username,
       avatar: null,
-      timestamp: Date.now(),
+      timestamp: i64(Date.now()),
     }).catch(() => {});
     setBoardName(username);
-    rpcCall<Member[]>(projectId, "get_members", {})
+    (design(projectId).getMembers() as Promise<Member[]>)
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
@@ -362,7 +362,7 @@ export default function CanvasPage() {
   useEffect(() => {
     if (!projectId || !myIdentity) return;
     let cancelled = false;
-    rpcCall<string>(projectId, "my_role", {})
+    (design(projectId).myRole() as Promise<string>)
       .then((role) => {
         if (cancelled) return;
         setCanEdit(role !== "viewer");
@@ -380,7 +380,7 @@ export default function CanvasPage() {
     // new canvas.
     let cancelled = false;
     const id = setInterval(() => {
-      rpcCall<CursorState[]>(projectId, "get_cursors", {})
+      (design(projectId).getCursors() as Promise<CursorState[]>)
         .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
         .catch(() => {});
     }, 5000);
@@ -401,7 +401,7 @@ export default function CanvasPage() {
         return [...prev, updated];
       });
       // identity is derived server-side from the signer; not client-supplied.
-      rpcCall(projectId, "update_cursor", { x, y, updated_at: now }).catch(() => {});
+      design(projectId).updateCursor({ x: i64(x), y: i64(y), updatedAt: i64(now) }).catch(() => {});
     }, 2500);
   }, [projectId, myIdentity]);
 
@@ -422,7 +422,7 @@ export default function CanvasPage() {
       if (changes.remove.length > 0) removeRemoteElements(changes.remove);
       if (changes.layers) {
         // A reorder renumbers everything; the full list covers any fetch too.
-        rpcCall<Element[]>(projectId, "get_elements", {})
+        readElements(design(projectId))
           .then((els) => setElements(Array.isArray(els) ? els : []))
           .catch(() => {});
       } else if (changes.fetch.length > 0) {
@@ -431,7 +431,7 @@ export default function CanvasPage() {
           .catch(() => {});
       }
       if (changes.comments) {
-        rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+        (design(projectId).getComments() as Promise<CanvasComment[]>)
           .then((cs) => setComments(Array.isArray(cs) ? cs : []))
           .catch(() => {});
       }
@@ -440,21 +440,21 @@ export default function CanvasPage() {
         setComments((prev) => prev.filter((c) => !gone.has(c.id)));
       }
       if (changes.cursors) {
-        rpcCall<CursorState[]>(projectId, "get_cursors", {})
+        (design(projectId).getCursors() as Promise<CursorState[]>)
           .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
           .catch(() => {});
       }
       if (changes.role) {
         // A grant/revoke/transfer may flip our own role — re-resolve it
         // immediately instead of waiting for a reload.
-        rpcCall<string>(projectId, "my_role", {})
+        (design(projectId).myRole() as Promise<string>)
           .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
           // Fail closed, matching the role effect — never keep stale edit
           // access after a revoke/transfer if the refetch errors.
           .catch(() => { setCanEdit(false); setIsAdmin(false); });
       }
       if (changes.members) {
-        rpcCall<Member[]>(projectId, "get_members", {})
+        (design(projectId).getMembers() as Promise<Member[]>)
           .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
           .catch(() => {});
       }
@@ -469,16 +469,16 @@ export default function CanvasPage() {
   // effect, which covers a grant or revoke made while we were away.
   const resyncBoard = useCallback(() => {
     if (!projectId) return;
-    rpcCall<Element[]>(projectId, "get_elements", {})
+    readElements(design(projectId))
       .then((els) => setElements(Array.isArray(els) ? els : []))
       .catch(() => {});
-    rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+    (design(projectId).getComments() as Promise<CanvasComment[]>)
       .then((cs) => setComments(Array.isArray(cs) ? cs : []))
       .catch(() => {});
-    rpcCall<CursorState[]>(projectId, "get_cursors", {})
+    (design(projectId).getCursors() as Promise<CursorState[]>)
       .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
       .catch(() => {});
-    rpcCall<Member[]>(projectId, "get_members", {})
+    (design(projectId).getMembers() as Promise<Member[]>)
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }, [projectId, setElements]);
@@ -503,10 +503,10 @@ export default function CanvasPage() {
     try {
       await importProject(projectId, snapshot);
     } finally {
-      rpcCall<Element[]>(projectId, "get_elements", {})
+      readElements(design(projectId))
         .then((els) => setElements(Array.isArray(els) ? els : []))
         .catch(() => {});
-      rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+      (design(projectId).getComments() as Promise<CanvasComment[]>)
         .then((cs) => setComments(Array.isArray(cs) ? cs : []))
         .catch(() => {});
     }
@@ -592,7 +592,7 @@ export default function CanvasPage() {
     // user may well have picked another tool. Yanking it back when the upload
     // finally lands is worse than leaving the toolbar as they set it.
     if (useCanvasStore.getState().activeTool === "image") selectWithPointer(id);
-    await rpcCall(projectId, "add_element", { element: el }).catch(() => {});
+    await design(projectId).addElement({ element: wireElement(el) }).catch(() => {});
   }
 
   // Not readable yet. The first read is usually quick, so "loading" shows an

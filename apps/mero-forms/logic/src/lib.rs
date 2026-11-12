@@ -132,7 +132,7 @@ const CAPTCHA_ROWS: [&str; 3] = ["captcha_site_key", "captcha_secret", "captcha_
 // ── Arguments and stored values ──────────────────────────────────────────────
 
 /// One field of a form.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Field {
     /// Stable, chosen when the field is added: what a website's backend sends
@@ -153,7 +153,7 @@ pub struct Field {
 
 /// Where a form's responses go in Mero CRM, and which field fills what.
 /// Empty strings mean "not set".
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CrmLink {
     /// The Mero CRM app instance (pipeline) the deals go to. Empty: no CRM.
@@ -177,7 +177,7 @@ pub struct CrmLink {
 }
 
 /// One answer as a website's backend or the app sends it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnswerInput {
     pub field_id: String,
@@ -187,7 +187,7 @@ pub struct AnswerInput {
 }
 
 /// One stored answer: the field as it was when the response was sent.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Answer {
     pub field_id: String,
@@ -200,7 +200,7 @@ pub struct Answer {
 /// A captcha pass: the verifier's signature over
 /// `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expiresMs>`. The nonce is the
 /// visitor's, random, and each one is accepted once.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptchaPass {
     pub nonce: String,
@@ -302,7 +302,7 @@ pub struct SendStats {
 // ── Answers ──────────────────────────────────────────────────────────────────
 
 /// A form in full.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FormView {
     pub id: String,
@@ -323,7 +323,7 @@ pub struct FormView {
 
 /// A form as a public link's visitor sees it: the questions, and nothing the
 /// team keeps about it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkFormView {
     pub form_id: String,
@@ -341,7 +341,7 @@ pub struct LinkFormView {
 }
 
 /// The team's own Turnstile setup, as the settings page shows it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptchaSettings {
     pub site_key: String,
@@ -352,7 +352,7 @@ pub struct CaptchaSettings {
 }
 
 /// A public link, with what it has sent.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkView {
     pub id: String,
@@ -370,7 +370,7 @@ pub struct LinkView {
 }
 
 /// A form in the list, with what it has collected.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FormSummary {
     pub id: String,
@@ -387,7 +387,7 @@ pub struct FormSummary {
 }
 
 /// A response as the team sees it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseView {
     pub id: String,
@@ -407,7 +407,7 @@ pub struct ResponseView {
 }
 
 /// A registered form key, with what it has sent.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FormKeyView {
     /// The API key's id.
@@ -423,7 +423,7 @@ pub struct FormKeyView {
 }
 
 /// One entry of the team.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamMember {
     pub account: String,

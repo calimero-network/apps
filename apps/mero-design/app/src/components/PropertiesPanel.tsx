@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rpcCall } from "../api/rpc";
+import { design, i64, optI64, wireElement, wireLabel } from "../api/rpc";
 import { deleteElements, updateElements } from "../api/elementBatch";
+import type { UpdateElementArgs } from "../generated/client";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
@@ -173,16 +174,14 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const pending = pendingRef.current;
     pendingRef.current = null;
     if (!pending) return;
-    rpcCall(contextId, "update_element", {
-      id: pending.id,
-      x: null, y: null, width: null, height: null,
-      rotation: null, fill: null, stroke: null,
-      stroke_width: null, opacity: null, corner_radius: null,
-      updated_at: pending.updatedAt,
-      ...Object.fromEntries(
-        Object.entries(pending.patch).map(([k, v]) => [toSnake(k), v]),
-      ),
-    }).catch((e) => reportFailure.current("update_element", e));
+    let args: UpdateElementArgs;
+    try {
+      args = elementPatchArgs(pending.id, pending.patch, pending.updatedAt);
+    } catch (e) {
+      reportFailure.current("update_element", e);
+      return;
+    }
+    design(contextId).updateElement(args).catch((e) => reportFailure.current("update_element", e));
   }
 
   function update(patch: Record<string, unknown>) {
@@ -210,9 +209,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     if (patch.strokeStyle === "solid") delete updated.strokeStyle;
     if ("textColor" in patch && !patch.textColor) delete updated.textColor;
     upsertElement(updated);
-    rpcCall(contextId, "update_element_label", {
-      id: el.id, label: el.label ?? null, updated_at: updated.updatedAt, __element: updated,
-    }).catch((e) => reportFailure.current("update_element_label", e));
+    design(contextId).updateElementLabel({ id: el.id, label: wireLabel(el.id, el.label ?? null, updated), updatedAt: i64(updated.updatedAt) }).catch((e) => reportFailure.current("update_element_label", e));
   }
 
   /** Put text in a rectangle: it becomes a box, and the editor opens on it. */
@@ -222,7 +219,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     snapshot();
     upsertElement(box);
     startTextEdit(box.id);
-    await rpcCall(contextId, "add_element", { element: box }).catch((e) => reportFailure.current("add_element", e));
+    await design(contextId).addElement({ element: wireElement(box) }).catch((e) => reportFailure.current("add_element", e));
   }
 
   function updateTextStyle(patch: {
@@ -250,16 +247,16 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const updated = { ...el, data: updatedData, updatedAt: Date.now() };
     upsertElement(updated);
     scheduleRpc(() =>
-      rpcCall(contextId, "update_text_style", {
+      design(contextId).updateTextStyle({
         id: el.id,
-        content:        patch.content        ?? null,
-        font_family:    patch.fontFamily     ?? null,
-        font_size:      patch.fontSize       ?? null,
-        bold:           patch.bold           ?? null,
-        italic:         patch.italic         ?? null,
-        text_align:     patch.text_align     ?? null,
-        vertical_align: patch.vertical_align ?? null,
-        updated_at:     updated.updatedAt,
+        content: patch.content        ?? null,
+        fontFamily: patch.fontFamily     ?? null,
+        fontSize: patch.fontSize       ?? null,
+        bold: patch.bold           ?? null,
+        italic: patch.italic         ?? null,
+        textAlign: patch.text_align     ?? null,
+        verticalAlign: patch.vertical_align ?? null,
+        updatedAt: i64(updated.updatedAt),
       }).catch((e) => reportFailure.current("update_text_style", e)),
     );
   }
@@ -270,7 +267,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     if (!id) return;
     snapshot();
     removeElement(id);
-    await rpcCall(contextId, "delete_element", { id }).catch((e) => reportFailure.current("delete_element", e));
+    await design(contextId).deleteElement({ id }).catch((e) => reportFailure.current("delete_element", e));
   }
 
   async function handleDeleteMany(ids: string[]) {
@@ -290,7 +287,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     if (!target) return;
     const maxLayer = Math.max(0, ...elements.map((e) => e.layerIndex));
     upsertElement({ ...target, layerIndex: maxLayer + 1, updatedAt: Date.now() });
-    await rpcCall(contextId, "bring_to_front", { id: target.id }).catch((e) => reportFailure.current("bring_to_front", e));
+    await design(contextId).bringToFront({ id: target.id }).catch((e) => reportFailure.current("bring_to_front", e));
   }
 
   async function handleSendToBack(targetEl?: Element) {
@@ -300,7 +297,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     elements.forEach((e) =>
       upsertElement({ ...e, layerIndex: e.id === target.id ? 0 : e.layerIndex + 1 })
     );
-    await rpcCall(contextId, "send_to_back", { id: target.id }).catch((e) => reportFailure.current("send_to_back", e));
+    await design(contextId).sendToBack({ id: target.id }).catch((e) => reportFailure.current("send_to_back", e));
   }
 
   /**
@@ -315,7 +312,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     snapshot();
     upsertElements(ordered.map((e, i) => ({ ...e, layerIndex: top + 1 + i, updatedAt: Date.now() })));
     for (const e of ordered) {
-      await rpcCall(contextId, "bring_to_front", { id: e.id }).catch((err) => reportFailure.current("bring_to_front", err));
+      await design(contextId).bringToFront({ id: e.id }).catch((err) => reportFailure.current("bring_to_front", err));
     }
   }
 
@@ -327,7 +324,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     // Local order only until the board syncs: below everything, same order among themselves.
     upsertElements(ordered.map((e, i) => ({ ...e, layerIndex: bottom - 1 - i, updatedAt: Date.now() })));
     for (const e of ordered) {
-      await rpcCall(contextId, "send_to_back", { id: e.id }).catch((err) => reportFailure.current("send_to_back", err));
+      await design(contextId).sendToBack({ id: e.id }).catch((err) => reportFailure.current("send_to_back", err));
     }
   }
 
@@ -344,8 +341,8 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     // set_layer_index, not bring_to_front: the old call jumped the element to the
     // top in contract state, and the next sync overwrote this one-step swap.
     const upIndex = sorted.findIndex((e) => e.id === above.id);
-    await rpcCall(contextId, "set_layer_index", {
-      id: targetEl.id, index: upIndex, updated_at: Date.now(),
+    await design(contextId).setLayerIndex({
+      id: targetEl.id, index: upIndex, updatedAt: i64(Date.now()),
     }).catch((e) => reportFailure.current("set_layer_index", e));
   }
 
@@ -360,8 +357,8 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     upsertElement({ ...targetEl, layerIndex: belowIdx, updatedAt: Date.now() });
     upsertElement({ ...below, layerIndex: nowIdx, updatedAt: Date.now() });
     const downIndex = sorted.findIndex((e) => e.id === below.id);
-    await rpcCall(contextId, "set_layer_index", {
-      id: targetEl.id, index: downIndex, updated_at: Date.now(),
+    await design(contextId).setLayerIndex({
+      id: targetEl.id, index: downIndex, updatedAt: i64(Date.now()),
     }).catch((e) => reportFailure.current("set_layer_index", e));
   }
 
@@ -475,9 +472,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       if (target && draft) {
         const label = renameElement(target, draft);
         setElementLabel(target.id, label);
-        await rpcCall(contextId, "update_element_label", {
-          id: target.id, label, updated_at: Date.now(),
-        }).catch((e) => reportFailure.current("update_element_label", e));
+        await design(contextId).updateElementLabel({ id: target.id, label: wireLabel(target.id, label), updatedAt: i64(Date.now()) }).catch((e) => reportFailure.current("update_element_label", e));
       }
     }
   }
@@ -1033,9 +1028,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             setElementLabel(el.id, label);
           }}
           onBlur={() => {
-            rpcCall(contextId, "update_element_label", {
-              id: el.id, label: el.label ?? "", updated_at: Date.now(),
-            }).catch((e) => reportFailure.current("update_element_label", e));
+            design(contextId).updateElementLabel({ id: el.id, label: wireLabel(el.id, el.label ?? ""), updatedAt: i64(Date.now()) }).catch((e) => reportFailure.current("update_element_label", e));
           }}
         />
       </div>
@@ -1319,10 +1312,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
               const updatedAt = Date.now();
               if (on) {
                 upsertElement({ ...el, shadowColor: "rgba(0,0,0,0.3)", shadowOffsetX: 0, shadowOffsetY: 4, shadowBlur: 12, updatedAt });
-                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: "rgba(0,0,0,0.3)", shadow_offset_x: 0, shadow_offset_y: 4, shadow_blur: 12, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                design(contextId).updateShadow({ id: el.id, shadowColor: "rgba(0,0,0,0.3)", shadowOffsetX: 0, shadowOffsetY: 4, shadowBlur: 12, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
               } else {
                 upsertElement({ ...el, shadowColor: null, shadowOffsetX: null, shadowOffsetY: null, shadowBlur: null, updatedAt });
-                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: null, shadow_offset_x: null, shadow_offset_y: null, shadow_blur: null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                design(contextId).updateShadow({ id: el.id, shadowColor: null, shadowOffsetX: null, shadowOffsetY: null, shadowBlur: null, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
               }
             }}
           />
@@ -1339,7 +1332,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(c) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowColor: c, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: c, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                  design(contextId).updateShadow({ id: el.id, shadowColor: c, shadowOffsetX: el.shadowOffsetX ?? null, shadowOffsetY: el.shadowOffsetY ?? null, shadowBlur: el.shadowBlur ?? null, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
                 }}
               />
             </div>
@@ -1349,7 +1342,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(v) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowBlur: v, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: v, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                  design(contextId).updateShadow({ id: el.id, shadowColor: el.shadowColor ?? null, shadowOffsetX: el.shadowOffsetX ?? null, shadowOffsetY: el.shadowOffsetY ?? null, shadowBlur: v, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
                 }}
               />
               <NumberField
@@ -1357,7 +1350,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(v) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowOffsetX: v, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: v, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                  design(contextId).updateShadow({ id: el.id, shadowColor: el.shadowColor ?? null, shadowOffsetX: v, shadowOffsetY: el.shadowOffsetY ?? null, shadowBlur: el.shadowBlur ?? null, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
                 }}
               />
               <NumberField
@@ -1365,7 +1358,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(v) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowOffsetY: v, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: v, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                  design(contextId).updateShadow({ id: el.id, shadowColor: el.shadowColor ?? null, shadowOffsetX: el.shadowOffsetX ?? null, shadowOffsetY: v, shadowBlur: el.shadowBlur ?? null, updatedAt: i64(updatedAt) }).catch((e) => reportFailure.current("update_shadow", e));
                 }}
               />
             </div>
@@ -1437,6 +1430,28 @@ function kindTitle(el: Element): string {
   return names[el.data.kind] ?? el.data.kind;
 }
 
-function toSnake(camel: string): string {
-  return camel.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+/** The geometry and paint fields `updateElement` takes; `x` and `y` are 64-bit. */
+const ELEMENT_PATCH_FIELDS = new Set([
+  "x", "y", "width", "height", "rotation", "fill", "stroke", "strokeWidth", "opacity", "cornerRadius",
+]);
+
+/**
+ * `updateElement`'s arguments for a merged patch: every field the patch does
+ * not set is `null` (left as it is). A field `updateElement` does not take is
+ * refused here, as the contract would.
+ */
+function elementPatchArgs(id: string, patch: Record<string, unknown>, updatedAt: number): UpdateElementArgs {
+  const args: UpdateElementArgs = {
+    id,
+    x: null, y: null, width: null, height: null,
+    rotation: null, fill: null, stroke: null,
+    strokeWidth: null, opacity: null, cornerRadius: null,
+    updatedAt: i64(updatedAt),
+  };
+  for (const [key, value] of Object.entries(patch)) {
+    if (!ELEMENT_PATCH_FIELDS.has(key)) throw new Error(`update_element takes no argument ${key}`);
+    (args as unknown as Record<string, unknown>)[key] =
+      key === "x" || key === "y" ? optI64(value as number | null | undefined) : (value ?? null);
+  }
+  return args;
 }

@@ -348,5 +348,44 @@
     },
     "version": 1
   },
+  "types": {
+    "SceneInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "environment",
+          "Environment"
+        ],
+        [
+          "object_count",
+          "u32"
+        ],
+        [
+          "mesh_count",
+          "u32"
+        ],
+        [
+          "texture_count",
+          "u32"
+        ],
+        [
+          "member_count",
+          "u32"
+        ],
+        [
+          "me",
+          "string"
+        ],
+        [
+          "my_role",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }
