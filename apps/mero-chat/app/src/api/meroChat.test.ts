@@ -25,25 +25,20 @@ function fakeClient(answer: unknown) {
 }
 
 describe("the adapter's method table", () => {
-  it("names every ABI method except init, and only those", () => {
+  it("reaches every ABI method except init, each as the ABI runs it, with exactly its parameter names", async () => {
+    const sent = new Map<string, { route: string; params: string[] }>();
+    const record = (route: string) => async (_app: string, method: string, args: unknown = {}) => {
+      sent.set(method, { route, params: Object.keys(args as object).sort() });
+      return { index: 1, result: null, events: [] };
+    };
+    const client = withRoutes({ call: vi.fn(record("call")), view: vi.fn(record("view")) });
+    // Every v1 name runs its generated method with v1's (empty) arguments.
+    await Promise.all(Object.keys(METHODS).map((name) => execute("app-1", name, {}, client).catch(() => undefined)));
     const abiNames = Object.keys(abi.methods).filter((m) => abi.methods[m].kind !== "init").sort();
-    const ours = Object.values(METHODS)
-      .map((m) => m.method)
-      .sort();
-    expect(ours).toEqual(abiNames);
-  });
-
-  it("calls a call as a call and a view as a view", () => {
-    for (const spec of Object.values(METHODS)) {
-      expect(abi.methods[spec.method].kind).toBe(spec.kind);
-    }
-  });
-
-  it("sends exactly the ABI's parameter names", () => {
-    for (const spec of Object.values(METHODS)) {
-      const sent = Object.keys(spec.args({})).sort();
-      const declared = abi.methods[spec.method].params.map(([name]) => name).sort();
-      expect({ method: spec.method, params: sent }).toEqual({ method: spec.method, params: declared });
+    expect([...sent.keys()].sort()).toEqual(abiNames);
+    for (const name of abiNames) {
+      const declared = abi.methods[name].params.map(([p]) => p).sort();
+      expect(sent.get(name), name).toEqual({ route: abi.methods[name].kind, params: declared });
     }
   });
 });

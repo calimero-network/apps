@@ -178,11 +178,16 @@ layer under them.
   codec are gone. `src/api/calimero.ts` is the session (`@calimero-apps/connect`:
   passkey sign-in/up, stored per app and per target) and the conversation on
   screen; `pages/Login/SignInPopup.tsx` is the sign-in.
-- `src/api/meroChat.ts` is the typed contract client and the **one adapter** for
-  it: `ClientApiDataSource` still calls v1 method names with v1 arguments, and
-  the adapter sends the ABI's names and turns the answers back into v1's shapes
-  (snake_case, numbers). `meroChat.test.ts` checks its method list, call/view
-  kinds and argument names against the committed `logic/res/abi.json`.
+- The contract is called through `MeroChatClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-chat codegen` after a contract change, and CI fails when it is
+  stale); `src/client.test.ts` checks it against the ABI.
+  `src/api/meroChat.ts` is the **one adapter** for it: `ClientApiDataSource`
+  still calls v1 method names with v1 arguments, and each entry of its table
+  calls the generated method with the ABI's arguments and turns the answer back
+  into v1's shape (snake_case, numbers; the ABI names its records without their
+  shapes, so the generated types are `unknown`). `meroChat.test.ts` checks the
+  table reaches every ABI method, as a call or a view, with its argument names.
 - `src/api/platform.ts` maps v1's namespaces, subgroups and contexts onto orgs
   and instances, and `GroupApiDataSource` / `ContextApiDataSource` keep the
   method names every hook calls. v1 made a channel in steps (subgroup,

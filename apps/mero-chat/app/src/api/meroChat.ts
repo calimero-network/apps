@@ -1,5 +1,6 @@
 /**
- * The chat contract, typed, over `CalimeroClient.call` / `view`.
+ * The chat contract, through `MeroChatClient` (`src/generated/client.ts`, which
+ * `mero-app-build codegen` writes from `logic/res/abi.json`).
  *
  * The screens and `ClientApiDataSource` still speak v1: snake_case method
  * names (`send_message`), snake_case arguments and answers, numbers for
@@ -8,23 +9,22 @@
  * is the one place that knows both: `execute(app, "send_message", {...})`
  * answers exactly what v1 answered, so nothing above it changes.
  *
- * `meroChat.test.ts` checks every method and parameter here against the
- * committed ABI.
+ * The ABI names its records without their shapes, so the generated types are
+ * `unknown`; the `result` of each entry turns an answer back into v1's.
+ * `client.test.ts` checks the generated client against the committed ABI, and
+ * `meroChat.test.ts` that this table covers it.
  */
 import { AppError } from "@calimero-network/mero-js";
 
 import { after, getClient } from "./calimero";
-import { type ClientRoutes } from "@calimero-apps/connect";
+import { MeroChatClient, type AppTransport } from "../generated/client";
 
 type Args = Record<string, unknown>;
 type Out = unknown;
 
 interface MethodSpec {
-  /** The ABI name. */
-  method: string;
-  kind: "call" | "view";
-  /** v1 arguments → the ABI's (camelCase, u64 as decimal strings). */
-  args: (a: Args) => Args;
+  /** v1 arguments → the generated client's method, with the ABI's (camelCase, u64 as decimal strings). */
+  run: (c: MeroChatClient, a: Args) => Promise<Out>;
   /** The ABI's answer → v1's. */
   result: (r: Out) => Out;
 }
@@ -149,48 +149,35 @@ function infoOut(r: Out) {
 }
 
 const same = (r: Out) => r;
-const none = () => ({});
 
 // ── the method table: v1 name → ABI ──────────────────────────────────────────
 
 export const METHODS: Record<string, MethodSpec> = {
-  get_info: { method: "getInfo", kind: "view", args: none, result: infoOut },
+  get_info: { run: (c) => c.getInfo(), result: infoOut },
   get_channel_info: {
-    method: "getChannelInfo",
-    kind: "view",
-    args: (a) => ({ channel: optStr(a.channel) }),
+    run: (c, a) => c.getChannelInfo({ channel: optStr(a.channel) }),
     result: infoOut,
   },
   mark_messages_as_read: {
-    method: "markMessagesAsRead",
-    kind: "view",
-    args: (a) => ({ channel: optStr(a.channel), timestamp: optU64(a.timestamp) }),
+    run: (c, a) => c.markMessagesAsRead({ channel: optStr(a.channel), timestamp: optU64(a.timestamp) }),
     result: same,
   },
   mark_as_read: {
-    method: "markAsRead",
-    kind: "call",
-    args: (a) => ({ timestamp: u64(a.timestamp) }),
+    run: (c, a) => c.markAsRead({ timestamp: u64(a.timestamp) }),
     result: same,
   },
-  get_unread_count: { method: "getUnreadCount", kind: "view", args: none, result: num },
-  get_unread_mentions: { method: "getUnreadMentions", kind: "view", args: none, result: num },
+  get_unread_count: { run: (c) => c.getUnreadCount(), result: num },
+  get_unread_mentions: { run: (c) => c.getUnreadMentions(), result: num },
   update_info: {
-    method: "updateInfo",
-    kind: "call",
-    args: (a) => ({ name: optStr(a.name), description: optStr(a.description) }),
+    run: (c, a) => c.updateInfo({ name: optStr(a.name), description: optStr(a.description) }),
     result: same,
   },
   set_profile: {
-    method: "setProfile",
-    kind: "call",
-    args: (a) => ({ username: String(a.username ?? ""), avatar: optStr(a.avatar) }),
+    run: (c, a) => c.setProfile({ username: String(a.username ?? ""), avatar: optStr(a.avatar) }),
     result: same,
   },
   get_profiles: {
-    method: "getProfiles",
-    kind: "view",
-    args: none,
+    run: (c) => c.getProfiles(),
     result: (r) =>
       (Array.isArray(r) ? (r as Rec[]) : []).map((p) => ({
         identity: String(p.identity ?? ""),
@@ -199,40 +186,28 @@ export const METHODS: Record<string, MethodSpec> = {
       })),
   },
   save_draft: {
-    method: "saveDraft",
-    kind: "call",
-    args: (a) => ({ channel: String(a.channel ?? ""), text: String(a.text ?? "") }),
+    run: (c, a) => c.saveDraft({ channel: String(a.channel ?? ""), text: String(a.text ?? "") }),
     result: same,
   },
   get_draft: {
-    method: "getDraft",
-    kind: "view",
-    args: (a) => ({ channel: String(a.channel ?? "") }),
+    run: (c, a) => c.getDraft({ channel: String(a.channel ?? "") }),
     result: (r) => (typeof r === "string" ? r : ""),
   },
   delete_draft: {
-    method: "deleteDraft",
-    kind: "call",
-    args: (a) => ({ channel: String(a.channel ?? "") }),
+    run: (c, a) => c.deleteDraft({ channel: String(a.channel ?? "") }),
     result: same,
   },
   get_member_role: {
-    method: "getMemberRole",
-    kind: "view",
-    args: (a) => ({ identity: String(a.identity ?? "") }),
+    run: (c, a) => c.getMemberRole({ identity: String(a.identity ?? "") }),
     result: same,
   },
-  list_roles: { method: "listRoles", kind: "view", args: none, result: same },
+  list_roles: { run: (c) => c.listRoles(), result: same },
   set_member_role: {
-    method: "setMemberRole",
-    kind: "call",
-    args: (a) => ({ target: String(a.target ?? ""), role: a.role }),
+    run: (c, a) => c.setMemberRole({ target: String(a.target ?? ""), role: a.role }),
     result: same,
   },
   send_message: {
-    method: "sendMessage",
-    kind: "call",
-    args: (a) => ({
+    run: (c, a) => c.sendMessage({
       message: String(a.message ?? ""),
       mentions: Array.isArray(a.mentions) ? a.mentions : [],
       mentionsUsernames: Array.isArray(a.mentions_usernames)
@@ -248,9 +223,7 @@ export const METHODS: Record<string, MethodSpec> = {
     result: (r) => messageOut((r ?? {}) as Rec),
   },
   get_messages: {
-    method: "getMessages",
-    kind: "view",
-    args: (a) => ({
+    run: (c, a) => c.getMessages({
       parentMessage: optStr(a.parent_message),
       limit: optInt(a.limit),
       offset: optInt(a.offset),
@@ -259,40 +232,28 @@ export const METHODS: Record<string, MethodSpec> = {
     result: fullOut,
   },
   get_messages_from: {
-    method: "getMessagesFrom",
-    kind: "view",
-    args: (a) => ({ start: u64(a.start), limit: optInt(a.limit) }),
+    run: (c, a) => c.getMessagesFrom({ start: u64(a.start), limit: optInt(a.limit) }),
     result: fullOut,
   },
-  get_message_count: { method: "getMessageCount", kind: "view", args: none, result: num },
+  get_message_count: { run: (c) => c.getMessageCount(), result: num },
   search_messages: {
-    method: "searchMessages",
-    kind: "view",
-    args: (a) => ({ query: String(a.query ?? ""), cursor: optStr(a.cursor), limit: optInt(a.limit) }),
+    run: (c, a) => c.searchMessages({ query: String(a.query ?? ""), cursor: optStr(a.cursor), limit: optInt(a.limit) }),
     result: searchOut,
   },
   search_messages_scan: {
-    method: "searchMessagesScan",
-    kind: "view",
-    args: (a) => ({ query: String(a.query ?? ""), cursor: optStr(a.cursor), limit: optInt(a.limit) }),
+    run: (c, a) => c.searchMessagesScan({ query: String(a.query ?? ""), cursor: optStr(a.cursor), limit: optInt(a.limit) }),
     result: searchOut,
   },
   message_position: {
-    method: "messagePosition",
-    kind: "view",
-    args: (a) => ({ messageId: String(a.message_id ?? "") }),
+    run: (c, a) => c.messagePosition({ messageId: String(a.message_id ?? "") }),
     result: (r) => optNum(r),
   },
   update_reaction: {
-    method: "updateReaction",
-    kind: "call",
-    args: (a) => ({ messageId: String(a.message_id ?? ""), emoji: String(a.emoji ?? ""), add: Boolean(a.add) }),
+    run: (c, a) => c.updateReaction({ messageId: String(a.message_id ?? ""), emoji: String(a.emoji ?? ""), add: Boolean(a.add) }),
     result: same,
   },
   edit_message: {
-    method: "editMessage",
-    kind: "call",
-    args: (a) => ({
+    run: (c, a) => c.editMessage({
       messageId: String(a.message_id ?? ""),
       newMessage: String(a.new_message ?? ""),
       timestamp: u64(a.timestamp),
@@ -301,9 +262,7 @@ export const METHODS: Record<string, MethodSpec> = {
     result: (r) => messageOut((r ?? {}) as Rec),
   },
   delete_message: {
-    method: "deleteMessage",
-    kind: "call",
-    args: (a) => ({ messageId: String(a.message_id ?? ""), parentId: optStr(a.parent_id) }),
+    run: (c, a) => c.deleteMessage({ messageId: String(a.message_id ?? ""), parentId: optStr(a.parent_id) }),
     result: same,
   },
 };
@@ -343,18 +302,15 @@ export async function execute<T>(
   app: string,
   name: string,
   v1Args: Args = {},
-  client: ClientRoutes<{ apps: "call" | "view" }> = getClient(),
+  client: AppTransport = getClient(),
 ): Promise<T> {
   const spec = METHODS[name];
   if (!spec) throw new ChatError(`Method not found: ${name}`, -32601);
   if (!app) throw new ChatError("No conversation is open.", 400);
-  const args = spec.args(v1Args ?? {});
   try {
-    const out =
-      spec.kind === "call"
-        ? await client.apps.call({ app, method: spec.method, args })
-        : await client.apps.view({ app, method: spec.method, args });
-    return spec.result(out.result) as T;
+    // `after` runs below, once, as it always has: the class is built without one.
+    const out = await spec.run(new MeroChatClient(client, app), v1Args ?? {});
+    return spec.result(out) as T;
   } catch (e) {
     const status = (e as { status?: unknown })?.status;
     throw new ChatError(
