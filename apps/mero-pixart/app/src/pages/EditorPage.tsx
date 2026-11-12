@@ -214,7 +214,7 @@ export default function EditorPage() {
   const refetch = useCallback(async () => {
     try {
       const [d, ls, ms, cs] = await Promise.all([
-        (pix.getDocument() as Promise<DocumentInfo>),
+        pix.getDocument(),
         (pix.getLayers() as Promise<Layer[]>),
         (pix.getMembers() as Promise<Member[]>),
         (pix.getCursors() as Promise<CursorState[]>),
@@ -253,7 +253,7 @@ export default function EditorPage() {
     (async () => {
       myId.current = await resolveIdentity();
       try {
-        const d = await (pix.getDocument() as Promise<DocumentInfo>);
+        const d = await pix.getDocument();
         if (cancelled) return;
         if (d) {
           setDoc(d);

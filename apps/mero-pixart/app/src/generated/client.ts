@@ -4,20 +4,32 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `DocumentInfo`. */
+export interface DocumentInfo {
+  name: string;
+  description: string;
+  width: number;
+  height: number;
+  background: string;
+  layerCount: number;
+  memberCount: number;
+  owner: string | null;
+}
+
+/** The app type `MemberRole`. */
+export interface MemberRole {
+  member: string;
+  role: string;
+}
+
 /** The app type `CursorState`: the ABI names it without its shape. */
 export type CursorState = unknown;
-
-/** The app type `DocumentInfo`: the ABI names it without its shape. */
-export type DocumentInfo = unknown;
 
 /** The app type `Layer`: the ABI names it without its shape. */
 export type Layer = unknown;
 
 /** The app type `Member`: the ABI names it without its shape. */
 export type Member = unknown;
-
-/** The app type `MemberRole`: the ABI names it without its shape. */
-export type MemberRole = unknown;
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

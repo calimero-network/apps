@@ -102,7 +102,7 @@ export default function ProjectsPage() {
       const resolved = await Promise.all(
         entries.map(async (entry): Promise<ProjectCard> => {
           let doc: DocumentInfo | null = null;
-          try { doc = (await api.app(entry.contextId).getDocument()) as DocumentInfo; } catch { /* unreadable */ }
+          try { doc = await api.app(entry.contextId).getDocument(); } catch { /* unreadable */ }
           return {
             contextId: entry.contextId,
             groupId: teamId,

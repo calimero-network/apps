@@ -749,7 +749,62 @@
         "type": "object"
       },
       "DocumentInfo": {
-        "description": "The app type `DocumentInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "background": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "height": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "layerCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "memberCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "width": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "width",
+          "height",
+          "background",
+          "layerCount",
+          "memberCount",
+          "owner"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocumentInfo"
       },
       "DocumentUpdatedEvent": {
@@ -1544,7 +1599,19 @@
         "type": "object"
       },
       "MemberRole": {
-        "description": "The app type `MemberRole`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "member": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "role"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemberRole"
       },
       "MemberUsernameUpdatedEvent": {
