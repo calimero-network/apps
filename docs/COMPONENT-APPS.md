@@ -293,16 +293,29 @@ union only when the contract derives `Record` or `AbiType` and was built at
 
 `.github/workflows/components.yml`, alongside `ci.yml`:
 
-| job | runs | what |
+| job | runs (pull request) | what |
 |---|---|---|
 | `checks` | always | `check-component-pins.py` (+ its test); `tools/component-bundle` fmt, clippy, test; `packages/connect` and `packages/merod-local` typecheck and test |
-| `rust` | per changed app | `cargo fmt --check`; `cargo clippy -D warnings` on the host (tests included) and on `wasm32-wasip2`; `cargo test` (TestApp harness + scenarios); release build; committed `res/abi.json` current; a dev-signed `.mpk` packed and verified |
-| `frontend` | per changed app | `pnpm lint`, `typecheck`, `test`, `build` (the generated client's freshness is `ci.yml`'s `frontend` job: [The app's typed client](#the-apps-typed-client)) |
-| `e2e` | per changed app | core's release `merod` at `component-core-tag` (checked against its `SHA256SUMS`), `merod local`, then `pnpm merod-local e2e <app>`: every `scenarios/*.json` as real accounts on three nodes |
+| `rust` | per app whose contract changed (`logic/**`, or the icon its manifest packs) | `cargo fmt --check`; `cargo clippy -D warnings` on the host (tests included) and on `wasm32-wasip2`; `cargo test` (TestApp harness + scenarios); release build; committed `res/abi.json` current; a dev-signed `.mpk` packed and verified |
+| `e2e` | per app whose contract changed; every app when the JS that drives a node changed | core's release `merod` at `component-core-tag` (checked against its `SHA256SUMS`), `merod local`, then `pnpm merod-local e2e <app>`: every `scenarios/*.json` as real accounts on three nodes. A leg whose contract did not change builds its own release wasm instead of waiting on a `rust` leg |
+| `browser` | per app with `app/playwright.config.ts` whose frontend, contract, imported packages or harness inputs changed | its Playwright suite on `merod local` |
+| `cross-app` | Chat, Home or KV Store, `e2e/cross-app` or a package they import changed | the cross-app suite |
+| `ok` | always | fails if any job above failed or was cancelled: the one check to require |
 
-A change to anything every component app depends on (the root `Cargo.toml`,
-the lockfiles, `tools/component-bundle`, `packages/connect`,
-`packages/merod-local`, the workflow) runs every component app.
+The frontend (`lint`, `typecheck`, `test`, `build`, and the generated client's
+freshness: [The app's typed client](#the-apps-typed-client)) is `ci.yml`'s
+`frontend` job, over the members a change reaches.
+
+`python3 scripts/ci-scope.py components --explain <paths>` prints which jobs a
+change runs and why. The workflow, `tools/component-bundle`, the scope scripts
+and the core pin in the root `Cargo.toml` run everything; `packages/merod-local`,
+the root `package.json` and a moved catalog or lockfile pin run every `e2e`,
+`browser` and `cross-app` leg without rebuilding every contract; an app's
+`mobile/`, README or docs run nothing here. A push to `main` runs everything.
+
+All Rust jobs share one cache entry (every app pins the same core), saved only
+by `main`: one 1.1 GB entry per app overflowed the repository's 10 GB, so every
+leg used to compile core from scratch.
 
 ### Release to the App Registry
 
