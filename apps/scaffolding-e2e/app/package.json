@@ -10,7 +10,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name scaffolding-e2e -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
