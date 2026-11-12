@@ -4,8 +4,33 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `BoardInfo`: the ABI names it without its shape. */
-export type BoardInfo = unknown;
+/** The app type `BoardInfo`. */
+export interface BoardInfo {
+  name: string;
+  description: string;
+  elementCount: number;
+  memberCount: number;
+  owner: string | null;
+}
+
+/** The app type `ElementPage`. */
+export interface ElementPage {
+  items: Element[];
+  nextCursor: string | null;
+}
+
+/** The app type `LabelUpdate`. */
+export interface LabelUpdate {
+  id: string;
+  label: string | null;
+}
+
+/** The app type `MemberRole`. */
+export interface MemberRole {
+  member: string;
+  role: string;
+  account: string | null;
+}
 
 /** The app type `Comment`: the ABI names it without its shape. */
 export type Comment = unknown;
@@ -16,20 +41,11 @@ export type CursorState = unknown;
 /** The app type `Element`: the ABI names it without its shape. */
 export type Element = unknown;
 
-/** The app type `ElementPage`: the ABI names it without its shape. */
-export type ElementPage = unknown;
-
 /** The app type `ElementPatch`: the ABI names it without its shape. */
 export type ElementPatch = unknown;
 
-/** The app type `LabelUpdate`: the ABI names it without its shape. */
-export type LabelUpdate = unknown;
-
 /** The app type `Member`: the ABI names it without its shape. */
 export type Member = unknown;
-
-/** The app type `MemberRole`: the ABI names it without its shape. */
-export type MemberRole = unknown;
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

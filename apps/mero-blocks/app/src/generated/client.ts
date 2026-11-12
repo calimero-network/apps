@@ -76,20 +76,6 @@ export interface InitArgs {
   now?: string | null;
 }
 
-/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
-export interface InitArgs {
-  name?: string | null;
-  seed?: string | null;
-  now?: string | null;
-}
-
-/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
-export interface InitArgs {
-  name?: string | null;
-  seed?: string | null;
-  now?: string | null;
-}
-
 /** The arguments of `getOverrides`. */
 export interface GetOverridesArgs {
   cursor?: string | null;

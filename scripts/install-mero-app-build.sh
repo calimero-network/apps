@@ -11,11 +11,11 @@
 # `component-core-tag`. It is a tag (`1.0.0-rc.18`) or a full commit sha of
 # core; a sha is installed with `--rev`, anything else with `--tag`.
 #
-# Now a core master commit, ahead of every tag: it has core#5011 (`raw.*`
-# returns `{result, index, events}`, the call-only `AppCallTransport`, typed
-# `InitArgs`), core#5005 (`--name` defaults from Cargo.toml, `--no-openapi`,
-# `--version`, the `<Name>Api` interface) and core#5007. core rc.19's fleet
-# bump moves it back to a tag.
+# Now the 1.0.0-rc.19 tag, which `component-core-tag` also names: it has
+# core#5011 (`raw.*` returns `{result, index, events}`, the call-only
+# `AppCallTransport`, typed `InitArgs`), core#5005 (`--name` defaults from
+# Cargo.toml, `--no-openapi`, `--version`, the `<Name>Api` interface) and
+# core#5007.
 #
 # Moving it changes what every generated client looks like, so regenerate them
 # all in the same PR (`pnpm -r codegen`). Once `component-core-tag` reaches
@@ -25,7 +25,7 @@
 # (a stamp file beside it), so a cached root costs nothing.
 set -euo pipefail
 
-REF="${MERO_APP_BUILD_REF:-${MERO_APP_BUILD_TAG:-3f2bc52b0a4bf1f422c6579bf5350a347f33f9ef}}"
+REF="${MERO_APP_BUILD_REF:-${MERO_APP_BUILD_TAG:-1.0.0-rc.19}}"
 ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 STAMP="$ROOT/.mero-app-build-tag"
 
