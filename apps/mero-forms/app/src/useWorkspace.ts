@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FormsClient } from "./formsApi";
+import { formsClient, type MeroFormsClient } from "./formsApi";
 import { useSignedIn } from "./sessionContext";
 
 /**
@@ -20,7 +20,7 @@ const POLL_MS = 30_000;
  */
 export function useWorkspace(appId: string) {
   const { client: calimero, after } = useSignedIn();
-  const client = useMemo(() => new FormsClient(calimero, appId, after), [calimero, appId, after]);
+  const client = useMemo(() => formsClient(calimero, appId, after), [calimero, appId, after]);
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
@@ -55,7 +55,7 @@ export function useWorkspace(appId: string) {
 
   /** Run one contract call, then re-read everything. */
   const act = useCallback(
-    async <T,>(fn: (c: FormsClient) => Promise<T>): Promise<T> => {
+    async <T,>(fn: (c: MeroFormsClient) => Promise<T>): Promise<T> => {
       try {
         return await fn(client);
       } finally {
@@ -65,7 +65,7 @@ export function useWorkspace(appId: string) {
     [client, bump],
   );
 
-  return { client: client as FormsClient | null, version, act };
+  return { client: client as MeroFormsClient | null, version, act };
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;
@@ -76,9 +76,9 @@ export type Workspace = ReturnType<typeof useWorkspace>;
  * a failed read without throwing it away.
  */
 export function useRead<T>(
-  client: FormsClient | null,
+  client: MeroFormsClient | null,
   version: number,
-  load: (c: FormsClient) => Promise<T>,
+  load: (c: MeroFormsClient) => Promise<T>,
   deps: unknown[],
 ): { data: T | null; error: string | null; loading: boolean } {
   const [data, setData] = useState<T | null>(null);

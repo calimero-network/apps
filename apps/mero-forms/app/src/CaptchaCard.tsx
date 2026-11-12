@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRead, type Workspace } from "./useWorkspace";
+import { toCaptcha } from "./formsApi";
 
 /**
  * The team's own Cloudflare Turnstile keys.
@@ -13,7 +14,7 @@ import { useRead, type Workspace } from "./useWorkspace";
  * the setting went.
  */
 export function CaptchaCard({ workspace, isAdmin }: { workspace: Workspace; isAdmin: boolean }) {
-  const settings = useRead(workspace.client, workspace.version, (c) => c.captchaSettings(), []);
+  const settings = useRead(workspace.client, workspace.version, (c) => c.captchaSettings().then(toCaptcha), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +23,7 @@ export function CaptchaCard({ workspace, isAdmin }: { workspace: Workspace; isAd
     setBusy(true);
     setError(null);
     workspace
-      .act((c) => c.clearCaptchaSecret())
+      .act((c) => c.clearCaptchaSecret().then(toCaptcha))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusy(false));
   };

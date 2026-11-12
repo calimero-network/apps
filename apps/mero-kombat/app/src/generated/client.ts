@@ -4,11 +4,70 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ArenaView`: the ABI names it without its shape. */
-export type ArenaView = unknown;
+/** The app type `ArenaView`. */
+export interface ArenaView {
+  title: string;
+  createdAt: string;
+  matchIndex: number;
+  round: number;
+  status: string;
+  roundResults: string[];
+  winner: string;
+  flawless: boolean;
+  p1: FighterView;
+  p2: FighterView;
+  me: string;
+  mySeat: string;
+  hits: HitView[];
+  matchActions: number;
+  totalActions: string;
+  maxHp: number;
+  roundsToWin: number;
+}
 
-/** The app type `MatchSummary`: the ABI names it without its shape. */
-export type MatchSummary = unknown;
+/** The app type `FighterView`. */
+export interface FighterView {
+  seat: string;
+  member: string;
+  name: string;
+  fighter: string;
+  hp: number;
+  roundsWon: number;
+  matchesWon: number;
+  online: boolean;
+}
+
+/** The app type `HitView`. */
+export interface HitView {
+  by: string;
+  id: number;
+  kind: string;
+  damage: number;
+  blocked: boolean;
+  at: string;
+}
+
+/** The app type `MatchSummary`. */
+export interface MatchSummary {
+  index: number;
+  startedAt: string;
+  winner: string;
+  flawless: boolean;
+  rounds: string[];
+  actions: number;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  title?: string | null;
+  now?: string | null;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  title?: string | null;
+  now?: string | null;
+}
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

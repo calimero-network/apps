@@ -168,5 +168,133 @@
     },
     "version": 1
   },
+  "types": {
+    "Edit": {
+      "fields": [
+        [
+          "x",
+          "i32"
+        ],
+        [
+          "y",
+          "i32"
+        ],
+        [
+          "t",
+          "u8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "OverridesPage": {
+      "fields": [
+        [
+          "items",
+          "list<TileEntry>"
+        ],
+        [
+          "next",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayerView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "dir",
+          "f64"
+        ],
+        [
+          "sel",
+          "u8"
+        ],
+        [
+          "action",
+          "string"
+        ],
+        [
+          "online",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TileEntry": {
+      "fields": [
+        [
+          "k",
+          "string"
+        ],
+        [
+          "t",
+          "u8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Transform": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "dir",
+          "f64"
+        ],
+        [
+          "sel",
+          "u8"
+        ],
+        [
+          "action",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WorldMeta": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "seed",
+          "u32"
+        ],
+        [
+          "createdAt",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

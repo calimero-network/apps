@@ -272,6 +272,25 @@
         ],
         "type": "object"
       },
+      "BlockEntry": {
+        "properties": {
+          "b": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "k": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "k",
+          "b"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "BlockEntry"
+      },
       "BlocksChangedEvent": {
         "properties": {
           "id": {
@@ -427,7 +446,42 @@
         "type": "object"
       },
       "Edit": {
-        "description": "The app type `Edit`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "b": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "x": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "y": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "z": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z",
+          "b"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Edit"
       },
       "EventFrame": {
@@ -996,7 +1050,29 @@
         "type": "object"
       },
       "OverridesPage": {
-        "description": "The app type `OverridesPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BlockEntry"
+            },
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "OverridesPage"
       },
       "PlayerJoinedEvent": {
@@ -1022,11 +1098,89 @@
         "type": "object"
       },
       "PlayerView": {
-        "description": "The app type `PlayerView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "pitch": {
+            "format": "double",
+            "type": "number"
+          },
+          "sel": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          },
+          "yaw": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "account",
+          "device",
+          "name",
+          "x",
+          "y",
+          "z",
+          "yaw",
+          "pitch",
+          "sel",
+          "online"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PlayerView"
       },
       "PlayersPage": {
-        "description": "The app type `PlayersPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerView"
+            },
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PlayersPage"
       },
       "Receipt": {
@@ -1178,7 +1332,47 @@
         "type": "object"
       },
       "Transform": {
-        "description": "The app type `Transform`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "pitch": {
+            "format": "double",
+            "type": "number"
+          },
+          "sel": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          },
+          "yaw": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "x",
+          "y",
+          "z",
+          "yaw",
+          "pitch",
+          "sel"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Transform"
       },
       "Trap": {
@@ -1215,7 +1409,29 @@
         "type": "object"
       },
       "WorldMeta": {
-        "description": "The app type `WorldMeta`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "seed": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "name",
+          "seed",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WorldMeta"
       },
       "WorldMetaArgs": {
@@ -1269,7 +1485,25 @@
         "type": "object"
       },
       "WorldStats": {
-        "description": "The app type `WorldStats`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "overrides": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "players": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "overrides",
+          "players"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WorldStats"
       },
       "WorldStatsArgs": {

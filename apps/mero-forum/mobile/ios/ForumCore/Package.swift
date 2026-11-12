@@ -16,10 +16,10 @@ let package = Package(
         .library(name: "ForumCore", targets: ["ForumCore"]),
     ],
     dependencies: [
-        // swift-sdk release v2.0.0 (Calimero 1.0).
+        // swift-sdk release v4.1.0 (Calimero 1.0).
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "2.0.0"),
+            exact: "4.1.0"),
     ],
     targets: [
         .target(

@@ -4,26 +4,84 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `Edit`: the ABI names it without its shape. */
-export type Edit = unknown;
+/** The app type `BlockEntry`. */
+export interface BlockEntry {
+  k: string;
+  b: number;
+}
 
-/** The app type `OverridesPage`: the ABI names it without its shape. */
-export type OverridesPage = unknown;
+/** The app type `Edit`. */
+export interface Edit {
+  x: number;
+  y: number;
+  z: number;
+  b: number;
+}
 
-/** The app type `PlayerView`: the ABI names it without its shape. */
-export type PlayerView = unknown;
+/** The app type `OverridesPage`. */
+export interface OverridesPage {
+  items: BlockEntry[];
+  next: string | null;
+}
 
-/** The app type `PlayersPage`: the ABI names it without its shape. */
-export type PlayersPage = unknown;
+/** The app type `PlayerView`. */
+export interface PlayerView {
+  id: string;
+  account: string;
+  device: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  sel: number;
+  online: boolean;
+}
 
-/** The app type `Transform`: the ABI names it without its shape. */
-export type Transform = unknown;
+/** The app type `PlayersPage`. */
+export interface PlayersPage {
+  items: PlayerView[];
+  next: string | null;
+}
 
-/** The app type `WorldMeta`: the ABI names it without its shape. */
-export type WorldMeta = unknown;
+/** The app type `Transform`. */
+export interface Transform {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  sel: number;
+}
 
-/** The app type `WorldStats`: the ABI names it without its shape. */
-export type WorldStats = unknown;
+/** The app type `WorldMeta`. */
+export interface WorldMeta {
+  name: string;
+  seed: string;
+  createdAt: string;
+}
+
+/** The app type `WorldStats`. */
+export interface WorldStats {
+  overrides: string;
+  players: string;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  name?: string | null;
+  seed?: string | null;
+  now?: string | null;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  name?: string | null;
+  seed?: string | null;
+  now?: string | null;
+}
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

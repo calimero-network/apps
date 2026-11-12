@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RemoveMemberButton, canChangeRole, canRemoveMember } from "@calimero-apps/members";
 import "@calimero-apps/members/members.css";
 import { useApi } from "../api/useApi";
@@ -45,7 +45,7 @@ const TEAM_ROLE_LABEL: Record<string, string> = {
  */
 export default function SettingsModal({ type, id, name, namespaceId, onClose }: Props) {
   const api = useApi();
-  const rpcCall = api.call;
+  const pix = useMemo(() => api.app(id), [api, id]);
   const { client, accountId: selfIdentity, passkey, source, after } = useSignedIn();
   const { showToast } = useToast();
   const teamId = namespaceId ?? (type === "team" ? id : undefined);
@@ -70,9 +70,9 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
     if (type !== "project") return;
     let cancelled = false;
     Promise.all([
-      rpcCall<ContractMemberRole[]>(id, "list_roles", {}).catch(() => [] as ContractMemberRole[]),
-      rpcCall<string>(id, "my_role", {}).catch(() => ""),
-      rpcCall<DocumentInfo>(id, "get_document", {}).catch(() => null),
+      (pix.listRoles() as Promise<ContractMemberRole[]>).catch(() => [] as ContractMemberRole[]),
+      (pix.myRole() as Promise<string>).catch(() => ""),
+      (pix.getDocument() as Promise<DocumentInfo>).catch(() => null),
     ]).then(([roles, mine, document]) => {
       if (cancelled) return;
       const map: Record<string, string> = {};
@@ -87,13 +87,13 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
       }
     });
     return () => { cancelled = true; };
-  }, [type, id, rpcCall]);
+  }, [type, id, pix]);
 
   // The document owner grants or revokes the editor role.
   async function setEditor(identity: string, makeEditor: boolean) {
     setPendingEditor(identity);
     try {
-      await rpcCall(id, makeEditor ? "grant_editor" : "revoke_editor", { member: identity });
+      await (makeEditor ? pix.grantEditor({ member: identity }) : pix.revokeEditor({ member: identity }));
       setContractRoles((prev) => ({ ...prev, [identity]: makeEditor ? "editor" : "viewer" }));
       showToast(makeEditor ? "Member can now edit the document." : "Member set to view-only.", "success");
     } catch (err) {
@@ -107,7 +107,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
   async function transferOwnership(identity: string) {
     setPendingTransfer(identity);
     try {
-      await rpcCall(id, "transfer_ownership", { new_owner: identity });
+      await pix.transferOwnership({ newOwner: identity });
       setContractRoles((prev) => ({ ...prev, [identity]: "admin", [selfIdentity]: "editor" }));
       setMyContractRole("editor");
       showToast("Ownership transferred.", "success");
@@ -128,7 +128,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
     }
     setSavingDoc(true);
     try {
-      await rpcCall(id, "update_document", { name: docName.trim(), width: w, height: h });
+      await pix.updateDocument({ name: docName.trim(), width: w, height: h });
       setDoc((prev) => (prev ? { ...prev, name: docName.trim(), width: w, height: h } : prev));
       // Reflect the new size in the live editor immediately and drop any stale
       // selection marquee left over at the old canvas bounds.

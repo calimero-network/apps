@@ -7,7 +7,7 @@
 # Everything that is not a view or a camera (the generated contract client,
 # the web app's media framing, slots, G.711, the H.264 helpers and the view
 # models) is the local Swift package in Core/, tested with `swift test` on
-# macOS. The swift-sdk is pinned to its v2.0.0 release (Calimero
+# macOS. The swift-sdk is pinned to its v4.1.0 release (Calimero
 # 1.0); bump `exactVersion` for a new release. Keep it equal to the version in
 # Core/Package.swift.
 name: MeroStream
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   StreamCore:
     path: Core
 
