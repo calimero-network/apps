@@ -9,7 +9,7 @@
 # package PixartCore/, which `swift test --package-path PixartCore` builds and
 # tests on macOS.
 #
-# The swift-sdk is pinned to its v0.7.0 release (Calimero 1.0). To bump it,
+# The swift-sdk is pinned to its v2.0.0 release (Calimero 1.0). To bump it,
 # change `exactVersion` to the new release. Keep both pins (here and
 # PixartCore/Package.swift) equal.
 name: MeroPixart
@@ -23,7 +23,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.7.0
+    exactVersion: 2.0.0
   PixartCore:
     path: PixartCore
 
