@@ -163,6 +163,9 @@ pub fn manifest(inputs: &Inputs<'_>) -> Result<BundleManifest> {
         // No compute component: this tool packs one service's WASM only
         // (core 1.0.0-rc.10 added the field; absent, it is not serialized).
         compute: None,
+        // No pipelines either (core 1.0.0-rc.19 added the field; empty, it is
+        // not serialized).
+        pipelines: Vec::new(),
         services: None,
         frontend: inputs.frontend.map(|f| f.frontend.clone()),
         links: Some(BundleLinks {
@@ -342,7 +345,14 @@ frontend = "https://demo.example.com"
             calimero_bundle::VerifiedBundle::open(data.clone(), &rc7).expect("a node opens it");
         let contents = verified.contents().expect("digests match");
         assert_eq!(contents.wasm.len(), 1);
-        assert_eq!(&*contents.wasm[0].bytes, component);
+        // The app component: `None` only for a bundle that ships a compute component alone.
+        assert_eq!(
+            contents.wasm[0]
+                .bytes
+                .as_deref()
+                .expect("the app component"),
+            component
+        );
         assert_eq!(contents.frontend.len(), 2);
         // A node older than the declared minRuntimeVersion refuses it.
         let rc6 = semver::Version::parse("1.0.0-rc.6").expect("version");
