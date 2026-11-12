@@ -30,11 +30,7 @@ import {
   UsersIcon,
   XIcon,
 } from "./icons";
-import type {
-  CategoryView,
-  MeView,
-  Overview,
-} from "../lib/updatesClient";
+import { fromWire, type CategoryView, type MeView, type Overview } from "../lib/updatesClient";
 import {
   RevisionContext,
   useAudienceEvents,
@@ -112,9 +108,9 @@ export default function AudienceShell() {
 function ShellBody() {
   const navigate = useNavigate();
   const contextId = useAudienceContextId();
-  const me = useLive((c) => c.getMe(), []);
-  const overview = useLive((c) => c.getOverview(), []);
-  const categories = useLive((c) => c.listCategories(), []);
+  const me = useLive((c) => c.getMe().then(fromWire<MeView>), []);
+  const overview = useLive((c) => c.getOverview().then(fromWire<Overview>), []);
+  const categories = useLive((c) => c.listCategories().then(fromWire<CategoryView[]>), []);
 
   const reload = useCallback(() => {
     me.reload();
@@ -299,6 +295,7 @@ function ShellBody() {
  */
 function useSelfName(me: MeView | null, reload: () => void): SelfNameDecision {
   const client = useUpdatesClient();
+  const contextId = useAudienceContextId();
   const publishSpaceName = usePublishSpaceName();
   const space = useSelfSpaceName(me?.account);
   const decision = useMemo<SelfNameDecision>(
@@ -314,7 +311,7 @@ function useSelfName(me: MeView | null, reload: () => void): SelfNameDecision {
   useEffect(() => {
     if (!me || !client || (decision.kind !== "use" && decision.kind !== "adopt")) return;
     const name = decision.name;
-    const key = `${client.appId}:${decision.kind}:${name}`;
+    const key = `${contextId}:${decision.kind}:${name}`;
     if (done.current === key) return;
     done.current = key;
     if (decision.kind === "adopt") void publishSpaceName(me.account, name);
@@ -325,7 +322,7 @@ function useSelfName(me: MeView | null, reload: () => void): SelfNameDecision {
       .catch(() => {
         /* the shell still labels you by the company name */
       });
-  }, [me, client, decision, publishSpaceName, reload]);
+  }, [me, client, contextId, decision, publishSpaceName, reload]);
 
   return decision;
 }

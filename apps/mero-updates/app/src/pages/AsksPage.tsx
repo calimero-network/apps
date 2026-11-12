@@ -5,6 +5,7 @@ import { useAudience } from "../components/AudienceShell";
 import { Avatar, Empty } from "../components/bits";
 import { AskKindIcon, HandIcon } from "../components/icons";
 import { askKind, formatDate, usePersonLabel, useLive } from "../lib/updates";
+import { fromWire, u64, type AskView, type ContributionView } from "../lib/updatesClient";
 
 /**
  * Every ask across every update, in one place.
@@ -18,8 +19,8 @@ export default function AsksPage() {
   const { me } = useAudience();
   const isTeam = !!me?.is_team;
   const [status, setStatus] = useState<"open" | "resolved">("open");
-  const asks = useLive((c) => c.listAsks({ status }), [status]);
-  const contributions = useLive((c) => c.listContributions({ since: 0 }), []);
+  const asks = useLive((c) => c.listAsks({ status }).then(fromWire<AskView[]>), [status]);
+  const contributions = useLive((c) => c.listContributions({ since: u64(0) }).then(fromWire<ContributionView[]>), []);
   const items = asks.data ?? [];
 
   return (

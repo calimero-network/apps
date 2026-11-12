@@ -16,7 +16,7 @@ import {
   SparkleIcon,
   XIcon,
 } from "../components/icons";
-import type { MetricSeries } from "../lib/updatesClient";
+import { fromWire, toWire, u64, type ContributionView, type DraftView, type MetricSeries, type PostPage, type PostView } from "../lib/updatesClient";
 import {
   TEMPLATES,
   fromPost,
@@ -70,9 +70,9 @@ export default function ComposePage() {
   const personLabel = usePersonLabel();
   const { me, categories, reload: reloadShell } = useAudience();
   const { bump } = useRevision();
-  const metrics = useLive((c) => c.listMetrics(), []);
+  const metrics = useLive((c) => c.listMetrics().then(fromWire<MetricSeries[]>), []);
   const lastUpdateAt = useAudience().overview?.last_update_at ?? 0;
-  const contributions = useLive((c) => c.listContributions({ since: lastUpdateAt }), [lastUpdateAt]);
+  const contributions = useLive((c) => c.listContributions({ since: u64(lastUpdateAt) }).then(fromWire<ContributionView[]>), [lastUpdateAt]);
 
   const editId = params.get("edit");
   const [state, setState] = useState<ComposerState | null>(null);
@@ -92,18 +92,18 @@ export default function ComposePage() {
     (async () => {
       try {
         if (editId) {
-          setState(fromPost(await client.getPost({ post_id: editId })));
+          setState(fromPost(fromWire<PostView>(await client.getPost({ postId: editId }))));
         } else if (params.get("draft")) {
-          const d = (await client.listDrafts()).find((x) => x.id === params.get("draft"));
+          const d = fromWire<DraftView[]>(await client.listDrafts()).find((x) => x.id === params.get("draft"));
           const parsed = d && parseDraft(d.payload);
           setState(parsed ?? fromTemplate(TEMPLATES[0], series));
           if (d) setSavedAt(d.updated_at);
         } else if (params.get("from") === "latest") {
-          const page = await client.listPosts({ kind: "update", category_id: null, cursor: null, limit: 1 });
+          const page = fromWire<PostPage>(await client.listPosts({ kind: "update", categoryId: null, cursor: null, limit: 1 }));
           const latest = page.items[0];
           setState(
             latest
-              ? fromPrevious(await client.getPost({ post_id: latest.id }))
+              ? fromPrevious(fromWire<PostView>(await client.getPost({ postId: latest.id })))
               : fromTemplate(TEMPLATES[0], series),
           );
         } else {
@@ -121,11 +121,13 @@ export default function ComposePage() {
     if (!client || !state || editId || !dirty.current) return;
     const t = setTimeout(async () => {
       try {
-        const id = await client.saveDraft({
-          draft_id: draftId,
-          title: state.title,
-          payload: JSON.stringify(state),
-        });
+        const id = fromWire<string>(
+          await client.saveDraft({
+            draftId,
+            title: state.title,
+            payload: JSON.stringify(state),
+          }),
+        );
         if (!draftId) {
           setDraftId(id);
           // Keep the URL resumable without adding a history entry.
@@ -153,11 +155,11 @@ export default function ComposePage() {
     try {
       let id: string;
       if (editId) {
-        await client.editUpdate({ post_id: editId, input: toInput(state) });
+        await client.editUpdate({ postId: editId, input: toWire(toInput(state)) });
         id = editId;
       } else {
-        id = await client.publishUpdate({ input: toInput(state) });
-        if (draftId) await client.deleteDraft({ draft_id: draftId }).catch(() => undefined);
+        id = fromWire<string>(await client.publishUpdate({ input: toWire(toInput(state)) }));
+        if (draftId) await client.deleteDraft({ draftId }).catch(() => undefined);
       }
       dirty.current = false;
       bump();

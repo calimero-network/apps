@@ -7,7 +7,7 @@ import { Avatar, CategoryChip, DeltaIcon, Reactions } from "../components/bits";
 import { deltaDir } from "../components/delta";
 import { ChevronLeftIcon, EditIcon, EyeIcon, CheckCircleIcon, TrashIcon, HandIcon } from "../components/icons";
 import Comments from "../components/Comments";
-import type { MetricSeries, PostView } from "../lib/updatesClient";
+import { fromWire, type MetricSeries, type PostView } from "../lib/updatesClient";
 import {
   deltaLabel,
   formatDate,
@@ -24,8 +24,8 @@ export default function PostPage() {
   const client = useUpdatesClient();
   const { me, categories, reload: reloadShell } = useAudience();
   const { bump } = useRevision();
-  const post = useLive((c) => c.getPost({ post_id: postId }), [postId]);
-  const metrics = useLive((c) => c.listMetrics(), []);
+  const post = useLive((c) => c.getPost({ postId }).then(fromWire<PostView>), [postId]);
+  const metrics = useLive((c) => c.listMetrics().then(fromWire<MetricSeries[]>), []);
   const isTeam = !!me?.is_team;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -38,7 +38,7 @@ export default function PostPage() {
     marked.current = postId;
     if (post.data.card.read_by_me) return;
     void client
-      .markRead({ post_id: postId })
+      .markRead({ postId })
       .then(() => reloadShell())
       .catch(() => undefined);
   }, [client, post.data, postId, reloadShell]);
@@ -67,18 +67,18 @@ export default function PostPage() {
         ),
       },
     });
-    await client.react({ post_id: postId, emoji, on }).catch(() => post.reload());
+    await client.react({ postId, emoji, on }).catch(() => post.reload());
   };
 
   const remove = async () => {
     if (!client) return;
-    await client.deletePost({ post_id: postId });
+    await client.deletePost({ postId });
     bump();
     navigate(isQuestion ? "/a/questions" : "/a");
   };
 
   const setStatus = async (status: string) => {
-    await client?.setQuestionStatus({ post_id: postId, status });
+    await client?.setQuestionStatus({ postId, status });
     post.reload();
     reloadShell();
   };

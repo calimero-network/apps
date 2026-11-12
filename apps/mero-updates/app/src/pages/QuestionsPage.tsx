@@ -5,6 +5,7 @@ import { useAudience } from "../components/AudienceShell";
 import { Avatar, Empty } from "../components/bits";
 import { ChevronRightIcon, HelpCircleIcon, MessageIcon } from "../components/icons";
 import { usePersonLabel, timeAgo, useLive, useRevision, useUpdatesClient } from "../lib/updates";
+import { fromWire, type PostPage } from "../lib/updatesClient";
 
 /**
  * Q&A: the investor-initiated half of the conversation.
@@ -23,7 +24,7 @@ export default function QuestionsPage() {
   const { bump } = useRevision();
   const [filter, setFilter] = useState<"open" | "all">("all");
   const questions = useLive(
-    (c) => c.listPosts({ kind: "question", category_id: null, cursor: null, limit: 100 }),
+    (c) => c.listPosts({ kind: "question", categoryId: null, cursor: null, limit: 100 }).then(fromWire<PostPage>),
     [],
   );
   const [title, setTitle] = useState("");
@@ -36,7 +37,7 @@ export default function QuestionsPage() {
     setBusy(true);
     setError(null);
     try {
-      const id = await client.askQuestion({ title: title.trim(), body: body.trim(), category_id: null });
+      const id = fromWire<string>(await client.askQuestion({ title: title.trim(), body: body.trim(), categoryId: null }));
       setTitle("");
       setBody("");
       bump();

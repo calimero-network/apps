@@ -219,7 +219,7 @@ menu; a second browser profile with its own passkey opening that link is an inve
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-updates/logic/Cargo.toml` | v1's 35 `TestHost` tests method for method; v1's storage write rules (`AccessControl`, `SharedStorage`, `Moderated`, `Authored`, `UserStorage`) as the same calls made by accounts the methods refuse; v1's merge tests under one log; drafts private to their author; access (anonymous `401`, outsider `404`, a removed member, a guest), `BadArgs`, `UnknownMethod`, `NotAView`; and every `scenarios/*.json` | no |
-| `pnpm -F mero-updates test` | the methods the screens call are exactly the committed ABI's, with its parameter names; the wire-to-screen conversion; the feed, the company and audience pages and invitations on a mocked client; where a visitor lands; the KPI, people, theme and contrast helpers | no |
+| `pnpm -F mero-updates test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the wire-to-screen conversion; the feed, the company and audience pages and invitations on a mocked client; where a visitor lands; the KPI, people, theme and contrast helpers | no |
 | `pnpm merod-local e2e mero-updates` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 `scenarios/e2e.json` is v1's two-node Docker workflow (`logic/workflows/e2e.yml`, removed), with node
@@ -276,8 +276,11 @@ thread, Q&A, asks, KPIs, people and engagement, settings, the light/dark theme. 
   suites that drove merod 0.x (`e2e/`, `tests/shell.spec.ts`, `tests/theme.spec.ts`);
 - **new**: `src/lib/session.ts` + `src/lib/sessionContext.tsx` (target → client → passkey sign-in/up,
   the stored session), `src/lib/companies.ts` (orgs, instances, invites, member names),
-  `src/lib/updatesClient.ts` (the contract by method name, converted back to the shapes the screens
-  render; a test pins its method list to `logic/res/abi.json`), `src/lib/active.ts` (the open
+  `src/generated/` (`MeroUpdatesClient`: `mero-app-build codegen` from `logic/res/abi.json`,
+  committed; `pnpm -F mero-updates codegen` after a contract change, and CI fails when it is
+  stale), `src/lib/updatesClient.ts` (`fromWire`/`toWire`: its answers converted back to the
+  shapes the screens render, as the ABI names its records without their shapes and the generated
+  types are `unknown`), `src/lib/active.ts` (the open
   audience), a passkey sign-in dialog as the landing page's connect action, and a "Join this
   company?" prompt after sign-in;
 - **names**: a company-wide name is org member metadata `{ name }` (was namespace member metadata).

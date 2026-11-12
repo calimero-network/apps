@@ -1,62 +1,15 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
-
 /**
- * The contract (`logic/src/lib.rs`) by method, in the shapes the screens were
- * written against (v1's generated `UpdatesClient`: snake_case fields, numbers).
+ * The shapes the screens were written against (v1's generated `UpdatesClient`:
+ * snake_case fields, numbers), and the one place the component wire is turned
+ * into them.
  *
- * The component ABI answers camelCase with 64-bit integers as decimal strings,
- * and takes camelCase arguments. This file is the one place that difference is
- * absorbed, so no screen had to be rewritten. `updatesClient.test.ts` pins the
- * method lists and parameter names below to the committed `logic/res/abi.json`.
+ * The contract is called through `MeroUpdatesClient`, which `mero-app-build
+ * codegen` writes from logic/res/abi.json (`src/generated/client.ts`), with
+ * camelCase arguments (a nested record through `toWire`, a u64 through
+ * `u64`). The ABI names its records without their shapes, so the generated
+ * types are `unknown`: every answer goes through `fromWire<T>`, which turns its
+ * camelCase keys back into snake_case and its u64 strings into numbers.
  */
-
-/** Methods that write (through the app's log). */
-export const CALLS = [
-  "addComment",
-  "addTeammate",
-  "archiveCategory",
-  "askQuestion",
-  "createCategory",
-  "deleteComment",
-  "deleteDraft",
-  "deletePost",
-  "editCategory",
-  "editComment",
-  "editUpdate",
-  "markRead",
-  "offerHelp",
-  "publishUpdate",
-  "react",
-  "removeTeammate",
-  "saveDraft",
-  "setAskStatus",
-  "setMutedCategories",
-  "setOfferStatus",
-  "setProfile",
-  "setQuestionStatus",
-  "setSettings",
-  "withdrawOffer",
-] as const;
-
-/** Methods a node answers without writing. */
-export const VIEWS = [
-  "getEngagement",
-  "getMe",
-  "getOverview",
-  "getPost",
-  "getSettings",
-  "listAsks",
-  "listCategories",
-  "listComments",
-  "listContributions",
-  "listDrafts",
-  "listMetrics",
-  "listPeople",
-  "listPosts",
-] as const;
-
-export type Call = (typeof CALLS)[number];
-export type View = (typeof VIEWS)[number];
 
 // ── the shapes the screens render ────────────────────────────────────────────
 
@@ -341,82 +294,5 @@ export function toWire(value: unknown): unknown {
   return out;
 }
 
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
-
-/**
- * One audience (an app instance) through the signed-in client. `after` runs
- * after every request, settled or not: the stored session follows the client's
- * refresh-token rotation.
- */
-export class UpdatesClient {
-  constructor(
-    private readonly client: Transport,
-    readonly appId: string,
-    private readonly after: () => void = () => {},
-  ) {}
-
-  private async call<T>(method: Call, args: object = {}): Promise<T> {
-    try {
-      const { result } = await this.client.apps.call({ app: this.appId, method, args: toWire(args) });
-      return fromWire<T>(result);
-    } finally {
-      this.after();
-    }
-  }
-
-  private async view<T>(method: View, args: object = {}): Promise<T> {
-    try {
-      const { result } = await this.client.apps.view({ app: this.appId, method, args: toWire(args) });
-      return fromWire<T>(result);
-    } finally {
-      this.after();
-    }
-  }
-
-  // ── views ──
-  getMe = () => this.view<MeView>("getMe");
-  getOverview = () => this.view<Overview>("getOverview");
-  getSettings = () => this.view<Settings>("getSettings");
-  getEngagement = () => this.view<EngagementRow[]>("getEngagement");
-  getPost = (p: { post_id: string }) => this.view<PostView>("getPost", p);
-  listAsks = (p: { status: string | null }) => this.view<AskView[]>("listAsks", p);
-  listCategories = () => this.view<CategoryView[]>("listCategories");
-  listComments = (p: { post_id: string }) => this.view<CommentView[]>("listComments", p);
-  /** `since` in unix ms; sent as the decimal string a `u64` argument is. */
-  listContributions = (p: { since: number }) =>
-    this.view<ContributionView[]>("listContributions", { since: String(Math.max(0, Math.floor(p.since))) });
-  listDrafts = () => this.view<DraftView[]>("listDrafts");
-  listMetrics = () => this.view<MetricSeries[]>("listMetrics");
-  listPeople = () => this.view<PersonView[]>("listPeople");
-  listPosts = (p: { kind: string | null; category_id: string | null; cursor: string | null; limit: number }) =>
-    this.view<PostPage>("listPosts", p);
-
-  // ── calls ──
-  addComment = (p: { post_id: string; parent_id: string | null; body: string }) =>
-    this.call<string>("addComment", p);
-  addTeammate = (p: { account: string }) => this.call<void>("addTeammate", p);
-  archiveCategory = (p: { category_id: string }) => this.call<void>("archiveCategory", p);
-  askQuestion = (p: { title: string; body: string; category_id: string | null }) =>
-    this.call<string>("askQuestion", p);
-  createCategory = (p: { name: string; emoji: string; color: string }) => this.call<string>("createCategory", p);
-  deleteComment = (p: { comment_id: string }) => this.call<void>("deleteComment", p);
-  deleteDraft = (p: { draft_id: string }) => this.call<void>("deleteDraft", p);
-  deletePost = (p: { post_id: string }) => this.call<void>("deletePost", p);
-  editCategory = (p: { category_id: string; name: string; emoji: string; color: string }) =>
-    this.call<void>("editCategory", p);
-  editComment = (p: { comment_id: string; body: string }) => this.call<void>("editComment", p);
-  editUpdate = (p: { post_id: string; input: UpdateInput }) => this.call<void>("editUpdate", p);
-  markRead = (p: { post_id: string }) => this.call<void>("markRead", p);
-  offerHelp = (p: { ask_id: string; note: string }) => this.call<void>("offerHelp", p);
-  publishUpdate = (p: { input: UpdateInput }) => this.call<string>("publishUpdate", p);
-  react = (p: { post_id: string; emoji: string; on: boolean }) => this.call<void>("react", p);
-  removeTeammate = (p: { account: string }) => this.call<void>("removeTeammate", p);
-  saveDraft = (p: { draft_id: string | null; title: string; payload: string }) => this.call<string>("saveDraft", p);
-  setAskStatus = (p: { ask_id: string; status: string }) => this.call<void>("setAskStatus", p);
-  setMutedCategories = (p: { category_ids: string[] }) => this.call<void>("setMutedCategories", p);
-  setOfferStatus = (p: { ask_id: string; account: string; status: string }) => this.call<void>("setOfferStatus", p);
-  setProfile = (p: { name: string; firm: string }) => this.call<void>("setProfile", p);
-  setQuestionStatus = (p: { post_id: string; status: string }) => this.call<void>("setQuestionStatus", p);
-  setSettings = (p: { company_name: string; cadence_days: number }) => this.call<void>("setSettings", p);
-  withdrawOffer = (p: { ask_id: string }) => this.call<void>("withdrawOffer", p);
-}
+/** A number the contract takes as a u64: the decimal string of its whole, non-negative part. */
+export const u64 = (n: number): string => String(Math.max(0, Math.floor(n)));

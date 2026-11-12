@@ -12,7 +12,15 @@
  * accepted and ignored.
  */
 import { getContextId, meroSignApp, wrap, type ApiResponse, type ErrorResponse } from '../../lib/node';
-import type { MeroSignApp } from '../../lib/meroSign';
+import type { MeroSignClient } from '../../generated/client';
+import {
+  toContexts,
+  toDetails,
+  toDocuments,
+  toNumber,
+  toSignatures,
+  toWireChunk,
+} from '../../lib/meroSign';
 import type {
   ClientApi,
   ContextDetails,
@@ -45,14 +53,14 @@ export class ClientApiDataSource implements ClientApi {
 
   private async run<T>(
     contextId: string,
-    call: (app: MeroSignApp) => Promise<T>,
+    call: (app: MeroSignClient) => Promise<T>,
   ): ApiResponse<T> {
     if (!contextId) return noContext();
     return wrap(() => call(meroSignApp(contextId)));
   }
 
   private async runPrivate<T>(
-    call: (app: MeroSignApp) => Promise<T>,
+    call: (app: MeroSignClient) => Promise<T>,
   ): ApiResponse<T> {
     return wrap(async () => call(meroSignApp(await defaultContextIdFor())));
   }
@@ -64,9 +72,9 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID), (c) =>
-      c.setConsent({ document_id: documentId }),
-    );
+    return this.run(this.shared(agreementContextID), async (c) => {
+      await c.setConsent({ documentId });
+    });
   }
 
   async hasConsented(
@@ -76,7 +84,7 @@ export class ClientApiDataSource implements ClientApi {
     _agreementContextUserID?: string,
   ): ApiResponse<boolean> {
     return this.run(this.shared(agreementContextID), (c) =>
-      c.hasConsented({ user_id_str: userIdStr, document_id: documentId }),
+      c.hasConsented({ userIdStr, documentId }),
     );
   }
 
@@ -87,9 +95,9 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID, contextId), (c) =>
-      c.addParticipant({ user_id_str: userIdStr, permission }),
-    );
+    return this.run(this.shared(agreementContextID, contextId), async (c) => {
+      await c.addParticipant({ userIdStr, permission });
+    });
   }
 
   async setParticipantPermission(
@@ -98,9 +106,9 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID), (c) =>
-      c.setParticipantPermission({ user_id_str: userIdStr, permission }),
-    );
+    return this.run(this.shared(agreementContextID), async (c) => {
+      await c.setParticipantPermission({ userIdStr, permission });
+    });
   }
 
   async removeParticipant(
@@ -108,18 +116,18 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID), (c) =>
-      c.removeParticipant({ user_id_str: userIdStr }),
-    );
+    return this.run(this.shared(agreementContextID), async (c) => {
+      await c.removeParticipant({ userIdStr });
+    });
   }
 
   async registerSelfAsParticipant(
     agreementContextID: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID), (c) =>
-      c.registerSelfAsParticipant(),
-    );
+    return this.run(this.shared(agreementContextID), async (c) => {
+      await c.registerSelfAsParticipant();
+    });
   }
 
   async whoami(
@@ -139,7 +147,7 @@ export class ClientApiDataSource implements ClientApi {
     _agreementContextUserID?: string,
   ): ApiResponse<ContextDetails> {
     return this.run(this.shared(agreementContextID, contextId), (c) =>
-      c.getContextDetails({ context_id_str: contextId }),
+      c.getContextDetails({ contextIdStr: contextId }).then(toDetails),
     );
   }
 
@@ -150,23 +158,23 @@ export class ClientApiDataSource implements ClientApi {
     sharedIdentityStr: UserId,
     name: string,
   ): ApiResponse<void> {
-    return this.runPrivate((c) =>
-      c.joinSharedContext({
-        context_id_str: contextId,
-        shared_identity_str: sharedIdentityStr,
-        context_name: name,
-      }),
-    );
+    return this.runPrivate(async (c) => {
+      await c.joinSharedContext({
+        contextIdStr: contextId,
+        sharedIdentityStr,
+        contextName: name,
+      });
+    });
   }
 
   async listJoinedContexts(): ApiResponse<ContextMetadata[]> {
-    return this.runPrivate((c) => c.listJoinedContexts());
+    return this.runPrivate((c) => c.listJoinedContexts().then(toContexts));
   }
 
   async leaveSharedContext(contextId: string): ApiResponse<void> {
-    return this.runPrivate((c) =>
-      c.leaveSharedContext({ context_id_str: contextId }),
-    );
+    return this.runPrivate(async (c) => {
+      await c.leaveSharedContext({ contextIdStr: contextId });
+    });
   }
 
   async createSignature(
@@ -175,18 +183,18 @@ export class ClientApiDataSource implements ClientApi {
     dataSize: number,
   ): ApiResponse<number> {
     return this.runPrivate((c) =>
-      c.createSignature({ name, blob_id_str: blobIdStr, data_size: dataSize }),
+      c.createSignature({ name, blobIdStr, dataSize: String(dataSize) }).then(toNumber),
     );
   }
 
   async deleteSignature(signatureId: number): ApiResponse<void> {
-    return this.runPrivate((c) =>
-      c.deleteSignature({ signature_id: signatureId }),
-    );
+    return this.runPrivate(async (c) => {
+      await c.deleteSignature({ signatureId: String(signatureId) });
+    });
   }
 
   async listSignatures(): ApiResponse<SignatureRecord[]> {
-    return this.runPrivate((c) => c.listSignatures());
+    return this.runPrivate((c) => c.listSignatures().then(toSignatures));
   }
 
   // ── documents ──────────────────────────────────────────────────────────────
@@ -207,11 +215,11 @@ export class ClientApiDataSource implements ClientApi {
       c.uploadDocument({
         name,
         hash,
-        pdf_blob_id_str: pdfBlobIdStr,
-        file_size: fileSize,
+        pdfBlobIdStr,
+        fileSize: String(fileSize),
         embeddings: embeddings ?? null,
-        extracted_text: extractedText ?? null,
-        chunks: chunks ?? null,
+        extractedText: extractedText ?? null,
+        chunks: chunks ? chunks.map(toWireChunk) : null,
       }),
     );
   }
@@ -221,9 +229,9 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID), (c) =>
-      c.deleteDocument({ document_id: documentId }),
-    );
+    return this.run(this.shared(agreementContextID), async (c) => {
+      await c.deleteDocument({ documentId });
+    });
   }
 
   async listDocuments(
@@ -232,7 +240,7 @@ export class ClientApiDataSource implements ClientApi {
     _agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]> {
     return this.run(this.shared(agreementContextID, contextId), (c) =>
-      c.listDocuments(),
+      c.listDocuments().then(toDocuments),
     );
   }
 
@@ -246,15 +254,15 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID, contextId), (c) =>
-      c.signDocument({
-        document_id: documentId,
-        base_hash: baseHash,
-        pdf_blob_id_str: pdfBlobIdStr,
-        file_size: fileSize,
-        new_hash: newHash,
-      }),
-    );
+    return this.run(this.shared(agreementContextID, contextId), async (c) => {
+      await c.signDocument({
+        documentId,
+        baseHash,
+        pdfBlobIdStr,
+        fileSize: String(fileSize),
+        newHash,
+      });
+    });
   }
 
   async markParticipantSigned(
@@ -263,9 +271,9 @@ export class ClientApiDataSource implements ClientApi {
     agreementContextID?: string,
     _agreementContextUserID?: string,
   ): ApiResponse<void> {
-    return this.run(this.shared(agreementContextID, contextId), (c) =>
-      c.markParticipantSigned({ document_id: documentId }),
-    );
+    return this.run(this.shared(agreementContextID, contextId), async (c) => {
+      await c.markParticipantSigned({ documentId });
+    });
   }
 
   async searchDocumentByEmbedding(
@@ -276,8 +284,8 @@ export class ClientApiDataSource implements ClientApi {
   ): ApiResponse<string> {
     return this.run(this.shared(agreementContextID), (c) =>
       c.searchDocumentByEmbedding({
-        query_embedding: queryEmbedding,
-        document_id: documentId,
+        queryEmbedding,
+        documentId,
       }),
     );
   }

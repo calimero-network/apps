@@ -14,7 +14,7 @@ import {
   PenSquareIcon,
   RepeatIcon,
 } from "../components/icons";
-import type { CategoryView, PostCard } from "../lib/updatesClient";
+import { fromWire, type CategoryView, type DraftView, type PersonView, type PostCard, type PostPage } from "../lib/updatesClient";
 import { TEMPLATES } from "../lib/templates";
 import { dueLabel, formatDate, usePersonLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
 
@@ -29,7 +29,7 @@ export default function UpdatesPage() {
   const [category, setCategory] = useState<string | null>(null);
   const isTeam = !!me?.is_team;
   const feed = useLive(
-    (c) => c.listPosts({ kind: "update", category_id: category, cursor: null, limit: 100 }),
+    (c) => c.listPosts({ kind: "update", categoryId: category, cursor: null, limit: 100 }).then(fromWire<PostPage>),
     [category],
   );
   const items = feed.data?.items ?? [];
@@ -169,8 +169,8 @@ function TeamPanel({ hasUpdates }: { hasUpdates: boolean }) {
   const navigate = useNavigate();
   const client = useUpdatesClient();
   const { overview, categories } = useAudience();
-  const drafts = useLive((c) => c.listDrafts(), []);
-  const people = useLive((c) => c.listPeople(), []);
+  const drafts = useLive((c) => c.listDrafts().then(fromWire<DraftView[]>), []);
+  const people = useLive((c) => c.listPeople().then(fromWire<PersonView[]>), []);
   const investors = (people.data ?? []).filter((p) => !p.is_team).length;
 
   const steps = [
@@ -236,7 +236,7 @@ function TeamPanel({ hasUpdates }: { hasUpdates: boolean }) {
               <button
                 className="linkBtn danger"
                 onClick={async () => {
-                  await client?.deleteDraft({ draft_id: d.id });
+                  await client?.deleteDraft({ draftId: d.id });
                   drafts.reload();
                 }}
               >

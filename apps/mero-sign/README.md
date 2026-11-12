@@ -214,11 +214,14 @@ reads the bytes, as in v1. What moved is where the bytes go:
   namespace/context plumbing are gone. The session is `@calimero-apps/connect`
   (`src/session.ts`, `src/sessionContext.tsx`): passkey sign-in or sign-up, the
   session stored per app and per target.
-- `src/lib/meroSign.ts` is the typed client and the **one adapter**: it calls
-  the contract by its ABI names and turns its answers back into the shapes the
-  screens were written against (snake_case, numbers, nanosecond-free), so the
-  pages keep their UI. `meroSign.test.ts` checks its method lists and argument
-  names against the committed `logic/res/abi.json`.
+- The contract is called through `MeroSignClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-sign codegen` after a contract change, and CI fails when it is
+  stale); `src/client.test.ts` checks it against the ABI. The ABI names its
+  records without their shapes, so the generated types are `unknown`:
+  `src/lib/meroSign.ts` is the **one adapter** that turns each answer back into
+  the shapes the screens were written against (snake_case, numbers,
+  nanosecond-free), so the pages keep their UI.
 - `src/lib/agreements.ts`: workspaces are orgs (creating one also lets members
   create agreements and invite, a passkey step-up); agreements are instances in
   the org, then `setup(false, name)`; the library is your own instance

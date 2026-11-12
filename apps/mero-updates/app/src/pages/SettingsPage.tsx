@@ -4,7 +4,7 @@ import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
 import LogoutButton from "../components/LogoutButton";
 import { CheckIcon, MoonIcon, PlusIcon, SunIcon } from "../components/icons";
-import type { CategoryView } from "../lib/updatesClient";
+import { fromWire, type CategoryView, type Settings } from "../lib/updatesClient";
 import { CATEGORY_COLORS, usePersonLabel, useLive, useUpdatesClient } from "../lib/updates";
 import { useTheme } from "../theme";
 
@@ -32,7 +32,7 @@ const CADENCES = [
 export default function SettingsPage() {
   const client = useUpdatesClient();
   const { me, categories, reload } = useAudience();
-  const settings = useLive((c) => c.getSettings(), []);
+  const settings = useLive((c) => c.getSettings().then(fromWire<Settings>), []);
   const [company, setCompany] = useState("");
   const [cadence, setCadence] = useState(30);
   const [saved, setSaved] = useState(false);
@@ -55,7 +55,7 @@ export default function SettingsPage() {
     if (!client) return;
     setError(null);
     try {
-      await client.setSettings({ company_name: company.trim(), cadence_days: cadence });
+      await client.setSettings({ companyName: company.trim(), cadenceDays: cadence });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
       reload();
@@ -274,7 +274,7 @@ function CategoryEditor({ category, onChanged }: { category: CategoryView; onCha
             <button
               className="linkBtn danger"
               onClick={async () => {
-                await client?.archiveCategory({ category_id: category.id });
+                await client?.archiveCategory({ categoryId: category.id });
                 onChanged();
               }}
             >
@@ -301,7 +301,7 @@ function CategoryEditor({ category, onChanged }: { category: CategoryView; onCha
           className="primary small"
           disabled={!name.trim()}
           onClick={async () => {
-            await client?.editCategory({ category_id: category.id, name: name.trim(), emoji: emoji.trim(), color });
+            await client?.editCategory({ categoryId: category.id, name: name.trim(), emoji: emoji.trim(), color });
             setEditing(false);
             onChanged();
           }}
