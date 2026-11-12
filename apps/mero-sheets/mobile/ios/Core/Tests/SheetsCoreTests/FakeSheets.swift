@@ -33,15 +33,15 @@ final class FakeSheets: @unchecked Sendable {
     var account: String { backend.account }
 
     func seedSheet(_ id: String, name: String, position: UInt32 = 0, linkedFrom: String = "", in ctx: String) {
-        lock.withLock { sheets[ctx, default: []].append(Sheet(id: id, name: name, position: position, createdAt: 1, linkedFrom: linkedFrom)) }
+        lock.withLock { sheets[ctx, default: []].append(Sheet(id: id, name: name, position: position, created_at: 1, linked_from: linkedFrom)) }
     }
 
     func seedCell(_ sheet: String, _ row: String, _ col: String, raw: String, computed: String? = nil, format: String = "", in ctx: String) {
         lock.withLock {
             cells[ctx, default: []].append(
                 Cell(
-                    id: "\(sheet)|\(row)|\(col)", sheetId: sheet, rowId: row, colId: col, rawValue: raw,
-                    computedValue: computed ?? raw, format: format, updatedAt: 1, lastEditor: account, lastEditedAt: 1))
+                    id: "\(sheet)|\(row)|\(col)", sheet_id: sheet, row_id: row, col_id: col, raw_value: raw,
+                    computed_value: computed ?? raw, format: format, updated_at: 1, last_editor: account, last_edited_at: 1))
         }
     }
 
@@ -71,7 +71,7 @@ final class FakeSheets: @unchecked Sendable {
             case "getComments": return try enc.encode(comments[ctx] ?? [])
             case "getMembers": return try enc.encode(members[ctx] ?? [])
             case "getProtections": return try enc.encode(protections[ctx] ?? [])
-            case "getProject": return try enc.encode(Project(id: "p-\(ctx)", name: projects[ctx] ?? "", createdAt: 1))
+            case "getProject": return try enc.encode(Project(id: "p-\(ctx)", name: projects[ctx] ?? "", created_at: 1))
             case "whoami": return try enc.encode(account)
             case "initProject":
                 projects[ctx] = s("name")
@@ -80,15 +80,15 @@ final class FakeSheets: @unchecked Sendable {
                 next += 1
                 let id = "sheet-\(next)"
                 sheets[ctx, default: []].append(
-                    Sheet(id: id, name: s("name"), position: UInt32(sheets[ctx]?.count ?? 0), createdAt: 1, linkedFrom: ""))
+                    Sheet(id: id, name: s("name"), position: UInt32(sheets[ctx]?.count ?? 0), created_at: 1, linked_from: ""))
                 return try enc.encode(id)
             case "setCell":
                 cells[ctx, default: []].removeAll { $0.sheetId == s("sheetId") && $0.rowId == s("rowId") && $0.colId == s("colId") }
                 cells[ctx, default: []].append(
                     Cell(
-                        id: "\(s("sheetId"))|\(s("rowId"))|\(s("colId"))", sheetId: s("sheetId"), rowId: s("rowId"),
-                        colId: s("colId"), rawValue: s("rawValue"), computedValue: s("rawValue"), format: "", updatedAt: 2,
-                        lastEditor: account, lastEditedAt: 2))
+                        id: "\(s("sheetId"))|\(s("rowId"))|\(s("colId"))", sheet_id: s("sheetId"), row_id: s("rowId"),
+                        col_id: s("colId"), raw_value: s("rawValue"), computed_value: s("rawValue"), format: "", updated_at: 2,
+                        last_editor: account, last_edited_at: 2))
                 return try enc.encode("ok")
             case "clearCell":
                 cells[ctx, default: []].removeAll { $0.sheetId == s("sheetId") && $0.rowId == s("rowId") && $0.colId == s("colId") }
@@ -97,8 +97,8 @@ final class FakeSheets: @unchecked Sendable {
                 let id = "comment-\(next)"
                 comments[ctx, default: []].append(
                     Comment(
-                        id: id, sheetId: s("sheetId"), rowId: s("rowId"), colId: s("colId"), author: account, text: s("text"),
-                        mentions: [], parent: s("parent"), resolved: false, createdAt: UInt64(next), updatedAt: UInt64(next)))
+                        id: id, sheet_id: s("sheetId"), row_id: s("rowId"), col_id: s("colId"), author: account, text: s("text"),
+                        mentions: [], parent: s("parent"), resolved: false, created_at: UInt64(next), updated_at: UInt64(next)))
                 return try enc.encode(id)
             case "setCommentResolved":
                 comments[ctx] = comments[ctx]?.map {

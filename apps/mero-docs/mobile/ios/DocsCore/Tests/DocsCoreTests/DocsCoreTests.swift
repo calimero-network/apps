@@ -294,8 +294,10 @@ final class WireTests: XCTestCase {
     func testDocViewTimestampsAreMillisecondStrings() throws {
         let json = #"{"id":"doc-1","title":"T","tags":["k"],"archived":false,"createdAt":"1700000000123","updatedAt":"1700000000456","createdBy":"a","updatedBy":"b","canDelete":true}"#
         let doc = try JSONDecoder().decode(DocDto.self, from: Data(json.utf8))
-        XCTAssertEqual(doc.createdAt, 1_700_000_000_123_000_000)
-        XCTAssertEqual(doc.updatedAt, 1_700_000_000_456_000_000)
+        XCTAssertEqual(doc.createdAt, 1_700_000_000_123)
+        XCTAssertEqual(doc.updatedAt, 1_700_000_000_456)
+        // The screens show them in nanoseconds, as the web adapter does.
+        XCTAssertEqual(DocsFormat.nanos(millis: doc.updatedAt), 1_700_000_000_456_000_000)
         XCTAssertTrue(doc.canDelete)
         // The demo writes the same wire shape back.
         let again = try JSONDecoder().decode(DocDto.self, from: try JSONEncoder().encode(doc))

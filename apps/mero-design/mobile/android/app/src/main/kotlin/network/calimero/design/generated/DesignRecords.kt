@@ -1,9 +1,9 @@
 // The board's types, as the contract (`logic/res/abi.json`) answers them: first written by
-// @calimero/abi-codegen from v1's ABI, kept since. The calls are the generated
-// [network.calimero.design.generated.client.DesignClient] (`scripts/mobile-codegen.sh` at the repo
-// root); until the logic derives `AbiType` the ABI names these types without their shape, so the
-// client takes and answers their JSON and these read and write it. Then they are generated too and
-// this file goes.
+// @calimero/abi-codegen from v1's ABI, kept since. The calls are the generated [DesignClient]
+// (`scripts/mobile-codegen.sh` at the repo root), and so are the types the ABI describes
+// ([BoardInfo], [LabelUpdate], [MemberRole]). The ABI still leaves `Element`, `ElementPatch`,
+// `Comment`, `CursorState` and `Member` `unknown`, so the client takes and answers their JSON and
+// the types here read and write it. Once they are generated too, this file goes.
 
 package network.calimero.design.generated
 
@@ -14,33 +14,24 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
+import network.calimero.design.generated.client.DesignClient
 
 /** Board summary: name, description, counts and owner. */
-@Serializable
-data class BoardInfo(
-    /** The board's name. */
-    val name: String,
-    /** The board's description; may be empty. */
-    val description: String,
-    /** How many elements are on the canvas. */
-    val elementCount: UInt,
-    /** How many members have joined. */
-    val memberCount: UInt,
-    /** The owner's member id (account id). */
-    val owner: String? = null,
-)
+typealias BoardInfo = DesignClient.BoardInfo
+
+/** One element's new label in an `updateElementLabels` call; a null label clears it. */
+typealias LabelUpdate = DesignClient.LabelUpdate
+
+/** A member with their effective role (`admin`, `editor` or `viewer`). */
+typealias MemberRole = DesignClient.MemberRole
 
 /** A comment pinned at a canvas point, with its replies. */
 @Serializable
@@ -308,15 +299,6 @@ data class ElementPatch(
     @SerialName("corner_radius") val cornerRadius: UInt? = null,
 )
 
-/** One element's new label in an `update_element_labels` call. */
-@Serializable
-data class LabelUpdate(
-    /** The element to rename; an unknown id is skipped. */
-    val id: String,
-    /** The new label, as for `update_element_label`; `null` clears it. */
-    val label: String? = null,
-)
-
 /** A board member: someone who has called `join`. */
 @Serializable
 data class Member(
@@ -330,17 +312,6 @@ data class Member(
     val joinedAt: ULong,
     /** Unix milliseconds of the last profile edit; the newest edit wins. */
     val usernameUpdatedAt: ULong,
-)
-
-/** A member with their effective role. */
-@Serializable
-data class MemberRole(
-    /** Member id (account id). */
-    val member: String,
-    /** `"admin"`, `"editor"` or `"viewer"`. */
-    val role: String,
-    /** The member's account id; always equal to `member`. */
-    val account: String? = null,
 )
 
 @Serializable

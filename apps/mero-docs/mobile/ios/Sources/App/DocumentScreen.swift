@@ -137,7 +137,7 @@ struct DocumentScreen: View {
                     Text("·")
                 }
                 if let doc = model.doc, doc.updatedAt > 0 {
-                    Text("Updated \(DocsFormat.relativeTime(nanos: doc.updatedAt)) by \(personName(doc.updatedBy, me: model.account))")
+                    Text("Updated \(DocsFormat.relativeTime(nanos: DocsFormat.nanos(millis: doc.updatedAt))) by \(personName(doc.updatedBy, me: model.account))")
                 }
             }
             .font(Theme.body(13))

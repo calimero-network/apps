@@ -7,7 +7,8 @@ import UIKit
 /// The demo account: three workspaces, a product team's folders and
 /// documents, one long launch plan with comments on its blocks, and the
 /// picture its image block shows. Answers the docs contract in the shapes the
-/// node writes them (`DocDto`, `Block`, `CommentDto`, `DocSearchPage`: camelCase, u64s as decimal strings).
+/// node writes them (`DocDto`, `Block`, `CommentDto`, `DocSearchPage`: camelCase, u64s as decimal strings,
+/// timestamps in milliseconds).
 enum DocsDemo {
     static let applicationId = DemoIds.hex("app:mero-docs")
     static let me = DemoIds.hex("person:me")
@@ -104,7 +105,7 @@ enum DocsDemo {
                 comments[doc.dto.id, default: []].append(
                     CommentDto(
                         id: id, author: me, docId: doc.dto.id, body: call.string("body") ?? "",
-                        createdAt: DemoIds.stamp(ago: 0)))
+                        createdAt: DemoIds.stamp(ago: 0) / 1_000_000))
                 return try DemoReply.json(id)
             case "searchDocs":
                 return try DemoReply.json(search(call.string("query") ?? "", in: here))
@@ -264,8 +265,8 @@ private enum Fixtures {
             let creator = DocsDemo.person(by == "me" ? "Maya Chen" : "Daniel Okafor")
             return DocsDemo.DemoDoc(
                 dto: DocDto(
-                    id: id, title: title, tags: tags, archived: false, createdAt: DemoIds.stamp(ago: edited * 60 + 9 * 86_400),
-                    updatedAt: DemoIds.stamp(ago: edited * 60), createdBy: creator,
+                    id: id, title: title, tags: tags, archived: false, createdAt: DemoIds.stamp(ago: edited * 60 + 9 * 86_400) / 1_000_000,
+                    updatedAt: DemoIds.stamp(ago: edited * 60) / 1_000_000, createdBy: creator,
                     updatedBy: by == "me" ? DocsDemo.me : DocsDemo.person(by), canDelete: by == "me"),
                 blocks: blocks)
         }
@@ -311,12 +312,12 @@ private enum Fixtures {
             out.append(
                 CommentDto(
                     id: rootId, author: author(seed.who), docId: doc.dto.id,
-                    body: CommentBody.encode(seed.text, blockId: blockId), createdAt: DemoIds.stamp(ago: seed.ago * 60)))
+                    body: CommentBody.encode(seed.text, blockId: blockId), createdAt: DemoIds.stamp(ago: seed.ago * 60) / 1_000_000))
             for (r, reply) in seed.replies.enumerated() {
                 out.append(
                     CommentDto(
                         id: DemoIds.hex("comment:\(doc.dto.title):\(n):\(r)"), author: author(reply.0), docId: doc.dto.id,
-                        body: CommentBody.encode(reply.2, replyTo: rootId), createdAt: DemoIds.stamp(ago: reply.1 * 60)))
+                        body: CommentBody.encode(reply.2, replyTo: rootId), createdAt: DemoIds.stamp(ago: reply.1 * 60) / 1_000_000))
             }
         }
         return out

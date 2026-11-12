@@ -23,7 +23,7 @@ data class DocComment(
     companion object {
         fun of(dto: CommentDto): DocComment {
             val parsed = CommentBody.parse(dto.body)
-            return DocComment(dto.id, dto.author, dto.createdAt, parsed.text, parsed.blockId, parsed.replyTo)
+            return DocComment(dto.id, dto.author, DocsFormat.nanos(dto.createdAt), parsed.text, parsed.blockId, parsed.replyTo)
         }
     }
 }

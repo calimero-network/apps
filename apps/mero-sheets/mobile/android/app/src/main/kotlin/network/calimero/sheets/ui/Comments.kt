@@ -61,6 +61,8 @@ import network.calimero.sheets.core.SheetsFormat
 import network.calimero.sheets.core.SpreadsheetModel
 import network.calimero.sheets.core.SpreadsheetState
 import network.calimero.sheets.generated.Comment
+import network.calimero.sheets.generated.createdAt
+import network.calimero.sheets.generated.updatedAt
 import kotlin.coroutines.cancellation.CancellationException
 
 private const val RESOLVED_ALPHA = 0.75f

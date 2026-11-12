@@ -8,6 +8,9 @@ import network.calimero.sheets.generated.ChartInput
 import network.calimero.sheets.generated.Member
 import network.calimero.sheets.generated.Protection
 import network.calimero.sheets.generated.SheetView
+import network.calimero.sheets.generated.frozenCols
+import network.calimero.sheets.generated.frozenRows
+import network.calimero.sheets.generated.rawValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

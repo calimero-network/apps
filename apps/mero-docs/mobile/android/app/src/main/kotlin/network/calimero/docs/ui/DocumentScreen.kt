@@ -217,7 +217,7 @@ fun DocumentScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
-                            item { Header(model, doc?.updatedAt ?: 0u, doc?.updatedBy.orEmpty(), doc?.archived == true) }
+                            item { Header(model, DocsFormat.nanos(doc?.updatedAt ?: 0u), doc?.updatedBy.orEmpty(), doc?.archived == true) }
                             if (blocks.all { it.isBlank } && blocks.none { it.kind is BlockKind.Image }) {
                                 item { Text("This document is empty.", style = DocsTheme.body(16, color = DocsTheme.faint), modifier = Modifier.padding(vertical = 24.dp)) }
                             }
