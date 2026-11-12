@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { FeedView } from "./FeedView";
@@ -7,7 +7,8 @@ import { useFeed } from "./useFeed";
 import { clusterBackend } from "./backend";
 import { checkpointByline, checkpointSections, prHref, type CheckpointView } from "./checkpoint";
 import type { CheckpointInput } from "./hyperfeedTypes";
-import type { HyperfeedClient } from "./hyperfeed";
+import { HyperfeedClient } from "./generated/client";
+import { withRoutes } from "@calimero-apps/connect/testing";
 
 const NOW = 1_800_000_000_000;
 
@@ -70,9 +71,11 @@ describe("the demo keeps checkpoints as the contract does", () => {
 
 describe("the cluster backend", () => {
   it("reads no checkpoint as null", async () => {
-    const client = { checkpoint: () => Promise.resolve(null) } as unknown as HyperfeedClient;
+    const view = vi.fn(async () => ({ index: 1, result: null }));
+    const client = new HyperfeedClient(withRoutes({ view }), "feed-1");
     const apps = { call: async () => undefined, view: async () => undefined };
     expect(await clusterBackend(client, apps).checkpoint!("c1")).toBeNull();
+    expect(view).toHaveBeenCalledWith("feed-1", "checkpoint", { chain: "c1" });
   });
 });
 
