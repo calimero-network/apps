@@ -30,7 +30,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^32.0.0",
+    "@calimero-network/mero-js": "^33.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
