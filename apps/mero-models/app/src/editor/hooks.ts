@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
-import { MeroModelsClient } from "../meroModels";
+import { MeroModelsClient } from "../generated/client";
+import { u64 } from "../meroModels";
 import { useMaybeScene, useScene } from "../scene";
 import { memberColor } from "./model";
 import { GUEST, useEditor } from "./store";
@@ -42,7 +43,7 @@ export function useModelsClient(contextId: string): MeroModelsClient | null {
   const client = scene?.client ?? null;
   const after = scene?.after;
   return useMemo(
-    () => (client ? new MeroModelsClient(client, contextId, after) : null),
+    () => (client ? new MeroModelsClient(client, contextId, { after }) : null),
     [client, contextId, after],
   );
 }
@@ -145,7 +146,7 @@ export function useJoin(contextId: string, name: string): void {
   useEffect(() => {
     if (!client) return;
     const t = window.setTimeout(() => {
-      void client.join({ name: name || GUEST, now: Date.now() }).catch((e) => {
+      void client.join({ name: name || GUEST, now: u64(Date.now()) }).catch((e) => {
         // Presence in the members list is a nicety; editing works without it.
         console.warn("[mero-models] join failed:", messageOf(e));
       });

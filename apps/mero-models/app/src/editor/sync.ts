@@ -1,11 +1,12 @@
-import type { LockView, MeroModelsClient, MeshRef, TextureRef, VersionView } from "../meroModels";
+import type { MeroModelsClient } from "../generated/client";
+import { u64, type LockView, type MemberView, type MeshRef, type SceneInfo, type TextureRef, type VersionView } from "../meroModels";
 import type { BlobStore } from "./blobs";
 import type { MeshShape } from "./geometry";
 import { decodeMesh, encodeMesh, meshCounts } from "./meshcodec";
 import { MAX_BATCH, type Environment, type SceneObject } from "./model";
 import { emptyChange, useEditor, type Change, type Outbox, type Role, type StoredMesh } from "./store";
 
-/** The slice of the contract's client the sync needs — narrowed so tests can fake it. */
+/** The slice of the contract's generated client the sync needs — narrowed so tests can fake it. */
 export type SceneApi = Pick<
   MeroModelsClient,
   | "getScene"
@@ -110,7 +111,7 @@ export class SceneSync implements Outbox {
           const env = this.envQueue;
           this.envQueue = null;
           try {
-            await this.api.setEnvironment({ environment: env, now: Date.now() });
+            await this.api.setEnvironment({ environment: env, now: u64(Date.now()) });
           } catch (e) {
             this.onError(messageOf(e));
           } finally {
@@ -140,11 +141,11 @@ export class SceneSync implements Outbox {
   private async write(change: Change): Promise<void> {
     const now = Date.now();
     for (let i = 0; i < change.puts.length; i += MAX_BATCH) {
-      await this.api.putObjects({ objects: change.puts.slice(i, i + MAX_BATCH), now });
+      await this.api.putObjects({ objects: change.puts.slice(i, i + MAX_BATCH), now: u64(now) });
     }
     for (const m of change.meshes) await this.saveMesh(m.id, m.shape, m.message ?? "");
     for (let i = 0; i < change.deletes.length; i += MAX_BATCH) {
-      await this.api.deleteObjects({ ids: change.deletes.slice(i, i + MAX_BATCH), now: Date.now() });
+      await this.api.deleteObjects({ ids: change.deletes.slice(i, i + MAX_BATCH), now: u64(Date.now()) });
     }
   }
 
@@ -166,7 +167,7 @@ export class SceneSync implements Outbox {
       message,
       updated_at: 0,
     };
-    await this.api.putMesh({ mesh, now: Date.now() });
+    await this.api.putMesh({ mesh, now: u64(Date.now()) });
   }
 
   /** Put an earlier version back: the same blob, as a new version. */
@@ -188,7 +189,7 @@ export class SceneSync implements Outbox {
   }
 
   listHistory(assetId: string): Promise<VersionView[]> {
-    return this.api.listHistory({ asset_id: assetId });
+    return this.api.listHistory({ assetId }) as Promise<VersionView[]>;
   }
 
   /** Upload an image and add (or replace) a texture. Not an undo step: textures are versioned instead. */
@@ -197,7 +198,7 @@ export class SceneSync implements Outbox {
       const blob = await this.blobs.put(bytes);
       await this.api.putTexture({
         texture: { ...texture, blob_id: blob.blobId, size: blob.size, author: "", updated_at: 0 },
-        now: Date.now(),
+        now: u64(Date.now()),
       });
     });
   }
@@ -206,17 +207,17 @@ export class SceneSync implements Outbox {
     await this.run(() =>
       this.api.putTexture({
         texture: { ...texture, blob_id: version.blob_id, size: version.size, width: version.a, height: version.b, message: `Restored v${version.number}` },
-        now: Date.now(),
+        now: u64(Date.now()),
       }),
     );
   }
 
   deleteTextures(ids: string[]): Promise<void> {
-    return this.run(() => this.api.deleteTextures({ ids, now: Date.now() }));
+    return this.run(() => this.api.deleteTextures({ ids, now: u64(Date.now()) }));
   }
 
   checkOut(ids: string[], hours: number): Promise<void> {
-    return this.run(() => this.api.checkOut({ ids, hours, now: Date.now() }));
+    return this.run(() => this.api.checkOut({ ids, hours, now: u64(Date.now()) }));
   }
 
   checkIn(ids: string[]): Promise<void> {
@@ -273,12 +274,12 @@ export class SceneSync implements Outbox {
     const start = this.tick;
     const now = Date.now();
     const [scene, serverObjects, refs, textures, locks, members] = await Promise.all([
-      this.api.getScene(),
-      this.api.getObjects(),
-      this.api.listMeshes(),
-      this.api.listTextures(),
-      this.api.listLocks({ now }),
-      this.api.getMembers(),
+      this.api.getScene() as Promise<SceneInfo>,
+      this.api.getObjects() as Promise<SceneObject[]>,
+      this.api.listMeshes() as Promise<MeshRef[]>,
+      this.api.listTextures() as Promise<TextureRef[]>,
+      this.api.listLocks({ now: u64(now) }) as Promise<LockView[]>,
+      this.api.getMembers() as Promise<MemberView[]>,
     ]);
     if (this.disposed) return;
     const state = useEditor.getState();

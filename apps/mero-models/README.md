@@ -47,7 +47,8 @@ apps/mero-models/
     │   ├── io.ts              OBJ/STL/glTF import, glTF/OBJ/STL/JSON export
     │   └── hooks.ts           sync, join, the event stream and presence, as React hooks
     ├── src/studio/            the panels: menu bar, toolbar, outliner, properties, share
-    ├── src/meroModels.ts      the contract's client: v1's method surface on CalimeroClient
+    ├── src/generated/         MeroModelsClient: `mero-app-build codegen` from res/abi.json (committed)
+    ├── src/meroModels.ts      v1's answer shapes, and `u64` for the contract's u64 arguments
     ├── src/session.ts         target → client → passkey sign-in/up, the stored session
     ├── src/scenes.ts          scenes (app instances) in studios (orgs), invitations
     └── src/StudioPage.tsx     sign in, pick a scene, open the studio
@@ -249,7 +250,7 @@ The same methods, arguments, answers and events, with these differences a client
 |---|---|---|---|
 | method names | `get_scene`, `set_environment`, `get_objects`, `get_objects_by_ids`, `put_objects`, `delete_objects`, `clear_scene`, `put_mesh`, `list_meshes`, `put_texture`, `list_textures`, `delete_textures`, `list_history`, `check_out`, `check_in`, `list_locks`, `get_members`, `grant_editor`, `revoke_editor`, `my_role` (`join` unchanged) | `getScene`, `setEnvironment`, `getObjects`, `getObjectsByIds`, `putObjects`, `deleteObjects`, `clearScene`, `putMesh`, `listMeshes`, `putTexture`, `listTextures`, `deleteTextures`, `listHistory`, `checkOut`, `checkIn`, `listLocks`, `getMembers`, `grantEditor`, `revokeEditor`, `myRole` | the ABI names methods and arguments in camelCase |
 | argument names | `asset_id` | `assetId`; v1 names are `BadArgs` | the same |
-| `now` | a number | a decimal string (`"1727000000000"`) | a `u64` parameter travels as a decimal string (D20); `src/meroModels.ts` converts |
+| `now` | a number | a decimal string (`"1727000000000"`) | a `u64` parameter travels as a decimal string (D20); callers convert with `u64` from `src/meroModels.ts` |
 | answers | snake_case fields, numbers | unchanged: snake_case fields, timestamps and sizes as JSON numbers | the records are plain serde structs |
 | `init` | `init(name)`: the scene's first name | `init()`; the scene is named by its instance (`createApp(name, …)`), and `getScene.name` is `""` until an editor renames it | the harness and the node run `init` with no arguments; the studio shows the instance's name |
 | errors | a message (`app::bail!`) | `422 APP_ERROR` `{ code, fields: { message } }` with `code` `Forbidden` (role), `Invalid` (an argument), `Locked` (someone else's check-out) | `#[app::error]`'s wire shape |
@@ -285,10 +286,13 @@ opens a scene of that studio; the pending invite is `@calimero-apps/connect`'s
 told to ask an owner), keeps
 blobs through `CalimeroClient.uploadBlob` / `downloadBlob`, follows the scene
 with `client.events`, streams presence with `publishPresence` /
-`presenceStream`, and calls the contract through `src/meroModels.ts`, which
-keeps v1's generated client's method surface and answer shapes so the editor
-did not change; a test checks its methods and parameter names against
-`logic/res/abi.json`. The landing page's sign-in is the app's own
+`presenceStream`, and calls the contract through `MeroModelsClient` (`src/generated/client.ts`),
+which `mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F
+mero-models codegen` after a contract change; CI fails when the committed copy
+is stale). The ABI names its records without their shapes, so the generated
+types are `unknown`: `src/meroModels.ts` keeps v1's answer shapes, which the
+sync (`editor/sync.ts`) types each answer with, so the editor did not change;
+`src/client.test.ts` checks the class against `logic/res/abi.json`. The landing page's sign-in is the app's own
 (`ownConnect`).
 
 The phone apps (`mobile/`) are unchanged and still speak the v1 contract; see
