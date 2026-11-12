@@ -15,26 +15,576 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct CrmClient: Sendable {
-    /// The app type `ActivityView`: the ABI names it without its shape, so it is its JSON.
-    public typealias ActivityView = JSONValue
 
-    /// The app type `AutomationView`: the ABI names it without its shape, so it is its JSON.
-    public typealias AutomationView = JSONValue
+    /// The app type `ActivityView`.
+    public struct ActivityView: Codable, Sendable, Equatable {
+        public var id: String
+        public var deal_id: String?
+        public var deal_title: String?
+        public var contact_id: String?
+        public var kind: String
+        public var subject: String
+        public var due_at: UInt64
+        public var done: Bool
+        public var done_at: UInt64?
+        public var owner: String?
+        public var note: String
+        public var automation_id: String?
+        public var created_by: String
+        public var created_at: UInt64
 
-    /// The app type `ContactView`: the ABI names it without its shape, so it is its JSON.
-    public typealias ContactView = JSONValue
+        public init(
+            id: String,
+            deal_id: String? = nil,
+            deal_title: String? = nil,
+            contact_id: String? = nil,
+            kind: String,
+            subject: String,
+            due_at: UInt64,
+            done: Bool,
+            done_at: UInt64? = nil,
+            owner: String? = nil,
+            note: String,
+            automation_id: String? = nil,
+            created_by: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.deal_id = deal_id
+            self.deal_title = deal_title
+            self.contact_id = contact_id
+            self.kind = kind
+            self.subject = subject
+            self.due_at = due_at
+            self.done = done
+            self.done_at = done_at
+            self.owner = owner
+            self.note = note
+            self.automation_id = automation_id
+            self.created_by = created_by
+            self.created_at = created_at
+        }
 
-    /// The app type `DealDetail`: the ABI names it without its shape, so it is its JSON.
-    public typealias DealDetail = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("deal_id"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("deal_title"))
+            let v3 = try fields.decodeIfPresent(String.self, forKey: Key("contact_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("kind"))
+            let v5 = try fields.decode(String.self, forKey: Key("subject"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("due_at")).value
+            let v7 = try fields.decode(Bool.self, forKey: Key("done"))
+            let v8 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("done_at"))?.value
+            let v9 = try fields.decodeIfPresent(String.self, forKey: Key("owner"))
+            let v10 = try fields.decode(String.self, forKey: Key("note"))
+            let v11 = try fields.decodeIfPresent(String.self, forKey: Key("automation_id"))
+            let v12 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v13 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.deal_id = v1
+            self.deal_title = v2
+            self.contact_id = v3
+            self.kind = v4
+            self.subject = v5
+            self.due_at = v6
+            self.done = v7
+            self.done_at = v8
+            self.owner = v9
+            self.note = v10
+            self.automation_id = v11
+            self.created_by = v12
+            self.created_at = v13
+        }
 
-    /// The app type `DealView`: the ABI names it without its shape, so it is its JSON.
-    public typealias DealView = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.deal_id, forKey: Key("deal_id"))
+            try fields.encode(self.deal_title, forKey: Key("deal_title"))
+            try fields.encode(self.contact_id, forKey: Key("contact_id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.subject, forKey: Key("subject"))
+            try fields.encode(DecimalString(self.due_at), forKey: Key("due_at"))
+            try fields.encode(self.done, forKey: Key("done"))
+            try fields.encode(self.done_at.map { DecimalString($0) }, forKey: Key("done_at"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+            try fields.encode(self.note, forKey: Key("note"))
+            try fields.encode(self.automation_id, forKey: Key("automation_id"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
 
-    /// The app type `Settings`: the ABI names it without its shape, so it is its JSON.
-    public typealias Settings = JSONValue
+    /// The app type `AutomationView`.
+    public struct AutomationView: Codable, Sendable, Equatable {
+        public var id: String
+        public var stage_id: String
+        public var kind: String
+        public var subject: String
+        public var due_in_days: UInt32
+        public var enabled: Bool
+        public var created_by: String
+        public var created_at: UInt64
 
-    /// The app type `StageView`: the ABI names it without its shape, so it is its JSON.
-    public typealias StageView = JSONValue
+        public init(
+            id: String,
+            stage_id: String,
+            kind: String,
+            subject: String,
+            due_in_days: UInt32,
+            enabled: Bool,
+            created_by: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.stage_id = stage_id
+            self.kind = kind
+            self.subject = subject
+            self.due_in_days = due_in_days
+            self.enabled = enabled
+            self.created_by = created_by
+            self.created_at = created_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("stage_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("kind"))
+            let v3 = try fields.decode(String.self, forKey: Key("subject"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("due_in_days"))
+            let v5 = try fields.decode(Bool.self, forKey: Key("enabled"))
+            let v6 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.stage_id = v1
+            self.kind = v2
+            self.subject = v3
+            self.due_in_days = v4
+            self.enabled = v5
+            self.created_by = v6
+            self.created_at = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.stage_id, forKey: Key("stage_id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.subject, forKey: Key("subject"))
+            try fields.encode(self.due_in_days, forKey: Key("due_in_days"))
+            try fields.encode(self.enabled, forKey: Key("enabled"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
+
+    /// The app type `ContactView`.
+    public struct ContactView: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var email: String
+        public var phone: String
+        public var organization: String
+        public var job_title: String
+        public var open_deals: UInt32
+        public var won_value: UInt64
+        public var created_by: String
+        public var created_at: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            email: String,
+            phone: String,
+            organization: String,
+            job_title: String,
+            open_deals: UInt32,
+            won_value: UInt64,
+            created_by: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.email = email
+            self.phone = phone
+            self.organization = organization
+            self.job_title = job_title
+            self.open_deals = open_deals
+            self.won_value = won_value
+            self.created_by = created_by
+            self.created_at = created_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("email"))
+            let v3 = try fields.decode(String.self, forKey: Key("phone"))
+            let v4 = try fields.decode(String.self, forKey: Key("organization"))
+            let v5 = try fields.decode(String.self, forKey: Key("job_title"))
+            let v6 = try fields.decode(UInt32.self, forKey: Key("open_deals"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("won_value")).value
+            let v8 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.name = v1
+            self.email = v2
+            self.phone = v3
+            self.organization = v4
+            self.job_title = v5
+            self.open_deals = v6
+            self.won_value = v7
+            self.created_by = v8
+            self.created_at = v9
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.email, forKey: Key("email"))
+            try fields.encode(self.phone, forKey: Key("phone"))
+            try fields.encode(self.organization, forKey: Key("organization"))
+            try fields.encode(self.job_title, forKey: Key("job_title"))
+            try fields.encode(self.open_deals, forKey: Key("open_deals"))
+            try fields.encode(DecimalString(self.won_value), forKey: Key("won_value"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
+
+    /// The app type `DealDetail`.
+    public struct DealDetail: Codable, Sendable, Equatable {
+        public var deal: DealView
+        public var contact: ContactView?
+        public var activities: [ActivityView]
+        public var notes: [NoteView]
+
+        public init(
+            deal: DealView,
+            contact: ContactView? = nil,
+            activities: [ActivityView],
+            notes: [NoteView]
+        ) {
+            self.deal = deal
+            self.contact = contact
+            self.activities = activities
+            self.notes = notes
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DealView.self, forKey: Key("deal"))
+            let v1 = try fields.decodeIfPresent(ContactView.self, forKey: Key("contact"))
+            let v2 = try fields.decode([ActivityView].self, forKey: Key("activities"))
+            let v3 = try fields.decode([NoteView].self, forKey: Key("notes"))
+            self.deal = v0
+            self.contact = v1
+            self.activities = v2
+            self.notes = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.deal, forKey: Key("deal"))
+            try fields.encode(self.contact, forKey: Key("contact"))
+            try fields.encode(self.activities, forKey: Key("activities"))
+            try fields.encode(self.notes, forKey: Key("notes"))
+        }
+    }
+
+    /// The app type `DealView`.
+    public struct DealView: Codable, Sendable, Equatable {
+        public var id: String
+        public var title: String
+        public var value: UInt64
+        public var organization: String
+        public var contact_id: String?
+        public var contact_name: String?
+        public var owner: String?
+        public var stage_id: String
+        public var status: String
+        public var lost_reason: String
+        public var expected_close: UInt64?
+        public var source: String
+        public var probability: UInt32
+        public var stage_entered_at: UInt64
+        public var closed_at: UInt64?
+        public var next_activity: NextActivity?
+        public var open_activities: UInt32
+        public var last_touch_at: UInt64?
+        public var created_by: String
+        public var created_at: UInt64
+
+        public init(
+            id: String,
+            title: String,
+            value: UInt64,
+            organization: String,
+            contact_id: String? = nil,
+            contact_name: String? = nil,
+            owner: String? = nil,
+            stage_id: String,
+            status: String,
+            lost_reason: String,
+            expected_close: UInt64? = nil,
+            source: String,
+            probability: UInt32,
+            stage_entered_at: UInt64,
+            closed_at: UInt64? = nil,
+            next_activity: NextActivity? = nil,
+            open_activities: UInt32,
+            last_touch_at: UInt64? = nil,
+            created_by: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.title = title
+            self.value = value
+            self.organization = organization
+            self.contact_id = contact_id
+            self.contact_name = contact_name
+            self.owner = owner
+            self.stage_id = stage_id
+            self.status = status
+            self.lost_reason = lost_reason
+            self.expected_close = expected_close
+            self.source = source
+            self.probability = probability
+            self.stage_entered_at = stage_entered_at
+            self.closed_at = closed_at
+            self.next_activity = next_activity
+            self.open_activities = open_activities
+            self.last_touch_at = last_touch_at
+            self.created_by = created_by
+            self.created_at = created_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("title"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("value")).value
+            let v3 = try fields.decode(String.self, forKey: Key("organization"))
+            let v4 = try fields.decodeIfPresent(String.self, forKey: Key("contact_id"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("contact_name"))
+            let v6 = try fields.decodeIfPresent(String.self, forKey: Key("owner"))
+            let v7 = try fields.decode(String.self, forKey: Key("stage_id"))
+            let v8 = try fields.decode(String.self, forKey: Key("status"))
+            let v9 = try fields.decode(String.self, forKey: Key("lost_reason"))
+            let v10 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("expected_close"))?.value
+            let v11 = try fields.decode(String.self, forKey: Key("source"))
+            let v12 = try fields.decode(UInt32.self, forKey: Key("probability"))
+            let v13 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("stage_entered_at")).value
+            let v14 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("closed_at"))?.value
+            let v15 = try fields.decodeIfPresent(NextActivity.self, forKey: Key("next_activity"))
+            let v16 = try fields.decode(UInt32.self, forKey: Key("open_activities"))
+            let v17 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("last_touch_at"))?.value
+            let v18 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v19 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.title = v1
+            self.value = v2
+            self.organization = v3
+            self.contact_id = v4
+            self.contact_name = v5
+            self.owner = v6
+            self.stage_id = v7
+            self.status = v8
+            self.lost_reason = v9
+            self.expected_close = v10
+            self.source = v11
+            self.probability = v12
+            self.stage_entered_at = v13
+            self.closed_at = v14
+            self.next_activity = v15
+            self.open_activities = v16
+            self.last_touch_at = v17
+            self.created_by = v18
+            self.created_at = v19
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(DecimalString(self.value), forKey: Key("value"))
+            try fields.encode(self.organization, forKey: Key("organization"))
+            try fields.encode(self.contact_id, forKey: Key("contact_id"))
+            try fields.encode(self.contact_name, forKey: Key("contact_name"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+            try fields.encode(self.stage_id, forKey: Key("stage_id"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.lost_reason, forKey: Key("lost_reason"))
+            try fields.encode(self.expected_close.map { DecimalString($0) }, forKey: Key("expected_close"))
+            try fields.encode(self.source, forKey: Key("source"))
+            try fields.encode(self.probability, forKey: Key("probability"))
+            try fields.encode(DecimalString(self.stage_entered_at), forKey: Key("stage_entered_at"))
+            try fields.encode(self.closed_at.map { DecimalString($0) }, forKey: Key("closed_at"))
+            try fields.encode(self.next_activity, forKey: Key("next_activity"))
+            try fields.encode(self.open_activities, forKey: Key("open_activities"))
+            try fields.encode(self.last_touch_at.map { DecimalString($0) }, forKey: Key("last_touch_at"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
+
+    /// The app type `NextActivity`.
+    public struct NextActivity: Codable, Sendable, Equatable {
+        public var id: String
+        public var kind: String
+        public var subject: String
+        public var due_at: UInt64
+
+        public init(
+            id: String,
+            kind: String,
+            subject: String,
+            due_at: UInt64
+        ) {
+            self.id = id
+            self.kind = kind
+            self.subject = subject
+            self.due_at = due_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("kind"))
+            let v2 = try fields.decode(String.self, forKey: Key("subject"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("due_at")).value
+            self.id = v0
+            self.kind = v1
+            self.subject = v2
+            self.due_at = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.subject, forKey: Key("subject"))
+            try fields.encode(DecimalString(self.due_at), forKey: Key("due_at"))
+        }
+    }
+
+    /// The app type `NoteView`.
+    public struct NoteView: Codable, Sendable, Equatable {
+        public var id: String
+        public var deal_id: String
+        public var author: String
+        public var body: String
+        public var created_at: UInt64
+
+        public init(
+            id: String,
+            deal_id: String,
+            author: String,
+            body: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.deal_id = deal_id
+            self.author = author
+            self.body = body
+            self.created_at = created_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("deal_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("author"))
+            let v3 = try fields.decode(String.self, forKey: Key("body"))
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.deal_id = v1
+            self.author = v2
+            self.body = v3
+            self.created_at = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.deal_id, forKey: Key("deal_id"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.body, forKey: Key("body"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
+
+    /// The app type `Settings`.
+    public struct Settings: Codable, Sendable, Equatable {
+        public var currency: String
+        public var rotting_days: UInt32
+
+        public init(
+            currency: String,
+            rotting_days: UInt32
+        ) {
+            self.currency = currency
+            self.rotting_days = rotting_days
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("currency"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("rotting_days"))
+            self.currency = v0
+            self.rotting_days = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.currency, forKey: Key("currency"))
+            try fields.encode(self.rotting_days, forKey: Key("rotting_days"))
+        }
+    }
+
+    /// The app type `StageView`.
+    public struct StageView: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var probability: UInt32
+        public var position: UInt32
+
+        public init(
+            id: String,
+            name: String,
+            probability: UInt32,
+            position: UInt32
+        ) {
+            self.id = id
+            self.name = name
+            self.probability = probability
+            self.position = position
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("probability"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("position"))
+            self.id = v0
+            self.name = v1
+            self.probability = v2
+            self.position = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.probability, forKey: Key("probability"))
+            try fields.encode(self.position, forKey: Key("position"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

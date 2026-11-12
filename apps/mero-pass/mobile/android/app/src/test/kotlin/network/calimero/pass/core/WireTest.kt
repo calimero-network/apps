@@ -17,6 +17,8 @@ import network.calimero.pass.generated.DeviceView
 import network.calimero.pass.generated.KeyWrapInput
 import network.calimero.pass.generated.PassWireDecoding
 import network.calimero.pass.generated.SecretView
+import network.calimero.pass.generated.asContractArg
+import network.calimero.pass.generated.client.PassClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -66,7 +68,7 @@ class WireTest {
             client.setDefaultRole("viewer")
             client.registerDevice("f", "pk", "l", "mobile")
             client.revokeDevice("f")
-            client.addKeyWraps(listOf(PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput("k", "r", "w", "e"))))
+            client.addKeyWraps(listOf(PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput("k", "r", "w", "e")).asContractArg<PassClient.KeyWrapInput>()))
             client.rotateKey("k")
             client.addSecret("s", "login", "n", "", emptyMap())
             client.updateSecret("s", null, null, emptyMap(), false)

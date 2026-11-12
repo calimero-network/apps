@@ -311,4 +311,18 @@ object PassWireDecoding {
 }
 
 /** An answer of the generated client as the vault type [T], its u64 fields read from their decimal strings. */
-inline fun <reified T> JsonElement.toPass(): T = PassWireDecoding.decode(serializer<T>(), this)
+inline fun <reified T> Any.toPass(): T = PassWireDecoding.decode(serializer<T>(), asContractJson())
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

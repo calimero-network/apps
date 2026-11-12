@@ -24,9 +24,9 @@ extension IssueTrackerClient {
     public static let views = ["getRepoInfo", "listIssues", "getIssue", "getStatusCounts"]
 }
 
-extension JSONValue {
-    /// This answer as the app type `T` (one of the types below). The ABI names them without their
-    /// shape until the logic derives `AbiType`, so the generated client answers their JSON.
+extension Encodable {
+    /// This answer as the app type `T` (one of the types below), read through its JSON: the
+    /// generated client answers its own typed records.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
