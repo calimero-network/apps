@@ -83,7 +83,7 @@ through `@calimero-apps/connect`'s org-app module
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-calendar/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules as method checks (forged owners, another account's private rows, a peer editing an owner's event); booking through an API key acting for its owner; access and wire checks; the booking slot rules (unit tests in `src/booking.rs`); every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F mero-calendar test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter's conversions and messages; booking links (API key + record); the booking page; teams, calendars and invitations (mocked client); member names | no |
+| `pnpm -F mero-calendar test` | the generated client (`MeroCalendarClient`, `src/generated/`: `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F mero-calendar codegen` after a contract change) has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the conversions of its `unknown` record answers (the ABI predates `#[derive(AbiType)]`) and the messages; booking links (API key + record); the booking page; teams, calendars and invitations (mocked client); member names | no |
 | `pnpm merod-local e2e mero-calendar` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios are the six merobox workflows, ported: `logic.json`

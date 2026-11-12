@@ -8,7 +8,8 @@ import {
   type BookingPage,
   type BookingLinkTarget,
 } from "../../api/booking";
-import { messageOf, type Calendar } from "../../api/calendar";
+import { messageOf } from "../../api/calendar";
+import type { MeroCalendarClient } from "../../generated/client";
 import { useSessionApi } from "../../api/sessionContext";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import styles from "./book.module.scss";
@@ -43,7 +44,7 @@ function SlotPicker({
   selected,
   onSelect,
 }: {
-  cal: Calendar;
+  cal: MeroCalendarClient;
   target: BookingLinkTarget;
   selected: number | null;
   onSelect: (slot: number) => void;
@@ -122,7 +123,7 @@ export default function BookPage() {
   // A listing copy (no cluster serves it) cannot book either: its message says to open the app from Calimero Cloud.
   const unconfigured =
     api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
-  const [cal, setCal] = useState<Calendar | null>(null);
+  const [cal, setCal] = useState<MeroCalendarClient | null>(null);
   const [page, setPage] = useState<BookingPage | null>(null);
   const [error, setError] = useState<string | null>(unconfigured);
   const [busy, setBusy] = useState(false);
@@ -230,7 +231,7 @@ export default function BookPage() {
                     <button
                       className="mc-btn mc-btn--danger"
                       disabled={busy}
-                      onClick={() => void run(() => guest.cancel(cal as Calendar, target))}
+                      onClick={() => void run(() => guest.cancel(cal as MeroCalendarClient, target))}
                     >
                       Cancel meeting
                     </button>
@@ -244,7 +245,7 @@ export default function BookPage() {
                 <h2 className={styles.subhead}>
                   {rescheduling ? "Pick a new time" : "Pick a time"}
                 </h2>
-                <SlotPicker cal={cal as Calendar} target={target} selected={selected} onSelect={setSelected} />
+                <SlotPicker cal={cal as MeroCalendarClient} target={target} selected={selected} onSelect={setSelected} />
               </>
             )}
 
@@ -275,7 +276,7 @@ export default function BookPage() {
                   disabled={!canBook || busy}
                   onClick={() =>
                     void run(() =>
-                      guest.book(cal as Calendar, target, selected as number, { name, email, note }),
+                      guest.book(cal as MeroCalendarClient, target, selected as number, { name, email, note }),
                     )
                   }
                   data-testid="book-submit"
@@ -293,7 +294,7 @@ export default function BookPage() {
                 <button
                   className="mc-btn mc-btn--primary"
                   disabled={selected === null || busy}
-                  onClick={() => void run(() => guest.reschedule(cal as Calendar, target, selected as number))}
+                  onClick={() => void run(() => guest.reschedule(cal as MeroCalendarClient, target, selected as number))}
                 >
                   Move meeting
                 </button>

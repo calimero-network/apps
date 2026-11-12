@@ -1,5 +1,4 @@
 import { AppError } from "@calimero-network/mero-js";
-import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
  * The calendar contract (`logic/`), typed, and the one adapter that turns its
@@ -14,36 +13,16 @@ import { type ClientRoutes } from "@calimero-apps/connect";
  *   numbers (every one here is a millisecond time, well inside 2^53);
  * - errors are typed (`AppError` with a code): turned back into v1's messages.
  *
- * `calendar.test.ts` checks the method lists and parameter names against the
- * committed `logic/res/abi.json`.
+ * The contract is called through `MeroCalendarClient`, which `mero-app-build
+ * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`;
+ * `client.test.ts` checks it against the ABI). The ABI names its records
+ * without their shapes, so the generated types are `unknown`: each answer
+ * passes through the `to*` here, and each record argument through
+ * `eventArgs` / `updateArgs` / `linkArgs`.
  */
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-calendar";
-
-export const CALLS = [
-  "setUsername",
-  "createEvent",
-  "updateEvent",
-  "deleteEvent",
-  "createPrivateEvent",
-  "updatePrivateEvent",
-  "deletePrivateEvent",
-  "createBookingLink",
-  "deleteBookingLink",
-  "bookSlot",
-  "rescheduleBooking",
-  "cancelBooking",
-] as const;
-
-export const VIEWS = [
-  "getMembers",
-  "getEvents",
-  "getPrivateEvents",
-  "listBookingLinks",
-  "getBookingPage",
-  "getAvailableSlots",
-] as const;
 
 /** The methods a booking link's API key may call, and nothing else. */
 export const BOOKING_GUEST_METHODS = [
@@ -268,33 +247,8 @@ export function messageOf(error: unknown): string {
 
 // ── The contract ─────────────────────────────────────────────────────────────
 
-export interface Calendar {
-  setUsername(username: string): Promise<null>;
-  getMembers(): Promise<WireMember[]>;
-  getEvents(): Promise<WireEvent[]>;
-  getPrivateEvents(): Promise<WireEvent[]>;
-  /** Routed by the contract: no peers → a private event. Answers the id. */
-  createEvent(event: EventFields): Promise<string>;
-  createPrivateEvent(event: EventFields): Promise<string>;
-  updateEvent(eventId: string, update: EventUpdate): Promise<string>;
-  /** Naming peers promotes it to a shared event with the same id. */
-  updatePrivateEvent(eventId: string, update: EventUpdate): Promise<string>;
-  deleteEvent(eventId: string): Promise<string>;
-  deletePrivateEvent(eventId: string): Promise<string>;
-  createBookingLink(link: CreateBookingLinkArgs): Promise<BookingLinkView>;
-  listBookingLinks(): Promise<BookingLinkView[]>;
-  deleteBookingLink(linkId: string): Promise<string>;
-  getBookingPage(token: string): Promise<BookingPage>;
-  getAvailableSlots(token: string, fromMs: number, toMs: number): Promise<number[]>;
-  bookSlot(token: string, startMs: number, guest: GuestDetails): Promise<BookingView>;
-  rescheduleBooking(token: string, startMs: number): Promise<BookingView>;
-  cancelBooking(token: string): Promise<null>;
-}
-
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
-
 /** Only the fields an update names: the contract refuses unknown keys, and null means "unchanged". */
-function updateArgs(update: EventUpdate): Raw {
+export function updateArgs(update: EventUpdate): Raw {
   const out: Raw = {};
   for (const key of ["title", "description", "start", "end", "event_type", "color", "peers"] as const) {
     if (update[key] !== undefined) out[key] = update[key];
@@ -302,7 +256,7 @@ function updateArgs(update: EventUpdate): Raw {
   return out;
 }
 
-function eventArgs(event: EventFields): Raw {
+export function eventArgs(event: EventFields): Raw {
   return {
     title: event.title,
     description: event.description,
@@ -314,55 +268,16 @@ function eventArgs(event: EventFields): Raw {
   };
 }
 
-/**
- * The calendar at app instance `app`. `after` runs after every request (the
- * session store keeps a refreshed session there).
- */
-export function calendar(client: Transport, app: string, after: () => void = () => {}): Calendar {
-  const call = async <T>(method: (typeof CALLS)[number], args: Raw = {}): Promise<T> => {
-    try {
-      return (await client.apps.call({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: (typeof VIEWS)[number], args: Raw = {}): Promise<T> => {
-    try {
-      return (await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  return {
-    setUsername: (username) => call("setUsername", { username }),
-    getMembers: async () => ((await view<unknown[]>("getMembers")) ?? []).map(toMember),
-    getEvents: async () => (await view<WireEvent[]>("getEvents")) ?? [],
-    getPrivateEvents: async () => (await view<WireEvent[]>("getPrivateEvents")) ?? [],
-    createEvent: (event) => call("createEvent", { eventData: eventArgs(event) }),
-    createPrivateEvent: (event) => call("createPrivateEvent", { eventData: eventArgs(event) }),
-    updateEvent: (eventId, update) => call("updateEvent", { eventId, eventData: updateArgs(update) }),
-    updatePrivateEvent: (eventId, update) =>
-      call("updatePrivateEvent", { eventId, eventData: updateArgs(update) }),
-    deleteEvent: (eventId) => call("deleteEvent", { eventId }),
-    deletePrivateEvent: (eventId) => call("deletePrivateEvent", { eventId }),
-    createBookingLink: async (link) =>
-      toLink(
-        await call("createBookingLink", {
-          link: {
-            ...link,
-            expiresAtMs: link.expiresAtMs === null ? null : u64(link.expiresAtMs),
-          },
-        }),
-      ),
-    listBookingLinks: async () => ((await view<unknown[]>("listBookingLinks")) ?? []).map(toLink),
-    deleteBookingLink: (linkId) => call("deleteBookingLink", { linkId }),
-    getBookingPage: async (token) => toPage(await view("getBookingPage", { token })),
-    getAvailableSlots: async (token, fromMs, toMs) =>
-      ((await view<unknown[]>("getAvailableSlots", { token, fromMs: u64(fromMs), toMs: u64(toMs) })) ?? []).map(num),
-    bookSlot: async (token, startMs, guest) =>
-      toBooking(await call("bookSlot", { token, startMs: u64(startMs), guest })) as BookingView,
-    rescheduleBooking: async (token, startMs) =>
-      toBooking(await call("rescheduleBooking", { token, startMs: u64(startMs) })) as BookingView,
-    cancelBooking: (token) => call("cancelBooking", { token }),
-  };
+/** `createBookingLink`'s `link` argument: its expiry a u64. */
+export function linkArgs(link: CreateBookingLinkArgs): Raw {
+  return { ...link, expiresAtMs: link.expiresAtMs === null ? null : u64(link.expiresAtMs) };
 }
+
+/** `getEvents` / `getPrivateEvents`'s answer. */
+export const toEvents = (v: unknown): WireEvent[] => (v as WireEvent[] | null) ?? [];
+/** `getMembers`' answer. */
+export const toMembers = (v: unknown): WireMember[] => ((v as unknown[] | null) ?? []).map(toMember);
+/** `listBookingLinks`' answer. */
+export const toLinks = (v: unknown): BookingLinkView[] => ((v as unknown[] | null) ?? []).map(toLink);
+/** `getAvailableSlots`' answer: slot starts in ms. */
+export const toSlots = (v: unknown): number[] => ((v as unknown[] | null) ?? []).map(num);

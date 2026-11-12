@@ -1,12 +1,18 @@
 import { passkeyConfirm, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 
+import { MeroCalendarClient, type AppTransport } from "../generated/client";
 import {
   BOOKING_GUEST_METHODS,
-  calendar,
+  linkArgs,
+  toBooking,
+  toLink,
+  toLinks,
+  toPage,
+  toSlots,
+  u64,
   type BookingLinkView,
   type BookingPage,
   type BookingView,
-  type Calendar,
   type GuestDetails,
   type WeeklyWindow,
 } from "./calendar";
@@ -87,7 +93,7 @@ export async function sha256Hex(text: string): Promise<string> {
 
 /** The signed-in owner, at one calendar. */
 export interface Owner {
-  client: ClientRoutes<{ auth: "apikeyCreate" | "apikeyRevoke"; apps: "call" | "view" }>;
+  client: ClientRoutes<{ auth: "apikeyCreate" | "apikeyRevoke"; apps: "call" | "view" }> & AppTransport;
   app: string;
   passkey: () => PasskeyProvider;
   after?: () => void;
@@ -121,7 +127,9 @@ export async function createBookingLink(
   );
   owner.after?.();
   try {
-    const created = await calendar(owner.client, owner.app, owner.after).createBookingLink({
+    const created = toLink(
+      await new MeroCalendarClient(owner.client, owner.app, { after: owner.after }).createBookingLink({
+        link: linkArgs({
       tokenHash: await sha256Hex(key.key),
       grantId: key.keyId,
       title: link.title,
@@ -132,7 +140,9 @@ export async function createBookingLink(
       horizonDays: link.horizonDays,
       minNoticeMinutes: link.minNoticeMinutes,
       expiresAtMs: link.expiresAtMs ?? null,
-    });
+        }),
+      }),
+    );
     return { link: created, url: bookingUrl(base, { app: owner.app, token: key.key }) };
   } catch (err) {
     await owner.client.auth
@@ -143,7 +153,7 @@ export async function createBookingLink(
 }
 
 export function listBookingLinks(owner: Owner): Promise<BookingLinkView[]> {
-  return calendar(owner.client, owner.app, owner.after).listBookingLinks();
+  return new MeroCalendarClient(owner.client, owner.app, { after: owner.after }).listBookingLinks().then(toLinks);
 }
 
 /** Revoke the link's API key (already gone is fine), then delete the record. */
@@ -156,7 +166,7 @@ export async function deleteBookingLink(
       if (err?.status !== 404) throw err;
     });
   }
-  await calendar(owner.client, owner.app, owner.after).deleteBookingLink(link.linkId);
+  await new MeroCalendarClient(owner.client, owner.app, { after: owner.after }).deleteBookingLink({ linkId: link.linkId });
 }
 
 // ── The guest ────────────────────────────────────────────────────────────────
@@ -165,18 +175,19 @@ export async function deleteBookingLink(
  * The calendar as the guest reaches it: a client of its own (never the
  * page's signed-in one) that authenticates every request with the link's key.
  */
-export function guestCalendar(client: Pick<CalimeroClient, "useApiKey"> & ClientRoutes<{ apps: "call" | "view" }>, target: BookingLinkTarget): Calendar {
+export function guestCalendar(client: Pick<CalimeroClient, "useApiKey"> & AppTransport, target: BookingLinkTarget): MeroCalendarClient {
   client.useApiKey(target.token);
-  return calendar(client, target.app);
+  return new MeroCalendarClient(client, target.app);
 }
 
 export const guest = {
-  page: (cal: Calendar, target: BookingLinkTarget): Promise<BookingPage> => cal.getBookingPage(target.token),
-  slots: (cal: Calendar, target: BookingLinkTarget, fromMs: number, toMs: number): Promise<number[]> =>
-    cal.getAvailableSlots(target.token, fromMs, toMs),
-  book: (cal: Calendar, target: BookingLinkTarget, startMs: number, details: GuestDetails): Promise<BookingView> =>
-    cal.bookSlot(target.token, startMs, details),
-  reschedule: (cal: Calendar, target: BookingLinkTarget, startMs: number): Promise<BookingView> =>
-    cal.rescheduleBooking(target.token, startMs),
-  cancel: (cal: Calendar, target: BookingLinkTarget): Promise<null> => cal.cancelBooking(target.token),
+  page: (cal: MeroCalendarClient, target: BookingLinkTarget): Promise<BookingPage> =>
+    cal.getBookingPage({ token: target.token }).then(toPage),
+  slots: (cal: MeroCalendarClient, target: BookingLinkTarget, fromMs: number, toMs: number): Promise<number[]> =>
+    cal.getAvailableSlots({ token: target.token, fromMs: u64(fromMs), toMs: u64(toMs) }).then(toSlots),
+  book: async (cal: MeroCalendarClient, target: BookingLinkTarget, startMs: number, details: GuestDetails): Promise<BookingView> =>
+    toBooking(await cal.bookSlot({ token: target.token, startMs: u64(startMs), guest: details })) as BookingView,
+  reschedule: async (cal: MeroCalendarClient, target: BookingLinkTarget, startMs: number): Promise<BookingView> =>
+    toBooking(await cal.rescheduleBooking({ token: target.token, startMs: u64(startMs) })) as BookingView,
+  cancel: (cal: MeroCalendarClient, target: BookingLinkTarget): Promise<null> => cal.cancelBooking({ token: target.token }),
 };
