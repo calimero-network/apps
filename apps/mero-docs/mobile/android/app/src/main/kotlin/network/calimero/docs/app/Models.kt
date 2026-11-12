@@ -297,7 +297,8 @@ class WorkspaceModel(
                     .map { folder ->
                         async {
                             val ctx = folder.contextId!!
-                            val page = attempt { DocSearchPage.from(backend.docs(ctx).client.searchDocs(q, false, null, SEARCH_LIMIT).asContractJson()) }.getOrNull()
+                            val client = backend.docs(ctx).client
+                            val page = attempt { DocSearchPage.from(client.searchDocs(q, false, null, SEARCH_LIMIT).asContractJson()) }.getOrNull()
                             page?.hits.orEmpty().filterNot { it.archived }.map { hit ->
                                 val row =
                                     byContext[ctx]?.firstOrNull { it.doc.id == hit.id }
