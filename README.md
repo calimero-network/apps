@@ -205,7 +205,7 @@ packages/
 
 docs/
   COMPONENT-APPS.md         component apps: build, merod local, Cloud, CI, migration guide
-  SESSION-AND-INVITES.md    the login / desktop hand-off / invitation audit
+  SESSION-AND-INVITES.md    sign-in and invitations, and how each is tested
   VERCEL.md                 one deploy convention for every app
 
 .github/workflows/          ci.yml · components.yml · release.yml · publish-bundle.yml (reusable)
@@ -279,9 +279,10 @@ python3 scripts/check-registry-sync.py    # published wasm vs this tree (manual)
 nothing and exits 0. An app can carry hundreds of type errors behind a green
 `--noEmit`.
 
-`docs/SESSION-AND-INVITES.md` is the current audit of the three flows every app
-is meant to share — login, the desktop hand-off, and invitations — with a
-per-app table and a list of which invariants CI actually holds.
+`docs/SESSION-AND-INVITES.md` describes the two flows every app shares, passkey
+sign-in and invitations (`@calimero-apps/connect`, `@calimero-apps/passkey`),
+and which tests cover each step: the shared packages', each app's vitest and
+the browser suites on `merod local`.
 
 ### The CI signal
 
