@@ -2,6 +2,10 @@ package network.calimero.crm.core
 
 import network.calimero.crm.generated.ContactView
 import network.calimero.crm.generated.DealView
+import network.calimero.crm.generated.contactId
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.jobTitle
+import network.calimero.crm.generated.stageId
 import java.time.LocalDate
 import java.time.ZoneId
 

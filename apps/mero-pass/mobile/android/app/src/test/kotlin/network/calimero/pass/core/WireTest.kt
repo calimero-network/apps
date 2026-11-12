@@ -15,10 +15,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import network.calimero.pass.generated.DeviceView
 import network.calimero.pass.generated.KeyWrapInput
-import network.calimero.pass.generated.PassWireDecoding
 import network.calimero.pass.generated.SecretView
-import network.calimero.pass.generated.asContractArg
-import network.calimero.pass.generated.client.PassClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -68,7 +65,7 @@ class WireTest {
             client.setDefaultRole("viewer")
             client.registerDevice("f", "pk", "l", "mobile")
             client.revokeDevice("f")
-            client.addKeyWraps(listOf(PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput("k", "r", "w", "e")).asContractArg<PassClient.KeyWrapInput>()))
+            client.addKeyWraps(listOf(KeyWrapInput("k", "r", "w", "e")))
             client.rotateKey("k")
             client.addSecret("s", "login", "n", "", emptyMap())
             client.updateSecret("s", null, null, emptyMap(), false)
@@ -120,7 +117,7 @@ class WireTest {
     @Test
     fun `u64 answers arrive as decimal strings`() {
         val secrets =
-            PassWireDecoding.decode(
+            Json.decodeFromString(
                 kotlinx.serialization.builtins.ListSerializer(SecretView.serializer()),
                 """[{"id":"s","kind":"login","name":"n","tags":"","fields":{"username":"u"},"createdAt":"1761000000123",
                    "createdBy":"a","updatedAt":"1761000000456","updatedBy":"a","trashed":false,"trashedAt":"0"}]""",
@@ -128,13 +125,12 @@ class WireTest {
         assertEquals(1_761_000_000_123uL, secrets.single().createdAt)
         assertEquals("u", secrets.single().fields["username"])
         val device =
-            PassWireDecoding.decode(
+            Json.decodeFromString(
                 DeviceView.serializer(),
                 """{"fingerprint":"f","publicKey":"pk","label":"l","kind":"mobile","account":"a","addedAt":"42","revoked":false}""",
             )
         assertEquals(42uL, device.addedAt)
         assertEquals("pk", device.publicKey)
-        assertEquals(JsonPrimitive("123"), (PassWireDecoding.normalized(Json.parseToJsonElement("""{"title":"123"}""")) as JsonObject)["title"])
     }
 
     @Test

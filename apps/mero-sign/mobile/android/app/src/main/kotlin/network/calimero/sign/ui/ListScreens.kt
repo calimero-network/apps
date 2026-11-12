@@ -68,7 +68,7 @@ import network.calimero.sign.core.LoadPhase
 import network.calimero.sign.core.PersonRow
 import network.calimero.sign.core.SignConstants
 import network.calimero.sign.core.SignFormat
-import network.calimero.sign.generated.PermissionLevel
+import network.calimero.sign.generated.client.SignClient.PermissionLevel
 
 // ---- shared pieces ---------------------------------------------------------------------------
 

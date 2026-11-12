@@ -18,27 +18,10 @@ let utc: Calendar = {
 let fixedNow = utc.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 12))!
 let nowMs = Format.ms(fixedNow)
 
-/// `value` as the component contract answers it: camelCase keys, and every
-/// `u64` field (``ComponentWire/u64Fields``) a decimal string.
+/// `value` as the component contract answers it: the generated types write the
+/// contract's wire themselves (camelCase keys, every `u64` a decimal string).
 func json<T: Encodable>(_ value: T) -> JSONValue {
-    let data = try! JSONEncoder().encode(value)
-    let wire = contractWire(try! JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))
-    return try! JSONDecoder().decode(
-        JSONValue.self, from: try! JSONSerialization.data(withJSONObject: wire, options: [.fragmentsAllowed]))
-}
-
-private func contractWire(_ value: Any) -> Any {
-    if let list = value as? [Any] { return list.map(contractWire) }
-    guard let object = value as? [String: Any] else { return value }
-    var out: [String: Any] = [:]
-    for (key, v) in object {
-        if ComponentWire.u64Fields.contains(key), let n = v as? NSNumber {
-            out[ComponentWire.camel(key)] = n.stringValue
-        } else {
-            out[ComponentWire.camel(key)] = contractWire(v)
-        }
-    }
-    return out
+    try! JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
 }
 
 func card(

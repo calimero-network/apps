@@ -59,6 +59,13 @@ import network.calimero.crm.core.DealDraft
 import network.calimero.crm.core.Insights
 import network.calimero.crm.core.Money
 import network.calimero.crm.generated.ContactView
+import network.calimero.crm.generated.contactId
+import network.calimero.crm.generated.createdAt
+import network.calimero.crm.generated.createdBy
+import network.calimero.crm.generated.dueAt
+import network.calimero.crm.generated.jobTitle
+import network.calimero.crm.generated.openDeals
+import network.calimero.crm.generated.wonValue
 
 /** The address book: people, and the companies their organizations make. */
 @Composable

@@ -7,8 +7,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import network.calimero.sign.generated.ContractBytes
-import network.calimero.sign.generated.SignContract
-import network.calimero.sign.generated.SignatureRecord
 import network.calimero.sign.generated.client.SignClient
 
 /** A signature in the library, with its PNG when it could be fetched. (Swift `SavedSignature`.) */
@@ -135,12 +133,12 @@ class PrivateStore(
     /** The saved signatures, newest first, with their images. */
     suspend fun signatures(): List<SavedSignature> {
         val store = find() ?: return emptyList()
-        val rows = client(store).listSignatures().map { SignContract.read<SignatureRecord>(it) }
+        val rows = client(store).listSignatures()
         return coroutineScope {
             rows
                 .map { row ->
                     async {
-                        val blobId = SignIds.blobHex(row.blobId)
+                        val blobId = SignIds.blobHex(ContractBytes.Text(row.blobId))
                         val png = if (blobId.isEmpty()) null else attempt { admin.getBlob(blobId, store) }.getOrNull()
                         SavedSignature(row.id, row.name, blobId, row.size, row.createdAt, png)
                     }

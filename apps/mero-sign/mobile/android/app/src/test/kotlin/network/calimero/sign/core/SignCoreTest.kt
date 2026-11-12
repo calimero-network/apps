@@ -26,12 +26,12 @@ class SupportTest {
     fun `ids decode from text and u64s from decimal strings`() {
         val json = Json { ignoreUnknownKeys = true }
         val signature = json.decodeFromString(DocumentSignature.serializer(), """{"signer":"${IDs.alice}","signedAt":"18446744073709551615"}""")
-        assertEquals(IDs.alice, signature.signer.hex)
+        assertEquals(IDs.alice, ContractBytes.Text(signature.signer).hex)
         assertEquals(ULong.MAX_VALUE, signature.signedAt)
         assertEquals(IDs.alice, ContractBytes.Text(IDs.alice.uppercase()).hex)
         val base58 = InviteCodec.base58Encode(Hex.decode(IDs.blob, "b", 32))
         assertEquals(IDs.blob, ContractBytes.Text(base58).hex)
-        assertTrue(SignIds.same(signature.signer, IDs.alice))
+        assertTrue(SignIds.same(ContractBytes.Text(signature.signer), IDs.alice))
         assertEquals("", SignIds.blobHex("nope"))
         assertEquals("a1a1a1a1…a1a1a1", SignIds.short(IDs.alice))
     }

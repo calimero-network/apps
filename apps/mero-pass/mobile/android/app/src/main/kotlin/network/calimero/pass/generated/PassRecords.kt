@@ -1,36 +1,40 @@
-// Mero Pass's vault types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), kept by hand
-// in step with the web app's `app/src/lib/meroPass.ts` / `vaultApi.ts` and iOS `Records.swift`. The
-// calls are the generated [network.calimero.pass.generated.client.PassClient]
-// (`scripts/mobile-codegen.sh` at the repo root); until the logic derives `AbiType` the ABI names
-// these types without their shape, so the client takes and answers their JSON and [toPass] reads it.
+// Mero Pass's vault types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), in step with the
+// web app's `app/src/lib/meroPass.ts` / `vaultApi.ts` and iOS `Records.swift`. The calls and the
+// answer types are the generated [PassClient] (`scripts/mobile-codegen.sh` at the repo root); the
+// contract's state types below them are kept by hand.
 //
 // - methods, arguments and answer fields are camelCase (`addSecret`, `publicKey`, `createdAt`);
 // - every u64 in an answer (`addedAt`, `createdAt`, `updatedAt`, `trashedAt`, `replacedAt`,
-//   `timestamp`) is a decimal string, read back into a number here ([PassWireDecoding]);
+//   `timestamp`) is a decimal string, a [ULong] in the generated types;
 // - `init` takes no arguments: a new vault is named with `renameVault` right after it is created;
 // - `getSecret` answers `null` for an unknown id;
 // - a refusal is `422 APP_ERROR {code: Forbidden|NotFound|Invalid|Conflict, fields: {message}}`.
 
 package network.calimero.pass.generated
 
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonDecoder
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.serializer
+import network.calimero.pass.generated.client.PassClient
+
+// The answer types are the generated client's ([PassClient], from the ABI); u64 fields are decimal
+// strings on the wire and [ULong] here.
+
+typealias AuditView = PassClient.AuditView
+
+typealias DeviceView = PassClient.DeviceView
+
+typealias KeyWrapInput = PassClient.KeyWrapInput
+
+typealias KeyWrapView = PassClient.KeyWrapView
+
+typealias MemberView = PassClient.MemberView
+
+typealias RevisionView = PassClient.RevisionView
+
+typealias SecretView = PassClient.SecretView
+
+typealias VaultInfo = PassClient.VaultInfo
+
+// The contract's state types, kept by hand.
 
 /**
  * One line of the activity trail. Who wrote it is the slot's owner stamp,
@@ -48,20 +52,6 @@ data class AuditLogEntry(
     /** The author's node device, as the author's node reported it. */
     val device: String,
     val timestamp: ULong,
-)
-
-@Serializable
-data class AuditView(
-    val action: String,
-    val target: String,
-    val account: String,
-    val device: String,
-    val timestamp: ULong,
-    /**
-     * True when the author blanked this entry. The slot stays, so a redaction
-     * is itself visible in the trail.
-     */
-    val redacted: Boolean,
 )
 
 /**
@@ -92,17 +82,6 @@ data class DeviceKey(
 )
 
 @Serializable
-data class DeviceView(
-    val fingerprint: String,
-    val publicKey: String,
-    val label: String,
-    val kind: String,
-    val account: String,
-    val addedAt: ULong,
-    val revoked: Boolean,
-)
-
-@Serializable
 data class Event_SecretChanged(
     val secretId: String,
 )
@@ -124,35 +103,6 @@ data class KeyWrap(
     /** ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON. */
     val envelope: String,
     val wrappedAt: ULong,
-)
-
-@Serializable
-data class KeyWrapInput(
-    val keyId: String,
-    val recipient: String,
-    val wrapper: String,
-    val envelope: String,
-)
-
-@Serializable
-data class KeyWrapView(
-    val keyId: String,
-    val recipient: String,
-    val wrapper: String,
-    val envelope: String,
-    val wrappedBy: String,
-)
-
-@Serializable
-data class MemberView(
-    val account: String,
-    /**
-     * `admin`, `editor` or `viewer`; `pending` for an account that has
-     * registered a device but was never given a role; `removed` for one an
-     * admin removed, which clients must not auto-admit.
-     */
-    val role: String,
-    val devices: UInt,
 )
 
 @Serializable
@@ -200,14 +150,6 @@ data class Revision(
     val replacedBy: String,
 )
 
-@Serializable
-data class RevisionView(
-    val field: String,
-    val previous: String,
-    val replacedAt: ULong,
-    val replacedBy: String,
-)
-
 /**
  * One secret, as independent registers rather than one record.
  *
@@ -239,90 +181,3 @@ data class Secret(
     val trashed: Boolean,
     val trashedAt: ULong,
 )
-
-@Serializable
-data class SecretView(
-    val id: String,
-    val kind: String,
-    val name: String,
-    val tags: String,
-    val fields: Map<String, String>,
-    val createdAt: ULong,
-    val createdBy: String,
-    val updatedAt: ULong,
-    val updatedBy: String,
-    val trashed: Boolean,
-    val trashedAt: ULong,
-)
-
-@Serializable
-data class VaultInfo(
-    val name: String,
-    val currentKey: String,
-    val defaultRole: String,
-    val myAccount: String,
-    val myRole: String,
-)
-
-/**
- * Reads the contract's answers: each u64 field arrives as a decimal string and is turned back into
- * a number before decoding, as the web adapter's `num` does. (Swift `PassWireDecoding`.)
- */
-object PassWireDecoding {
-    /** Every 64-bit field the contract answers, in any answer. */
-    val U64_FIELDS: Set<String> = setOf("addedAt", "createdAt", "updatedAt", "trashedAt", "replacedAt", "timestamp", "wrappedAt")
-
-    private val json = Json { ignoreUnknownKeys = true }
-
-    fun <T> decode(
-        serializer: KSerializer<T>,
-        response: String,
-    ): T = decode(serializer, json.parseToJsonElement(response))
-
-    /** An answer of the generated client as the app type [serializer] reads. */
-    fun <T> decode(
-        serializer: KSerializer<T>,
-        answer: JsonElement,
-    ): T = json.decodeFromJsonElement(serializer, normalized(answer))
-
-    /** [value] as the JSON the generated client takes. */
-    fun <T> encode(
-        serializer: KSerializer<T>,
-        value: T,
-    ): JsonElement = json.encodeToJsonElement(serializer, value)
-
-    /** [element] with every u64 field's decimal string as a JSON number. */
-    fun normalized(
-        element: JsonElement,
-        key: String? = null,
-    ): JsonElement =
-        when (element) {
-            is JsonArray -> JsonArray(element.map { normalized(it) })
-            is JsonObject -> JsonObject(element.mapValues { (k, v) -> normalized(v, k) })
-            is JsonPrimitive ->
-                // Timestamps in milliseconds: far below Long.MAX_VALUE.
-                if (key in U64_FIELDS && element.isString && element.content.toLongOrNull()?.let { it >= 0 } == true) {
-                    JsonPrimitive(element.content.toLong())
-                } else {
-                    element
-                }
-            else -> element
-        }
-}
-
-/** An answer of the generated client as the vault type [T], its u64 fields read from their decimal strings. */
-inline fun <reified T> Any.toPass(): T = PassWireDecoding.decode(serializer<T>(), asContractJson())
-
-/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
-fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
-
-/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
-inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
-
-/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
-val contractArgJson =
-    Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }

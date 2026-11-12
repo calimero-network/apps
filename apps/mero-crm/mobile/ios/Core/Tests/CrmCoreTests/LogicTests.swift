@@ -90,7 +90,7 @@ final class LogicTests: XCTestCase {
         let detail = DealDetail(
             deal: d, contact: contact("c1", name: "Ana Diaz"),
             activities: [activity("a1", due: ms(daysFromNow: 1))],
-            notes: [NoteView(id: "n1", dealId: "d1", author: "me", body: "Budget\n approved", createdAt: ms(daysFromNow: -1))])
+            notes: [NoteView(id: "n1", deal_id: "d1", author: "me", body: "Budget\n approved", created_at: ms(daysFromNow: -1))])
         let prompt = Assistant.coachingPrompt(detail, stages: stages, currency: "USD", rottingDays: 14, now: now, utc)
         XCTAssertTrue(prompt.contains("- Value: $12,000"))
         XCTAssertTrue(prompt.contains("- Stage: Meeting (10% stage probability) of Lead in → Qualified → Meeting → Proposal → Negotiation"))

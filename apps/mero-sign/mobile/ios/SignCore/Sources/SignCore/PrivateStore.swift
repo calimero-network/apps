@@ -183,11 +183,11 @@ public actor PrivateStore {
     /// The saved signatures, newest first, with their images.
     public func signatures() async throws -> [SavedSignature] {
         guard let store = try await find() else { return [] }
-        let rows = try await client(store).listSignatures().map { try $0.decoded(as: SignatureRecord.self) }
+        let rows = try await client(store).listSignatures()
         return await withTaskGroup(of: SavedSignature.self) { group in
             for row in rows {
                 group.addTask {
-                    let blobId = SignIds.blobHex(row.blobId)
+                    let blobId = SignIds.blobHex(ContractBytes.text(row.blobId))
                     let png = blobId.isEmpty ? nil : try? await self.admin.getBlob(blobId, contextId: store)
                     return SavedSignature(
                         id: row.id, name: row.name, blobId: blobId, size: row.size, createdAt: row.createdAt, png: png)

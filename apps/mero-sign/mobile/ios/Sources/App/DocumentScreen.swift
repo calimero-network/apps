@@ -63,9 +63,9 @@ struct DocumentScreen: View {
             DetailsDisclosure(rows: [
                 ("Document", entry.document.id),
                 ("Fingerprint (SHA-256)", entry.document.hash),
-                ("File", SignIds.blobHex(entry.document.pdfBlobId)),
+                ("File", SignIds.blobHex(ContractBytes.text(entry.document.pdfBlobId))),
                 ("Size", SignFormat.size(entry.document.size)),
-                ("Uploaded by", SignIds.hex(entry.document.uploadedBy)),
+                ("Uploaded by", SignIds.hex(ContractBytes.text(entry.document.uploadedBy))),
                 ("Agreement context", entry.agreement.contextId),
             ])
             .padding(.horizontal, 14)

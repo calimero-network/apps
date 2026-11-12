@@ -13,7 +13,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import network.calimero.updates.core.ErrorText
 import network.calimero.updates.core.UpdatesInvitation
-import network.calimero.updates.core.toUpdates
 import network.calimero.updates.core.updatesClient
 import network.calimero.updates.generated.CategoryView
 import network.calimero.updates.generated.MeView
@@ -68,9 +67,9 @@ class AudienceModel(
     suspend fun load() {
         try {
             coroutineScope {
-                val me = async { client.getMe().toUpdates<MeView>() }
-                val overview = async { client.getOverview().toUpdates<Overview>() }
-                val categories = async { client.listCategories().map { it.toUpdates<CategoryView>() } }
+                val me = async { client.getMe() }
+                val overview = async { client.getOverview() }
+                val categories = async { client.listCategories() }
                 _me.value = me.await()
                 _overview.value = overview.await()
                 _categories.value = categories.await()

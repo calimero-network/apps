@@ -44,6 +44,13 @@ import network.calimero.crm.core.Days
 import network.calimero.crm.core.Insights
 import network.calimero.crm.core.Money
 import network.calimero.crm.generated.DealView
+import network.calimero.crm.generated.contactName
+import network.calimero.crm.generated.createdAt
+import network.calimero.crm.generated.dueAt
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.lostReason
+import network.calimero.crm.generated.nextActivity
+import network.calimero.crm.generated.stageId
 
 enum class DealStatusFilter(
     val raw: String,

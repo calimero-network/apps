@@ -46,23 +46,23 @@ public final class ComposerModel: ObservableObject {
     public func load() async {
         guard state == nil else { return }
         let client = audience.client
-        series = (try? await client.listMetrics().map({ try $0.decoded(as: MetricSeries.self) })) ?? []
+        series = (try? await client.listMetrics()) ?? []
         let since = audience.overview?.lastUpdateAt ?? 0
-        contributions = (try? await client.listContributions(since: since).map({ try $0.decoded(as: ContributionView.self) })) ?? []
+        contributions = (try? await client.listContributions(since: since)) ?? []
         do {
             let initial: ComposerState
             switch start {
             case .edit(let id):
-                initial = Composer.fromPost(try await client.getPost(postId: id).decoded(as: PostView.self))
+                initial = Composer.fromPost(try await client.getPost(postId: id))
             case .draft(let id):
-                let drafts = try await client.listDrafts().map({ try $0.decoded(as: DraftView.self) })
+                let drafts = try await client.listDrafts()
                 let draft = drafts.first { $0.id == id }
                 initial = draft.flatMap { ComposerState.parse($0.payload) } ?? fresh(.of(nil))
                 savedAt = draft?.updatedAt
             case .reuseLatest:
-                let page = try await client.listPosts(kind: "update", categoryId: nil, cursor: nil, limit: 1).decoded(as: PostPage.self)
+                let page = try await client.listPosts(kind: "update", categoryId: nil, cursor: nil, limit: 1)
                 if let latest = page.items.first {
-                    initial = Composer.fromPrevious(try await client.getPost(postId: latest.id).decoded(as: PostView.self), now: now())
+                    initial = Composer.fromPrevious(try await client.getPost(postId: latest.id), now: now())
                 } else {
                     initial = fresh(.of(nil))
                 }
@@ -132,10 +132,10 @@ public final class ComposerModel: ObservableObject {
             let input = state.toInput()
             let id: String
             if let editId {
-                try await audience.act { try await $0.editUpdate(postId: editId, input: try JSONValue.wire(input).converted()) }
+                try await audience.act { try await $0.editUpdate(postId: editId, input: input) }
                 id = editId
             } else {
-                id = try await audience.act { try await $0.publishUpdate(input: try JSONValue.wire(input).converted()) }
+                id = try await audience.act { try await $0.publishUpdate(input: input) }
                 if let draftId { try? await audience.client.deleteDraft(draftId: draftId) }
                 draftId = nil
             }

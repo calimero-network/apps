@@ -130,7 +130,7 @@ public struct AgreementDirectory: Sendable {
         for attempt in 0..<max(timing.stateAttempts, 1) {
             if attempt > 0 { try? await Task.sleep(for: timing.delay) }
             do {
-                return try await client(contextId).getContextDetails(contextIdStr: contextId).decoded(as: ContextDetails.self).contextName
+                return try await client(contextId).getContextDetails(contextIdStr: contextId).contextName
             } catch {
                 if !SignErrorText.isSyncing(error) { return nil }
             }

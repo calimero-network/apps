@@ -29,6 +29,7 @@ import network.calimero.crm.core.Days
 import network.calimero.crm.core.DealDraft
 import network.calimero.crm.core.ErrorText
 import network.calimero.crm.core.SuggestedActivity
+import network.calimero.crm.generated.openDeals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

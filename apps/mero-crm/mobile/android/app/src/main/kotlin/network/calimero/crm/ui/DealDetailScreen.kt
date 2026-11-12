@@ -67,6 +67,17 @@ import network.calimero.crm.core.DealField
 import network.calimero.crm.core.Money
 import network.calimero.crm.generated.DealDetail
 import network.calimero.crm.generated.DealView
+import network.calimero.crm.generated.closedAt
+import network.calimero.crm.generated.contactId
+import network.calimero.crm.generated.contactName
+import network.calimero.crm.generated.createdAt
+import network.calimero.crm.generated.createdBy
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.jobTitle
+import network.calimero.crm.generated.lostReason
+import network.calimero.crm.generated.rottingDays
+import network.calimero.crm.generated.stageEnteredAt
+import network.calimero.crm.generated.stageId
 
 private data class EditRequest(
     val focus: DealField?,

@@ -73,6 +73,11 @@ import network.calimero.crm.core.HealthLevel
 import network.calimero.crm.core.Money
 import network.calimero.crm.generated.AutomationView
 import network.calimero.crm.generated.StageView
+import network.calimero.crm.generated.dueInDays
+import network.calimero.crm.generated.openDeals
+import network.calimero.crm.generated.rottingDays
+import network.calimero.crm.generated.stageId
+import network.calimero.crm.generated.wonValue
 
 /** Insights, pipeline setup, inviting the team, and the way out. */
 @Composable

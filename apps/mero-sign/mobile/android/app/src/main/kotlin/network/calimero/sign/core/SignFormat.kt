@@ -1,7 +1,7 @@
 package network.calimero.sign.core
 
-import network.calimero.sign.generated.DocumentStatus
-import network.calimero.sign.generated.PermissionLevel
+import network.calimero.sign.generated.client.SignClient.DocumentStatus
+import network.calimero.sign.generated.client.SignClient.PermissionLevel
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date

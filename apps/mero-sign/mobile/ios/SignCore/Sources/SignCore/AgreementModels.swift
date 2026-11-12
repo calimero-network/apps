@@ -131,11 +131,11 @@ public final class AgreementModel: ObservableObject {
     private func loadPeople(_ snapshot: AgreementSnapshot) async {
         var rows: [PersonRow] = []
         for participant in snapshot.details.participants {
-            let name = await names.name(of: participant.userId.hex, in: agreement.namespaceId)
+            let name = await names.name(of: ContractBytes.text(participant.userId).hex, in: agreement.namespaceId)
             rows.append(
                 PersonRow(
-                    account: SignIds.hex(participant.userId), name: name, level: participant.permissionLevel,
-                    isMe: SignIds.same(participant.userId, snapshot.me)))
+                    account: SignIds.hex(ContractBytes.text(participant.userId)), name: name, level: participant.permissionLevel,
+                    isMe: SignIds.same(ContractBytes.text(participant.userId), snapshot.me)))
         }
         people = rows.sorted { a, b in
             if a.isMe != b.isMe { return a.isMe }

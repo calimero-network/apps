@@ -53,7 +53,8 @@ import network.calimero.sign.core.LoadPhase
 import network.calimero.sign.core.SignFormat
 import network.calimero.sign.core.SignIds
 import network.calimero.sign.core.hex
-import network.calimero.sign.generated.PermissionLevel
+import network.calimero.sign.generated.ContractBytes
+import network.calimero.sign.generated.client.SignClient.PermissionLevel
 import java.io.File
 
 /** One document: where it stands, who signs it, your part, and its file. (iOS `DocumentScreen`.) */
@@ -148,9 +149,9 @@ fun DocumentScreen(
                                 listOf(
                                     "Document" to current.document.id,
                                     "Fingerprint (SHA-256)" to current.document.hash,
-                                    "File" to SignIds.blobHex(current.document.pdfBlobId),
+                                    "File" to SignIds.blobHex(ContractBytes.Text(current.document.pdfBlobId)),
                                     "Size" to SignFormat.size(current.document.size),
-                                    "Uploaded by" to current.document.uploadedBy.hex,
+                                    "Uploaded by" to ContractBytes.Text(current.document.uploadedBy).hex,
                                     "Agreement context" to current.agreement.contextId,
                                 ).filter { it.second.isNotEmpty() },
                             )
