@@ -57,6 +57,8 @@ CLIENTS=(
   "mero-issue-tracker|kotlin|apps/mero-issue-tracker/mobile/android/app/src/main/kotlin/network/calimero/issues/generated|issue-tracker|network.calimero.issues.generated"
   "mero-standup|swift|apps/mero-standup/mobile/ios/Core/Sources/StandupCore/Generated|standup|"
   "mero-standup|kotlin|apps/mero-standup/mobile/android/app/src/main/kotlin/network/calimero/standup/generated|standup|network.calimero.standup.generated"
+  "mero-calendar|swift|apps/mero-calendar/mobile/ios/Core/Sources/CalendarContract/Generated|calendar|"
+  "mero-calendar|kotlin|apps/mero-calendar/mobile/android/app/src/main/kotlin/network/calimero/calendar/generated|calendar|network.calimero.calendar.generated"
 )
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

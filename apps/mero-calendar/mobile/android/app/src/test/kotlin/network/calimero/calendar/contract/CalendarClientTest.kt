@@ -30,7 +30,7 @@ class CalendarClientTest {
     @Test
     fun `u64s are decimal strings both ways`() {
         val members =
-            CalendarClient.json.decodeFromString(
+            CalendarContract.json.decodeFromString(
                 kotlinx.serialization.builtins.ListSerializer(Member.serializer()),
                 """[{"id":"x","username":"a","joinedAt":"1761650000000000001","usernameUpdatedAt":2}]""",
             )
@@ -38,13 +38,13 @@ class CalendarClientTest {
         assertEquals(2L, members.single().usernameUpdatedAt)
         assertEquals(
             """{"id":"x","username":"a","joinedAt":"5","usernameUpdatedAt":"6"}""",
-            CalendarClient.json.encodeToString(Member.serializer(), Member("x", "a", 5, 6)),
+            CalendarContract.json.encodeToString(Member.serializer(), Member("x", "a", 5, 6)),
         )
     }
 
     @Test
     fun `an update sends only the fields it names`() {
-        assertEquals("""{"title":"New"}""", CalendarClient.json.encodeToString(UpdateCalendarEvent.serializer(), UpdateCalendarEvent(title = "New")))
+        assertEquals("""{"title":"New"}""", CalendarContract.json.encodeToString(UpdateCalendarEvent.serializer(), UpdateCalendarEvent(title = "New")))
     }
 
     @Test
