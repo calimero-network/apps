@@ -245,9 +245,17 @@ catalog:
 # 31.0.0 (mero-js#362) renames CloudEvent, CloudPolicy and CloudRetryOptions
 # to NodeEvent, NodePolicy and RetryOptions, after the generated methods
 # replaced the wrappers (30.0.0, mero-js#359; nothing here calls them).
+# 32.0.0 (mero-js#365) types `DELETE /ops/nodes/{id}`'s `status` as the Raft
+# status object the node always sent, not a string (nothing here calls it),
+# and adds `childTeams` to `orgs.appTeamsScope`'s apps.
+# 33.0.0 (mero-js#372, core 92ac297a1) takes `apps.attestation`'s `nonce` flat
+# beside `app` (no `query`, no `app`/`appHash`/`purpose`), answers
+# `apps.transfer` with `null` (conformance only awaits it), `orgs.publisher`
+# with `{ generation }`, `ops.restore`'s `status` as an object, and drops the
+# `Written` schema; nothing else here calls those.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^31.0.0
+    "@calimero-network/mero-js": ^33.0.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
