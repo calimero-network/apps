@@ -2,19 +2,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CaptchaCard } from "./CaptchaCard";
 import type { CaptchaSettings } from "./formsApi";
-import type { Workspace } from "./useWorkspace";
+import { fakeWorkspace as fakeContract } from "./test/workspace";
 
+/** The contract's captcha settings, on the wire (camelCase). */
 function fakeWorkspace(settings: CaptchaSettings) {
-  const client = {
-    captchaSettings: vi.fn(async () => settings),
-    clearCaptchaSecret: vi.fn(async () => ({ ...settings, site_key: "" })),
+  const wire = {
+    siteKey: settings.site_key,
+    secretSet: settings.secret_set,
+    teeAvailable: settings.tee_available,
+    needsResealing: settings.needs_resealing,
   };
-  const workspace = {
-    client: client as unknown as Workspace["client"],
-    version: 0,
-    act: (async (fn: (c: typeof client) => Promise<unknown>) => fn(client)) as unknown as Workspace["act"],
-  } as Workspace;
-  return { workspace, client };
+  const { workspace, call } = fakeContract({
+    captchaSettings: () => wire,
+    clearCaptchaSecret: () => ({ ...wire, siteKey: "" }),
+  });
+  return { workspace, call };
 }
 
 afterEach(cleanup);
@@ -29,9 +31,9 @@ describe("the team's captcha keys", () => {
 
   it("lets an admin remove old keys", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const { workspace, client } = fakeWorkspace({ site_key: "0x4AAA", secret_set: false, tee_available: false, needs_resealing: false });
+    const { workspace, call } = fakeWorkspace({ site_key: "0x4AAA", secret_set: false, tee_available: false, needs_resealing: false });
     render(<CaptchaCard workspace={workspace} isAdmin />);
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
-    await waitFor(() => expect(client.clearCaptchaSecret).toHaveBeenCalled());
+    await waitFor(() => expect(call).toHaveBeenCalledWith("app-forms-1", "clearCaptchaSecret", {}));
   });
 });

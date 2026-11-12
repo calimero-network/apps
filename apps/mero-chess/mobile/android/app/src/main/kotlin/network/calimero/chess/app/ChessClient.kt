@@ -1,13 +1,13 @@
 package network.calimero.chess.app
 
 import com.calimero.mero.app.MeroAppBackend
-import network.calimero.chess.contract.MeroChessClient
+import network.calimero.chess.generated.MeroChessClient
 
 /** [MeroChessClient] for [contextId] (the table's app id) in the account's backend. */
 fun chessClient(
     backend: MeroAppBackend,
     contextId: String,
-): MeroChessClient = MeroChessClient(backend.contract.bound(contextId))
+): MeroChessClient = MeroChessClient(backend, contextId)
 
 /** Milliseconds since the epoch: every `now` the contract takes. */
 internal fun nowMillis(): ULong = System.currentTimeMillis().toULong()

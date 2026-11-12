@@ -37,8 +37,9 @@ request goes over the sealed channel to an attested node.
   web app's model.
 - **The contract** is the component ABI (`../logic/res/abi.json`): the phones call `join(username,
   now)` and `getMembers()`, camelCase, with u64 values (`now`, `joinedAt`, `updatedAt`) as decimal
-  strings. `StreamClient` (Swift and Kotlin) is a small hand-written client for those two; a unit
-  test pins its method list. The contract's typed refusals (`APP_ERROR {code, fields}`:
+  strings. `StreamClient` (Swift and Kotlin, `Generated/` / `generated/`) is generated from that ABI
+  by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile
+  clients` workflow fails on a stale one); a unit test pins the methods the apps call. The contract's typed refusals (`APP_ERROR {code, fields}`:
   `NotJoined`, `ChunkTooLarge{max}`, …) and the node's errors (`ConfirmCancelled`,
   `LoginRequired`, `WrongNode`, `Unavailable`, `ReleaseDeadline`, `ConsentStale`) read as plain
   words (`ErrorText`).

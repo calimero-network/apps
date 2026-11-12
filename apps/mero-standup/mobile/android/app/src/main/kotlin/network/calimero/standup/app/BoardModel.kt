@@ -6,9 +6,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.standup.contract.DayView
+import network.calimero.standup.contract.DecisionPage
 import network.calimero.standup.contract.DecisionView
 import network.calimero.standup.contract.MemberView
 import network.calimero.standup.contract.UpdateView
+import network.calimero.standup.contract.toStandup
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.People
@@ -95,10 +97,10 @@ class BoardModel(
         val start = weekStart
         try {
             coroutineScope {
-                val dayView = async { client.getDay(day) }
-                val week = async { client.getWeek(start) }
-                val blockers = async { client.currentBlockers() }
-                val decided = async { client.listDecisions(fromDay = day, standingOnly = false, limit = 10u) }
+                val dayView = async { client.getDay(day).toStandup<DayView>() }
+                val week = async { client.getWeek(start).map { it.toStandup<DayView>() } }
+                val blockers = async { client.currentBlockers().map { it.toStandup<UpdateView>() } }
+                val decided = async { client.listDecisions(fromDay = day, standingOnly = false, limit = 10u).toStandup<DecisionPage>() }
                 val d = dayView.await()
                 val w = week.await()
                 val b = blockers.await()
@@ -131,7 +133,7 @@ class BoardModel(
             _previous.value = null
             return
         }
-        val view = runCatching { team.client.getDay(last) }.getOrNull()
+        val view = runCatching { team.client.getDay(last).toStandup<DayView>() }.getOrNull()
         _previous.value = view?.updates?.firstOrNull { it.author == me }
     }
 

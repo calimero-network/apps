@@ -43,10 +43,13 @@ Sign-in (iOS `ios/Sources/App/CloudAccess.swift`, Android `ui/CloudAccess.kt` + 
 
 ## The contract
 
-The apps call the component contract exactly as the web app's typed adapter
-(`app/src/battleships.ts`) does, through one hand-typed client each (`BattleshipsContract`, in
-`ios/BattleshipsCore/Sources/BattleshipsCore/Contract.swift` and
-`android/.../core/Contract.kt`; no client is generated from a component ABI yet):
+The apps call the component contract as the web app does, through `BattleshipsClient`, generated
+from `../logic/res/abi.json` by core's `mero-app-build codegen` into
+`ios/BattleshipsCore/Sources/BattleshipsCore/Generated/` and `android/.../generated/`. Run
+`scripts/mobile-codegen.sh` at the repo root after an ABI change (CI's `Mobile clients` workflow
+fails on a stale client). Until the logic derives `AbiType`, the ABI names the contract's types
+without their shape, so the client answers their JSON and `Contract.swift` / `core/Contract.kt`
+read it into the types they keep:
 
 - calls `registerPlayer`, `createMatch`, `commitBoard`, `proposeShot`, `acknowledgeShot`,
   `revealBoard`; views `getPlayers`, `getMatches`, `getPlayerStats`, `getHistory`, `getShots`,

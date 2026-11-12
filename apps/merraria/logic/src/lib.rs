@@ -53,7 +53,7 @@ const MAX_PLAYERS: u64 = PAGE as u64;
 // ── Records ──────────────────────────────────────────────────────────────────
 
 /// The world's founding parameters, fixed by `createWorld`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorldMeta {
     pub name: String,
@@ -64,7 +64,7 @@ pub struct WorldMeta {
 }
 
 /// One tile edit: `t` is the tile id (0 = air / dug out).
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct Edit {
     pub x: i32,
     pub y: i32,
@@ -72,7 +72,7 @@ pub struct Edit {
 }
 
 /// A player's live transform, as `heartbeat` sends it.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct Transform {
     pub name: String,
     pub x: f64,
@@ -87,7 +87,7 @@ pub struct Transform {
 }
 
 /// One override as `getOverrides` answers it: `k` is `"x,y"`.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct TileEntry {
     pub k: String,
     pub t: u8,
@@ -95,14 +95,14 @@ pub struct TileEntry {
 
 /// One page of overrides: `next` is the cursor of the following page, `null`
 /// on the last one.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct OverridesPage {
     pub items: Vec<TileEntry>,
     pub next: Option<String>,
 }
 
 /// A roster row: `id` is the player's account.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct PlayerView {
     pub id: String,
     pub name: String,

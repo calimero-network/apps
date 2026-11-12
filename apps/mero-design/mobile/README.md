@@ -105,23 +105,19 @@ refusals (by their `message`).
 
 ## The contract client
 
-`DesignClient` is still generated from v1's ABI and types every answer: the component contract
-(`../logic`, see #732) answers elements, members, comments, cursors and the board unchanged. Only
-the request differs, so one transport per platform (`ComponentTransport`, in
-`ios/DesignCore/Sources/DesignCore/Transport.swift` and `android/.../core/Support.kt`) maps each
-call onto the component wire, as the web app's `src/api/meroDesign.ts` does:
-
-- method and argument names become camelCase (`add_comment` → `addComment`, `comment_id` →
-  `commentId`);
-- 64-bit integer arguments travel as decimal strings (`timestamp`, `updatedAt`, `createdAt`, and
-  `x`/`y` of `addComment`, `updateElement`, `updateCursor`); an omitted optional is sent `null`;
-- `get_elements` (at most 1,000 elements on the component) is read whole through
-  `getElementsPage`.
-
-Do not edit the generated files by hand:
+`DesignClient` is generated from the component ABI (`../logic/res/abi.json`) by core's
+`mero-app-build codegen`: camelCase methods and arguments, 64-bit integers as decimal strings, an
+unset optional sent as `null`. Regenerate it with `scripts/mobile-codegen.sh` at the repo root after
+a contract change; CI's `Mobile clients` workflow fails on a stale client. Do not edit it by hand:
 
 - iOS: `ios/DesignCore/Sources/DesignCore/Generated/DesignClient.swift`
-- Android: `android/app/src/main/kotlin/network/calimero/design/generated/DesignClient.kt`
+- Android: `android/app/src/main/kotlin/network/calimero/design/generated/client/DesignClient.kt`
+
+Until the logic derives `AbiType`, the ABI names the board's types (elements, members, comments,
+cursors, the board) without their shape, so the client takes and answers their JSON and the types
+first generated from v1's ABI read it (`ios/DesignCore/Sources/DesignCore/Records.swift`,
+`android/.../generated/DesignRecords.kt`). `getElements` (at most 1,000 elements) is read whole
+through `getElementsPage` (`allElements()`), as the web app's `src/api/meroDesign.ts` does.
 
 ## Build and test
 

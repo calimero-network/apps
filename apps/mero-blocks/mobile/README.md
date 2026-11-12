@@ -35,8 +35,12 @@ Both apps run on **Calimero 1.0**. The pins are the SDKs' 1.0 releases, swift-sd
 - **The contract** is the component ABI (`../logic/res/abi.json`): `worldMeta`, `getOverrides`,
   `getPlayers`, `overrideCount`, `join`, `heartbeat`, `leave`, `setBlocks`, camelCase, with `now`,
   `seed` and `createdAt` as decimal strings and `getOverrides` / `getPlayers` paged
-  (`{items, next}`, followed to the end). `BlocksClient` (Swift and Kotlin) is hand-written for
-  those calls; a unit test pins its method list. Its typed refusals (`APP_ERROR`: `TooManyEdits`,
+  (`{items, next}`, followed to the end). `BlocksClient` (Swift and Kotlin, `Generated/` /
+  `generated/`) is generated from that ABI by core's `mero-app-build codegen`: run
+  `scripts/mobile-codegen.sh` at the repo root after an ABI change (CI's `Mobile clients` workflow
+  fails on a stale client). Until the logic derives `AbiType`, the ABI names the world's types
+  without their shape, so `BlocksContract` keeps them, the paged reads and the method list a unit
+  test pins. The typed refusals (`APP_ERROR`: `TooManyEdits`,
   `TooManyDevices`, `BadDevice`, `Uninitialized`) and the node's errors (`ConfirmCancelled`,
   `LoginRequired`, `WrongNode`, `Unavailable`, `ReleaseDeadline`, `ConsentStale`) read as plain
   words (`BlocksText.error`).

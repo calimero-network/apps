@@ -175,7 +175,7 @@ public actor PrivateStore {
     /// The identity this account recorded for an agreement, if it recorded one.
     public func sharedIdentity(for agreementContextId: String) async -> String? {
         guard let store = try? await find() else { return nil }
-        return (try? await client(store).getSharedIdentity(contextIdStr: agreementContextId))?.hex
+        return (try? await client(store).getSharedIdentity(contextIdStr: agreementContextId)).map { ContractBytes.text($0).hex }
     }
 
     // MARK: - Signature library
@@ -183,7 +183,7 @@ public actor PrivateStore {
     /// The saved signatures, newest first, with their images.
     public func signatures() async throws -> [SavedSignature] {
         guard let store = try await find() else { return [] }
-        let rows = try await client(store).listSignatures()
+        let rows = try await client(store).listSignatures().map { try $0.decoded(as: SignatureRecord.self) }
         return await withTaskGroup(of: SavedSignature.self) { group in
             for row in rows {
                 group.addTask {

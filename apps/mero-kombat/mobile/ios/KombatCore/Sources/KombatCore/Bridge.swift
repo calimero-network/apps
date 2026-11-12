@@ -149,10 +149,10 @@ public struct GameCalls: Sendable {
                 return .result(id: id, valueJSON: "null")
             case (.query, "arena"):
                 let a = try? JSONDecoder().decode(ArenaArgs.self, from: args)
-                let view = try await client.arena(now: a?.now ?? nowMillis())
+                let view = try await client.arena(now: a?.now ?? nowMillis()).decoded(as: ArenaView.self)
                 return .result(id: id, valueJSON: try Self.encode(view))
             case (.query, "history"):
-                return .result(id: id, valueJSON: try Self.encode(try await client.history()))
+                return .result(id: id, valueJSON: try Self.encode(try await client.history().map { try $0.decoded(as: MatchSummary.self) }))
             default:
                 return .failure(id: id, message: "\(method) is not open to the game page")
             }

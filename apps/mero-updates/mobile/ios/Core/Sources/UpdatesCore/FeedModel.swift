@@ -30,7 +30,7 @@ public final class FeedModel: ObservableObject {
         }
         let client = audience.client
         do {
-            posts = try await client.listPosts(kind: "update", categoryId: category, cursor: nil, limit: Self.pageSize)
+            posts = try await client.listPosts(kind: "update", categoryId: category, cursor: nil, limit: Self.pageSize).decoded(as: PostPage.self)
                 .items
             error = nil
         } catch {
@@ -38,8 +38,8 @@ public final class FeedModel: ObservableObject {
         }
         if audience.isTeam {
             // Drafts and the investor count only feed the team's panel: best effort.
-            drafts = (try? await client.listDrafts()) ?? drafts
-            if let people = try? await client.listPeople() { investorCount = people.filter { !$0.isTeam }.count }
+            drafts = (try? await client.listDrafts().map({ try $0.decoded(as: DraftView.self) })) ?? drafts
+            if let people = try? await client.listPeople().map({ try $0.decoded(as: PersonView.self) }) { investorCount = people.filter { !$0.isTeam }.count }
         } else {
             drafts = []
         }

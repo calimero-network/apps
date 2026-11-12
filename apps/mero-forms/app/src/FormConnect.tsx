@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FormKeyView, FormView } from "./formsApi";
+import { type FormKeyView, type FormView, toFormKeys, done } from "./formsApi";
 import { CrmSettings } from "./CrmSettings";
 import { PublicLinks } from "./PublicLinks";
 import { ago, examplePayload } from "./lib/fields";
@@ -72,7 +72,7 @@ export function FormKeys({
   appId: string;
 }) {
   const { client, passkey, after } = useSignedIn();
-  const allKeys = useRead(workspace.client, workspace.version, (c) => c.listFormKeys(), []);
+  const allKeys = useRead(workspace.client, workspace.version, (c) => c.listFormKeys().then(toFormKeys), []);
   const keys = { ...allKeys, data: allKeys.data?.filter((k) => k.form_id === form.id) ?? null };
   const [showPayload, setShowPayload] = useState(false);
   const [label, setLabel] = useState("");
@@ -94,7 +94,7 @@ export function FormKeys({
       after();
       setStep("registering");
       try {
-        await workspace.act((c) => c.registerFormKey({ account: key.keyId, form_id: form.id, label: name }));
+        await workspace.act((c) => c.registerFormKey({ account: key.keyId, formId: form.id, label: name }).then(done));
       } catch (e) {
         // No registration, no key: take it back rather than leave one that
         // could answer any form.
@@ -118,7 +118,7 @@ export function FormKeys({
     try {
       // The API key is what lets it call; the register is what names it.
       await revokeKey(client, key.account, passkey());
-      await workspace.act((c) => c.forgetFormKey({ account: key.account }));
+      await workspace.act((c) => c.forgetFormKey({ account: key.account }).then(done));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -119,7 +119,7 @@ public final class LobbyModel: ObservableObject {
             for ref in refs {
                 group.addTask {
                     let client = MeroChessClient.bound(backend, contextId: ref.contextId)
-                    let view = try? await client.table(now: nowMillis())
+                    let view = try? await client.table(now: nowMillis()).decoded(as: TableView.self)
                     return (ref.contextId, view.map(TableSummary.init))
                 }
             }

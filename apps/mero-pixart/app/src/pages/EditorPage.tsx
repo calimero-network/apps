@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { useApi } from "../api/useApi";
+import { i64, optI64 } from "../api/pixart";
+import type { UpdateLayerArgs } from "../generated/client";
 import { resetMethodSupport, rpcWithFallback } from "../api/compat";
 import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
@@ -70,7 +72,8 @@ export default function EditorPage() {
   // callbacks below.
   const api = useApi();
   const { targetKey } = useSignedIn();
-  const rpcCall = api.call;
+  // The document this page edits, through the generated client.
+  const pix = useMemo(() => api.app(ctxId), [api, ctxId]);
   const adminUploadBlob = api.uploadBlob;
   const adminGetBlob = api.getBlob;
   // The name each person set once for the whole team, shared by every app on it.
@@ -211,17 +214,17 @@ export default function EditorPage() {
   const refetch = useCallback(async () => {
     try {
       const [d, ls, ms, cs] = await Promise.all([
-        rpcCall<DocumentInfo>(ctxId, "get_document", {}),
-        rpcCall<Layer[]>(ctxId, "get_layers", {}),
-        rpcCall<Member[]>(ctxId, "get_members", {}),
-        rpcCall<CursorState[]>(ctxId, "get_cursors", {}),
+        pix.getDocument(),
+        (pix.getLayers() as Promise<Layer[]>),
+        (pix.getMembers() as Promise<Member[]>),
+        (pix.getCursors() as Promise<CursorState[]>),
       ]);
       if (d) setDoc(d);
       if (Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); }
       if (Array.isArray(ms)) setMembers(ms);
       if (Array.isArray(cs)) setCursors(cs);
     } catch { /* transient */ }
-  }, [ctxId, setDoc, setLayers, loadBlobs, rpcCall]);
+  }, [setDoc, setLayers, loadBlobs, pix]);
 
   // ── Init ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -250,7 +253,7 @@ export default function EditorPage() {
     (async () => {
       myId.current = await resolveIdentity();
       try {
-        const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
+        const d = await pix.getDocument();
         if (cancelled) return;
         if (d) {
           setDoc(d);
@@ -263,13 +266,13 @@ export default function EditorPage() {
         return;
       }
 
-      const ls = await rpcCall<Layer[]>(ctxId, "get_layers", {}).catch(() => [] as Layer[]);
+      const ls = await (pix.getLayers() as Promise<Layer[]>).catch(() => [] as Layer[]);
       if (!cancelled && Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); if (ls[0]) selectLayer(ls[ls.length - 1].id); }
 
-      const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
+      const role = await (pix.myRole() as Promise<Role>).catch(() => "viewer" as Role);
       if (!cancelled) setRole(role);
 
-      const ms = await rpcCall<Member[]>(ctxId, "get_members", {}).catch(() => [] as Member[]);
+      const ms = await (pix.getMembers() as Promise<Member[]>).catch(() => [] as Member[]);
       if (!cancelled && Array.isArray(ms)) {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
@@ -277,7 +280,7 @@ export default function EditorPage() {
         setOnProject(alreadyMember);
       }
 
-      const cs = await rpcCall<CursorState[]>(ctxId, "get_cursors", {}).catch(() => [] as CursorState[]);
+      const cs = await (pix.getCursors() as Promise<CursorState[]>).catch(() => [] as CursorState[]);
       if (!cancelled && Array.isArray(cs)) setCursors(cs);
 
       if (!cancelled) { setReady(true); clearHistory(); }
@@ -324,9 +327,9 @@ export default function EditorPage() {
     if (joining.current) return;
     joining.current = true;
     try {
-      await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
+      await pix.join({ username, avatar: null, timestamp: i64(ts()) });
       setOnProject(true);
-      const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
+      const role = await (pix.myRole() as Promise<Role>).catch(() => "viewer" as Role);
       setRole(role);
       refetch();
     } catch (e) {
@@ -334,7 +337,7 @@ export default function EditorPage() {
     } finally {
       joining.current = false;
     }
-  }, [ctxId, setRole, refetch, showToast, rpcCall]);
+  }, [setRole, refetch, showToast, pix]);
 
   // The name asked for once for the whole team (only for a team made before
   // names were asked on create/join): the team keeps it, then the roster.
@@ -384,8 +387,8 @@ export default function EditorPage() {
       if (!blobId) throw new Error("blob upload failed");
       loadedBlobs.current.add(blobId);
       const now = ts();
-      await rpcCall(ctxId, "update_layer_content", {
-        id: layerId, blob_id: blobId, width: c.width, height: c.height, updated_at: now,
+      await pix.updateLayerContent({
+        id: layerId, blobId, width: c.width, height: c.height, updatedAt: i64(now),
       });
       const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
       if (l) upsertLayer({ ...l, blobId, width: c.width, height: c.height, updatedAt: now });
@@ -394,7 +397,7 @@ export default function EditorPage() {
     } finally {
       setSaving(false);
     }
-  }, [ctxId, upsertLayer, showToast, adminUploadBlob, rpcCall]);
+  }, [ctxId, upsertLayer, showToast, adminUploadBlob, pix]);
 
   const commitMaskPixels = useCallback(async (layerId: string) => {
     const c = peekMaskCanvas(layerId);
@@ -406,13 +409,13 @@ export default function EditorPage() {
       if (!blobId) throw new Error("mask upload failed");
       loadedBlobs.current.add(blobId);
       const now = ts();
-      await rpcCall(ctxId, "update_layer_mask", { id: layerId, mask_blob_id: blobId, updated_at: now });
+      await pix.updateLayerMask({ id: layerId, maskBlobId: blobId, updatedAt: i64(now) });
       const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
       if (l) upsertLayer({ ...l, maskBlobId: blobId, updatedAt: now });
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally { setSaving(false); }
-  }, [ctxId, upsertLayer, showToast, adminUploadBlob, rpcCall]);
+  }, [ctxId, upsertLayer, showToast, adminUploadBlob, pix]);
 
   // ── Metadata commit (transform / props) ───────────────────────────────────
   const commitMeta = useCallback(async (layerId: string, patch: Partial<Layer>) => {
@@ -422,27 +425,27 @@ export default function EditorPage() {
     // make borsh deserialization panic ("invalid type: floating point …").
     // Round every numeric field defensively before sending.
     const ri = (v: number | undefined | null) => (v == null ? null : Math.round(v));
-    const args: Record<string, unknown> = {
+    const args: UpdateLayerArgs = {
       id: layerId,
       name: patch.name ?? null,
       visible: patch.visible ?? null,
       locked: patch.locked ?? null,
       opacity: ri(patch.opacity),
-      blend_mode: patch.blendMode ?? null,
-      x: ri(patch.x),
-      y: ri(patch.y),
+      blendMode: patch.blendMode ?? null,
+      x: optI64(ri(patch.x)),
+      y: optI64(ri(patch.y)),
       width: ri(patch.width),
       height: ri(patch.height),
       rotation: ri(patch.rotation),
-      scale_x: ri(patch.scaleX),
-      scale_y: ri(patch.scaleY),
+      scaleX: ri(patch.scaleX),
+      scaleY: ri(patch.scaleY),
       fill: patch.fill ?? null,
-      updated_at: now,
+      updatedAt: i64(now),
     };
     try {
-      await rpcCall(ctxId, "update_layer", args);
+      await pix.updateLayer(args);
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, showToast, rpcCall]);
+  }, [showToast, pix]);
 
   /**
    * Re-parent layers, preferring the one-shot `move_layers`.
@@ -459,15 +462,15 @@ export default function EditorPage() {
     const layersNow = useEditorStore.getState().layers;
     await rpcWithFallback(
       "move_layers",
-      () => rpcCall(ctxId, "move_layers", { moves, updated_at: updatedAt }),
+      () => pix.moveLayers({ moves, updatedAt: i64(updatedAt) }),
       async () => {
         for (const [id, parentId] of moves) {
           const layer = layersNow.find((l) => l.id === id);
-          await rpcCall(ctxId, "move_layer", {
+          await pix.moveLayer({
             id,
-            parent_id: parentId,
-            layer_index: layer?.layerIndex ?? 0,
-            updated_at: updatedAt,
+            parentId,
+            layerIndex: layer?.layerIndex ?? 0,
+            updatedAt: i64(updatedAt),
           });
         }
       },
@@ -475,7 +478,7 @@ export default function EditorPage() {
         "This project's app build predates folders — grouping is being saved one layer at a time.",
       ),
     );
-  }, [ctxId, showToast, rpcCall]);
+  }, [showToast, pix]);
 
   /**
    * Persist a free-transform patch via `update_transform`.
@@ -496,17 +499,17 @@ export default function EditorPage() {
     // rather than failing the whole call.
     rpcWithFallback(
       "update_transform",
-      () => rpcCall(ctxId, "update_transform", {
+      () => pix.updateTransform({
         id,
         rotation: ri(patch.rotation),
-        scale_x: ri(patch.scaleX),
-        scale_y: ri(patch.scaleY),
-        skew_x: ri(patch.skewX),
-        skew_y: ri(patch.skewY),
-        flip_h: patch.flipH ?? null,
-        flip_v: patch.flipV ?? null,
+        scaleX: ri(patch.scaleX),
+        scaleY: ri(patch.scaleY),
+        skewX: ri(patch.skewX),
+        skewY: ri(patch.skewY),
+        flipH: patch.flipH ?? null,
+        flipV: patch.flipV ?? null,
         warp: patch.warp ?? null,
-        updated_at: now,
+        updatedAt: i64(now),
       }),
       () => commitMeta(id, {
         rotation: patch.rotation, scaleX: patch.scaleX, scaleY: patch.scaleY,
@@ -516,7 +519,7 @@ export default function EditorPage() {
         + "rotation and scale are still saved.",
       ),
     ).catch((e) => showToast(errMsg(e), "error"));
-  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast, rpcCall]);
+  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast, pix]);
 
   const onUpdateMeta = useCallback((id: string, patch: Partial<Layer>) => {
     const l = useEditorStore.getState().layers.find((x) => x.id === id);
@@ -525,13 +528,13 @@ export default function EditorPage() {
     upsertLayer(next);
     bumpRender();
     if (patch.parentId !== undefined) {
-      rpcCall(ctxId, "move_layer", {
-        id, parent_id: patch.parentId ?? null, layer_index: next.layerIndex, updated_at: next.updatedAt,
+      pix.moveLayer({
+        id, parentId: patch.parentId ?? null, layerIndex: next.layerIndex, updatedAt: i64(next.updatedAt),
       }).catch((e) => showToast(errMsg(e), "error"));
     } else {
       commitMeta(id, patch);
     }
-  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast, rpcCall]);
+  }, [upsertLayer, bumpRender, commitMeta, showToast, pix]);
 
   // ── Layer lifecycle ────────────────────────────────────────────────────────
   const nextIndex = () => Math.max(0, ...useEditorStore.getState().layers.map((l) => l.layerIndex)) + 1;
@@ -580,9 +583,9 @@ export default function EditorPage() {
     upsertLayer(layer);
     selectLayer(layer.id);
     bumpRender();
-    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    try { await pix.addLayer({ layer }); }
     catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast, pix]);
 
   const onDelete = useCallback(async (id: string) => {
     // Deleting a folder lifts its children to the top level rather than taking
@@ -594,9 +597,9 @@ export default function EditorPage() {
     dropLayerCanvas(id);
     dropMaskCanvas(id);
     bumpRender();
-    try { await rpcCall(ctxId, "delete_layer", { id }); }
+    try { await pix.deleteLayer({ id }); }
     catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, removeLayer, upsertLayer, bumpRender, showToast, rpcCall]);
+  }, [removeLayer, upsertLayer, bumpRender, showToast, pix]);
 
   const onDuplicate = useCallback(async (id: string) => {
     const src = useEditorStore.getState().layers.find((l) => l.id === id);
@@ -612,10 +615,10 @@ export default function EditorPage() {
     selectLayer(copy.id);
     bumpRender();
     try {
-      await rpcCall(ctxId, "add_layer", { layer: copy });
+      await pix.addLayer({ layer: copy });
       if (srcCanvas) await commitPixels(copy.id);
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, rpcCall]);
+  }, [canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, pix]);
 
   const onReorder = useCallback(async (topToBottom: string[]) => {
     // top of panel = highest index
@@ -628,9 +631,9 @@ export default function EditorPage() {
       return found ? { ...l, layerIndex: found[1], updatedAt: now } : l;
     }));
     bumpRender();
-    try { await rpcCall(ctxId, "reorder_layers", { order, updated_at: now }); }
+    try { await pix.reorderLayers({ order, updatedAt: i64(now) }); }
     catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, setLayers, bumpRender, showToast, rpcCall]);
+  }, [setLayers, bumpRender, showToast, pix]);
 
   /**
    * Wrap the whole selection in a new folder — the Cmd/Ctrl-G every editor has.
@@ -669,12 +672,12 @@ export default function EditorPage() {
     bumpRender();
 
     try {
-      await rpcCall(ctxId, "add_layer", { layer: group });
+      await pix.addLayer({ layer: group });
       // One RPC for the whole selection where the contract has it: `move_layers`
       // also refuses any pair that would close a cycle.
       await persistMoves(members.map((m) => [m.id, group.id]), now);
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, bumpRender, persistMoves, showToast, rpcCall]);
+  }, [ctxId, canEdit, upsertLayer, bumpRender, persistMoves, showToast, pix]);
 
   /** Dissolve a folder: its children move up to the folder's own parent, and the
    *  now-empty folder layer is deleted. Contents keep their pixels and order. */
@@ -697,9 +700,9 @@ export default function EditorPage() {
 
     try {
       await persistMoves(children.map((c) => [c.id, grandparent]), now);
-      await rpcCall(ctxId, "delete_layer", { id });
+      await pix.deleteLayer({ id });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, removeLayer, bumpRender, persistMoves, showToast, rpcCall]);
+  }, [canEdit, upsertLayer, removeLayer, bumpRender, persistMoves, showToast, pix]);
 
   /**
    * Bake a layer's live transform into its pixels: render it through its own
@@ -739,12 +742,12 @@ export default function EditorPage() {
     try {
       await commitPixels(id);
       await commitMeta(id, { x, y, width: canvas.width, height: canvas.height });
-      await rpcCall(ctxId, "update_transform", {
-        id, rotation: 0, scale_x: 100, scale_y: 100, skew_x: 0, skew_y: 0,
-        flip_h: false, flip_v: false, warp: "", updated_at: now,
+      await pix.updateTransform({
+        id, rotation: 0, scaleX: 100, scaleY: 100, skewX: 0, skewY: 0,
+        flipH: false, flipV: false, warp: "", updatedAt: i64(now),
       });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, bumpRender, commitPixels, commitMeta, showToast, rpcCall]);
+  }, [canEdit, upsertLayer, bumpRender, commitPixels, commitMeta, showToast, pix]);
 
   // ── Merge / flatten / rasterize ─────────────────────────────────────────────
   // Composite `sources` (bottom→top) into one doc-sized raster layer, replace
@@ -770,11 +773,11 @@ export default function EditorPage() {
     selectLayer(merged.id);
     bumpRender();
     try {
-      await rpcCall(ctxId, "add_layer", { layer: merged });
+      await pix.addLayer({ layer: merged });
       await commitPixels(merged.id);
-      for (const l of sources) await rpcCall(ctxId, "delete_layer", { id: l.id });
+      for (const l of sources) await pix.deleteLayer({ id: l.id });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, doc, canEdit, upsertLayer, removeLayer, selectLayer, bumpRender, commitPixels, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, removeLayer, selectLayer, bumpRender, commitPixels, showToast, pix]);
 
   const onRasterize = useCallback(() => {
     const sel = useEditorStore.getState().selectedLayer();
@@ -818,7 +821,7 @@ export default function EditorPage() {
       upsertLayer({ ...l, maskBlobId: null, updatedAt: ts() });
       setEditingMask(null);
       bumpRender();
-      try { await rpcCall(ctxId, "update_layer_mask", { id, mask_blob_id: null, updated_at: ts() }); }
+      try { await pix.updateLayerMask({ id, maskBlobId: null, updatedAt: i64(ts()) }); }
       catch (e) { showToast(errMsg(e), "error"); }
     } else {
       getMaskCanvas(id, l.width, l.height); // white = fully visible
@@ -826,7 +829,7 @@ export default function EditorPage() {
       await commitMaskPixels(id);
       bumpRender();
     }
-  }, [ctxId, canEdit, upsertLayer, setEditingMask, bumpRender, commitMaskPixels, showToast, rpcCall]);
+  }, [canEdit, upsertLayer, setEditingMask, bumpRender, commitMaskPixels, showToast, pix]);
 
   // ── Adjustments ─────────────────────────────────────────────────────────
   const onAdjust = useCallback((patch: Partial<Adjustments>) => {
@@ -838,7 +841,7 @@ export default function EditorPage() {
     if (adjTimer.current) clearTimeout(adjTimer.current);
     const id = sel.id;
     adjTimer.current = setTimeout(() => {
-      rpcCall(ctxId, "update_adjustments", {
+      pix.updateAdjustments({
         id,
         brightness: adjustments.brightness,
         contrast: adjustments.contrast,
@@ -848,10 +851,10 @@ export default function EditorPage() {
         blur: adjustments.blur,
         invert: adjustments.invert,
         curves: adjustments.curves ?? "",
-        updated_at: ts(),
+        updatedAt: i64(ts()),
       }).catch((e) => showToast(errMsg(e), "error"));
     }, 350);
-  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast, rpcCall]);
+  }, [canEdit, upsertLayer, bumpRender, showToast, pix]);
 
   const onApplyCurves = useCallback(async (curvesJson: string) => {
     const sel = useEditorStore.getState().selectedLayer();
@@ -870,14 +873,14 @@ export default function EditorPage() {
       await commitPixels(sel.id);
     }
     // record the curve on the layer too
-    rpcCall(ctxId, "update_adjustments", {
+    pix.updateAdjustments({
       id: sel.id,
       brightness: sel.adjustments.brightness, contrast: sel.adjustments.contrast,
       saturation: sel.adjustments.saturation, hue: sel.adjustments.hue,
       exposure: sel.adjustments.exposure, blur: sel.adjustments.blur,
-      invert: sel.adjustments.invert, curves: curvesJson, updated_at: ts(),
+      invert: sel.adjustments.invert, curves: curvesJson, updatedAt: i64(ts()),
     }).catch(() => {});
-  }, [ctxId, canEdit, bumpRender, commitPixels, rpcCall]);
+  }, [canEdit, bumpRender, commitPixels, pix]);
 
   const onApplyLevels = useCallback(async (levels: LevelsData) => {
     const sel = useEditorStore.getState().selectedLayer();
@@ -914,12 +917,12 @@ export default function EditorPage() {
       upsertLayer(layer);
       selectLayer(layer.id);
       bumpRender();
-      await rpcCall(ctxId, "add_layer", { layer });
+      await pix.addLayer({ layer });
       await commitPixels(layer.id);
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally { setSaving(false); }
-  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, pix]);
 
   const onImportSvg = useCallback(async (file: File) => {
     if (!canEdit() || !doc) { showToast("You need editor access to add SVGs.", "error"); return; }
@@ -941,12 +944,12 @@ export default function EditorPage() {
       upsertLayer(layer);
       selectLayer(layer.id);
       bumpRender();
-      await rpcCall(ctxId, "add_layer", { layer });
+      await pix.addLayer({ layer });
       await commitPixels(layer.id);
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally { setSaving(false); }
-  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, pix]);
 
   // ── Shape / gradient → new raster layer ────────────────────────────────────
   const onCreateRasterLayer = useCallback(async ({ name, x, y, canvas }: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => {
@@ -962,9 +965,9 @@ export default function EditorPage() {
     upsertLayer(layer);
     selectLayer(layer.id);
     bumpRender();
-    try { await rpcCall(ctxId, "add_layer", { layer }); await commitPixels(layer.id); }
+    try { await pix.addLayer({ layer }); await commitPixels(layer.id); }
     catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast, pix]);
 
   // ── Text layer create / commit ──────────────────────────────────────────────
   const onCreateTextLayer = useCallback(async (x: number, y: number): Promise<string | undefined> => {
@@ -978,10 +981,10 @@ export default function EditorPage() {
     upsertLayer(layer);
     selectLayer(layer.id);
     bumpRender();
-    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    try { await pix.addLayer({ layer }); }
     catch (e) { showToast(errMsg(e), "error"); }
     return layer.id;
-  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast, rpcCall]);
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast, pix]);
 
   const onCommitText = useCallback((id: string, text: TextProps, width: number, height: number) => {
     const l = useEditorStore.getState().layers.find((x) => x.id === id);
@@ -989,12 +992,12 @@ export default function EditorPage() {
     const now = ts();
     upsertLayer({ ...l, text, width, height, updatedAt: now });
     bumpRender();
-    rpcCall(ctxId, "update_text", {
-      id, content: text.content, font_family: text.fontFamily, font_size: text.fontSize,
-      color: text.color, bold: text.bold, italic: text.italic, align: text.align ?? "left", updated_at: now,
+    pix.updateText({
+      id, content: text.content, fontFamily: text.fontFamily, fontSize: text.fontSize,
+      color: text.color, bold: text.bold, italic: text.italic, align: text.align ?? "left", updatedAt: i64(now),
     }).catch((e) => showToast(errMsg(e), "error"));
     commitMeta(id, { width, height });
-  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast, rpcCall]);
+  }, [upsertLayer, bumpRender, commitMeta, showToast, pix]);
 
   /** Typography change from the options bar — re-fit the layer box to the text. */
   const onUpdateText = useCallback((id: string, patch: Partial<TextProps>) => {
@@ -1025,10 +1028,10 @@ export default function EditorPage() {
     setSelection(null);
     bumpRender();
     try {
-      await rpcCall(ctxId, "update_document", { width: w, height: h });
+      await pix.updateDocument({ width: w, height: h });
       for (const l of moved) await commitMeta(l.id, { x: l.x, y: l.y });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, doc, canEdit, setLayers, setDoc, setSelection, bumpRender, commitMeta, showToast, rpcCall]);
+  }, [doc, canEdit, setLayers, setDoc, setSelection, bumpRender, commitMeta, showToast, pix]);
 
   // ── Filters (Image menu) — destructive, on the active raster/fill layer ─────
   const onApplyFilter = useCallback(async (kind: FilterKind) => {
@@ -1096,7 +1099,7 @@ export default function EditorPage() {
         dropMaskCanvas(l.id);
       }
       for (const l of existing) {
-        await rpcCall(ctxId, "delete_layer", { id: l.id }).catch(() => {});
+        await pix.deleteLayer({ id: l.id }).catch(() => {});
       }
 
       // 2. Resize the document to the project's canvas.
@@ -1106,7 +1109,7 @@ export default function EditorPage() {
         height: project.height,
         background: project.background,
       } as DocumentInfo);
-      await rpcCall(ctxId, "update_document", {
+      await pix.updateDocument({
         width: project.width, height: project.height, background: project.background,
       }).catch((e) => showToast(errMsg(e), "error"));
       setZoom(Math.min(1, 900 / project.width));
@@ -1145,7 +1148,7 @@ export default function EditorPage() {
       // `parentId` is applied by a single `move_layers` afterwards, which is why
       // the layers can be created in any order.
       await mapLimit(built.layers, UPLOAD_CONCURRENCY, (layer) =>
-        rpcCall(ctxId, "add_layer", { layer: { ...layer, parentId: null } }));
+        pix.addLayer({ layer: { ...layer, parentId: null } }));
 
       const contentPatches = await mapLimit(
         built.layers.filter((l) => built.canvases.has(l.id) || built.masks.has(l.id)),
@@ -1158,9 +1161,9 @@ export default function EditorPage() {
             if (blobId) {
               loadedBlobs.current.add(blobId);
               patch.blobId = blobId;
-              await rpcCall(ctxId, "update_layer_content", {
-                id: layer.id, blob_id: blobId,
-                width: pixels.width, height: pixels.height, updated_at: ts(),
+              await pix.updateLayerContent({
+                id: layer.id, blobId,
+                width: pixels.width, height: pixels.height, updatedAt: i64(ts()),
               });
             }
           }
@@ -1170,8 +1173,8 @@ export default function EditorPage() {
             if (blobId) {
               loadedBlobs.current.add(blobId);
               patch.maskBlobId = blobId;
-              await rpcCall(ctxId, "update_layer_mask", {
-                id: layer.id, mask_blob_id: blobId, updated_at: ts(),
+              await pix.updateLayerMask({
+                id: layer.id, maskBlobId: blobId, updatedAt: i64(ts()),
               });
             }
           }
@@ -1203,7 +1206,7 @@ export default function EditorPage() {
     }
   }, [
     ctxId, doc, canEdit, setDoc, setLayers, selectLayer, clearHistory, removeLayer,
-    setZoom, setPan, bumpRender, persistMoves, showToast, adminUploadBlob, rpcCall,
+    setZoom, setPan, bumpRender, persistMoves, showToast, adminUploadBlob, pix,
   ]);
 
   // A deep link (`?showcase=aurora`) opens straight into a populated document —
@@ -1264,8 +1267,8 @@ export default function EditorPage() {
     const now = Date.now();
     if (now - lastCursor.current < 1500) return;
     lastCursor.current = now;
-    rpcCall(ctxId, "update_cursor", { x: Math.round(x), y: Math.round(y), updated_at: now }).catch(() => {});
-  }, [ctxId, rpcCall]);
+    pix.updateCursor({ x: i64(Math.round(x)), y: i64(Math.round(y)), updatedAt: i64(now) }).catch(() => {});
+  }, [pix]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {

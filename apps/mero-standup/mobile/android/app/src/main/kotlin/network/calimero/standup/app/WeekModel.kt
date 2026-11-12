@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.standup.contract.DayView
+import network.calimero.standup.contract.toStandup
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.Digest
 import network.calimero.standup.core.ErrorText
@@ -41,7 +42,7 @@ class WeekModel(
         _isLoading.value = true
         val start = _start.value
         try {
-            val week = team.client.getWeek(start)
+            val week = team.client.getWeek(start).map { it.toStandup<DayView>() }
             if (start != _start.value) return
             _week.value = week
             error.value = null

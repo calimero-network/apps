@@ -33,7 +33,7 @@ pub const MAX_ACTIONS: usize = 40;
 pub const MAX_ACTION_METHODS: usize = 64;
 
 /// One action, as your agent proposes it and settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct ActionDef {
     /// Stable within the app, e.g. `edit`; your setting for it is kept by it.
     pub id: String,
@@ -85,7 +85,7 @@ pub struct ActionSetView {
 }
 
 /// One action you set apart from its app's mode.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct ActionModeView {
     pub app: String,
     pub action: String,

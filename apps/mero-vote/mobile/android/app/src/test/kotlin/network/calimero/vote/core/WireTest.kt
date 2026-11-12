@@ -13,12 +13,22 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import network.calimero.vote.generated.AuditReport
+import network.calimero.vote.generated.Ceremony
 import network.calimero.vote.generated.Closure
+import network.calimero.vote.generated.Identity
+import network.calimero.vote.generated.Member
+import network.calimero.vote.generated.PollSummary
+import network.calimero.vote.generated.PollView
+import network.calimero.vote.generated.TallyInputs
+import network.calimero.vote.generated.Transcript
 import network.calimero.vote.generated.VoteWireDecoding
 import network.calimero.vote.generated.WireBallot
 import network.calimero.vote.generated.WireBranch
 import network.calimero.vote.generated.WireCiphertext
 import network.calimero.vote.generated.WireDealing
+import network.calimero.vote.generated.toVote
+import network.calimero.vote.generated.toVoteJson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -41,21 +51,21 @@ class WireTest {
             val client = voteClient(backend.contract, CTX)
             val branch = WireBranch("00", "00")
             val poll = "dd".repeat(32)
-            runCatching { client.whoami() }
-            runCatching { client.roster() }
-            runCatching { client.listPolls() }
-            runCatching { client.getPoll(poll) }
-            runCatching { client.ceremony(poll) }
-            runCatching { client.tallyInputs(poll) }
-            runCatching { client.getResult(poll) }
-            runCatching { client.getTranscript(poll) }
+            runCatching { client.whoami().toVote<Identity>() }
+            runCatching { client.roster().map { it.toVote<Member>() } }
+            runCatching { client.listPolls().map { it.toVote<PollSummary>() } }
+            runCatching { client.getPoll(poll).toVote<PollView>() }
+            runCatching { client.ceremony(poll).toVote<Ceremony>() }
+            runCatching { client.tallyInputs(poll).toVote<TallyInputs>() }
+            runCatching { client.getResult(poll).toVote<AuditReport>() }
+            runCatching { client.getTranscript(poll).toVote<Transcript>() }
             client.setName("Ada")
             runCatching { client.createPoll("Q", "", listOf("A", "B"), 1u, 1u, listOf(ME), 1u, emptyList()) }
-            client.publishTransportKey(poll, "00", branch)
-            client.publishDealing(poll, WireDealing(emptyList(), branch, emptyList()))
-            client.fileComplaint(poll, BOB, "00", branch)
+            client.publishTransportKey(poll, "00", branch.toVoteJson())
+            client.publishDealing(poll, WireDealing(emptyList(), branch, emptyList()).toVoteJson())
+            client.fileComplaint(poll, BOB, "00", branch.toVoteJson())
             runCatching { client.openVoting(poll) }
-            runCatching { client.castBallot(poll, WireBallot(emptyList(), emptyList())) }
+            runCatching { client.castBallot(poll, WireBallot(emptyList(), emptyList()).toVoteJson()) }
             client.closePoll(poll)
             runCatching { client.sealPoll(poll) }
             client.publishPartial(poll, emptyList())
@@ -110,7 +120,7 @@ class WireTest {
                     """[{"poll_id":"p","title":"T","creator":"c","phase":"Voting","created_at":"1761000000123","ballots":2}]""",
                 )
             }
-            val polls = voteClient(backend.contract, CTX).listPolls()
+            val polls = voteClient(backend.contract, CTX).listPolls().map { it.toVote<PollSummary>() }
             assertEquals(1_761_000_000_123uL, polls.single().createdAt)
             assertEquals(2u, polls.single().ballots)
 

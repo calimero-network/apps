@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.models.generated.SceneInfo
+import network.calimero.models.generated.toModels
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Where a list screen is. (Swift `LoadState`.) */
@@ -111,7 +112,7 @@ class ScenesModel(
         val infos: Map<String, SceneInfo> =
             coroutineScope {
                 _scenes.value
-                    .map { s -> async { s.contextId to attempt { backend.modelsClient(s.contextId).getScene() }.getOrNull() } }
+                    .map { s -> async { s.contextId to attempt { backend.modelsClient(s.contextId).getScene().toModels<SceneInfo>() }.getOrNull() } }
                     .awaitAll()
                     .mapNotNull { (id, info) -> info?.let { id to it } }
                     .toMap()

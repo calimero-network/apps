@@ -3,6 +3,7 @@ package network.calimero.sign.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.sign.generated.ContractBytes
 
 /** Someone whose signature a document waits for, or who signed it. (Swift `SignerRow`.) */
 data class SignerRow(
@@ -128,7 +129,7 @@ class DocumentModel(
         error.value = null
         _step.value = SigningStep.CHECKING
         attempt {
-            val me = SignIds.hex(client.whoami())
+            val me = SignIds.hex(ContractBytes.Text(client.whoami()))
             client.hasConsented(me, documentId)
         }.onSuccess { consented ->
             _step.value = if (consented) SigningStep.CHOOSE else SigningStep.CONSENT

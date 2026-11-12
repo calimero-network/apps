@@ -45,12 +45,13 @@ shows the same code and returns to `mero-updates://consent`. The app's own sessi
 anything.
 
 **The contract** is the component ABI (`../logic/res/abi.json`), called exactly as the web app's
-`app/src/lib/updatesClient.ts` does. The generated `UpdatesClient` (v1 shapes: snake_case fields,
-numbers) is kept, and `ComponentWire` (iOS `Core/Sources/UpdatesCore/ComponentWire.swift`, Android
-`core/ComponentWire.kt`) sits under it:
+`app/src/lib/updatesClient.ts` does, through `UpdatesClient`, generated from it by core's
+`mero-app-build codegen`: camelCase methods and arguments, an unset parameter sent as `null`, the
+`u64` argument `since` as a decimal string. The screens keep the v1 types (snake_case fields,
+numbers), and `ComponentWire` (iOS `Core/Sources/UpdatesCore/ComponentWire.swift`, Android
+`core/ComponentWire.kt`) converts between them and the client's JSON:
 
-- out: method and argument names become camelCase (`add_comment {post_id}` → `addComment {postId}`),
-  a parameter left out is sent as `null`, and the `u64` argument `since` goes as a decimal string;
+- out: a record argument's keys become camelCase (`UpdateInput {category_id}` → `{categoryId}`);
 - in: keys become snake_case again and the `u64` fields (times and counts) arrive as decimal
   strings and become numbers;
 - refusals are `422 APP_ERROR {code, fields: {message}}` (`NotFound`, `Invalid`, `Forbidden`), shown
@@ -124,11 +125,13 @@ plain text, as on the web.
 
 ## The contract client
 
-`ios/Core/Sources/UpdatesCore/Generated/UpdatesClient.swift` and
-`android/app/src/main/kotlin/network/calimero/updates/generated/UpdatesClient.kt` were generated
-from the v1 ABI and are kept as the screens' types. abi-codegen has no target for the component
-ABI yet, so they are not regenerated: a contract change goes into `ComponentWire`'s method table
-and the wire tests on both platforms.
+`UpdatesClient` (`ios/Core/Sources/UpdatesCore/Generated/UpdatesClient.swift`,
+`android/app/src/main/kotlin/network/calimero/updates/generated/client/UpdatesClient.kt`) is
+generated from `../logic/res/abi.json`: run `scripts/mobile-codegen.sh` at the repo root after a
+contract change and update `ComponentWire`'s method table and the wire tests (CI's `Mobile clients`
+workflow fails on a stale client). The v1 types the screens read (`UpdatesCore/Records.swift`,
+`generated/UpdatesRecords.kt`, first generated from the v1 ABI) stay until the logic derives
+`AbiType`; then the client types its answers itself.
 
 ## CI
 

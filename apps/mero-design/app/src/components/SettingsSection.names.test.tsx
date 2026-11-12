@@ -5,6 +5,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { withRoutes } from "@calimero-apps/connect/testing";
+import { boardAnswering } from "../test/board";
 
 const ana = "a".repeat(64);
 
@@ -12,7 +13,7 @@ vi.mock("../api/rpc", () => (withRoutes({
   getNodeIdentity: vi.fn().mockResolvedValue({ accountId: "f".repeat(64) }),
   // The project subgroup: rows carry no names.
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member" }], teeMembers: [] }),
-  rpcCall: vi.fn().mockResolvedValue([]),
+  design: boardAnswering([]),
   updateMemberRole: vi.fn(),
   removeTeamMember: vi.fn(),
   // The team's record: the names people set for the whole team.

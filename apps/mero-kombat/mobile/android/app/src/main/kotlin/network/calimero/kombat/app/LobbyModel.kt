@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import network.calimero.kombat.contract.ArenaView
-import network.calimero.kombat.contract.KombatClient
+import network.calimero.kombat.contract.KombatContract
 
 /** An arena to open: its app instance and the organization it lives in. */
 data class ArenaRef(
@@ -124,7 +124,7 @@ class LobbyModel(
                 refs
                     .map { ref ->
                         async {
-                            ref.contextId to runCatching { ArenaSummary.of(kombatClient(backend, ref.contextId).arena(nowMillis())) }.getOrNull()
+                            ref.contextId to runCatching { ArenaSummary.of(KombatContract.arenaView(kombatClient(backend, ref.contextId).arena(nowMillis()))) }.getOrNull()
                         }
                     }.awaitAll()
                     .toMap()
@@ -142,7 +142,7 @@ class LobbyModel(
         val name = title.trim().take(64).ifEmpty { KombatConstants.DEFAULT_TITLE }
         val target = namespaceId ?: backend.foundNamespace(name).namespaceId
         // The contract's `init(title?, now?)`, as the web app passes it (`now` a u64 decimal string).
-        val contextId = backend.createContext(target, applicationId, name, KombatClient.initArgs(name, nowMillis()))
+        val contextId = backend.createContext(target, applicationId, name, KombatContract.initArgs(name, nowMillis()))
         val ref = ArenaRef(contextId, target)
         val namespaceName =
             _state.value.namespaces

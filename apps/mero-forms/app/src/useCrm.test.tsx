@@ -1,7 +1,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormView, ResponseView } from "./formsApi";
-import type { Workspace } from "./useWorkspace";
+import { fakeWorkspace as fakeContract } from "./test/workspace";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 /**
@@ -90,12 +90,12 @@ const response: ResponseView = {
 
 function fakeWorkspace() {
   const recorded: unknown[] = [];
-  const client = { recordCrmDeal: vi.fn(async (p: unknown) => recorded.push(p)) };
-  const workspace = {
-    client: client as unknown as Workspace["client"],
-    version: 0,
-    act: (async (fn: (c: typeof client) => Promise<unknown>) => fn(client)) as unknown as Workspace["act"],
-  };
+  const { workspace } = fakeContract({
+    recordCrmDeal: (p) => {
+      recorded.push(p);
+      return { id: p.id, crmContext: p.crmContext, crmDeal: p.crmDeal };
+    },
+  });
   return { workspace, recorded };
 }
 
@@ -132,7 +132,7 @@ describe("the hand-off to Mero CRM", () => {
       expectedClose: null,
       source: "Mero Forms · Contact us",
     });
-    expect(recorded).toEqual([{ id: "r1", crm_context: PIPELINE, crm_deal: "deal-1" }]);
+    expect(recorded).toEqual([{ id: "r1", crmContext: PIPELINE, crmDeal: "deal-1" }]);
   });
 
   it("records nothing when the CRM refuses", async () => {

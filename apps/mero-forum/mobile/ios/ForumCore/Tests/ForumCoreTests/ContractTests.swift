@@ -67,7 +67,7 @@ final class ContractTests: XCTestCase {
         let answer = try JSONDecoder().decode(JSONValue.self, from: Data(wire.utf8))
         backend.recording.setHandler { _ in answer }
         let client = ForumClient.make(contract: backend.contract, contextId: "app1")
-        let page = try await client.listPosts(sort: "top", cursor: nil, limit: 20)
+        let page = try await client.listPosts(sort: "top", cursor: nil, limit: 20).decoded(as: PostPage.self)
         let call = try XCTUnwrap(backend.recording.calls("listPosts").first)
         XCTAssertEqual(call.path, .query)
         XCTAssertEqual(call.args, .object(["sort": .string("top"), "cursor": .null, "limit": .number(20)]))

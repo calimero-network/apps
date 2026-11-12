@@ -33,12 +33,13 @@ import network.calimero.crm.core.crmClient
 import network.calimero.crm.generated.ActivityView
 import network.calimero.crm.generated.AutomationView
 import network.calimero.crm.generated.ContactView
-import network.calimero.crm.generated.CrmClient
+import network.calimero.crm.generated.CrmContract
 import network.calimero.crm.generated.DealDetail
 import network.calimero.crm.generated.DealView
 import network.calimero.crm.generated.NoteView
 import network.calimero.crm.generated.Settings
 import network.calimero.crm.generated.StageView
+import network.calimero.crm.generated.client.CrmClient
 import java.time.ZoneId
 import java.util.UUID
 
@@ -127,12 +128,12 @@ class PipelineModel(
         joinIfNeeded()
         try {
             coroutineScope {
-                val st = async { client.listStages() }
-                val ds = async { client.listDeals() }
-                val cs = async { client.listContacts() }
-                val ac = async { client.listActivities() }
-                val au = async { client.listAutomations() }
-                val se = async { client.getSettings() }
+                val st = async { client.listStages().map { CrmContract.read<StageView>(it) } }
+                val ds = async { client.listDeals().map { CrmContract.read<DealView>(it) } }
+                val cs = async { client.listContacts().map { CrmContract.read<ContactView>(it) } }
+                val ac = async { client.listActivities().map { CrmContract.read<ActivityView>(it) } }
+                val au = async { client.listAutomations().map { CrmContract.read<AutomationView>(it) } }
+                val se = async { CrmContract.read<Settings>(client.getSettings()) }
                 val next =
                     s.copy(
                         stages = st.await().sortedBy { it.position },
@@ -209,7 +210,7 @@ class PipelineModel(
     }
 
     /** One deal with its person, activities and notes. */
-    suspend fun detail(dealId: String): DealDetail = client.getDeal(dealId)
+    suspend fun detail(dealId: String): DealDetail = CrmContract.read(client.getDeal(dealId))
 
     // People and ownership
 

@@ -1899,5 +1899,141 @@
     },
     "version": 1
   },
+  "types": {
+    "ChannelRecord": {
+      "fields": [
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "topic",
+          "string"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "registeredAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FileRecord": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "blobId",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "mimeType",
+          "string"
+        ],
+        [
+          "uploadedBy",
+          "string"
+        ],
+        [
+          "uploadedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Identity": {
+      "fields": [
+        [
+          "deviceId",
+          "string"
+        ],
+        [
+          "accountId",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberRecord": {
+      "fields": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WorkspaceInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "admin",
+          "string"
+        ],
+        [
+          "channelCount",
+          "u64"
+        ],
+        [
+          "groupCount",
+          "u64"
+        ],
+        [
+          "memberCount",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WsGroupRecord": {
+      "fields": [
+        [
+          "groupId",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "registeredAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

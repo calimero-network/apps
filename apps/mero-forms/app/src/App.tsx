@@ -16,6 +16,7 @@ import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
 import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { done } from "./formsApi";
 
 export function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
@@ -297,7 +298,7 @@ function WorkspaceName({ workspace, editable }: { workspace: Workspace; editable
           e.preventDefault();
           setBusy(true);
           workspace
-            .act((c) => c.setWorkspaceName({ name: draft }))
+            .act((c) => c.setWorkspaceName({ name: draft }).then(done))
             .then(() => setDraft(null))
             .finally(() => setBusy(false));
         }}
