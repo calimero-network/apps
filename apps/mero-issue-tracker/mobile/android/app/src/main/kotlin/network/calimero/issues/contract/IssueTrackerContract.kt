@@ -52,7 +52,6 @@ object IssueTrackerContract {
     inline fun <reified T> read(answer: JsonElement): T = json.decodeFromJsonElement(serializer<T>(), answer)
 }
 
-
 /** A u64 the contract sends as a decimal string; a JSON number is read too. Sent as a string. */
 object U64AsString : KSerializer<ULong> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("U64AsString", PrimitiveKind.STRING)
