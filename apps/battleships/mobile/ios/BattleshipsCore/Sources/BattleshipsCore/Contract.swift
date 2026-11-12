@@ -32,6 +32,26 @@ public typealias MatchRecord = BattleshipsClient.MatchRecord
 public typealias PlayerStatsView = BattleshipsClient.PlayerStatsView
 /// Someone who opened the lobby. On 1.0 both fields are the account id.
 public typealias PlayerEntry = BattleshipsClient.PlayerEntry
+/// The shot waiting for its defender's answer: `shot_id` is what `acknowledgeShot` takes, so an
+/// answer meant for an earlier shot is refused; `target` is the player who has to answer.
+public typealias PendingShotView = BattleshipsClient.PendingShotView
+/// The match as every reader derives it, in one read: `standing` is `playing`,
+/// `awaiting_reveal`, `won` or `void`; `ended_by` is `sunk` or `impossible_misses`, `nil` while
+/// playing.
+public typealias MatchStateView = BattleshipsClient.MatchStateView
+
+/// The caller's shots (`getShots`) or the shots at the caller (`getIncomingShots`): one ``Cell``
+/// byte per square, row-major.
+public struct ShotsView: Codable, Sendable, Equatable {
+    public var size: UInt32
+    public var shots: [UInt8]
+
+    public init(size: UInt32, shots: [UInt8]) {
+        self.size = size
+        self.shots = shots
+    }
+}
+
 // MARK: - Reading the generated client's answers
 
 extension Encodable {
