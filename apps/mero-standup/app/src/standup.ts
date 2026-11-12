@@ -9,9 +9,9 @@ export const PACKAGE = "com.calimero.mero-standup";
 // place that converts.
 //
 // The contract is called through `MeroStandupClient`, which `mero-app-build
-// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). The ABI
-// names its records without their shapes, so the generated types are
-// `unknown`: each read passes its answer through the `decode*` for its shape.
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`) and
+// types its records from the ABI; each read passes its answer through the
+// `decode*` for its shape, which also fills in a field an older contract left out.
 
 export interface HelpView {
   account: string;

@@ -386,5 +386,221 @@
     },
     "version": 1
   },
+  "types": {
+    "DayPage": {
+      "fields": [
+        [
+          "days",
+          "list<DaySummary>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DaySummary": {
+      "fields": [
+        [
+          "day",
+          "string"
+        ],
+        [
+          "updates",
+          "u32"
+        ],
+        [
+          "blocked",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DayView": {
+      "fields": [
+        [
+          "day",
+          "string"
+        ],
+        [
+          "updates",
+          "list<UpdateView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DecisionPage": {
+      "fields": [
+        [
+          "items",
+          "list<DecisionView>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DecisionView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "decision",
+          "string"
+        ],
+        [
+          "rationale",
+          "string"
+        ],
+        [
+          "supersedes",
+          "string"
+        ],
+        [
+          "supersededBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "tags",
+          "list<string>"
+        ],
+        [
+          "with",
+          "list<PersonView>"
+        ],
+        [
+          "fromDay",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "HelpView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "at",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "lastDay",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PersonView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TagCount": {
+      "fields": [
+        [
+          "tag",
+          "string"
+        ],
+        [
+          "count",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "UpdateView": {
+      "fields": [
+        [
+          "day",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "done",
+          "string"
+        ],
+        [
+          "next",
+          "string"
+        ],
+        [
+          "blockers",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "u64"
+        ],
+        [
+          "helpers",
+          "list<HelpView>"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

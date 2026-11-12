@@ -578,7 +578,69 @@
         "type": "object"
       },
       "ChunkView": {
-        "description": "The app type `ChunkView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "dataB64": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "height": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          },
+          "isKeyframe": {
+            "type": "boolean"
+          },
+          "seq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "timestampUs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "track": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "width": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          }
+        },
+        "required": [
+          "seq",
+          "from",
+          "track",
+          "isKeyframe",
+          "codec",
+          "width",
+          "height",
+          "timestampUs",
+          "dataB64",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ChunkView"
       },
       "CodecRequiredError": {
@@ -666,7 +728,64 @@
         "type": "object"
       },
       "DecodedFrame": {
-        "description": "The app type `DecodedFrame`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "encodedBytes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "from": {
+            "type": "string"
+          },
+          "height": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          },
+          "pixels": {
+            "contentEncoding": "base64url",
+            "description": "Bytes, base64url without padding.",
+            "pattern": "^[A-Za-z0-9_-]*$",
+            "type": "string"
+          },
+          "seq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "track": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "width": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          }
+        },
+        "required": [
+          "seq",
+          "from",
+          "track",
+          "width",
+          "height",
+          "pixels",
+          "createdAt",
+          "encodedBytes"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DecodedFrame"
       },
       "DimensionTooLargeError": {
@@ -1442,11 +1561,69 @@
         "type": "object"
       },
       "LiveStats": {
-        "description": "The app type `LiveStats`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "liveBytes": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "liveChunks": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "prunedChunks": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/SenderStats"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "liveChunks",
+          "liveBytes",
+          "prunedChunks",
+          "senders"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LiveStats"
       },
       "Member": {
-        "description": "The app type `Member`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "joinedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "memberId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memberId",
+          "username",
+          "joinedAt",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Member"
       },
       "MemberJoinedEvent": {
@@ -1816,11 +1993,130 @@
         "type": "object"
       },
       "SenderCursor": {
-        "description": "The app type `SenderCursor`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "afterSeq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "from": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "afterSeq"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SenderCursor"
       },
+      "SenderStats": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "lastKeyframe": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "liveBytes": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "liveChunks": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "newestAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "nextSeq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "oldestLive": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "pruned": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "from",
+          "nextSeq",
+          "oldestLive",
+          "lastKeyframe",
+          "newestAt",
+          "pruned",
+          "liveChunks",
+          "liveBytes"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SenderStats"
+      },
       "StreamStats": {
-        "description": "The app type `StreamStats`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "liveFragments": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "memberCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nextSeq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "oldestLiveSeq": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "prunedFrames": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "name",
+          "memberCount",
+          "liveFragments",
+          "nextSeq",
+          "oldestLiveSeq",
+          "prunedFrames"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "StreamStats"
       },
       "Trap": {

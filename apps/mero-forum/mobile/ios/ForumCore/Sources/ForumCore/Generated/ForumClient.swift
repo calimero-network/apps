@@ -15,14 +15,208 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct ForumClient: Sendable {
-    /// The app type `CommentPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias CommentPage = JSONValue
 
-    /// The app type `PostPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias PostPage = JSONValue
+    /// The app type `CommentPage`.
+    public struct CommentPage: Codable, Sendable, Equatable {
+        public var items: [CommentView]
+        public var nextCursor: String?
 
-    /// The app type `PostView`: the ABI names it without its shape, so it is its JSON.
-    public typealias PostView = JSONValue
+        public init(
+            items: [CommentView],
+            nextCursor: String? = nil
+        ) {
+            self.items = items
+            self.nextCursor = nextCursor
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([CommentView].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("nextCursor"))
+            self.items = v0
+            self.nextCursor = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.nextCursor, forKey: Key("nextCursor"))
+        }
+    }
+
+    /// The app type `CommentView`.
+    public struct CommentView: Codable, Sendable, Equatable {
+        public var id: String
+        public var postId: String
+        public var author: String
+        public var authorName: String
+        public var body: String
+        public var createdAt: UInt64
+        public var editedAt: UInt64
+        public var score: Int64
+        public var myVote: Int8
+
+        public init(
+            id: String,
+            postId: String,
+            author: String,
+            authorName: String,
+            body: String,
+            createdAt: UInt64,
+            editedAt: UInt64,
+            score: Int64,
+            myVote: Int8
+        ) {
+            self.id = id
+            self.postId = postId
+            self.author = author
+            self.authorName = authorName
+            self.body = body
+            self.createdAt = createdAt
+            self.editedAt = editedAt
+            self.score = score
+            self.myVote = myVote
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("postId"))
+            let v2 = try fields.decode(String.self, forKey: Key("author"))
+            let v3 = try fields.decode(String.self, forKey: Key("authorName"))
+            let v4 = try fields.decode(String.self, forKey: Key("body"))
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("editedAt")).value
+            let v7 = try fields.decode(DecimalString<Int64>.self, forKey: Key("score")).value
+            let v8 = try fields.decode(Int8.self, forKey: Key("myVote"))
+            self.id = v0
+            self.postId = v1
+            self.author = v2
+            self.authorName = v3
+            self.body = v4
+            self.createdAt = v5
+            self.editedAt = v6
+            self.score = v7
+            self.myVote = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.postId, forKey: Key("postId"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.authorName, forKey: Key("authorName"))
+            try fields.encode(self.body, forKey: Key("body"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(DecimalString(self.editedAt), forKey: Key("editedAt"))
+            try fields.encode(DecimalString(self.score), forKey: Key("score"))
+            try fields.encode(self.myVote, forKey: Key("myVote"))
+        }
+    }
+
+    /// The app type `PostPage`.
+    public struct PostPage: Codable, Sendable, Equatable {
+        public var items: [PostView]
+        public var nextCursor: String?
+
+        public init(
+            items: [PostView],
+            nextCursor: String? = nil
+        ) {
+            self.items = items
+            self.nextCursor = nextCursor
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([PostView].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("nextCursor"))
+            self.items = v0
+            self.nextCursor = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.nextCursor, forKey: Key("nextCursor"))
+        }
+    }
+
+    /// The app type `PostView`.
+    public struct PostView: Codable, Sendable, Equatable {
+        public var id: String
+        public var author: String
+        public var authorName: String
+        public var title: String
+        public var body: String
+        public var createdAt: UInt64
+        public var editedAt: UInt64
+        public var score: Int64
+        public var commentCount: UInt64
+        public var myVote: Int8
+
+        public init(
+            id: String,
+            author: String,
+            authorName: String,
+            title: String,
+            body: String,
+            createdAt: UInt64,
+            editedAt: UInt64,
+            score: Int64,
+            commentCount: UInt64,
+            myVote: Int8
+        ) {
+            self.id = id
+            self.author = author
+            self.authorName = authorName
+            self.title = title
+            self.body = body
+            self.createdAt = createdAt
+            self.editedAt = editedAt
+            self.score = score
+            self.commentCount = commentCount
+            self.myVote = myVote
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("author"))
+            let v2 = try fields.decode(String.self, forKey: Key("authorName"))
+            let v3 = try fields.decode(String.self, forKey: Key("title"))
+            let v4 = try fields.decode(String.self, forKey: Key("body"))
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("editedAt")).value
+            let v7 = try fields.decode(DecimalString<Int64>.self, forKey: Key("score")).value
+            let v8 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("commentCount")).value
+            let v9 = try fields.decode(Int8.self, forKey: Key("myVote"))
+            self.id = v0
+            self.author = v1
+            self.authorName = v2
+            self.title = v3
+            self.body = v4
+            self.createdAt = v5
+            self.editedAt = v6
+            self.score = v7
+            self.commentCount = v8
+            self.myVote = v9
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.authorName, forKey: Key("authorName"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.body, forKey: Key("body"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(DecimalString(self.editedAt), forKey: Key("editedAt"))
+            try fields.encode(DecimalString(self.score), forKey: Key("score"))
+            try fields.encode(DecimalString(self.commentCount), forKey: Key("commentCount"))
+            try fields.encode(self.myVote, forKey: Key("myVote"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

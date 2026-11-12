@@ -3,6 +3,7 @@ package network.calimero.vote.core
 import com.calimero.mero.testkit.InMemoryAppBackend
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -59,6 +60,19 @@ object Vectors {
     fun audit(name: String): JsonObject = root["audits"]!!.jsonArray.map { it.jsonObject }.first { it["name"]!!.jsonPrimitive.content == name }
 
     fun transcript(name: String = "honest"): Transcript = testJson.decodeFromJsonElement(Transcript.serializer(), audit(name)["transcript"]!!)
+
+    /**
+     * The vector's transcript as the 1.0 contract answers it: its seal carries `aggregate`, which the
+     * vectors predate (the audit recomputes it from the ballots, so its value does not matter here).
+     */
+    fun contractTranscript(name: String = "honest"): JsonObject {
+        val transcript = audit(name)["transcript"]!!.jsonObject
+        val state = transcript["state"]!!.jsonObject
+        val closure = state["closure"] as? JsonObject ?: return transcript
+        if ("aggregate" in closure) return transcript
+        val sealed = JsonObject(closure + ("aggregate" to JsonArray(emptyList())))
+        return JsonObject(transcript + ("state" to JsonObject(state + ("closure" to sealed))))
+    }
 }
 
 /** A contract scripted per method; [fail] makes a method throw. */

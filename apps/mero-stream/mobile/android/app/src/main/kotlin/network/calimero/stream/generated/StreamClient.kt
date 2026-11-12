@@ -41,24 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `ChunkView`: the ABI names it without its shape, so it is its JSON. */
-typealias ChunkView = JsonElement
-
-/** The app type `DecodedFrame`: the ABI names it without its shape, so it is its JSON. */
-typealias DecodedFrame = JsonElement
-
-/** The app type `LiveStats`: the ABI names it without its shape, so it is its JSON. */
-typealias LiveStats = JsonElement
-
-/** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
-typealias Member = JsonElement
-
-/** The app type `SenderCursor`: the ABI names it without its shape, so it is its JSON. */
-typealias SenderCursor = JsonElement
-
-/** The app type `StreamStats`: the ABI names it without its shape, so it is its JSON. */
-typealias StreamStats = JsonElement
-
 /**
  * The app's methods.
  *
@@ -129,11 +111,11 @@ class StreamClient private constructor(
         invokeView(
             "getChunks",
             buildJsonObject {
-                put("cursors", encode(ListSerializer(JsonElement.serializer()), cursors))
+                put("cursors", encode(ListSerializer(SenderCursor.serializer()), cursors))
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(ChunkView.serializer()),
         )
 
     /** view `getFrame`. */
@@ -149,7 +131,7 @@ class StreamClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(DecodedFrame.serializer()),
         )
 
     /** view `getLiveStats`. */
@@ -162,7 +144,7 @@ class StreamClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            LiveStats.serializer(),
         )
 
     /** view `getMembers`. */
@@ -175,7 +157,7 @@ class StreamClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Member.serializer()),
         )
 
     /** view `getStats`. */
@@ -188,7 +170,7 @@ class StreamClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            StreamStats.serializer(),
         )
 
     /** view `isMemberAdmin`. */
@@ -220,7 +202,7 @@ class StreamClient private constructor(
                 put("now", encode(U64AsString, now))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            Member.serializer(),
         )
 
     /** view `keyframeCursors`. */
@@ -233,7 +215,7 @@ class StreamClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(SenderCursor.serializer()),
         )
 
     /** call `postChunk`. */
@@ -484,6 +466,343 @@ class StreamClient private constructor(
         }
     }
 
+    /** The app type `ChunkView`. */
+    data class ChunkView(
+        val seq: ULong,
+        val from: String,
+        val track: UByte,
+        val isKeyframe: Boolean,
+        val codec: String,
+        val width: UShort,
+        val height: UShort,
+        val timestampUs: ULong,
+        val dataB64: String,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            /** `ChunkView`'s JSON form. */
+            fun serializer(): KSerializer<ChunkView> = Wire
+
+            private object Wire : KSerializer<ChunkView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ChunkView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("seq", encode(U64AsString, value.seq))
+                            put("from", encode(String.serializer(), value.from))
+                            put("track", encode(UByte.serializer(), value.track))
+                            put("isKeyframe", encode(Boolean.serializer(), value.isKeyframe))
+                            put("codec", encode(String.serializer(), value.codec))
+                            put("width", encode(UShort.serializer(), value.width))
+                            put("height", encode(UShort.serializer(), value.height))
+                            put("timestampUs", encode(U64AsString, value.timestampUs))
+                            put("dataB64", encode(String.serializer(), value.dataB64))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ChunkView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ChunkView")
+                    return ChunkView(
+                        seq = field(fields, "seq", U64AsString),
+                        from = field(fields, "from", String.serializer()),
+                        track = field(fields, "track", UByte.serializer()),
+                        isKeyframe = field(fields, "isKeyframe", Boolean.serializer()),
+                        codec = field(fields, "codec", String.serializer()),
+                        width = field(fields, "width", UShort.serializer()),
+                        height = field(fields, "height", UShort.serializer()),
+                        timestampUs = field(fields, "timestampUs", U64AsString),
+                        dataB64 = field(fields, "dataB64", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DecodedFrame`. */
+    @Suppress("ArrayInDataClass")
+    data class DecodedFrame(
+        val seq: ULong,
+        val from: String,
+        val track: UByte,
+        val width: UShort,
+        val height: UShort,
+        val pixels: ByteArray,
+        val createdAt: ULong,
+        val encodedBytes: UInt,
+    ) {
+        companion object {
+            /** `DecodedFrame`'s JSON form. */
+            fun serializer(): KSerializer<DecodedFrame> = Wire
+
+            private object Wire : KSerializer<DecodedFrame> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DecodedFrame,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("seq", encode(U64AsString, value.seq))
+                            put("from", encode(String.serializer(), value.from))
+                            put("track", encode(UByte.serializer(), value.track))
+                            put("width", encode(UShort.serializer(), value.width))
+                            put("height", encode(UShort.serializer(), value.height))
+                            put("pixels", encode(Base64Url, value.pixels))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("encodedBytes", encode(UInt.serializer(), value.encodedBytes))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DecodedFrame {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DecodedFrame")
+                    return DecodedFrame(
+                        seq = field(fields, "seq", U64AsString),
+                        from = field(fields, "from", String.serializer()),
+                        track = field(fields, "track", UByte.serializer()),
+                        width = field(fields, "width", UShort.serializer()),
+                        height = field(fields, "height", UShort.serializer()),
+                        pixels = field(fields, "pixels", Base64Url),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        encodedBytes = field(fields, "encodedBytes", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `LiveStats`. */
+    data class LiveStats(
+        val liveChunks: UInt,
+        val liveBytes: ULong,
+        val prunedChunks: ULong,
+        val senders: List<SenderStats>,
+    ) {
+        companion object {
+            /** `LiveStats`'s JSON form. */
+            fun serializer(): KSerializer<LiveStats> = Wire
+
+            private object Wire : KSerializer<LiveStats> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: LiveStats,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("liveChunks", encode(UInt.serializer(), value.liveChunks))
+                            put("liveBytes", encode(U64AsString, value.liveBytes))
+                            put("prunedChunks", encode(U64AsString, value.prunedChunks))
+                            put("senders", encode(ListSerializer(SenderStats.serializer()), value.senders))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): LiveStats {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "LiveStats")
+                    return LiveStats(
+                        liveChunks = field(fields, "liveChunks", UInt.serializer()),
+                        liveBytes = field(fields, "liveBytes", U64AsString),
+                        prunedChunks = field(fields, "prunedChunks", U64AsString),
+                        senders = field(fields, "senders", ListSerializer(SenderStats.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Member`. */
+    data class Member(
+        val memberId: String,
+        val username: String,
+        val joinedAt: ULong,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `Member`'s JSON form. */
+            fun serializer(): KSerializer<Member> = Wire
+
+            private object Wire : KSerializer<Member> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Member,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("memberId", encode(String.serializer(), value.memberId))
+                            put("username", encode(String.serializer(), value.username))
+                            put("joinedAt", encode(U64AsString, value.joinedAt))
+                            put("updatedAt", encode(U64AsString, value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Member {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Member")
+                    return Member(
+                        memberId = field(fields, "memberId", String.serializer()),
+                        username = field(fields, "username", String.serializer()),
+                        joinedAt = field(fields, "joinedAt", U64AsString),
+                        updatedAt = field(fields, "updatedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `SenderCursor`. */
+    data class SenderCursor(
+        val from: String,
+        val afterSeq: ULong,
+    ) {
+        companion object {
+            /** `SenderCursor`'s JSON form. */
+            fun serializer(): KSerializer<SenderCursor> = Wire
+
+            private object Wire : KSerializer<SenderCursor> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SenderCursor,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("from", encode(String.serializer(), value.from))
+                            put("afterSeq", encode(U64AsString, value.afterSeq))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SenderCursor {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SenderCursor")
+                    return SenderCursor(
+                        from = field(fields, "from", String.serializer()),
+                        afterSeq = field(fields, "afterSeq", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `SenderStats`. */
+    data class SenderStats(
+        val from: String,
+        val nextSeq: ULong,
+        val oldestLive: ULong,
+        val lastKeyframe: ULong,
+        val newestAt: ULong,
+        val pruned: ULong,
+        val liveChunks: UInt,
+        val liveBytes: ULong,
+    ) {
+        companion object {
+            /** `SenderStats`'s JSON form. */
+            fun serializer(): KSerializer<SenderStats> = Wire
+
+            private object Wire : KSerializer<SenderStats> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SenderStats,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("from", encode(String.serializer(), value.from))
+                            put("nextSeq", encode(U64AsString, value.nextSeq))
+                            put("oldestLive", encode(U64AsString, value.oldestLive))
+                            put("lastKeyframe", encode(U64AsString, value.lastKeyframe))
+                            put("newestAt", encode(U64AsString, value.newestAt))
+                            put("pruned", encode(U64AsString, value.pruned))
+                            put("liveChunks", encode(UInt.serializer(), value.liveChunks))
+                            put("liveBytes", encode(U64AsString, value.liveBytes))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SenderStats {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SenderStats")
+                    return SenderStats(
+                        from = field(fields, "from", String.serializer()),
+                        nextSeq = field(fields, "nextSeq", U64AsString),
+                        oldestLive = field(fields, "oldestLive", U64AsString),
+                        lastKeyframe = field(fields, "lastKeyframe", U64AsString),
+                        newestAt = field(fields, "newestAt", U64AsString),
+                        pruned = field(fields, "pruned", U64AsString),
+                        liveChunks = field(fields, "liveChunks", UInt.serializer()),
+                        liveBytes = field(fields, "liveBytes", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `StreamStats`. */
+    data class StreamStats(
+        val name: String,
+        val memberCount: UInt,
+        val liveFragments: UInt,
+        val nextSeq: ULong,
+        val oldestLiveSeq: ULong,
+        val prunedFrames: ULong,
+    ) {
+        companion object {
+            /** `StreamStats`'s JSON form. */
+            fun serializer(): KSerializer<StreamStats> = Wire
+
+            private object Wire : KSerializer<StreamStats> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: StreamStats,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("memberCount", encode(UInt.serializer(), value.memberCount))
+                            put("liveFragments", encode(UInt.serializer(), value.liveFragments))
+                            put("nextSeq", encode(U64AsString, value.nextSeq))
+                            put("oldestLiveSeq", encode(U64AsString, value.oldestLiveSeq))
+                            put("prunedFrames", encode(U64AsString, value.prunedFrames))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): StreamStats {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "StreamStats")
+                    return StreamStats(
+                        name = field(fields, "name", String.serializer()),
+                        memberCount = field(fields, "memberCount", UInt.serializer()),
+                        liveFragments = field(fields, "liveFragments", UInt.serializer()),
+                        nextSeq = field(fields, "nextSeq", U64AsString),
+                        oldestLiveSeq = field(fields, "oldestLiveSeq", U64AsString),
+                        prunedFrames = field(fields, "prunedFrames", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -550,5 +869,11 @@ class StreamClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

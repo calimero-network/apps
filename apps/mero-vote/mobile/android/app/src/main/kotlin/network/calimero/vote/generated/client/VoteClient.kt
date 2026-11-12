@@ -41,42 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `AuditReport`: the ABI names it without its shape, so it is its JSON. */
-typealias AuditReport = JsonElement
-
-/** The app type `Ceremony`: the ABI names it without its shape, so it is its JSON. */
-typealias Ceremony = JsonElement
-
-/** The app type `Identity`: the ABI names it without its shape, so it is its JSON. */
-typealias Identity = JsonElement
-
-/** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
-typealias Member = JsonElement
-
-/** The app type `PollSummary`: the ABI names it without its shape, so it is its JSON. */
-typealias PollSummary = JsonElement
-
-/** The app type `PollView`: the ABI names it without its shape, so it is its JSON. */
-typealias PollView = JsonElement
-
-/** The app type `TallyInputs`: the ABI names it without its shape, so it is its JSON. */
-typealias TallyInputs = JsonElement
-
-/** The app type `Transcript`: the ABI names it without its shape, so it is its JSON. */
-typealias Transcript = JsonElement
-
-/** The app type `WireBallot`: the ABI names it without its shape, so it is its JSON. */
-typealias WireBallot = JsonElement
-
-/** The app type `WireBranch`: the ABI names it without its shape, so it is its JSON. */
-typealias WireBranch = JsonElement
-
-/** The app type `WireDealing`: the ABI names it without its shape, so it is its JSON. */
-typealias WireDealing = JsonElement
-
-/** The app type `WirePartial`: the ABI names it without its shape, so it is its JSON. */
-typealias WirePartial = JsonElement
-
 /**
  * The app's methods.
  *
@@ -128,7 +92,7 @@ class VoteClient private constructor(
             "castBallot",
             buildJsonObject {
                 put("pollId", encode(String.serializer(), pollId))
-                put("ballot", encode(JsonElement.serializer(), ballot))
+                put("ballot", encode(WireBallot.serializer(), ballot))
             },
             idempotencyKey,
             String.serializer(),
@@ -147,7 +111,7 @@ class VoteClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            Ceremony.serializer(),
         )
 
     /** call `closePoll`. */
@@ -209,7 +173,7 @@ class VoteClient private constructor(
                 put("pollId", encode(String.serializer(), pollId))
                 put("dealer", encode(String.serializer(), dealer))
                 put("secret", encode(String.serializer(), secret))
-                put("proof", encode(JsonElement.serializer(), proof))
+                put("proof", encode(WireBranch.serializer(), proof))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -229,7 +193,7 @@ class VoteClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PollView.serializer(),
         )
 
     /** view `getResult`. */
@@ -245,7 +209,7 @@ class VoteClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            AuditReport.serializer(),
         )
 
     /** view `getTranscript`. */
@@ -261,7 +225,7 @@ class VoteClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            Transcript.serializer(),
         )
 
     /** view `listPolls`. */
@@ -274,7 +238,7 @@ class VoteClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(PollSummary.serializer()),
         )
 
     /** call `openVoting`. */
@@ -301,7 +265,7 @@ class VoteClient private constructor(
             "publishDealing",
             buildJsonObject {
                 put("pollId", encode(String.serializer(), pollId))
-                put("dealing", encode(JsonElement.serializer(), dealing))
+                put("dealing", encode(WireDealing.serializer(), dealing))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -318,7 +282,7 @@ class VoteClient private constructor(
             "publishPartial",
             buildJsonObject {
                 put("pollId", encode(String.serializer(), pollId))
-                put("partials", encode(ListSerializer(JsonElement.serializer()), partials))
+                put("partials", encode(ListSerializer(WirePartial.serializer()), partials))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -337,7 +301,7 @@ class VoteClient private constructor(
             buildJsonObject {
                 put("pollId", encode(String.serializer(), pollId))
                 put("key", encode(String.serializer(), key))
-                put("proof", encode(JsonElement.serializer(), proof))
+                put("proof", encode(WireBranch.serializer(), proof))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -354,7 +318,7 @@ class VoteClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Member.serializer()),
         )
 
     /** call `sealPoll`. */
@@ -399,7 +363,7 @@ class VoteClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            TallyInputs.serializer(),
         )
 
     /** view `whoami`. */
@@ -412,7 +376,7 @@ class VoteClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            Identity.serializer(),
         )
 
     /** The app's events from log index [from], then live, until the collector stops. */
@@ -616,6 +580,1269 @@ class VoteClient private constructor(
         }
     }
 
+    /** The app type `Anchor`. */
+    data class Anchor(
+        val digest: String,
+        val network: String,
+        val reference: String,
+        val anchored_at: ULong,
+    ) {
+        companion object {
+            /** `Anchor`'s JSON form. */
+            fun serializer(): KSerializer<Anchor> = Wire
+
+            private object Wire : KSerializer<Anchor> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Anchor,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("digest", encode(String.serializer(), value.digest))
+                            put("network", encode(String.serializer(), value.network))
+                            put("reference", encode(String.serializer(), value.reference))
+                            put("anchored_at", encode(U64AsString, value.anchored_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Anchor {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Anchor")
+                    return Anchor(
+                        digest = field(fields, "digest", String.serializer()),
+                        network = field(fields, "network", String.serializer()),
+                        reference = field(fields, "reference", String.serializer()),
+                        anchored_at = field(fields, "anchored_at", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `AuditReport`. */
+    data class AuditReport(
+        val poll_id: String,
+        val phase: Phase,
+        val verified: Boolean,
+        val checks: List<Check>,
+        val counts: List<UInt>? = null,
+        val counted_ballots: UInt,
+        val decrypted_by: List<String>,
+        val transcript_digest: String? = null,
+        val anchor: Anchor? = null,
+        val uncounted: List<String>,
+    ) {
+        companion object {
+            /** `AuditReport`'s JSON form. */
+            fun serializer(): KSerializer<AuditReport> = Wire
+
+            private object Wire : KSerializer<AuditReport> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: AuditReport,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("poll_id", encode(String.serializer(), value.poll_id))
+                            put("phase", encode(Phase.serializer(), value.phase))
+                            put("verified", encode(Boolean.serializer(), value.verified))
+                            put("checks", encode(ListSerializer(Check.serializer()), value.checks))
+                            put("counts", encode(ListSerializer(UInt.serializer()).nullable, value.counts))
+                            put("counted_ballots", encode(UInt.serializer(), value.counted_ballots))
+                            put("decrypted_by", encode(ListSerializer(String.serializer()), value.decrypted_by))
+                            put("transcript_digest", encode(String.serializer().nullable, value.transcript_digest))
+                            put("anchor", encode(Anchor.serializer().nullable, value.anchor))
+                            put("uncounted", encode(ListSerializer(String.serializer()), value.uncounted))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): AuditReport {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "AuditReport")
+                    return AuditReport(
+                        poll_id = field(fields, "poll_id", String.serializer()),
+                        phase = field(fields, "phase", Phase.serializer()),
+                        verified = field(fields, "verified", Boolean.serializer()),
+                        checks = field(fields, "checks", ListSerializer(Check.serializer())),
+                        counts = field(fields, "counts", ListSerializer(UInt.serializer()).nullable),
+                        counted_ballots = field(fields, "counted_ballots", UInt.serializer()),
+                        decrypted_by = field(fields, "decrypted_by", ListSerializer(String.serializer())),
+                        transcript_digest = field(fields, "transcript_digest", String.serializer().nullable),
+                        anchor = field(fields, "anchor", Anchor.serializer().nullable),
+                        uncounted = field(fields, "uncounted", ListSerializer(String.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Ceremony`. */
+    data class Ceremony(
+        val threshold: UInt,
+        val trustees: List<CeremonyTrustee>,
+        val complaints: List<ComplaintView>,
+    ) {
+        companion object {
+            /** `Ceremony`'s JSON form. */
+            fun serializer(): KSerializer<Ceremony> = Wire
+
+            private object Wire : KSerializer<Ceremony> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Ceremony,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("threshold", encode(UInt.serializer(), value.threshold))
+                            put("trustees", encode(ListSerializer(CeremonyTrustee.serializer()), value.trustees))
+                            put("complaints", encode(ListSerializer(ComplaintView.serializer()), value.complaints))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Ceremony {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Ceremony")
+                    return Ceremony(
+                        threshold = field(fields, "threshold", UInt.serializer()),
+                        trustees = field(fields, "trustees", ListSerializer(CeremonyTrustee.serializer())),
+                        complaints = field(fields, "complaints", ListSerializer(ComplaintView.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CeremonyTrustee`. */
+    data class CeremonyTrustee(
+        val account: String,
+        val index: UInt,
+        val transport: String? = null,
+        val dealing: WireDealing? = null,
+    ) {
+        companion object {
+            /** `CeremonyTrustee`'s JSON form. */
+            fun serializer(): KSerializer<CeremonyTrustee> = Wire
+
+            private object Wire : KSerializer<CeremonyTrustee> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CeremonyTrustee,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("index", encode(UInt.serializer(), value.index))
+                            put("transport", encode(String.serializer().nullable, value.transport))
+                            put("dealing", encode(WireDealing.serializer().nullable, value.dealing))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CeremonyTrustee {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CeremonyTrustee")
+                    return CeremonyTrustee(
+                        account = field(fields, "account", String.serializer()),
+                        index = field(fields, "index", UInt.serializer()),
+                        transport = field(fields, "transport", String.serializer().nullable),
+                        dealing = field(fields, "dealing", WireDealing.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Check`. */
+    data class Check(
+        val name: String,
+        val ok: Boolean,
+        val detail: String,
+    ) {
+        companion object {
+            /** `Check`'s JSON form. */
+            fun serializer(): KSerializer<Check> = Wire
+
+            private object Wire : KSerializer<Check> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Check,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("ok", encode(Boolean.serializer(), value.ok))
+                            put("detail", encode(String.serializer(), value.detail))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Check {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Check")
+                    return Check(
+                        name = field(fields, "name", String.serializer()),
+                        ok = field(fields, "ok", Boolean.serializer()),
+                        detail = field(fields, "detail", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Closure`. */
+    data class Closure(
+        val counted: List<CountedBallot>,
+        val aggregate: List<WireCiphertext>,
+        val closed_at: ULong,
+    ) {
+        companion object {
+            /** `Closure`'s JSON form. */
+            fun serializer(): KSerializer<Closure> = Wire
+
+            private object Wire : KSerializer<Closure> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Closure,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("counted", encode(ListSerializer(CountedBallot.serializer()), value.counted))
+                            put("aggregate", encode(ListSerializer(WireCiphertext.serializer()), value.aggregate))
+                            put("closed_at", encode(U64AsString, value.closed_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Closure {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Closure")
+                    return Closure(
+                        counted = field(fields, "counted", ListSerializer(CountedBallot.serializer())),
+                        aggregate = field(fields, "aggregate", ListSerializer(WireCiphertext.serializer())),
+                        closed_at = field(fields, "closed_at", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ComplaintView`. */
+    data class ComplaintView(
+        val recipient: String,
+        val dealer: String,
+        val valid: Boolean,
+    ) {
+        companion object {
+            /** `ComplaintView`'s JSON form. */
+            fun serializer(): KSerializer<ComplaintView> = Wire
+
+            private object Wire : KSerializer<ComplaintView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ComplaintView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("recipient", encode(String.serializer(), value.recipient))
+                            put("dealer", encode(String.serializer(), value.dealer))
+                            put("valid", encode(Boolean.serializer(), value.valid))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ComplaintView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ComplaintView")
+                    return ComplaintView(
+                        recipient = field(fields, "recipient", String.serializer()),
+                        dealer = field(fields, "dealer", String.serializer()),
+                        valid = field(fields, "valid", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CountedBallot`. */
+    data class CountedBallot(
+        val voter: String,
+        val digest: String,
+        val frozen: String,
+    ) {
+        companion object {
+            /** `CountedBallot`'s JSON form. */
+            fun serializer(): KSerializer<CountedBallot> = Wire
+
+            private object Wire : KSerializer<CountedBallot> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CountedBallot,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("voter", encode(String.serializer(), value.voter))
+                            put("digest", encode(String.serializer(), value.digest))
+                            put("frozen", encode(String.serializer(), value.frozen))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CountedBallot {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CountedBallot")
+                    return CountedBallot(
+                        voter = field(fields, "voter", String.serializer()),
+                        digest = field(fields, "digest", String.serializer()),
+                        frozen = field(fields, "frozen", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Election`. */
+    data class Election(
+        val key: String,
+        val threshold: UInt,
+        val transport: List<String>,
+        val qualified: List<QualifiedDealing>,
+        val disqualified: List<String>,
+        val opened_at: ULong,
+    ) {
+        companion object {
+            /** `Election`'s JSON form. */
+            fun serializer(): KSerializer<Election> = Wire
+
+            private object Wire : KSerializer<Election> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Election,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("key", encode(String.serializer(), value.key))
+                            put("threshold", encode(UInt.serializer(), value.threshold))
+                            put("transport", encode(ListSerializer(String.serializer()), value.transport))
+                            put("qualified", encode(ListSerializer(QualifiedDealing.serializer()), value.qualified))
+                            put("disqualified", encode(ListSerializer(String.serializer()), value.disqualified))
+                            put("opened_at", encode(U64AsString, value.opened_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Election {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Election")
+                    return Election(
+                        key = field(fields, "key", String.serializer()),
+                        threshold = field(fields, "threshold", UInt.serializer()),
+                        transport = field(fields, "transport", ListSerializer(String.serializer())),
+                        qualified = field(fields, "qualified", ListSerializer(QualifiedDealing.serializer())),
+                        disqualified = field(fields, "disqualified", ListSerializer(String.serializer())),
+                        opened_at = field(fields, "opened_at", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Identity`. */
+    data class Identity(
+        val account: String,
+    ) {
+        companion object {
+            /** `Identity`'s JSON form. */
+            fun serializer(): KSerializer<Identity> = Wire
+
+            private object Wire : KSerializer<Identity> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Identity,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Identity {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Identity")
+                    return Identity(account = field(fields, "account", String.serializer()))
+                }
+            }
+        }
+    }
+
+    /** The app type `Member`. */
+    data class Member(
+        val account: String,
+        val name: String,
+    ) {
+        companion object {
+            /** `Member`'s JSON form. */
+            fun serializer(): KSerializer<Member> = Wire
+
+            private object Wire : KSerializer<Member> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Member,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Member {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Member")
+                    return Member(
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Phase`. */
+    sealed interface Phase {
+        /** `KeyCeremony`. */
+        data object KeyCeremony : Phase
+
+        /** `Voting`. */
+        data object Voting : Phase
+
+        /** `Closing`. */
+        data object Closing : Phase
+
+        /** `Closed`. */
+        data object Closed : Phase
+
+        companion object {
+            /** `Phase`'s JSON form. */
+            fun serializer(): KSerializer<Phase> = Wire
+
+            private object Wire : KSerializer<Phase> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Phase,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is KeyCeremony -> JsonPrimitive("KeyCeremony")
+                            is Voting -> JsonPrimitive("Voting")
+                            is Closing -> JsonPrimitive("Closing")
+                            is Closed -> JsonPrimitive("Closed")
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Phase {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = external(data, "Phase").first
+                    return when (name) {
+                        "KeyCeremony" -> KeyCeremony
+                        "Voting" -> Voting
+                        "Closing" -> Closing
+                        "Closed" -> Closed
+                        else -> throw SerializationException("Phase: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
+    /** The app type `PollDefinition`. */
+    data class PollDefinition(
+        val title: String,
+        val description: String,
+        val options: List<String>,
+        val min_choices: UInt,
+        val max_choices: UInt,
+        val trustees: List<String>,
+        val threshold: UInt,
+        val voters: List<String>,
+        val creator: String,
+        val created_at: ULong,
+        val closes_at: ULong? = null,
+    ) {
+        companion object {
+            /** `PollDefinition`'s JSON form. */
+            fun serializer(): KSerializer<PollDefinition> = Wire
+
+            private object Wire : KSerializer<PollDefinition> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PollDefinition,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("options", encode(ListSerializer(String.serializer()), value.options))
+                            put("min_choices", encode(UInt.serializer(), value.min_choices))
+                            put("max_choices", encode(UInt.serializer(), value.max_choices))
+                            put("trustees", encode(ListSerializer(String.serializer()), value.trustees))
+                            put("threshold", encode(UInt.serializer(), value.threshold))
+                            put("voters", encode(ListSerializer(String.serializer()), value.voters))
+                            put("creator", encode(String.serializer(), value.creator))
+                            put("created_at", encode(U64AsString, value.created_at))
+                            put("closes_at", encode(U64AsString.nullable, value.closes_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PollDefinition {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PollDefinition")
+                    return PollDefinition(
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        options = field(fields, "options", ListSerializer(String.serializer())),
+                        min_choices = field(fields, "min_choices", UInt.serializer()),
+                        max_choices = field(fields, "max_choices", UInt.serializer()),
+                        trustees = field(fields, "trustees", ListSerializer(String.serializer())),
+                        threshold = field(fields, "threshold", UInt.serializer()),
+                        voters = field(fields, "voters", ListSerializer(String.serializer())),
+                        creator = field(fields, "creator", String.serializer()),
+                        created_at = field(fields, "created_at", U64AsString),
+                        closes_at = field(fields, "closes_at", U64AsString.nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PollState`. */
+    data class PollState(
+        val phase: Phase,
+        val election: Election? = null,
+        val closing_at: ULong? = null,
+        val closure: Closure? = null,
+        val anchor: Anchor? = null,
+    ) {
+        companion object {
+            /** `PollState`'s JSON form. */
+            fun serializer(): KSerializer<PollState> = Wire
+
+            private object Wire : KSerializer<PollState> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PollState,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("phase", encode(Phase.serializer(), value.phase))
+                            put("election", encode(Election.serializer().nullable, value.election))
+                            put("closing_at", encode(U64AsString.nullable, value.closing_at))
+                            put("closure", encode(Closure.serializer().nullable, value.closure))
+                            put("anchor", encode(Anchor.serializer().nullable, value.anchor))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PollState {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PollState")
+                    return PollState(
+                        phase = field(fields, "phase", Phase.serializer()),
+                        election = field(fields, "election", Election.serializer().nullable),
+                        closing_at = field(fields, "closing_at", U64AsString.nullable),
+                        closure = field(fields, "closure", Closure.serializer().nullable),
+                        anchor = field(fields, "anchor", Anchor.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PollSummary`. */
+    data class PollSummary(
+        val poll_id: String,
+        val title: String,
+        val creator: String,
+        val phase: Phase,
+        val created_at: ULong,
+        val ballots: UInt,
+    ) {
+        companion object {
+            /** `PollSummary`'s JSON form. */
+            fun serializer(): KSerializer<PollSummary> = Wire
+
+            private object Wire : KSerializer<PollSummary> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PollSummary,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("poll_id", encode(String.serializer(), value.poll_id))
+                            put("title", encode(String.serializer(), value.title))
+                            put("creator", encode(String.serializer(), value.creator))
+                            put("phase", encode(Phase.serializer(), value.phase))
+                            put("created_at", encode(U64AsString, value.created_at))
+                            put("ballots", encode(UInt.serializer(), value.ballots))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PollSummary {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PollSummary")
+                    return PollSummary(
+                        poll_id = field(fields, "poll_id", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        creator = field(fields, "creator", String.serializer()),
+                        phase = field(fields, "phase", Phase.serializer()),
+                        created_at = field(fields, "created_at", U64AsString),
+                        ballots = field(fields, "ballots", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PollView`. */
+    data class PollView(
+        val poll_id: String,
+        val definition: PollDefinition,
+        val state: PollState,
+        val trustees: List<TrusteeStatus>,
+        val turnout: List<Turnout>,
+        val my_digest: String? = null,
+        val can_vote: Boolean,
+    ) {
+        companion object {
+            /** `PollView`'s JSON form. */
+            fun serializer(): KSerializer<PollView> = Wire
+
+            private object Wire : KSerializer<PollView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PollView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("poll_id", encode(String.serializer(), value.poll_id))
+                            put("definition", encode(PollDefinition.serializer(), value.definition))
+                            put("state", encode(PollState.serializer(), value.state))
+                            put("trustees", encode(ListSerializer(TrusteeStatus.serializer()), value.trustees))
+                            put("turnout", encode(ListSerializer(Turnout.serializer()), value.turnout))
+                            put("my_digest", encode(String.serializer().nullable, value.my_digest))
+                            put("can_vote", encode(Boolean.serializer(), value.can_vote))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PollView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PollView")
+                    return PollView(
+                        poll_id = field(fields, "poll_id", String.serializer()),
+                        definition = field(fields, "definition", PollDefinition.serializer()),
+                        state = field(fields, "state", PollState.serializer()),
+                        trustees = field(fields, "trustees", ListSerializer(TrusteeStatus.serializer())),
+                        turnout = field(fields, "turnout", ListSerializer(Turnout.serializer())),
+                        my_digest = field(fields, "my_digest", String.serializer().nullable),
+                        can_vote = field(fields, "can_vote", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `QualifiedDealing`. */
+    data class QualifiedDealing(
+        val dealer: String,
+        val dealing: WireDealing,
+    ) {
+        companion object {
+            /** `QualifiedDealing`'s JSON form. */
+            fun serializer(): KSerializer<QualifiedDealing> = Wire
+
+            private object Wire : KSerializer<QualifiedDealing> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: QualifiedDealing,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("dealer", encode(String.serializer(), value.dealer))
+                            put("dealing", encode(WireDealing.serializer(), value.dealing))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): QualifiedDealing {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "QualifiedDealing")
+                    return QualifiedDealing(
+                        dealer = field(fields, "dealer", String.serializer()),
+                        dealing = field(fields, "dealing", WireDealing.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TallyInputs`. */
+    data class TallyInputs(
+        val aggregate: List<WireCiphertext>,
+        val counted: UInt,
+    ) {
+        companion object {
+            /** `TallyInputs`'s JSON form. */
+            fun serializer(): KSerializer<TallyInputs> = Wire
+
+            private object Wire : KSerializer<TallyInputs> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TallyInputs,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("aggregate", encode(ListSerializer(WireCiphertext.serializer()), value.aggregate))
+                            put("counted", encode(UInt.serializer(), value.counted))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TallyInputs {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TallyInputs")
+                    return TallyInputs(
+                        aggregate = field(fields, "aggregate", ListSerializer(WireCiphertext.serializer())),
+                        counted = field(fields, "counted", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Transcript`. */
+    data class Transcript(
+        val protocol: String,
+        val poll_id: String,
+        val definition: PollDefinition,
+        val state: PollState,
+        val ballots: List<TranscriptBallot>,
+        val partials: List<TranscriptPartial>,
+        val report: AuditReport,
+    ) {
+        companion object {
+            /** `Transcript`'s JSON form. */
+            fun serializer(): KSerializer<Transcript> = Wire
+
+            private object Wire : KSerializer<Transcript> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Transcript,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("protocol", encode(String.serializer(), value.protocol))
+                            put("poll_id", encode(String.serializer(), value.poll_id))
+                            put("definition", encode(PollDefinition.serializer(), value.definition))
+                            put("state", encode(PollState.serializer(), value.state))
+                            put("ballots", encode(ListSerializer(TranscriptBallot.serializer()), value.ballots))
+                            put("partials", encode(ListSerializer(TranscriptPartial.serializer()), value.partials))
+                            put("report", encode(AuditReport.serializer(), value.report))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Transcript {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Transcript")
+                    return Transcript(
+                        protocol = field(fields, "protocol", String.serializer()),
+                        poll_id = field(fields, "poll_id", String.serializer()),
+                        definition = field(fields, "definition", PollDefinition.serializer()),
+                        state = field(fields, "state", PollState.serializer()),
+                        ballots = field(fields, "ballots", ListSerializer(TranscriptBallot.serializer())),
+                        partials = field(fields, "partials", ListSerializer(TranscriptPartial.serializer())),
+                        report = field(fields, "report", AuditReport.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TranscriptBallot`. */
+    data class TranscriptBallot(
+        val voter: String,
+        val digest: String,
+        val ballot: WireBallot,
+        val endorsed: Boolean,
+    ) {
+        companion object {
+            /** `TranscriptBallot`'s JSON form. */
+            fun serializer(): KSerializer<TranscriptBallot> = Wire
+
+            private object Wire : KSerializer<TranscriptBallot> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TranscriptBallot,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("voter", encode(String.serializer(), value.voter))
+                            put("digest", encode(String.serializer(), value.digest))
+                            put("ballot", encode(WireBallot.serializer(), value.ballot))
+                            put("endorsed", encode(Boolean.serializer(), value.endorsed))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TranscriptBallot {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TranscriptBallot")
+                    return TranscriptBallot(
+                        voter = field(fields, "voter", String.serializer()),
+                        digest = field(fields, "digest", String.serializer()),
+                        ballot = field(fields, "ballot", WireBallot.serializer()),
+                        endorsed = field(fields, "endorsed", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TranscriptPartial`. */
+    data class TranscriptPartial(
+        val trustee: String,
+        val index: UInt,
+        val options: List<WirePartial>,
+    ) {
+        companion object {
+            /** `TranscriptPartial`'s JSON form. */
+            fun serializer(): KSerializer<TranscriptPartial> = Wire
+
+            private object Wire : KSerializer<TranscriptPartial> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TranscriptPartial,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("trustee", encode(String.serializer(), value.trustee))
+                            put("index", encode(UInt.serializer(), value.index))
+                            put("options", encode(ListSerializer(WirePartial.serializer()), value.options))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TranscriptPartial {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TranscriptPartial")
+                    return TranscriptPartial(
+                        trustee = field(fields, "trustee", String.serializer()),
+                        index = field(fields, "index", UInt.serializer()),
+                        options = field(fields, "options", ListSerializer(WirePartial.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TrusteeStatus`. */
+    data class TrusteeStatus(
+        val account: String,
+        val index: UInt,
+        val transport_published: Boolean,
+        val dealing_published: Boolean,
+        val complaints_against: UInt,
+        val qualified: Boolean? = null,
+        val partial_published: Boolean,
+    ) {
+        companion object {
+            /** `TrusteeStatus`'s JSON form. */
+            fun serializer(): KSerializer<TrusteeStatus> = Wire
+
+            private object Wire : KSerializer<TrusteeStatus> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TrusteeStatus,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("index", encode(UInt.serializer(), value.index))
+                            put("transport_published", encode(Boolean.serializer(), value.transport_published))
+                            put("dealing_published", encode(Boolean.serializer(), value.dealing_published))
+                            put("complaints_against", encode(UInt.serializer(), value.complaints_against))
+                            put("qualified", encode(Boolean.serializer().nullable, value.qualified))
+                            put("partial_published", encode(Boolean.serializer(), value.partial_published))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TrusteeStatus {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TrusteeStatus")
+                    return TrusteeStatus(
+                        account = field(fields, "account", String.serializer()),
+                        index = field(fields, "index", UInt.serializer()),
+                        transport_published = field(fields, "transport_published", Boolean.serializer()),
+                        dealing_published = field(fields, "dealing_published", Boolean.serializer()),
+                        complaints_against = field(fields, "complaints_against", UInt.serializer()),
+                        qualified = field(fields, "qualified", Boolean.serializer().nullable),
+                        partial_published = field(fields, "partial_published", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Turnout`. */
+    data class Turnout(
+        val voter: String,
+        val digest: String,
+        val cast_at: ULong,
+    ) {
+        companion object {
+            /** `Turnout`'s JSON form. */
+            fun serializer(): KSerializer<Turnout> = Wire
+
+            private object Wire : KSerializer<Turnout> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Turnout,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("voter", encode(String.serializer(), value.voter))
+                            put("digest", encode(String.serializer(), value.digest))
+                            put("cast_at", encode(U64AsString, value.cast_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Turnout {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Turnout")
+                    return Turnout(
+                        voter = field(fields, "voter", String.serializer()),
+                        digest = field(fields, "digest", String.serializer()),
+                        cast_at = field(fields, "cast_at", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireBallot`. */
+    data class WireBallot(
+        val choices: List<WireChoice>,
+        val sum_proof: List<WireBranch>,
+    ) {
+        companion object {
+            /** `WireBallot`'s JSON form. */
+            fun serializer(): KSerializer<WireBallot> = Wire
+
+            private object Wire : KSerializer<WireBallot> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireBallot,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("choices", encode(ListSerializer(WireChoice.serializer()), value.choices))
+                            put("sum_proof", encode(ListSerializer(WireBranch.serializer()), value.sum_proof))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireBallot {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireBallot")
+                    return WireBallot(
+                        choices = field(fields, "choices", ListSerializer(WireChoice.serializer())),
+                        sum_proof = field(fields, "sum_proof", ListSerializer(WireBranch.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireBranch`. */
+    data class WireBranch(
+        val c: String,
+        val z: String,
+    ) {
+        companion object {
+            /** `WireBranch`'s JSON form. */
+            fun serializer(): KSerializer<WireBranch> = Wire
+
+            private object Wire : KSerializer<WireBranch> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireBranch,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("c", encode(String.serializer(), value.c))
+                            put("z", encode(String.serializer(), value.z))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireBranch {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireBranch")
+                    return WireBranch(
+                        c = field(fields, "c", String.serializer()),
+                        z = field(fields, "z", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireChoice`. */
+    data class WireChoice(
+        val a: String,
+        val b: String,
+        val proof: List<WireBranch>,
+    ) {
+        companion object {
+            /** `WireChoice`'s JSON form. */
+            fun serializer(): KSerializer<WireChoice> = Wire
+
+            private object Wire : KSerializer<WireChoice> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireChoice,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("a", encode(String.serializer(), value.a))
+                            put("b", encode(String.serializer(), value.b))
+                            put("proof", encode(ListSerializer(WireBranch.serializer()), value.proof))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireChoice {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireChoice")
+                    return WireChoice(
+                        a = field(fields, "a", String.serializer()),
+                        b = field(fields, "b", String.serializer()),
+                        proof = field(fields, "proof", ListSerializer(WireBranch.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireCiphertext`. */
+    data class WireCiphertext(
+        val a: String,
+        val b: String,
+    ) {
+        companion object {
+            /** `WireCiphertext`'s JSON form. */
+            fun serializer(): KSerializer<WireCiphertext> = Wire
+
+            private object Wire : KSerializer<WireCiphertext> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireCiphertext,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("a", encode(String.serializer(), value.a))
+                            put("b", encode(String.serializer(), value.b))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireCiphertext {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireCiphertext")
+                    return WireCiphertext(
+                        a = field(fields, "a", String.serializer()),
+                        b = field(fields, "b", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireDealing`. */
+    data class WireDealing(
+        val commitments: List<String>,
+        val proof: WireBranch,
+        val shares: List<WireEncShare>,
+    ) {
+        companion object {
+            /** `WireDealing`'s JSON form. */
+            fun serializer(): KSerializer<WireDealing> = Wire
+
+            private object Wire : KSerializer<WireDealing> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireDealing,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("commitments", encode(ListSerializer(String.serializer()), value.commitments))
+                            put("proof", encode(WireBranch.serializer(), value.proof))
+                            put("shares", encode(ListSerializer(WireEncShare.serializer()), value.shares))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireDealing {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireDealing")
+                    return WireDealing(
+                        commitments = field(fields, "commitments", ListSerializer(String.serializer())),
+                        proof = field(fields, "proof", WireBranch.serializer()),
+                        shares = field(fields, "shares", ListSerializer(WireEncShare.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WireEncShare`. */
+    data class WireEncShare(
+        val r: String,
+        val v: String,
+    ) {
+        companion object {
+            /** `WireEncShare`'s JSON form. */
+            fun serializer(): KSerializer<WireEncShare> = Wire
+
+            private object Wire : KSerializer<WireEncShare> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WireEncShare,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("r", encode(String.serializer(), value.r))
+                            put("v", encode(String.serializer(), value.v))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WireEncShare {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WireEncShare")
+                    return WireEncShare(
+                        r = field(fields, "r", String.serializer()),
+                        v = field(fields, "v", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WirePartial`. */
+    data class WirePartial(
+        val d: String,
+        val proof: WireBranch,
+    ) {
+        companion object {
+            /** `WirePartial`'s JSON form. */
+            fun serializer(): KSerializer<WirePartial> = Wire
+
+            private object Wire : KSerializer<WirePartial> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WirePartial,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("d", encode(String.serializer(), value.d))
+                            put("proof", encode(WireBranch.serializer(), value.proof))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WirePartial {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WirePartial")
+                    return WirePartial(
+                        d = field(fields, "d", String.serializer()),
+                        proof = field(fields, "proof", WireBranch.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -682,5 +1909,22 @@ class VoteClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** An externally tagged variant's name and data: `"Name"`, or `{ "Name": data }`. */
+        private fun external(
+            data: JsonElement,
+            what: String,
+        ): Pair<String, JsonElement> =
+            when {
+                data is JsonPrimitive && data.isString -> data.content to JsonNull
+                data is JsonObject && data.size == 1 -> data.entries.first().let { it.key to it.value }
+                else -> throw SerializationException("$what: expected a variant name or an object with one key")
+            }
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

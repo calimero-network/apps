@@ -4,23 +4,75 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ChunkView`: the ABI names it without its shape. */
-export type ChunkView = unknown;
+/** The app type `ChunkView`. */
+export interface ChunkView {
+  seq: string;
+  from: string;
+  track: number;
+  isKeyframe: boolean;
+  codec: string;
+  width: number;
+  height: number;
+  timestampUs: string;
+  dataB64: string;
+  createdAt: string;
+}
 
-/** The app type `DecodedFrame`: the ABI names it without its shape. */
-export type DecodedFrame = unknown;
+/** The app type `DecodedFrame`. */
+export interface DecodedFrame {
+  seq: string;
+  from: string;
+  track: number;
+  width: number;
+  height: number;
+  pixels: string;
+  createdAt: string;
+  encodedBytes: number;
+}
 
-/** The app type `LiveStats`: the ABI names it without its shape. */
-export type LiveStats = unknown;
+/** The app type `LiveStats`. */
+export interface LiveStats {
+  liveChunks: number;
+  liveBytes: string;
+  prunedChunks: string;
+  senders: SenderStats[];
+}
 
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
+/** The app type `Member`. */
+export interface Member {
+  memberId: string;
+  username: string;
+  joinedAt: string;
+  updatedAt: string;
+}
 
-/** The app type `SenderCursor`: the ABI names it without its shape. */
-export type SenderCursor = unknown;
+/** The app type `SenderCursor`. */
+export interface SenderCursor {
+  from: string;
+  afterSeq: string;
+}
 
-/** The app type `StreamStats`: the ABI names it without its shape. */
-export type StreamStats = unknown;
+/** The app type `SenderStats`. */
+export interface SenderStats {
+  from: string;
+  nextSeq: string;
+  oldestLive: string;
+  lastKeyframe: string;
+  newestAt: string;
+  pruned: string;
+  liveChunks: number;
+  liveBytes: string;
+}
+
+/** The app type `StreamStats`. */
+export interface StreamStats {
+  name: string;
+  memberCount: number;
+  liveFragments: number;
+  nextSeq: string;
+  oldestLiveSeq: string;
+  prunedFrames: string;
+}
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

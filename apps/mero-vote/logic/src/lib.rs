@@ -96,14 +96,14 @@ const PAGE: u32 = 1000;
 // integer in stored CBOR, a string in JSON.
 
 /// One `(c, z)` pair of a proof, as 64-hex scalars.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireBranch {
     pub c: String,
     pub z: String,
 }
 
 /// One option's ciphertext and its 0-or-1 proof.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireChoice {
     pub a: String,
     pub b: String,
@@ -115,7 +115,7 @@ pub struct WireChoice {
 /// body) only after `castBallot` verified it, so its lists have the poll's
 /// shape: one choice per option and one sum branch per allowed count, at most
 /// [`MAX_BALLOT_BRANCHES`] branches in all.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireBallot {
     /// One per option: at most 16.
     pub choices: Vec<WireChoice>,
@@ -124,27 +124,27 @@ pub struct WireBallot {
 }
 
 /// A trustee's partial decryption of one option's aggregate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WirePartial {
     pub d: String,
     pub proof: WireBranch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireCiphertext {
     pub a: String,
     pub b: String,
 }
 
 /// One share of a dealing, encrypted to its recipient's transport key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireEncShare {
     pub r: String,
     pub v: String,
 }
 
 /// A trustee's contribution to the distributed key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct WireDealing {
     /// `t` Feldman commitments, constant term first: at most
     /// [`MAX_TRUSTEES`], checked by `publishDealing` (`verify_dealing`).
@@ -174,7 +174,7 @@ pub struct Complaint {
 
 /// The immutable part of a poll. Stored content-addressed; its SHA-256 IS
 /// the poll id, so nothing voters relied on can be edited under them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct PollDefinition {
     pub title: String,
     pub description: String,
@@ -201,7 +201,7 @@ pub struct PollDefinition {
     pub closes_at: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub enum Phase {
     KeyCeremony,
     Voting,
@@ -209,14 +209,14 @@ pub enum Phase {
     Closed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct QualifiedDealing {
     pub dealer: String,
     pub dealing: WireDealing,
 }
 
 /// The key ceremony's outcome, frozen at open.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Election {
     pub key: String,
     pub threshold: u32,
@@ -234,7 +234,7 @@ pub struct Election {
 }
 
 /// One ballot the seal commits to count.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct CountedBallot {
     pub voter: String,
     /// The protocol digest — the voter's receipt.
@@ -245,7 +245,7 @@ pub struct CountedBallot {
 
 /// The seal as answered: the stored [`StoredClosure`] with its counted
 /// ballots, read from `sealed`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Closure {
     /// In voter order.
     pub counted: Vec<CountedBallot>,
@@ -270,7 +270,7 @@ pub struct StoredClosure {
 }
 
 /// A pointer from the app to a public record of the transcript digest.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Anchor {
     pub digest: String,
     pub network: String,
@@ -292,7 +292,7 @@ pub struct PollControl {
 
 /// A poll's lifecycle as read: the phase is derived from what has been
 /// written, so a sealed poll can never go back to voting.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct PollState {
     pub phase: Phase,
     pub election: Option<Election>,
@@ -329,13 +329,13 @@ pub struct StoredPartials {
 
 // ── views ───────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Member {
     pub account: String,
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct PollSummary {
     pub poll_id: String,
     pub title: String,
@@ -346,7 +346,7 @@ pub struct PollSummary {
     pub ballots: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct TrusteeStatus {
     pub account: String,
     /// 1-based Shamir index.
@@ -361,7 +361,7 @@ pub struct TrusteeStatus {
 }
 
 /// Who has voted — never what.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Turnout {
     pub voter: String,
     pub digest: String,
@@ -369,7 +369,7 @@ pub struct Turnout {
     pub cast_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct PollView {
     pub poll_id: String,
     pub definition: PollDefinition,
@@ -381,7 +381,7 @@ pub struct PollView {
     pub can_vote: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct CeremonyTrustee {
     pub account: String,
     pub index: u32,
@@ -389,7 +389,7 @@ pub struct CeremonyTrustee {
     pub dealing: Option<WireDealing>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct ComplaintView {
     pub recipient: String,
     pub dealer: String,
@@ -398,7 +398,7 @@ pub struct ComplaintView {
 }
 
 /// What a trustee's browser needs during the key ceremony.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Ceremony {
     pub threshold: u32,
     pub trustees: Vec<CeremonyTrustee>,
@@ -406,13 +406,13 @@ pub struct Ceremony {
 }
 
 /// What a trustee's browser needs to compute its partial decryptions.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct TallyInputs {
     pub aggregate: Vec<WireCiphertext>,
     pub counted: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Check {
     pub name: String,
     pub ok: bool,
@@ -420,7 +420,7 @@ pub struct Check {
 }
 
 /// Result of re-verifying a poll from its raw inputs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct AuditReport {
     pub poll_id: String,
     pub phase: Phase,
@@ -443,7 +443,7 @@ pub struct AuditReport {
     pub uncounted: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct TranscriptBallot {
     pub voter: String,
     pub digest: String,
@@ -452,7 +452,7 @@ pub struct TranscriptBallot {
     pub endorsed: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct TranscriptPartial {
     pub trustee: String,
     pub index: u32,
@@ -460,7 +460,7 @@ pub struct TranscriptPartial {
 }
 
 /// Every input of the tally, for verification somewhere other than this node.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Transcript {
     pub protocol: String,
     pub poll_id: String,
@@ -471,7 +471,7 @@ pub struct Transcript {
     pub report: AuditReport,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct Identity {
     pub account: String,
 }

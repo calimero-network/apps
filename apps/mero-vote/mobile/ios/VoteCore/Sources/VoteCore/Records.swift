@@ -5,14 +5,19 @@ import MeroKit
 // with the web app's adapter (`app/src/meroVote.ts`): answers keep their snake_case fields, and every
 // u64 (`created_at`, `cast_at`…) is a decimal string, read back into a number (`VoteWireDecoding`).
 // The calls are the generated `VoteClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo
-// root); until the logic derives `AbiType` the ABI names these types without their shape, so the
-// client takes and answers their JSON and they read and write it.
+// root); it takes and answers its own typed records, and these types convert to and from them
+// through their JSON (`decoded(as:)`, `converted()`).
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the types below), its u64 fields read from their
     /// decimal strings.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try VoteWireDecoding.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    public func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 
