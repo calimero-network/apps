@@ -4,7 +4,8 @@
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { indexOf, toGameEvent, type GameEvent } from "./events";
-import { bindExec, merraria, type Exec, type WorldMeta } from "./merraria";
+import { MerrariaClient } from "../generated/client";
+import { indexed, type WorldMeta } from "./merraria";
 import { type ClientRoutes } from "@calimero-apps/connect";
 
 export type { WorldMeta } from "./merraria";
@@ -18,7 +19,8 @@ export class GameClient {
   /** The highest log index any answer or event has shown: where a stream resumes. */
   private index = 0;
   private abort: AbortController | null = null;
-  readonly exec: Exec;
+  /** The world's contract: `MerrariaClient`, generated from logic/res/abi.json. */
+  readonly world: MerrariaClient;
 
   constructor(
     private readonly client: Client,
@@ -28,7 +30,11 @@ export class GameClient {
     private readonly accountId: string,
     after: () => void = () => {},
   ) {
-    this.exec = bindExec(client, worldId, after, (i) => this.seen(i));
+    this.world = new MerrariaClient(
+      indexed(client, (i) => this.seen(i)),
+      worldId,
+      { after },
+    );
   }
 
   private seen(index: number): void {
@@ -41,7 +47,7 @@ export class GameClient {
   }
 
   fetchWorldMeta(): Promise<WorldMeta> {
-    return merraria(this.exec).worldMeta();
+    return this.world.worldMeta() as Promise<WorldMeta>;
   }
 
   /**

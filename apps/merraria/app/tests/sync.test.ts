@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { STONE } from "../src/engine/tiles";
 import { TileStore } from "../src/engine/world";
+import { MerrariaClient } from "../src/generated/client";
 import {
   FLUSH_MS,
   HEARTBEAT_IDLE_MS,
@@ -26,9 +27,14 @@ function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
     }
     return null;
   });
+  // The generated client over a fake transport: every request reaches `exec`.
+  const answer = async ({ method, args }: { method: string; args?: unknown }) => ({
+    result: await exec(method, (args ?? {}) as Record<string, unknown>),
+  });
+  const client = new MerrariaClient({ apps: { call: answer, view: answer }, async *events() {} }, "w");
   const players: RemotePlayer[][] = [];
   const toasts: string[] = [];
-  const sync = new SyncEngine(exec as never, world, () => "me", {
+  const sync = new SyncEngine(client, world, () => "me", {
     onPlayers: (p) => players.push(p),
     onToast: (m) => toasts.push(m),
   });

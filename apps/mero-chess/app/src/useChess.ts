@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
-import { chess, messageOf, type Chess, type GameSummary, type TableView } from "./chess";
+import {
+  indexed,
+  messageOf,
+  now,
+  toGameSummary,
+  toTableView,
+  type GameSummary,
+  type TableView,
+  type WireGameSummary,
+  type WireTableView,
+} from "./chess";
+import { MeroChessClient } from "./generated/client";
 import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** Where a player's chosen display name lives between visits. */
@@ -32,16 +43,26 @@ export interface TableConn {
   after?: () => void;
 }
 
+/** The table's contract, and the highest log index its answers reflected. */
+export interface ChessClient {
+  chess: MeroChessClient;
+  index(): number;
+}
+
 /**
  * The typed contract, bound to this table.
  *
- * Everything the UI calls goes through `chess()` (chess.ts), whose method list
- * `chess.test.ts` checks against the committed `logic/res/abi.json`, and which
- * converts the answers back to the shapes the screens were written against.
+ * Everything the UI calls goes through `MeroChessClient`, which `mero-app-build
+ * codegen` writes from the committed `logic/res/abi.json`; its answers are
+ * converted back to the shapes the screens were written against
+ * (`toTableView`, `toGameSummary`) where they are read.
  */
-export function useChessClient(conn: TableConn): Chess {
+export function useChessClient(conn: TableConn): ChessClient {
   const { client, appId, after } = conn;
-  return useMemo(() => chess(client, appId, after), [client, appId, after]);
+  return useMemo(() => {
+    const watched = indexed(client);
+    return { chess: new MeroChessClient(watched.transport, appId, { after }), index: watched.index };
+  }, [client, appId, after]);
 }
 
 export interface ChessTable {
@@ -127,7 +148,7 @@ export function useChessTable(conn: TableConn): ChessTable {
     try {
       do {
         again.current = false;
-        setView(await client.table());
+        setView(toTableView((await client.chess.table({ now: now() })) as WireTableView));
         if (readFailed.current) {
           readFailed.current = false;
           setError(null);
@@ -163,12 +184,12 @@ export function useChessTable(conn: TableConn): ChessTable {
    * once the contract has taken it.
    */
   const run = useCallback(
-    async (fn: (c: Chess) => Promise<unknown>) => {
+    async (fn: (c: MeroChessClient) => Promise<unknown>) => {
       setBusy(true);
       setError(null);
       readFailed.current = false;
       try {
-        await fn(client);
+        await fn(client.chess);
       } catch (e) {
         setError(messageOf(e));
       } finally {
@@ -190,18 +211,18 @@ export function useChessTable(conn: TableConn): ChessTable {
     sit: useCallback(
       (seat: "white" | "black", name: string) => {
         rememberName(name);
-        return run((c) => c.sit(seat, name));
+        return run((c) => c.sit({ seat, name, now: now() }));
       },
       [run],
     ),
-    stand: useCallback(() => run((c) => c.stand()), [run]),
-    play: useCallback((uci: string) => run((c) => c.play(uci)), [run]),
-    resign: useCallback(() => run((c) => c.resign()), [run]),
-    offerDraw: useCallback(() => run((c) => c.offerDraw()), [run]),
-    acceptDraw: useCallback(() => run((c) => c.acceptDraw()), [run]),
-    declineDraw: useCallback(() => run((c) => c.declineDraw()), [run]),
-    claimDraw: useCallback(() => run((c) => c.claimDraw()), [run]),
-    rematch: useCallback(() => run((c) => c.rematch()), [run]),
+    stand: useCallback(() => run((c) => c.stand({ now: now() })), [run]),
+    play: useCallback((uci: string) => run((c) => c.play({ uci, now: now() })), [run]),
+    resign: useCallback(() => run((c) => c.resign({ now: now() })), [run]),
+    offerDraw: useCallback(() => run((c) => c.offerDraw({ now: now() })), [run]),
+    acceptDraw: useCallback(() => run((c) => c.acceptDraw({ now: now() })), [run]),
+    declineDraw: useCallback(() => run((c) => c.declineDraw({ now: now() })), [run]),
+    claimDraw: useCallback(() => run((c) => c.claimDraw({ now: now() })), [run]),
+    rematch: useCallback(() => run((c) => c.rematch({ now: now() })), [run]),
   };
 }
 
@@ -217,10 +238,10 @@ export function usePastGames(conn: TableConn, signature: string): GameSummary[] 
 
   useEffect(() => {
     let live = true;
-    void client
+    void client.chess
       .history()
       .then((rows) => {
-        if (live) setGames(rows);
+        if (live) setGames((rows as WireGameSummary[]).map(toGameSummary));
       })
       .catch(() => {
         // The record is a nicety next to the board.
@@ -246,7 +267,7 @@ export function useAnnounce(conn: TableConn, name: string): void {
     const key = `${conn.appId}:${name}`;
     if (announced.current === key) return;
     announced.current = key;
-    void client.join(name || "Guest").catch(() => {
+    void client.chess.join({ name: name || "Guest", now: now() }).catch(() => {
       // Presence is a nicety: a table that refuses it still plays chess.
     });
   }, [client, conn.appId, name]);

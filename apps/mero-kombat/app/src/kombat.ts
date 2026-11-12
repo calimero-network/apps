@@ -1,18 +1,10 @@
 import { AppError } from "@calimero-network/mero-js";
-import { describeError, type ClientRoutes } from "@calimero-apps/connect";
+import { describeError } from "@calimero-apps/connect";
+
+import type { AppTransport } from "./generated/client";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-kombat";
-
-/**
- * The contract's methods by their ABI names, split the way the node runs them:
- * a call goes through the app's log, a view is answered by a node without
- * writing. `kombat.test.ts` asserts these lists are exactly the committed
- * `logic/res/abi.json`'s, so a method the contract drops or renames fails a
- * test rather than a request.
- */
-export const CALLS = ["join", "pick", "sit", "stand", "act", "rematch"] as const;
-export const VIEWS = ["arena", "history"] as const;
 
 /** One corner (the contract's `FighterView`). */
 export interface FighterView {
@@ -70,82 +62,42 @@ export interface MatchSummary {
   actions: number;
 }
 
-export interface ActArgs {
-  match: number;
-  round: number;
-  id: number;
-  kind: string;
-  hit: boolean;
-  blocked: boolean;
-}
+// ── Calling the contract ─────────────────────────────────────────────────────
+//
+// The contract is called through `MeroKombatClient`, which `mero-app-build
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). The ABI
+// names `ArenaView` and `MatchSummary` without their shapes, so the generated
+// types are `unknown`: the shapes above type them where they are read.
 
-/** The arena, typed from the contract (no client is generated from a component ABI yet). */
-export interface Kombat {
-  arena(): Promise<ArenaView>;
-  history(): Promise<MatchSummary[]>;
-  join(name: string, fighter: string): Promise<null>;
-  pick(fighter: string): Promise<null>;
-  sit(seat: "p1" | "p2", name: string, fighter: string): Promise<null>;
-  stand(): Promise<null>;
-  act(a: ActArgs): Promise<null>;
-  /** The new match's index. */
-  rematch(): Promise<number>;
-  /** The highest log index any answer through this wrapper has reflected (0 before the first). */
+/** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
+export const now = (clock: () => number = Date.now): string => String(Math.floor(clock()));
+
+/** A transport that keeps the highest log index its answers reflected (0 before the first). */
+export interface Indexed<T> {
+  transport: T;
   index(): number;
 }
 
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
-
-/** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
-const now = (clock: () => number) => String(Math.floor(clock()));
-
 /**
- * The arena at instance `app` through `client`. `after` runs after every
- * request (the session store syncs a refreshed session there).
+ * `client`, watched for the log index each answer carries: the generated
+ * client returns a method's result alone, and the event stream is resumed
+ * just past what the arena already reflects.
  */
-export function kombat(
-  client: Transport,
-  app: string,
-  after: () => void = () => {},
-  clock: () => number = Date.now,
-): Kombat {
+export function indexed<T extends AppTransport>(client: T): Indexed<AppTransport> {
   let seen = 0;
-  const saw = <R extends { index: number }>(r: R): R => {
-    if (typeof r.index === "number" && r.index > seen) seen = r.index;
+  const saw = <R extends { result: unknown }>(r: R): R => {
+    const index = (r as { index?: unknown }).index;
+    if (typeof index === "number" && index > seen) seen = index;
     return r;
   };
-  const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown>): Promise<T> => {
-    try {
-      return saw(await client.apps.call({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return saw(await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
   return {
-    arena: () => view("arena", { now: now(clock) }),
-    history: () => view("history"),
-    join: (name, fighter) => call("join", { name, fighter, now: now(clock) }),
-    pick: (fighter) => call("pick", { fighter, now: now(clock) }),
-    sit: (seat, name, fighter) => call("sit", { seat, name, fighter, now: now(clock) }),
-    stand: () => call("stand", { now: now(clock) }),
-    act: (a) =>
-      call("act", {
-        matchIndex: a.match,
-        round: a.round,
-        id: a.id,
-        kind: a.kind,
-        hit: a.hit,
-        blocked: a.blocked,
-        now: now(clock),
-      }),
-    rematch: () => call("rematch", { now: now(clock) }),
+    transport: {
+      apps: {
+        call: async (args, options) => saw(await client.apps.call(args, options)),
+        view: async (args, options) => saw(await client.apps.view(args, options)),
+      },
+      events: (app, from, signal) => client.events(app, from, signal),
+    },
     index: () => seen,
   };
 }

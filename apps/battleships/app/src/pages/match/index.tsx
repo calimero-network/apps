@@ -8,10 +8,18 @@ import {
   isMatchFinishedError,
   isShipsNotPlacedError,
   messageOf,
+  base64url,
+  toMatchRecord,
+  toMatchSummary,
+  toPlayerStats,
   type MatchRecord,
   type MatchStateView,
   type MatchSummary,
   type PlayerStatsView,
+  type ShotsView,
+  type WireMatchRecord,
+  type WireMatchSummary,
+  type WirePlayerStats,
 } from '../../battleships';
 import {
   cellsFromShips,
@@ -136,7 +144,7 @@ export default function MatchPage() {
   const loadingRef = useRef<boolean>(false);
   const effectiveMatchId = matchId;
   // The match runs in the lobby's own instance: ready as soon as the lobby is.
-  const matchApi = view === 'game' ? lobbyApi : null;
+  const matchApi = view === 'game' ? (lobbyApi?.contract ?? null) : null;
   const matchApiReady = matchApi !== null;
 
   /** The id this player plays as, and the key the board on this device is filed under. */
@@ -297,8 +305,8 @@ export default function MatchPage() {
       answeredShotRef.current = shot.shot_id;
       try {
         await matchApi.acknowledgeShot({
-          match_id: effectiveMatchId,
-          shot_id: shot.shot_id,
+          matchId: effectiveMatchId,
+          shotId: shot.shot_id,
           hit: resolveShot(cells, shot.x, shot.y, size),
         });
         return true;
@@ -326,9 +334,9 @@ export default function MatchPage() {
       revealingRef.current = true;
       try {
         await matchApi.revealBoard({
-          match_id: effectiveMatchId,
-          board_bytes: encodeBoardBytes(cells),
-          salt,
+          matchId: effectiveMatchId,
+          boardBytes: base64url(encodeBoardBytes(cells)),
+          salt: base64url(salt),
         });
         return true;
       } catch (e) {
@@ -344,9 +352,9 @@ export default function MatchPage() {
   const loadBoards = useCallback(async () => {
     if (!matchApi || !effectiveMatchId) return;
     try {
-      const state = await matchApi.getMatchState({ match_id: effectiveMatchId });
-      const shots = await matchApi.getShots({ match_id: effectiveMatchId });
-      const incoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
+      const state = (await matchApi.getMatchState({ matchId: effectiveMatchId })) as MatchStateView;
+      const shots = (await matchApi.getShots({ matchId: effectiveMatchId })) as ShotsView;
+      const incoming = (await matchApi.getIncomingShots({ matchId: effectiveMatchId })) as ShotsView;
       setSize(shots.size);
       setMatchState(state);
       setShotsBoard(shots.shots);
@@ -368,13 +376,13 @@ export default function MatchPage() {
       // changes what the reads above said, so read again after each.
       let latest = state;
       if (await answerPendingShot(latest, stored.cells)) {
-        latest = await matchApi.getMatchState({ match_id: effectiveMatchId });
+        latest = (await matchApi.getMatchState({ matchId: effectiveMatchId })) as MatchStateView;
       }
       if (await revealIfDue(latest, stored.cells, saltBytes(stored))) {
-        latest = await matchApi.getMatchState({ match_id: effectiveMatchId });
+        latest = (await matchApi.getMatchState({ matchId: effectiveMatchId })) as MatchStateView;
       }
       if (latest !== state) {
-        const nextIncoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
+        const nextIncoming = (await matchApi.getIncomingShots({ matchId: effectiveMatchId })) as ShotsView;
         setMatchState(latest);
         setOwnBoard(overlayOwnBoard(stored.cells, nextIncoming.shots));
       }
@@ -386,7 +394,7 @@ export default function MatchPage() {
   const loadTurnInfo = useCallback(async () => {
     if (!matchApi || !effectiveMatchId) return;
     try {
-      setCurrentTurn(await matchApi.getCurrentTurn({ match_id: effectiveMatchId }));
+      setCurrentTurn(await matchApi.getCurrentTurn({ matchId: effectiveMatchId }));
     } catch {
       // turn info not yet available
     }
@@ -432,21 +440,22 @@ export default function MatchPage() {
   const refreshMatchList = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      setMyMatches(await lobbyApi.getMatches());
+      setMyMatches(((await lobbyApi.contract.getMatches()) as WireMatchSummary[]).map(toMatchSummary));
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshHistory = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      setHistory(await lobbyApi.getHistory());
+      setHistory(((await lobbyApi.contract.getHistory()) as WireMatchRecord[]).map(toMatchRecord));
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshPlayerStats = useCallback(async () => {
     if (!lobbyApi || !currentUser) return;
     try {
-      setPlayerStats(await lobbyApi.getPlayerStats({ player: currentUser }));
+      const stats = (await lobbyApi.contract.getPlayerStats({ player: currentUser })) as WirePlayerStats | null;
+      setPlayerStats(stats ? toPlayerStats(stats) : null);
     } catch { /* non-critical — no record yet for this player */ }
   }, [lobbyApi, currentUser]);
 
@@ -529,7 +538,7 @@ export default function MatchPage() {
     try {
       // The match is created and playable in the same call: there is no game
       // context to create, link or join any more.
-      const id = await lobbyApi.createMatch({ player2: opponent });
+      const id = await lobbyApi.contract.createMatch({ player2: opponent });
       void refreshMatchList();
       openGame(id);
       show({ title: 'Match created', variant: 'success' });
@@ -646,7 +655,7 @@ export default function MatchPage() {
         loadingRef.current = false;
         return;
       }
-      await matchApi.commitBoard({ match_id: effectiveMatchId, commitment });
+      await matchApi.commitBoard({ matchId: effectiveMatchId, commitment });
       show({ title: 'Fleet deployed', variant: 'success' });
       await loadBoards();
       await loadTurnInfo();
@@ -677,7 +686,7 @@ export default function MatchPage() {
     try {
       const finalX = shotX !== undefined ? shotX : 0;
       const finalY = shotY !== undefined ? shotY : 0;
-      await matchApi.proposeShot({ match_id: effectiveMatchId, x: finalX, y: finalY });
+      await matchApi.proposeShot({ matchId: effectiveMatchId, x: finalX, y: finalY });
       setOpponentNotReady(false);
       show({ title: `Shot fired at (${finalX}, ${finalY})`, variant: 'success' });
       await loadBoards();

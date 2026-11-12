@@ -1,12 +1,12 @@
 // GameClient: the world's contract calls and its event stream, for the world
 // the player entered, over mero-js's `CalimeroClient`.
 
-import type { CalimeroClient, NodeEvent } from "@calimero-network/mero-js";
+import type { NodeEvent } from "@calimero-network/mero-js";
 import { LoginRequired } from "@calimero-network/mero-js";
 
+import type { AppTransport } from "../generated/client";
 import { blocks, type Blocks } from "./blocks";
 import type { GameEvent } from "./sync";
-import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** How long to wait before re-opening a dropped event stream. */
 const RECONNECT_MS = 1500;
@@ -23,7 +23,7 @@ export class GameClient {
   private abort: AbortController | null = null;
 
   constructor(
-    private readonly client: Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>,
+    private readonly client: AppTransport,
     readonly appId: string,
     device: string,
     private readonly options: GameClientOptions = {},

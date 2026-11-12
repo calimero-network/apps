@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CALLS, VIEWS } from "../src/net/merraria";
+import { MerrariaClient } from "../src/generated/client";
 import { frontTile, MeroBridge, NativeGameClient, nativeChannel, V1_METHOD } from "../src/native/host";
 
 function bridgeWithLog() {
@@ -17,8 +17,8 @@ describe("native host bridge", () => {
   it("sends views as query and writes as execute, by their v1 names, and resolves the app's answer", async () => {
     const { bridge, sent } = bridgeWithLog();
     const client = new NativeGameClient(bridge, "ctx");
-    const read = client.exec("getOverrides", { cursor: "c", limit: 5 });
-    const write = client.exec("setTiles", { edits: [{ x: 1, y: 2, t: 0 }], now: 5 });
+    const read = client.world.getOverrides({ cursor: "c", limit: 5 });
+    const write = client.world.setTiles({ edits: [{ x: 1, y: 2, t: 0 }], now: 5 });
     expect(sent).toEqual([
       { type: "request", id: 1, op: "query", method: "get_overrides", args: {} },
       { type: "request", id: 2, op: "execute", method: "set_tiles", args: { edits: [{ x: 1, y: 2, t: 0 }], now: 5 } },
@@ -37,18 +37,22 @@ describe("native host bridge", () => {
     await expect(meta).rejects.toThrow('rpc world_meta: {"type":"Uninitialized"}');
   });
 
-  it("maps every engine method except createWorld onto a v1 name, and refuses createWorld", async () => {
-    expect(Object.keys(V1_METHOD).sort()).toEqual([...CALLS, ...VIEWS].filter((m) => m !== "createWorld").sort());
+  it("maps every method of the generated client except createWorld onto a v1 name, and has no createWorld", async () => {
+    const generated = Object.getOwnPropertyNames(MerrariaClient.prototype).filter(
+      (m) => m !== "constructor" && m !== "events",
+    );
+    expect(Object.keys(V1_METHOD).sort()).toEqual(generated.filter((m) => m !== "createWorld").sort());
     const { bridge, sent } = bridgeWithLog();
     const client = new NativeGameClient(bridge, "ctx");
-    await expect(client.exec("createWorld", { name: "w", seed: 1, now: 1 })).rejects.toThrow("rpc createWorld");
+    expect(Object.keys(client.world).sort()).toEqual(Object.keys(V1_METHOD).sort());
+    expect("createWorld" in client.world).toBe(false);
     expect(sent).toEqual([]);
   });
 
   it("learns its identity from join", async () => {
     const { bridge } = bridgeWithLog();
     const client = new NativeGameClient(bridge, "ctx");
-    const joined = client.exec("join", { name: "Ada", now: 1 });
+    const joined = client.world.join({ name: "Ada", now: 1 });
     bridge.receive({ type: "response", id: 1, ok: true, value: { id: "dev1", name: "Ada" } });
     await joined;
     await expect(client.resolveIdentity()).resolves.toBe("dev1");

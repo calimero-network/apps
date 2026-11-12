@@ -71,7 +71,8 @@ apps are built, run and tested in this repo.
 - **Renderer** (`app/src/renderer.ts`, the only Three.js file).
 - **Net** (`app/src/net/`): `session.ts` (target → client → passkey, the stored
   session), `worlds.ts` (worlds as app instances, org invites), `blocks.ts`
-  (the contract, typed; checked against `res/abi.json` by a test), `client.ts`
+  (`MeroBlocksClient`, generated from `res/abi.json` into `src/generated/`,
+  adapted to the engine: u64s, paging, the device label), `client.ts`
   (the world's event stream, resumed after a drop), `sync.ts` (150 ms edit
   batching with echo suppression, coalesced pulls, heartbeats, and a reconcile
   pass on every (re)connect).
@@ -108,7 +109,7 @@ right-click.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-blocks/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's storage write rules as method checks tried as another account, devices, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine (34 harness tests + 3 scenarios) | no |
-| `pnpm -F mero-blocks test` | the engine (terrain, mesher, lighting, raycast, physics), sync batching/echo/reconcile, the contract wrapper against the committed ABI, session, worlds and invites, the event stream, the launcher's screens (mocked client) — 142 tests | no |
+| `pnpm -F mero-blocks test` | the engine (terrain, mesher, lighting, raycast, physics), sync batching/echo/reconcile, the generated client against the committed ABI (every method, sent as a call or a view with its parameter names, the session synced after each), the adapter's wire conversions, session, worlds and invites, the event stream, the launcher's screens (mocked client) — 177 tests | no |
 | `pnpm merod-local e2e mero-blocks` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios: `world-lifecycle.json` is the merobox workflow
@@ -181,7 +182,12 @@ Playwright from `package.json`. **Now:** the target comes from the build
 contexts) each in an **organization** of its own (v1's namespace), sharing is an
 **org invite link** (kept in `@calimero-apps/connect`'s invite store) redeemed
 after sign-in once the player says Join, and the game calls the contract
-through `src/net/blocks.ts`. Kept: the launcher's look (panorama, world cards,
+through `MeroBlocksClient` (`src/generated/client.ts`), which `mero-app-build
+codegen` writes from `logic/res/abi.json` (`pnpm -F mero-blocks codegen` after a
+contract change; CI fails when the committed copy is stale), adapted to the
+engine by `src/net/blocks.ts`. The ABI names its records without their shapes
+(it predates `#[derive(AbiType)]`), so the generated types are `unknown` and
+`blocks.ts` types them where they are read. Kept: the launcher's look (panorama, world cards,
 create dialog), the game, the marketing landing page.
 
 `@calimero-apps/node-served` stays for the generated marketing page only

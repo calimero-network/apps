@@ -235,7 +235,7 @@ async function boot(): Promise<void> {
   myId = await client.resolveIdentity();
   // In the apps the identity is learnt from `join`, which may land after this.
   const nativeClient = client instanceof NativeGameClient ? client : null;
-  sync = new SyncEngine(client.exec, world, () => myId ?? nativeClient?.identity ?? null, {
+  sync = new SyncEngine(client.world, world, () => myId ?? nativeClient?.identity ?? null, {
     onPlayers,
     onToast: (msg) => hud.toast(msg),
   });

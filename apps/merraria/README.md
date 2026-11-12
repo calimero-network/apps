@@ -76,7 +76,8 @@ apps/merraria/
   miners with name tags, dig-crack overlay, whole-world minimap.
 - **Net** (`app/src/net/`): `session.ts` (target, `CalimeroClient`, passkey
   session), `worlds.ts` (worlds, invitations, the world last played),
-  `merraria.ts` (the contract's methods, typed), `client.ts` (calls, views and
+  `merraria.ts` (the shapes of the contract's answers, and `WorldCalls`: the
+  methods the engine uses), `client.ts` (`MerrariaClient` over the session, and
   the event stream), `sync.ts` (batched edits with echo suppression, polling,
   reconcile on connect).
 
@@ -107,7 +108,7 @@ The [Makefile](Makefile) wraps the same commands (`make dev`,
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/merraria/logic/Cargo.toml` | v1's `TestHost` tests method for method (bounds, batching, presence TTL, clock skew, far-future stamps, rejoin, transforms), v1's storage write rules as method checks (only the owner founds the world, once; nobody moves another player's avatar), access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F merraria test` | the methods the game calls are exactly the committed ABI's, with its parameter names; terrain, lighting, physics, mining, sync protocol, the event stream and its resume, worlds and invitations, the launcher's screens (mocked client), the mobile bridge | no |
+| `pnpm -F merraria test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; terrain, lighting, physics, mining, sync protocol, the event stream and its resume, worlds and invitations, the launcher's screens (mocked client), the mobile bridge | no |
 | `pnpm merod-local e2e merraria` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 `world.json` is the old two-node Docker workflow (`logic/workflows/e2e.yml`, removed), ported: the owner
@@ -157,8 +158,13 @@ cluster under `vite build`), signs in with a **passkey**, lists the
 in an **organization** of their own (v1's namespace), invites with an **org
 invite link** (`?invite=&org=&world=&from=`, kept in `@calimero-apps/connect`'s
 invite store and redeemed only when the signed-in person says Join), and calls
-the contract by name through a typed wrapper (`src/net/merraria.ts`) whose
-method list a test checks against `logic/res/abi.json`. The event stream
+the contract through `MerrariaClient` (`src/generated/client.ts`), which
+`mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F merraria
+codegen` after a contract change; CI fails when the committed copy is stale).
+The sync engine takes its methods (`WorldCalls`), which the mobile bridge
+(`src/native/host.ts`) answers too. The ABI names its records (`WorldMeta`,
+`PlayerView`, ...) without their shapes, so the generated types are `unknown`
+and `src/net/merraria.ts` types them where they are read. The event stream
 resumes from the last log index it saw, so a dropped stream misses nothing.
 The game itself (engine, renderer, HUD, menu, sync engine) is unchanged.
 

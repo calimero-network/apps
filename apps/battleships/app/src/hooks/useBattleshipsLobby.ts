@@ -3,7 +3,7 @@ import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network
 import type { AppSource } from '@calimero-apps/connect';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 
-import { battleships, messageOf, type Battleships } from '../battleships';
+import { lobby, messageOf, type Lobby, type PlayerEntry } from '../battleships';
 import {
   createLobby as createLobbyApp,
   inviteToken,
@@ -78,7 +78,7 @@ export interface UseBattleshipsLobbyReturn {
   inviteLoading: boolean;
 
   /** The selected lobby's contract, or `null` before one is selected. */
-  api: Battleships | null;
+  api: Lobby | null;
 }
 
 export interface LobbyDeps {
@@ -193,7 +193,7 @@ export function useBattleshipsLobby({
 
   // ── The selected lobby's contract ───────────────────────────────────────────
   const api = useMemo(
-    () => (client && namespaceId ? battleships(client, namespaceId, after) : null),
+    () => (client && namespaceId ? lobby(client, namespaceId, after) : null),
     [client, namespaceId, after],
   );
 
@@ -247,7 +247,7 @@ export function useBattleshipsLobby({
       return;
     }
     try {
-      setPlayerKeys((await api.getPlayers()).map((p) => p.player));
+      setPlayerKeys(((await api.contract.getPlayers()) as PlayerEntry[]).map((p) => p.player));
     } catch {
       // The next poll retries.
     }
@@ -263,7 +263,7 @@ export function useBattleshipsLobby({
     let live = true;
     (async () => {
       try {
-        await api.registerPlayer();
+        await api.contract.registerPlayer();
       } catch {
         // A guest or a lobby still landing: the roster read below still runs.
       }

@@ -1,13 +1,14 @@
-// The typed wrapper (src/net/blocks.ts) against the contract it calls: the
-// method lists and every argument name must be exactly the committed
-// logic/res/abi.json's, and the wire conversions (u64 as decimal strings) must
-// hold in both directions.
+// The adapter from the generated client to the game (src/net/blocks.ts)
+// against the contract it calls: `init`'s argument names must be exactly the
+// committed logic/res/abi.json's, and the wire conversions (u64 as decimal
+// strings) must hold in both directions. The generated client's own coverage of
+// the ABI is tests/generatedClient.test.ts.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { CALLS, INIT_PARAMS, PARAMS, VIEWS, blocks, initArgs, playerId } from "../src/net/blocks";
+import { INIT_PARAMS, blocks, initArgs, playerId } from "../src/net/blocks";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 interface AbiMethod {
@@ -19,22 +20,8 @@ const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json
   events: Record<string, Record<string, string>>;
 };
 
-const byKind = (kind: string) =>
-  Object.entries(abi.methods)
-    .filter(([, m]) => m.kind === kind)
-    .map(([name]) => name)
-    .sort();
-
-describe("the wrapper covers the contract's ABI", () => {
-  it("lists exactly the ABI's calls and views", () => {
-    expect([...CALLS].sort()).toEqual(byKind("call"));
-    expect([...VIEWS].sort()).toEqual(byKind("view"));
-  });
-
-  it("names every argument as the ABI does", () => {
-    for (const [method, params] of Object.entries(PARAMS)) {
-      expect(abi.methods[method]?.params.map(([n]) => n), method).toEqual([...params]);
-    }
+describe("the adapter against the contract's ABI", () => {
+  it("names init's arguments as the ABI does", () => {
     expect(abi.methods.init?.params.map(([n]) => n)).toEqual([...INIT_PARAMS]);
   });
 

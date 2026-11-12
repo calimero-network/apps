@@ -20,7 +20,8 @@ apps/battleships/
 │   ├── scenarios/           match-lifecycle, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-│   └── src/battleships.ts   the contract's methods, typed (tested against res/abi.json)
+│   ├── src/generated/       BattleshipsClient: `mero-app-build codegen` from res/abi.json (committed)
+│   └── src/battleships.ts   the screens' shapes, the adapter to them, and the refusals in words
 └── mobile/                  native iOS / Android apps (still v1: see mobile/README.md)
 ```
 
@@ -104,7 +105,7 @@ the match. There is no clock in the contract to forfeit them on.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/battleships/logic/Cargo.toml` | the rules (`crates/rules`: fleet validation, the commitment vector shared with the client, the audit), v1's lobby and game `TestHost` tests method for method (matches, players, stats, history, commits, shots, answers, sinking a fleet, a lie caught at the reveal, a void match, the impossible-misses rule), the method checks that replace v1's forged-row tests, events, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F battleships test` | the board helpers and the commitment vector; the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter back to the screens' shapes; event parsing; sign-up, lobbies, invitations, names, a challenge and the placement grid (mocked client) | no |
+| `pnpm -F battleships test` | the board helpers and the commitment vector; the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the adapter back to the screens' shapes; event parsing; sign-up, lobbies, invitations, names, a challenge and the placement grid (mocked client) | no |
 | `pnpm merod-local e2e battleships` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node | yes |
 
 `match-lifecycle.json` is v1's two-node Docker workflow (`logic/workflows/e2e.yml`) with two accounts
@@ -169,6 +170,25 @@ game state does not carry over: lobbies are created anew.
   `apps/battleships/package.json` and `scripts/` (v1-era wasm sync to
   local node data dirs), and the app's entry in the v1 workflow-coverage baseline
   (`scripts/`).
+
+## The generated client
+
+```bash
+scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+pnpm -F battleships codegen           # logic/res/abi.json -> app/src/generated/
+```
+
+`useBattleshipsLobby` builds the lobby's `BattleshipsClient` (`lobby()` in
+`src/battleships.ts`: `new BattleshipsClient(client, appId, { after })`, where
+`after` syncs the stored session, over a transport that notes the log index of
+each answer, where the event stream resumes). The screens call its methods with
+the contract's camelCase arguments (`matchId`, `shotId`, and the reveal's bytes
+as base64url through `base64url`). The ABI names its records without their
+shapes (it predates `#[derive(AbiType)]`), so the generated types are `unknown`
+and `src/battleships.ts`'s shapes type them, and its `to*` functions convert
+their u64s, where they are read. The directory is committed and CI regenerates
+it and fails when it is stale (see
+[docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
 
 ## Production
 

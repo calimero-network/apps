@@ -24,7 +24,8 @@ apps/mero-kombat/
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
 │   ├── src/game/            the engine: physics, poses, renderer, stage, HUD, sound, CPU, netcode
-│   ├── src/kombat.ts        the contract's methods, typed (tested against res/abi.json)
+│   ├── src/generated/       MeroKombatClient: `mero-app-build codegen` from res/abi.json (committed)
+│   ├── src/kombat.ts        the shapes of the contract's answers, and its refusals in words
 │   ├── src/presence.ts      movement over the node's presence channel
 │   └── scripts/             icon generator
 └── mobile/                  native iOS / Android shells around the same engine (moved in #701: see below)
@@ -98,7 +99,7 @@ else watches.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-kombat/logic/Cargo.toml` | v1's `TestHost` tests method for method (corners, the damage table, rounds, best of three, rematches, the corner rules), v1's double knock-out as what it becomes under one log, the permission checks that replace owner stamps, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F mero-kombat test` | the engine (hits, guards, launches, specials) and the netcode (one tx per action, no double-counted blow); the methods the UI calls are exactly the committed ABI's, with its parameter names; presence encoding; sign-in, the lobby, arenas, corners, rematch, invitations, session restore (mocked client) | no |
+| `pnpm -F mero-kombat test` | the engine (hits, guards, launches, specials) and the netcode (one tx per action, no double-counted blow); the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; presence encoding; sign-in, the lobby, arenas, corners, rematch, invitations, session restore (mocked client) | no |
 | `pnpm merod-local e2e mero-kombat` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 `fight-a-match.json` is v1's two-node Docker workflow (`fight-a-match.yml`),
@@ -151,10 +152,28 @@ after signing in redeems it and opens the arena, else one in that organization;
 the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on
 sign-out; a member who may not add an arena is told to ask an owner), streams movement over the
 node's **presence** channel and the arena's **event stream**, and calls the
-contract by method name through `src/kombat.ts`, whose method list a test checks
-against `logic/res/abi.json`. A corner with no name given shows a short account
+contract through `MeroKombatClient` (`src/generated/client.ts`), which
+`mero-app-build codegen` writes from `logic/res/abi.json`. A corner with no name given shows a short account
 id (v1 fell back to the name its holder set for the namespace; an org has no
 such record yet). The game engine (`src/game`) is unchanged.
+
+## The generated client
+
+```bash
+scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+pnpm -F mero-kombat codegen           # logic/res/abi.json -> app/src/generated/
+```
+
+`useArena.ts` builds `new MeroKombatClient(client, appId, { after })`, where
+`after` syncs the stored session after every call and view, over a transport
+that notes the log index of each answer (the event stream resumes just past
+it; the generated methods return the result alone). Every method takes the
+caller's clock as `now` (`now()` in `src/kombat.ts`). The ABI names
+`ArenaView` and `MatchSummary` without their shapes (it predates
+`#[derive(AbiType)]`), so the generated types are `unknown` and the app's own
+interfaces in `src/kombat.ts` type them where they are read. The directory is
+committed and CI regenerates it and fails when it is stale (see
+[docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
 
 ## Mobile
 

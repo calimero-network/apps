@@ -6,7 +6,7 @@
 // inviter's passkey and redeemed by whoever opens the link, after signing in
 // and saying Join.
 
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
+import { passkeyConfirm, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
   appTarget,
   createInviteStore,
@@ -22,7 +22,8 @@ import {
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 
-import { bindExec, merraria } from "./merraria";
+import { MerrariaClient } from "../generated/client";
+import { nowSecs } from "./merraria";
 import { APP } from "./session";
 
 /** A world as the picker and the game know it. */
@@ -43,7 +44,7 @@ export async function listWorlds(client: ClientRoutes<{ apps: "list" }>, source:
  * instance's owner) may run.
  */
 export async function createWorld(
-  client: ClientRoutes<{ apps: "create" | "call" | "view"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" | "call" | "view"; orgs: "create" }> & Pick<CalimeroClient, "events">,
   source: AppSource,
   name: string,
   seed: number,
@@ -53,7 +54,7 @@ export async function createWorld(
   after();
   const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
   after();
-  await merraria(bindExec(client, appId, after)).createWorld(name, seed);
+  await new MerrariaClient(client, appId, { after }).createWorld({ name, seed, now: nowSecs() });
   return { appId, name, org };
 }
 
