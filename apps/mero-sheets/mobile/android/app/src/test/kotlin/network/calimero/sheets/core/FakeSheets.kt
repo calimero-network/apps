@@ -20,6 +20,9 @@ import network.calimero.sheets.generated.Protection
 import network.calimero.sheets.generated.Sheet
 import network.calimero.sheets.generated.SheetLayout
 import network.calimero.sheets.generated.SheetView
+import network.calimero.sheets.generated.colId
+import network.calimero.sheets.generated.rowId
+import network.calimero.sheets.generated.sheetId
 
 /**
  * The sheets contract in memory, behind `InMemoryAppBackend`'s recording contract. `computed` is

@@ -19,13 +19,13 @@ final class SpreadsheetModelTests: XCTestCase {
         fake.seedCell("s1", "2", "0", raw: "Feb", in: ctx)
         fake.seedCell("s1", "2", "1", raw: "=[s2]!A1*2", computed: "84", in: ctx)
         fake.seedCell("s2", "0", "0", raw: "42", in: ctx)
-        fake.styles[ctx] = [CellStyle(sheetId: "s1", rowId: "0", colId: "0", style: ["bold": "1"]),
-                            CellStyle(sheetId: "s1", rowId: "9", colId: "3", style: ["fill": "#ffee00"])]
-        fake.views[ctx] = [SheetView(sheetId: "s1", frozenRows: 1, frozenCols: 1, sizes: [AxisSize(axis: "col", id: "0", size: 160)])]
+        fake.styles[ctx] = [CellStyle(sheet_id: "s1", row_id: "0", col_id: "0", style: ["bold": "1"]),
+                            CellStyle(sheet_id: "s1", row_id: "9", col_id: "3", style: ["fill": "#ffee00"])]
+        fake.views[ctx] = [SheetView(sheet_id: "s1", frozen_rows: 1, frozen_cols: 1, sizes: [AxisSize(axis: "col", id: "0", size: 160)])]
         fake.charts[ctx] = [Chart(
             id: "c1",
-            chart: ChartInput(sheetId: "s1", topRowId: "0", leftColId: "0", bottomRowId: "2", rightColId: "1", kind: "line", title: ""),
-            createdBy: fake.account)]
+            chart: ChartInput(sheet_id: "s1", top_row_id: "0", left_col_id: "0", bottom_row_id: "2", right_col_id: "1", kind: "line", title: ""),
+            created_by: fake.account)]
         return fake
     }
 
@@ -108,7 +108,7 @@ final class SpreadsheetModelTests: XCTestCase {
 
     func testViewersCannotEdit() async {
         let fake = seeded()
-        fake.members[ctx] = [Member(id: fake.account, nickname: "Ana", joinedAt: 1, updatedAt: 1, account: fake.account, role: "viewer")]
+        fake.members[ctx] = [Member(id: fake.account, nickname: "Ana", joined_at: 1, updated_at: 1, account: fake.account, role: "viewer")]
         let m = model(fake)
         await m.load()
         XCTAssertEqual(m.role, "viewer")
@@ -118,10 +118,10 @@ final class SpreadsheetModelTests: XCTestCase {
 
     func testProtectedRange() async {
         let fake = seeded()
-        fake.members[ctx] = [Member(id: fake.account, nickname: "Ana", joinedAt: 1, updatedAt: 1, account: fake.account, role: "editor")]
+        fake.members[ctx] = [Member(id: fake.account, nickname: "Ana", joined_at: 1, updated_at: 1, account: fake.account, role: "editor")]
         fake.protections[ctx] = [Protection(
-            id: "p1", sheetId: "s1", topRowId: "0", leftColId: "0", bottomRowId: "1", rightColId: "1",
-            description: "Totals", editors: [], createdBy: "zz")]
+            id: "p1", sheet_id: "s1", top_row_id: "0", left_col_id: "0", bottom_row_id: "1", right_col_id: "1",
+            description: "Totals", editors: [], created_by: "zz")]
         let m = model(fake)
         await m.load()
         XCTAssertEqual(m.editBlock(at: GridPos(row: 1, col: 0)), "Protected: Totals")

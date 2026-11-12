@@ -55,6 +55,9 @@ import network.calimero.sheets.core.A1
 import network.calimero.sheets.core.CellLook
 import network.calimero.sheets.core.GridPos
 import network.calimero.sheets.core.SheetGrid
+import network.calimero.sheets.generated.frozenCols
+import network.calimero.sheets.generated.frozenRows
+import network.calimero.sheets.generated.sheetId
 import kotlin.math.max
 
 private const val MIN_SCALE = 0.5f

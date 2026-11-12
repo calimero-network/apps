@@ -92,6 +92,7 @@ import network.calimero.sheets.core.SpreadsheetModel
 import network.calimero.sheets.core.SpreadsheetState
 import network.calimero.sheets.core.WorkspaceModel
 import network.calimero.sheets.core.WorkspaceState
+import network.calimero.sheets.generated.linkedFrom
 
 private const val COLOR_MASK = 0xFFFFFF
 private const val OPAQUE = 0xFF000000.toInt()

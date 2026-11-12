@@ -38,7 +38,7 @@ final class GridTests: XCTestCase {
         let plain = SheetOrder(layout: nil)
         let moved = SheetOrder(
             layout: SheetLayout(
-                sheetId: "s1", rows: [AxisEntryView(id: "k1", pos: "4", deleted: false)], cols: []))
+                sheet_id: "s1", rows: [AxisEntryView(id: "k1", pos: "4", deleted: false)], cols: []))
         let orders = { (id: String) in id == "s1" ? moved : plain }
         let names = { (id: String) -> String? in id == "s2" ? "Q3 Budget" : id == "s3" ? "Data" : nil }
         func show(_ f: String) -> String { FormulaDisplay.display(f, home: "s1", orders: orders, sheetName: names) }

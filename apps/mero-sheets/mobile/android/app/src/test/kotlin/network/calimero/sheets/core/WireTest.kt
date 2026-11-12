@@ -9,6 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.sheets.generated.Cell
 import network.calimero.sheets.generated.Member
+import network.calimero.sheets.generated.joinedAt
+import network.calimero.sheets.generated.lastEditedAt
+import network.calimero.sheets.generated.updatedAt
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
