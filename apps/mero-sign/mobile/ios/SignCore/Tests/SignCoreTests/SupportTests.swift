@@ -11,13 +11,13 @@ final class WireAndIdTests: XCTestCase {
             {"signer":"\(IDs.alice)", "signedAt":"18446744073709551615"}
             """
         let decoded = try JSONDecoder().decode(DocumentSignature.self, from: Data(raw.utf8))
-        XCTAssertEqual(decoded.signer.hex, IDs.alice)
+        XCTAssertEqual(ContractBytes.text(decoded.signer).hex, IDs.alice)
         // A u64 past 2^53 survives digit for digit.
         XCTAssertEqual(decoded.signedAt, UInt64.max)
         let text = try JSONDecoder().decode(DocumentSignature.self, from: Data(
             "{\"signer\":\"\(IDs.bob.uppercased())\",\"signedAt\":1}".utf8))
-        XCTAssertEqual(text.signer.hex, IDs.bob)
-        XCTAssertTrue(SignIds.same(decoded.signer, IDs.alice))
+        XCTAssertEqual(ContractBytes.text(text.signer).hex, IDs.bob)
+        XCTAssertTrue(SignIds.same(ContractBytes.text(decoded.signer), IDs.alice))
         let base58 = InviteCodec.base58Encode(try Hex.decode(IDs.blob, label: "b", bytes: 32))
         XCTAssertEqual(ContractBytes.text(base58).hex, IDs.blob)
     }

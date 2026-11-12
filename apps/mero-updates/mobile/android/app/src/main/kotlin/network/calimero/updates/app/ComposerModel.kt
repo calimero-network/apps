@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import network.calimero.updates.core.ComponentWire
 import network.calimero.updates.core.Composer
 import network.calimero.updates.core.ComposerStart
 import network.calimero.updates.core.ComposerState
@@ -17,13 +16,8 @@ import network.calimero.updates.core.Format
 import network.calimero.updates.core.Limits
 import network.calimero.updates.core.Metrics
 import network.calimero.updates.core.UpdateTemplate
-import network.calimero.updates.core.asContractArg
-import network.calimero.updates.core.toUpdates
 import network.calimero.updates.generated.ContributionView
-import network.calimero.updates.generated.DraftView
 import network.calimero.updates.generated.MetricSeries
-import network.calimero.updates.generated.PostPage
-import network.calimero.updates.generated.PostView
 import java.time.Clock
 
 /**
@@ -67,22 +61,22 @@ class ComposerModel(
     suspend fun load() {
         if (_state.value != null) return
         val client = audience.client
-        _series.value = runCatching { client.listMetrics().map { it.toUpdates<MetricSeries>() } }.getOrDefault(emptyList())
+        _series.value = runCatching { client.listMetrics() }.getOrDefault(emptyList())
         val since = audience.overview.value?.lastUpdateAt ?: 0uL
-        _contributions.value = runCatching { client.listContributions(since).map { it.toUpdates<ContributionView>() } }.getOrDefault(emptyList())
+        _contributions.value = runCatching { client.listContributions(since) }.getOrDefault(emptyList())
         try {
             _state.value =
                 when (start) {
-                    is ComposerStart.Edit -> Composer.fromPost(client.getPost(start.id).toUpdates<PostView>())
+                    is ComposerStart.Edit -> Composer.fromPost(client.getPost(start.id))
                     is ComposerStart.Draft -> {
-                        val draft = client.listDrafts().map { it.toUpdates<DraftView>() }.firstOrNull { it.id == start.id }
+                        val draft = client.listDrafts().firstOrNull { it.id == start.id }
                         _savedAt.value = draft?.updatedAt
                         draft?.let { ComposerState.parse(it.payload) } ?: fresh(UpdateTemplate.of(null))
                     }
                     ComposerStart.ReuseLatest -> {
-                        val page = client.listPosts("update", null, null, 1u).toUpdates<PostPage>()
+                        val page = client.listPosts("update", null, null, 1u)
                         val latest = page.items.firstOrNull()
-                        if (latest != null) Composer.fromPrevious(client.getPost(latest.id).toUpdates<PostView>(), clock) else fresh(UpdateTemplate.of(null))
+                        if (latest != null) Composer.fromPrevious(client.getPost(latest.id), clock) else fresh(UpdateTemplate.of(null))
                     }
                     is ComposerStart.Template -> fresh(UpdateTemplate.of(start.id))
                 }
@@ -149,10 +143,10 @@ class ComposerModel(
             val edit = editId
             val id =
                 if (edit != null) {
-                    audience.act { it.editUpdate(edit, ComponentWire.wire(input).asContractArg()) }
+                    audience.act { it.editUpdate(edit, input) }
                     edit
                 } else {
-                    val published = audience.act { it.publishUpdate(ComponentWire.wire(input).asContractArg()) }
+                    val published = audience.act { it.publishUpdate(input) }
                     _draftId.value?.let { draft -> runCatching { audience.client.deleteDraft(draft) } }
                     _draftId.value = null
                     published

@@ -5,11 +5,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.updates.core.ErrorText
-import network.calimero.updates.core.toUpdates
 import network.calimero.updates.generated.DraftView
-import network.calimero.updates.generated.PersonView
 import network.calimero.updates.generated.PostCard
-import network.calimero.updates.generated.PostPage
 
 /**
  * The Updates tab. Same screen for both sides, weighted differently: the team sees what is due,
@@ -38,7 +35,7 @@ class FeedModel(
         _isLoading.value = true
         val client = audience.client
         try {
-            _posts.value = client.listPosts("update", _category.value, null, PAGE_SIZE).toUpdates<PostPage>().items
+            _posts.value = client.listPosts("update", _category.value, null, PAGE_SIZE).items
             error.value = null
         } catch (e: CancellationException) {
             throw e
@@ -47,8 +44,8 @@ class FeedModel(
         }
         if (audience.isTeam) {
             // Drafts and the investor count only feed the team's panel: best effort.
-            runCatching { client.listDrafts().map { it.toUpdates<DraftView>() } }.onSuccess { _drafts.value = it }
-            runCatching { client.listPeople().map { it.toUpdates<PersonView>() } }.onSuccess { people -> _investorCount.value = people.count { !it.isTeam } }
+            runCatching { client.listDrafts() }.onSuccess { _drafts.value = it }
+            runCatching { client.listPeople() }.onSuccess { people -> _investorCount.value = people.count { !it.isTeam } }
         } else {
             _drafts.value = emptyList()
         }

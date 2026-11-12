@@ -5,7 +5,7 @@ import XCTest
 @testable import UpdatesCore
 
 /// The generated client's calls reach the contract as its component ABI takes them, and its
-/// answers read back into the v1 types.
+/// answers read back as its typed records.
 final class ComponentWireTests: XCTestCase {
     func testEveryClientMethodIsInTheABI() async throws {
         let wire = Recorder()
@@ -36,10 +36,10 @@ final class ComponentWireTests: XCTestCase {
         try? await client.deletePost(postId: "p")
         try? await client.editCategory(categoryId: "c", name: "n", emoji: "e", color: "c")
         try? await client.editComment(commentId: "c", body: "b")
-        try? await client.editUpdate(postId: "p", input: try JSONValue.wire(input).converted())
+        try? await client.editUpdate(postId: "p", input: input)
         try? await client.markRead(postId: "p")
         try? await client.offerHelp(askId: "a", note: "n")
-        _ = try? await client.publishUpdate(input: try JSONValue.wire(input).converted())
+        _ = try? await client.publishUpdate(input: input)
         try? await client.react(postId: "p", emoji: "e", on: true)
         try? await client.removeTeammate(account: "a")
         _ = try? await client.saveDraft(title: "t", payload: "{}")
@@ -72,7 +72,7 @@ final class ComponentWireTests: XCTestCase {
               "commentCount":"3","askCount":"1","openAskCount":"1","metricCount":"0","readCount":"2","readByMe":false,
               "reactions":[{"emoji":"e","count":"4","mine":true}]}],"nextCursor":null}
             """#
-        let page = try JSONDecoder().decode(PostPage.self, from: try ComponentWire.incoming(Data(answer.utf8)))
+        let page = try JSONDecoder().decode(PostPage.self, from: Data(answer.utf8))
         XCTAssertEqual(page.items[0].createdAt, 1_767_225_600_000)
         XCTAssertEqual(page.items[0].commentCount, 3)
         XCTAssertEqual(page.items[0].reactions[0].count, 4)
@@ -81,7 +81,7 @@ final class ComponentWireTests: XCTestCase {
         // A metric's value is not a u64 field: an all-digit string stays a string.
         let point = try JSONDecoder().decode(
             MetricPoint.self,
-            from: try ComponentWire.incoming(Data(#"{"postId":"p","postTitle":"t","at":"5","value":"12"}"#.utf8)))
+            from: Data(#"{"postId":"p","postTitle":"t","at":"5","value":"12"}"#.utf8))
         XCTAssertEqual(point.value, "12")
         XCTAssertEqual(point.at, 5)
     }

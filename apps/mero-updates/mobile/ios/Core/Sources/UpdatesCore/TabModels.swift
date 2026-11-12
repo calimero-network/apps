@@ -19,8 +19,8 @@ public final class AsksModel: ObservableObject {
     public func load() async {
         defer { hasLoaded = true }
         do {
-            async let asks = audience.client.listAsks(status: status).map({ try $0.decoded(as: AskView.self) })
-            async let contributions = audience.client.listContributions(since: 0).map({ try $0.decoded(as: ContributionView.self) })
+            async let asks = audience.client.listAsks(status: status)
+            async let contributions = audience.client.listContributions(since: 0)
             let (a, c) = try await (asks, contributions)
             self.asks = a
             self.contributions = c
@@ -59,7 +59,7 @@ public final class QuestionsModel: ObservableObject {
         do {
             questions = try await audience.client.listPosts(
                 kind: "question", categoryId: nil, cursor: nil, limit: FeedModel.pageSize
-            ).decoded(as: PostPage.self).items
+            ).items
             error = nil
         } catch {
             self.error = ErrorText.describe(error)
@@ -97,7 +97,7 @@ public final class MetricsModel: ObservableObject {
     public func load() async {
         defer { hasLoaded = true }
         do {
-            series = try await audience.client.listMetrics().map({ try $0.decoded(as: MetricSeries.self) }).filter { !$0.points.isEmpty }
+            series = try await audience.client.listMetrics().filter { !$0.points.isEmpty }
             error = nil
         } catch {
             self.error = ErrorText.describe(error)
@@ -132,8 +132,8 @@ public final class PeopleModel: ObservableObject {
     public func load() async {
         defer { hasLoaded = true }
         do {
-            people = try await audience.client.listPeople().map({ try $0.decoded(as: PersonView.self) })
-            engagement = audience.isTeam ? try await audience.client.getEngagement().map({ try $0.decoded(as: EngagementRow.self) }) : []
+            people = try await audience.client.listPeople()
+            engagement = audience.isTeam ? try await audience.client.getEngagement() : []
             error = nil
         } catch {
             self.error = ErrorText.describe(error)
@@ -180,7 +180,7 @@ public final class SettingsModel: ObservableObject {
     public func load() async {
         guard !hasLoaded else { return }
         do {
-            let settings = try await audience.client.getSettings().decoded(as: Settings.self)
+            let settings = try await audience.client.getSettings()
             companyName = settings.companyName
             // An audience never saved has cadence 0 and updated_at 0: offer monthly.
             cadenceDays = settings.updatedAt > 0 ? settings.cadenceDays : 30

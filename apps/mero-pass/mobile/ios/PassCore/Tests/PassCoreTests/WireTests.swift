@@ -48,7 +48,7 @@ final class WireTests: XCTestCase {
         try await client.registerDevice(fingerprint: "f", publicKey: "pk", label: "l", kind: "mobile")
         try await client.revokeDevice(fingerprint: "f")
         _ = try await client.addKeyWraps(
-            wraps: [try KeyWrapInput(keyId: "k", recipient: "r", wrapper: "w", envelope: "e").converted()])
+            wraps: [KeyWrapInput(keyId: "k", recipient: "r", wrapper: "w", envelope: "e")])
         try await client.rotateKey(keyId: "k")
         _ = try await client.addSecret(id: "s", kind: "login", name: "n", tags: "", fields: [:])
         try await client.updateSecret(id: "s", fields: [:], rekey: false)
@@ -74,18 +74,18 @@ final class WireTests: XCTestCase {
         [{"id":"s","kind":"login","name":"n","tags":"","fields":{"username":"u"},"createdAt":"1761000000123",
           "createdBy":"a","updatedAt":"1761000000456","updatedBy":"a","trashed":false,"trashedAt":"0"}]
         """#
-        let secrets = try PassWireDecoding.decode([SecretView].self, from: Data(json.utf8))
+        let secrets = try JSONDecoder().decode([SecretView].self, from: Data(json.utf8))
         XCTAssertEqual(secrets.first?.createdAt, 1_761_000_000_123)
         XCTAssertEqual(secrets.first?.updatedAt, 1_761_000_000_456)
         XCTAssertEqual(secrets.first?.fields["username"], "u")
-        let device = try PassWireDecoding.decode(
+        let device = try JSONDecoder().decode(
             DeviceView.self,
             from: Data(
                 #"{"fingerprint":"f","publicKey":"pk","label":"l","kind":"mobile","account":"a","addedAt":"42","revoked":false}"#
                     .utf8))
         XCTAssertEqual(device.addedAt, 42)
         XCTAssertEqual(device.publicKey, "pk")
-        let info = try PassWireDecoding.decode(
+        let info = try JSONDecoder().decode(
             VaultInfo.self,
             from: Data(#"{"name":"V","currentKey":"k","defaultRole":"viewer","myAccount":"a","myRole":"admin"}"#.utf8))
         XCTAssertEqual(info.myRole, "admin")

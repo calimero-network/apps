@@ -1,27 +1,26 @@
 import Foundation
 import MeroKit
 
-// The vault's types, as the contract (`../../../logic/res/abi.json`) answers them, kept by hand in
-// the generated client's module (PassCore has a `Secret` and a `Revision` of its own). The calls are
-// the generated `PassClient` (`PassClient.swift`, `scripts/mobile-codegen.sh` at the repo root);
-// until the logic derives `AbiType` the ABI names these types without their shape, so the client
-// takes and answers their JSON and these read it (`JSONValue.decoded(as:)`, through
-// `PassWireDecoding` for the u64 fields).
+// The vault's types, in the generated client's module (PassCore has a `Secret` and a `Revision` of
+// its own). The calls and the answer types are the generated `PassClient` (`PassClient.swift`,
+// `scripts/mobile-codegen.sh` at the repo root); the state types below the answers are kept by hand.
 
-extension Encodable {
-    /// This answer as the app type `T` (one of the types below), its u64 fields read from their
-    /// decimal strings.
-    public func decoded<T: Decodable>(as type: T.Type) throws -> T {
-        try PassWireDecoding.decode(type, from: MeroJSON.encode(self))
-    }
+// MARK: - The answers
 
-    /// This value as the generated client's type `T` (an argument), through its JSON.
-    public func converted<T: Decodable>() throws -> T {
-        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
-    }
-}
+// The answer types are the generated client's (`PassClient.swift`, from the ABI); u64 fields are
+// decimal strings on the wire and `UInt64` here.
 
-// MARK: - Types
+public typealias AuditView = PassClient.AuditView
+public typealias DeviceView = PassClient.DeviceView
+public typealias KeyWrapInput = PassClient.KeyWrapInput
+public typealias KeyWrapView = PassClient.KeyWrapView
+public typealias MemberView = PassClient.MemberView
+public typealias RevisionView = PassClient.RevisionView
+public typealias SecretView = PassClient.SecretView
+public typealias VaultInfo = PassClient.VaultInfo
+
+// MARK: - The contract's state types
+
 
 /// One line of the activity trail. Who wrote it is the slot's owner stamp,
 /// not a field: an author can claim anything in their own entry.
@@ -40,26 +39,6 @@ public struct AuditLogEntry: Codable, Sendable, Equatable {
         self.target = target
         self.device = device
         self.timestamp = timestamp
-    }
-}
-
-public struct AuditView: Codable, Sendable, Equatable {
-    public var action: String
-    public var target: String
-    public var account: String
-    public var device: String
-    public var timestamp: UInt64
-    /// True when the author blanked this entry. The slot stays, so a redaction
-    /// is itself visible in the trail.
-    public var redacted: Bool
-
-    public init(action: String, target: String, account: String, device: String, timestamp: UInt64, redacted: Bool) {
-        self.action = action
-        self.target = target
-        self.account = account
-        self.device = device
-        self.timestamp = timestamp
-        self.redacted = redacted
     }
 }
 
@@ -98,36 +77,6 @@ public struct DeviceKey: Codable, Sendable, Equatable {
         case kind
         case nodeDevice
         case addedAt
-    }
-}
-
-public struct DeviceView: Codable, Sendable, Equatable {
-    public var fingerprint: String
-    public var publicKey: String
-    public var label: String
-    public var kind: String
-    public var account: String
-    public var addedAt: UInt64
-    public var revoked: Bool
-
-    public init(fingerprint: String, publicKey: String, label: String, kind: String, account: String, addedAt: UInt64, revoked: Bool) {
-        self.fingerprint = fingerprint
-        self.publicKey = publicKey
-        self.label = label
-        self.kind = kind
-        self.account = account
-        self.addedAt = addedAt
-        self.revoked = revoked
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case fingerprint
-        case publicKey
-        case label
-        case kind
-        case account
-        case addedAt
-        case revoked
     }
 }
 
@@ -172,66 +121,6 @@ public struct KeyWrap: Codable, Sendable, Equatable {
         case wrapper
         case envelope
         case wrappedAt
-    }
-}
-
-public struct KeyWrapInput: Codable, Sendable, Equatable {
-    public var keyId: String
-    public var recipient: String
-    public var wrapper: String
-    public var envelope: String
-
-    public init(keyId: String, recipient: String, wrapper: String, envelope: String) {
-        self.keyId = keyId
-        self.recipient = recipient
-        self.wrapper = wrapper
-        self.envelope = envelope
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case keyId
-        case recipient
-        case wrapper
-        case envelope
-    }
-}
-
-public struct KeyWrapView: Codable, Sendable, Equatable {
-    public var keyId: String
-    public var recipient: String
-    public var wrapper: String
-    public var envelope: String
-    public var wrappedBy: String
-
-    public init(keyId: String, recipient: String, wrapper: String, envelope: String, wrappedBy: String) {
-        self.keyId = keyId
-        self.recipient = recipient
-        self.wrapper = wrapper
-        self.envelope = envelope
-        self.wrappedBy = wrappedBy
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case keyId
-        case recipient
-        case wrapper
-        case envelope
-        case wrappedBy
-    }
-}
-
-public struct MemberView: Codable, Sendable, Equatable {
-    public var account: String
-    /// `admin`, `editor` or `viewer`; `pending` for an account that has
-    /// registered a device but was never given a role; `removed` for one an
-    /// admin removed, which clients must not auto-admit.
-    public var role: String
-    public var devices: UInt32
-
-    public init(account: String, role: String, devices: UInt32) {
-        self.account = account
-        self.role = role
-        self.devices = devices
     }
 }
 
@@ -308,27 +197,6 @@ public struct Revision: Codable, Sendable, Equatable {
     }
 }
 
-public struct RevisionView: Codable, Sendable, Equatable {
-    public var field: String
-    public var previous: String
-    public var replacedAt: UInt64
-    public var replacedBy: String
-
-    public init(field: String, previous: String, replacedAt: UInt64, replacedBy: String) {
-        self.field = field
-        self.previous = previous
-        self.replacedAt = replacedAt
-        self.replacedBy = replacedBy
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case field
-        case previous
-        case replacedAt
-        case replacedBy
-    }
-}
-
 /// One secret, as independent registers rather than one record.
 ///
 /// Field-level registers are the point: Alice fixing the URL while Bob rotates
@@ -379,110 +247,5 @@ public struct Secret: Codable, Sendable, Equatable {
         case updatedBy
         case trashed
         case trashedAt
-    }
-}
-
-public struct SecretView: Codable, Sendable, Equatable {
-    public var id: String
-    public var kind: String
-    public var name: String
-    public var tags: String
-    public var fields: [String: String]
-    public var createdAt: UInt64
-    public var createdBy: String
-    public var updatedAt: UInt64
-    public var updatedBy: String
-    public var trashed: Bool
-    public var trashedAt: UInt64
-
-    public init(id: String, kind: String, name: String, tags: String, fields: [String: String], createdAt: UInt64, createdBy: String, updatedAt: UInt64, updatedBy: String, trashed: Bool, trashedAt: UInt64) {
-        self.id = id
-        self.kind = kind
-        self.name = name
-        self.tags = tags
-        self.fields = fields
-        self.createdAt = createdAt
-        self.createdBy = createdBy
-        self.updatedAt = updatedAt
-        self.updatedBy = updatedBy
-        self.trashed = trashed
-        self.trashedAt = trashedAt
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case kind
-        case name
-        case tags
-        case fields
-        case createdAt
-        case createdBy
-        case updatedAt
-        case updatedBy
-        case trashed
-        case trashedAt
-    }
-}
-
-public struct VaultInfo: Codable, Sendable, Equatable {
-    public var name: String
-    public var currentKey: String
-    public var defaultRole: String
-    public var myAccount: String
-    public var myRole: String
-
-    public init(name: String, currentKey: String, defaultRole: String, myAccount: String, myRole: String) {
-        self.name = name
-        self.currentKey = currentKey
-        self.defaultRole = defaultRole
-        self.myAccount = myAccount
-        self.myRole = myRole
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case currentKey
-        case defaultRole
-        case myAccount
-        case myRole
-    }
-}
-
-// MARK: - Wire decoding
-
-/// Reads the contract's answers: each u64 field arrives as a decimal string and is turned back
-/// into a number before decoding, as the web adapter's `num` does.
-public enum PassWireDecoding {
-    /// Every 64-bit field the contract answers, in any answer.
-    public static let u64Fields: Set<String> = [
-        "addedAt", "createdAt", "updatedAt", "trashedAt", "replacedAt", "timestamp", "wrappedAt",
-    ]
-
-    public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        try JSONDecoder().decode(type, from: normalized(data))
-    }
-
-    /// `data` with every u64 field's decimal string as a JSON number.
-    public static func normalized(_ data: Data) -> Data {
-        guard let root = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return data }
-        var changed = false
-        let walked = walk(root, key: nil, changed: &changed)
-        guard changed, let out = try? JSONSerialization.data(withJSONObject: walked, options: [.fragmentsAllowed])
-        else { return data }
-        return out
-    }
-
-    private static func walk(_ value: Any, key: String?, changed: inout Bool) -> Any {
-        if let array = value as? [Any] { return array.map { walk($0, key: nil, changed: &changed) } }
-        if let object = value as? [String: Any] {
-            var out: [String: Any] = [:]
-            for (k, v) in object { out[k] = walk(v, key: k, changed: &changed) }
-            return out
-        }
-        if let key, u64Fields.contains(key), let text = value as? String, let number = UInt64(text) {
-            changed = true
-            return NSNumber(value: number)
-        }
-        return value
     }
 }

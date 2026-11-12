@@ -7,6 +7,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.sign.generated.ContractBytes
 import network.calimero.sign.generated.PermissionLevel
 
 /**
@@ -199,7 +200,7 @@ class AgreementModel(
             _people.value =
                 loaded.details.participants
                     .map {
-                        PersonRow(SignIds.hex(it.userId), names.name(it.userId.hex, current.namespaceId), it.permissionLevel, SignIds.same(it.userId, loaded.me))
+                        PersonRow(SignIds.hex(ContractBytes.Text(it.userId)), names.name(ContractBytes.Text(it.userId).hex, current.namespaceId), it.permissionLevel, SignIds.same(ContractBytes.Text(it.userId), loaded.me))
                     }.sortedWith(compareBy<PersonRow> { !it.isMe }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
         }.onFailure {
             if (SignErrorText.isSyncing(it)) {

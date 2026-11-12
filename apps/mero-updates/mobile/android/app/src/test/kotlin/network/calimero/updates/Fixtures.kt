@@ -5,14 +5,12 @@ import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import network.calimero.updates.app.AudienceModel
 import network.calimero.updates.app.AudienceSummary
-import network.calimero.updates.core.ComponentWire
 import network.calimero.updates.generated.AskView
 import network.calimero.updates.generated.CategoryView
 import network.calimero.updates.generated.CommentView
@@ -43,24 +41,14 @@ val NOW_MS: ULong = clock.millis().toULong()
 
 private val json = Json { encodeDefaults = true }
 
-/** [value] as the component contract answers it: camelCase keys, and every `u64` field a decimal string. */
+/**
+ * [value] as the component contract answers it: the generated types write the contract's wire
+ * themselves (camelCase keys, every `u64` a decimal string).
+ */
 fun <T> json(
     serializer: KSerializer<T>,
     value: T,
-): JsonElement = contractWire(json.encodeToJsonElement(serializer, value))
-
-private fun contractWire(value: JsonElement): JsonElement =
-    when (value) {
-        is JsonArray -> JsonArray(value.map(::contractWire))
-        is JsonObject ->
-            JsonObject(
-                value.entries.associate { (k, v) ->
-                    val number = (v as? JsonPrimitive)?.takeIf { !it.isString && k in ComponentWire.U64_FIELDS && v !is JsonNull }
-                    ComponentWire.camel(k) to (number?.let { JsonPrimitive(it.content) } ?: contractWire(v))
-                },
-            )
-        else -> value
-    }
+): JsonElement = json.encodeToJsonElement(serializer, value)
 
 @Suppress("LongParameterList")
 fun card(

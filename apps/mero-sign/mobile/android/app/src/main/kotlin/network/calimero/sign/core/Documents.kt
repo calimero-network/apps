@@ -10,9 +10,8 @@ import network.calimero.sign.generated.ContextDetails
 import network.calimero.sign.generated.ContractBytes
 import network.calimero.sign.generated.DocumentInfo
 import network.calimero.sign.generated.DocumentSignature
-import network.calimero.sign.generated.DocumentStatus
-import network.calimero.sign.generated.PermissionLevel
-import network.calimero.sign.generated.SignContract
+import network.calimero.sign.generated.client.SignClient.DocumentStatus
+import network.calimero.sign.generated.client.SignClient.PermissionLevel
 import java.security.MessageDigest
 
 /** Which inbox list a document belongs in for the signed-in account. (Swift `InboxBucket`.) */
@@ -39,11 +38,11 @@ data class DocumentEntry(
 
     val isComplete: Boolean get() = document.status == DocumentStatus.FullySigned
 
-    val iSigned: Boolean get() = signatures.any { SignIds.same(it.signer, me) }
+    val iSigned: Boolean get() = signatures.any { SignIds.same(ContractBytes.Text(it.signer), me) }
 
     val canSign: Boolean get() = myLevel != null && myLevel != PermissionLevel.Read && !isComplete && !iSigned
 
-    val iAmRequired: Boolean get() = document.requiredSigners.any { SignIds.same(it, me) }
+    val iAmRequired: Boolean get() = document.requiredSigners.any { SignIds.same(ContractBytes.Text(it), me) }
 
     val bucket: InboxBucket
         get() =
@@ -57,7 +56,7 @@ data class DocumentEntry(
     val progress: Pair<Int, Int>
         get() {
             val required = document.requiredSigners
-            val signed = required.count { r -> signatures.any { SignIds.same(it.signer, r) } }
+            val signed = required.count { r -> signatures.any { SignIds.same(ContractBytes.Text(it.signer), ContractBytes.Text(r)) } }
             return (if (isComplete) required.size else signed) to required.size
         }
 }
@@ -69,7 +68,7 @@ data class AgreementSnapshot(
     val me: String,
     val documents: List<DocumentEntry>,
 ) {
-    val myLevel: PermissionLevel? get() = details.participants.firstOrNull { SignIds.same(it.userId, me) }?.permissionLevel
+    val myLevel: PermissionLevel? get() = details.participants.firstOrNull { SignIds.same(ContractBytes.Text(it.userId), me) }?.permissionLevel
 
     val isParticipant: Boolean get() = myLevel != null
 }
@@ -81,14 +80,14 @@ suspend fun AgreementDirectory.snapshot(
 ): AgreementSnapshot =
     coroutineScope {
         val sign = client(agreement.contextId)
-        val details = async { SignContract.read<ContextDetails>(sign.getContextDetails(agreement.contextId)) }
+        val details = async { sign.getContextDetails(agreement.contextId) }
         val me = async { SignIds.hex(ContractBytes.Text(sign.whoami())) }
-        val documents = async { sign.listDocuments().map { SignContract.read<DocumentInfo>(it) } }
+        val documents = async { sign.listDocuments() }
         val level =
             details
                 .await()
                 .participants
-                .firstOrNull { SignIds.same(it.userId, me.await()) }
+                .firstOrNull { SignIds.same(ContractBytes.Text(it.userId), me.await()) }
                 ?.permissionLevel
         val name = details.await().contextName.trim()
         val named = if (name.isEmpty() || name == agreement.name) agreement else agreement.copy(name = name)
@@ -98,7 +97,7 @@ suspend fun AgreementDirectory.snapshot(
                 .map { document ->
                     async {
                         val needs = document.status != DocumentStatus.FullySigned || signaturesForCompleted
-                        val signatures = if (needs) sign.getDocumentSignatures(document.id).map { SignContract.read<DocumentSignature>(it) } else emptyList()
+                        val signatures = if (needs) sign.getDocumentSignatures(document.id) else emptyList()
                         DocumentEntry(named, document, signatures, me.await(), level)
                     }
                 }.awaitAll()

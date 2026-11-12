@@ -107,18 +107,18 @@ public final class DocumentModel: ObservableObject {
     }
 
     private func loadSigners(_ entry: DocumentEntry) async {
-        var accounts: [String] = entry.document.requiredSigners.map(\.hex)
-        for signature in entry.signatures where !accounts.contains(where: { SignIds.same(signature.signer, $0) }) {
-            accounts.append(SignIds.hex(signature.signer))
+        var accounts: [String] = entry.document.requiredSigners.map { ContractBytes.text($0).hex }
+        for signature in entry.signatures where !accounts.contains(where: { SignIds.same(ContractBytes.text(signature.signer), $0) }) {
+            accounts.append(SignIds.hex(ContractBytes.text(signature.signer)))
         }
         var rows: [SignerRow] = []
         for account in accounts {
-            let signed = entry.signatures.first { SignIds.same($0.signer, account) }
+            let signed = entry.signatures.first { SignIds.same(ContractBytes.text($0.signer), account) }
             rows.append(
                 SignerRow(
                     account: account, name: await names.name(of: account, in: agreement.namespaceId),
                     isMe: SignIds.same(account, entry.me), signedAt: signed?.signedAt,
-                    required: entry.document.requiredSigners.contains { SignIds.same($0, account) }))
+                    required: entry.document.requiredSigners.contains { SignIds.same(ContractBytes.text($0), account) }))
         }
         signers = rows
     }
@@ -131,7 +131,7 @@ public final class DocumentModel: ObservableObject {
         isLoadingPDF = true
         pdfError = nil
         defer { isLoadingPDF = false }
-        let blobId = SignIds.blobHex(entry.document.pdfBlobId)
+        let blobId = SignIds.blobHex(ContractBytes.text(entry.document.pdfBlobId))
         guard !blobId.isEmpty else {
             pdfError = "This document has no readable file recorded against it."
             return

@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.updates.core.ComponentWire
-import network.calimero.updates.core.asContractArg
 import network.calimero.updates.generated.AskInput
 import network.calimero.updates.generated.MetricPoint
 import network.calimero.updates.generated.PostPage
@@ -73,10 +72,10 @@ class ComponentWireTest {
             runCatching { c.deletePost("p") }
             runCatching { c.editCategory("c", "n", "e", "c") }
             runCatching { c.editComment("c", "b") }
-            runCatching { c.editUpdate("p", ComponentWire.wire(input).asContractArg()) }
+            runCatching { c.editUpdate("p", input) }
             runCatching { c.markRead("p") }
             runCatching { c.offerHelp("a", "n") }
-            runCatching { c.publishUpdate(ComponentWire.wire(input).asContractArg()) }
+            runCatching { c.publishUpdate(input) }
             runCatching { c.react("p", "e", true) }
             runCatching { c.removeTeammate("a") }
             runCatching { c.saveDraft(title = "t", payload = "{}") }
@@ -108,14 +107,14 @@ class ComponentWireTest {
                 """"askCount":"1","openAskCount":"1","metricCount":"0","readCount":"2","readByMe":false,""" +
                 """"reactions":[{"emoji":"e","count":"4","mine":true}]}],"nextCursor":null}"""
         val json = Json { ignoreUnknownKeys = true }
-        val page = json.decodeFromString(PostPage.serializer(), ComponentWire.incoming(answer))
+        val page = json.decodeFromString(PostPage.serializer(), answer)
         assertEquals(1_767_225_600_000uL, page.items[0].createdAt)
         assertEquals(3uL, page.items[0].commentCount)
         assertEquals(4uL, page.items[0].reactions[0].count)
         assertEquals("Ana", page.items[0].authorName)
         assertNull(page.nextCursor)
         // A metric's value is not a u64 field: an all-digit string stays a string.
-        val point = json.decodeFromString(MetricPoint.serializer(), ComponentWire.incoming("""{"postId":"p","postTitle":"t","at":"5","value":"12"}"""))
+        val point = json.decodeFromString(MetricPoint.serializer(), """{"postId":"p","postTitle":"t","at":"5","value":"12"}""")
         assertEquals("12", point.value)
         assertEquals(5uL, point.at)
     }

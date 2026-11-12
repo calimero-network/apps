@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.updates.core.ErrorText
 import network.calimero.updates.core.Metrics
-import network.calimero.updates.core.toUpdates
 import network.calimero.updates.generated.CommentView
 import network.calimero.updates.generated.Metric
 import network.calimero.updates.generated.MetricPoint
@@ -52,14 +51,14 @@ class PostModel(
         try {
             val (p, c) =
                 coroutineScope {
-                    val post = async { client.getPost(postId).toUpdates<PostView>() }
-                    val comments = async { client.listComments(postId).map { it.toUpdates<CommentView>() } }
+                    val post = async { client.getPost(postId) }
+                    val comments = async { client.listComments(postId) }
                     post.await() to comments.await()
                 }
             _post.value = p
             _comments.value = c
             error.value = null
-            if (p.metrics.isNotEmpty()) runCatching { client.listMetrics().map { it.toUpdates<MetricSeries>() } }.onSuccess { _series.value = it }
+            if (p.metrics.isNotEmpty()) runCatching { client.listMetrics() }.onSuccess { _series.value = it }
             markReadOnce(p)
         } catch (e: CancellationException) {
             throw e

@@ -50,7 +50,7 @@ public struct DocumentEntry: Identifiable, Equatable, Sendable {
     public var isComplete: Bool { document.status == .fullySigned }
 
     /// Whether you have signed it.
-    public var iSigned: Bool { signatures.contains { SignIds.same($0.signer, me) } }
+    public var iSigned: Bool { signatures.contains { SignIds.same(ContractBytes.text($0.signer), me) } }
 
     /// Whether the contract would take your signature: Sign or Admin, and the
     /// document not complete and not already signed by you.
@@ -60,7 +60,7 @@ public struct DocumentEntry: Identifiable, Equatable, Sendable {
     }
 
     /// Whether the document was waiting on you when it was uploaded.
-    public var iAmRequired: Bool { document.requiredSigners.contains { SignIds.same($0, me) } }
+    public var iAmRequired: Bool { document.requiredSigners.contains { SignIds.same(ContractBytes.text($0), me) } }
 
     public var bucket: InboxBucket {
         if isComplete { return .completed }
@@ -70,7 +70,7 @@ public struct DocumentEntry: Identifiable, Equatable, Sendable {
     /// Required signers who have signed, of all required signers.
     public var progress: (signed: Int, required: Int) {
         let required = document.requiredSigners
-        let signed = required.filter { r in signatures.contains { SignIds.same($0.signer, r) } }.count
+        let signed = required.filter { r in signatures.contains { SignIds.same(ContractBytes.text($0.signer), ContractBytes.text(r)) } }.count
         return (isComplete ? required.count : signed, required.count)
     }
 }
@@ -83,7 +83,7 @@ public struct AgreementSnapshot: Equatable, Sendable {
     public let documents: [DocumentEntry]
 
     public var myLevel: PermissionLevel? {
-        details.participants.first { SignIds.same($0.userId, me) }?.permissionLevel
+        details.participants.first { SignIds.same(ContractBytes.text($0.userId), me) }?.permissionLevel
     }
 
     public var isParticipant: Bool { myLevel != nil }
@@ -100,17 +100,15 @@ extension AgreementDirectory {
         async let meCall = sign.whoami()
         async let documentsCall = sign.listDocuments()
         let (detailsJSON, rawMe, documentsJSON) = try await (detailsCall, meCall, documentsCall)
-        let details = try detailsJSON.decoded(as: ContextDetails.self)
-        let documents = try documentsJSON.map { try $0.decoded(as: DocumentInfo.self) }
+        let details = detailsJSON
+        let documents = documentsJSON
         let me = SignIds.hex(ContractBytes.text(rawMe))
-        let level = details.participants.first { SignIds.same($0.userId, me) }?.permissionLevel
+        let level = details.participants.first { SignIds.same(ContractBytes.text($0.userId), me) }?.permissionLevel
         let entries = try await withThrowingTaskGroup(of: (Int, DocumentEntry).self) { group in
             for (index, document) in documents.enumerated() {
                 group.addTask {
                     let needs = document.status != .fullySigned || signaturesForCompleted
-                    let signatures = needs ? try await sign.getDocumentSignatures(documentId: document.id).map {
-                            try $0.decoded(as: DocumentSignature.self)
-                        } : []
+                    let signatures = needs ? try await sign.getDocumentSignatures(documentId: document.id) : []
                     return (
                         index,
                         DocumentEntry(

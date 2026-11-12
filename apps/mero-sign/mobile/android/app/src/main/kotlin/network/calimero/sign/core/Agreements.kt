@@ -3,9 +3,7 @@ package network.calimero.sign.core
 import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.delay
-import network.calimero.sign.generated.ContextDetails
 import network.calimero.sign.generated.ContractBytes
-import network.calimero.sign.generated.SignContract
 import network.calimero.sign.generated.client.SignClient
 
 /** An agreement: an app instance in a workspace (a Calimero organization). (Swift `AgreementRef`.) */
@@ -98,7 +96,7 @@ class AgreementDirectory(
     internal suspend fun waitForState(contextId: String): String? {
         repeat(maxOf(timing.stateAttempts, 1)) { attemptIndex ->
             if (attemptIndex > 0) delay(timing.delayMs)
-            val result = attempt { SignContract.read<ContextDetails>(client(contextId).getContextDetails(contextId)).contextName }
+            val result = attempt { client(contextId).getContextDetails(contextId).contextName }
             result.onSuccess { return it }
             if (!SignErrorText.isSyncing(result.exceptionOrNull()!!)) return null
         }

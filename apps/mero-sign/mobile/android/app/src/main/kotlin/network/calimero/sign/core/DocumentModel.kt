@@ -89,17 +89,17 @@ class DocumentModel(
     private suspend fun loadSigners(entry: DocumentEntry) {
         val accounts =
             entry.document.requiredSigners
-                .map { it.hex }
+                .map { ContractBytes.Text(it).hex }
                 .toMutableList()
-        entry.signatures.forEach { s -> if (accounts.none { SignIds.same(s.signer, it) }) accounts += SignIds.hex(s.signer) }
+        entry.signatures.forEach { s -> if (accounts.none { SignIds.same(ContractBytes.Text(s.signer), it) }) accounts += SignIds.hex(ContractBytes.Text(s.signer)) }
         _signers.value =
             accounts.map { account ->
                 SignerRow(
                     account = account,
                     name = names.name(account, agreement.namespaceId),
                     isMe = SignIds.same(account, entry.me),
-                    signedAt = entry.signatures.firstOrNull { SignIds.same(it.signer, account) }?.signedAt,
-                    required = entry.document.requiredSigners.any { SignIds.same(it, account) },
+                    signedAt = entry.signatures.firstOrNull { SignIds.same(ContractBytes.Text(it.signer), account) }?.signedAt,
+                    required = entry.document.requiredSigners.any { SignIds.same(ContractBytes.Text(it), account) },
                 )
             }
     }
@@ -109,7 +109,7 @@ class DocumentModel(
         val entry = _entry.value ?: return
         if (!force && _pdf.value != null && pdfHash == entry.document.hash) return
         _pdfError.value = null
-        val blobId = SignIds.blobHex(entry.document.pdfBlobId)
+        val blobId = SignIds.blobHex(ContractBytes.Text(entry.document.pdfBlobId))
         if (blobId.isEmpty()) {
             _pdfError.value = "This document has no readable file recorded against it."
             return
