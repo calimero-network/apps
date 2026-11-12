@@ -12,7 +12,8 @@ import { makeShape } from "./geometry";
 import { encodeMesh } from "./meshcodec";
 import { defaultEnvironment, makeObject } from "./model";
 import { useEditor } from "./store";
-import { SceneSync, type SceneApi } from "./sync";
+import { MeroModelsClient } from "../generated/client";
+import { SceneSync } from "./sync";
 
 /** Content-addressed like the node: the id is a hash of the bytes. */
 function hashOf(bytes: Uint8Array): string {
@@ -50,7 +51,9 @@ function fakeNode() {
       return b.slice().buffer as ArrayBuffer;
     }),
   };
-  const api: SceneApi = {
+  // The node's side, by the ABI's method names; the sync talks to it through
+  // the real generated client (`contractOver`).
+  const api = {
     getScene: async (): Promise<SceneInfo> => ({
       name: "Scene",
       environment: defaultEnvironment(),
@@ -66,7 +69,7 @@ function fakeNode() {
     listMeshes: async () => [...meshes.values()],
     listTextures: async () => [...textures.values()],
     listLocks: async () => [...locks.values()],
-    listHistory: async ({ asset_id }: { asset_id: string }): Promise<VersionView[]> =>
+    listHistory: async ({ assetId: asset_id }: { assetId: string }): Promise<VersionView[]> =>
       history
         .filter((h) => h.asset === asset_id)
         .map((h, i) => ({
@@ -126,8 +129,18 @@ function fakeNode() {
   };
 }
 
+/** The generated client over a fake transport that hands each request to the node's handler. */
+function contractOver(handlers: Record<string, (args: never) => Promise<unknown>>): MeroModelsClient {
+  const answer = async ({ method, args }: { method: string; args?: unknown }) => {
+    const handler = handlers[method];
+    if (!handler) throw new Error(`no fake for ${method}`);
+    return { result: await handler((args ?? {}) as never) };
+  };
+  return new MeroModelsClient({ apps: { call: answer, view: answer }, async *events() {} }, "ctx");
+}
+
 function connect(node: ReturnType<typeof fakeNode>): SceneSync {
-  const sync = new SceneSync(node.api, new BlobStore(node.transport, "ctx", false));
+  const sync = new SceneSync(contractOver(node.api), new BlobStore(node.transport, "ctx", false));
   useEditor.getState().setOutbox(sync);
   return sync;
 }

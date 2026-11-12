@@ -21,6 +21,7 @@
     "src/InviteCard.tsx",
     "src/Invitation.tsx",
     "src/editor",
+    "src/generated/*.ts",
     "src/studio",
     "src/ui"
   ]

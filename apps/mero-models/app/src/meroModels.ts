@@ -1,49 +1,15 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
-
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-models";
 
 /**
- * The contract's methods by their ABI names (camelCase), split the way the node
- * runs them: a call goes through the app's log, a view is answered by a node
- * without writing. `meroModels.test.ts` asserts these lists, and every method's
- * parameter names, are exactly the committed `logic/res/abi.json`'s, so a
- * method the contract drops or renames fails a test rather than a request.
+ * The contract is called through `MeroModelsClient`, which `mero-app-build
+ * codegen` writes from logic/res/abi.json (`src/generated/client.ts`): the
+ * ABI's camelCase arguments, u64s as decimal strings (`u64` below). The ABI
+ * names its records without their shapes, so the generated types are
+ * `unknown`: the shapes below (v1's, snake_case) type each answer where it is
+ * read.
  */
-export const CALLS = [
-  "setEnvironment",
-  "putObjects",
-  "deleteObjects",
-  "clearScene",
-  "putMesh",
-  "putTexture",
-  "deleteTextures",
-  "checkOut",
-  "checkIn",
-  "join",
-  "grantEditor",
-  "revokeEditor",
-] as const;
-export const VIEWS = [
-  "getScene",
-  "getObjects",
-  "getObjectsByIds",
-  "listMeshes",
-  "listTextures",
-  "listHistory",
-  "listLocks",
-  "getMembers",
-  "myRole",
-] as const;
 
-// ── What the screens use ────────────────────────────────────────────────────
-//
-// The shapes the editor was written against (v1's generated client). The
-// contract keeps v1's snake_case record fields and answers them as JSON
-// numbers; only the methods' own `now` parameter travels as a decimal string,
-// which `MeroModelsClient` below converts.
-
-/** A point or a direction in scene units, or Euler angles in radians. */
 export interface Vec3 {
   x: number;
   y: number;
@@ -166,125 +132,7 @@ export interface MemberView {
   joined_at: number;
 }
 
-/** What the adapter needs of a signed-in `CalimeroClient`. */
-export type MethodClient = ClientRoutes<{ apps: "call" | "view" }>;
-
 /** A u64 parameter: a canonical decimal string (D20). */
-function u64(n: number): string {
+export function u64(n: number): string {
   return String(Math.max(0, Math.trunc(n)));
-}
-
-/**
- * v1's generated client, on `CalimeroClient`: the same methods with the same
- * snake_case argument objects and answers, so the editor did not change. Calls
- * go through the instance's log (`client.call`), views to a node
- * (`client.view`); `after` runs after each request (it keeps the stored
- * session current when the client swapped its refresh token).
- */
-export class MeroModelsClient {
-  constructor(
-    private readonly client: MethodClient,
-    readonly appId: string,
-    private readonly after: () => void = () => {},
-  ) {}
-
-  private async call<T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> {
-    try {
-      return (await this.client.apps.call({ app: this.appId, method, args })).result as T;
-    } finally {
-      this.after();
-    }
-  }
-
-  private async view<T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> {
-    try {
-      return (await this.client.apps.view({ app: this.appId, method, args })).result as T;
-    } finally {
-      this.after();
-    }
-  }
-
-  getScene(): Promise<SceneInfo> {
-    return this.view("getScene");
-  }
-
-  setEnvironment(params: { environment: Environment; now: number }): Promise<void> {
-    return this.call("setEnvironment", { environment: params.environment, now: u64(params.now) });
-  }
-
-  getObjects(): Promise<SceneObject[]> {
-    return this.view("getObjects");
-  }
-
-  getObjectsByIds(params: { ids: string[] }): Promise<SceneObject[]> {
-    return this.view("getObjectsByIds", { ids: params.ids });
-  }
-
-  putObjects(params: { objects: SceneObject[]; now: number }): Promise<string[]> {
-    return this.call("putObjects", { objects: params.objects, now: u64(params.now) });
-  }
-
-  deleteObjects(params: { ids: string[]; now: number }): Promise<void> {
-    return this.call("deleteObjects", { ids: params.ids, now: u64(params.now) });
-  }
-
-  clearScene(): Promise<void> {
-    return this.call("clearScene");
-  }
-
-  putMesh(params: { mesh: MeshRef; now: number }): Promise<void> {
-    return this.call("putMesh", { mesh: params.mesh, now: u64(params.now) });
-  }
-
-  listMeshes(): Promise<MeshRef[]> {
-    return this.view("listMeshes");
-  }
-
-  putTexture(params: { texture: TextureRef; now: number }): Promise<void> {
-    return this.call("putTexture", { texture: params.texture, now: u64(params.now) });
-  }
-
-  listTextures(): Promise<TextureRef[]> {
-    return this.view("listTextures");
-  }
-
-  deleteTextures(params: { ids: string[]; now: number }): Promise<void> {
-    return this.call("deleteTextures", { ids: params.ids, now: u64(params.now) });
-  }
-
-  listHistory(params: { asset_id: string }): Promise<VersionView[]> {
-    return this.view("listHistory", { assetId: params.asset_id });
-  }
-
-  checkOut(params: { ids: string[]; hours: number; now: number }): Promise<void> {
-    return this.call("checkOut", { ids: params.ids, hours: params.hours, now: u64(params.now) });
-  }
-
-  checkIn(params: { ids: string[] }): Promise<void> {
-    return this.call("checkIn", { ids: params.ids });
-  }
-
-  listLocks(params: { now: number }): Promise<LockView[]> {
-    return this.view("listLocks", { now: u64(params.now) });
-  }
-
-  join(params: { name: string; now: number }): Promise<void> {
-    return this.call("join", { name: params.name, now: u64(params.now) });
-  }
-
-  getMembers(): Promise<MemberView[]> {
-    return this.view("getMembers");
-  }
-
-  grantEditor(params: { member: string }): Promise<void> {
-    return this.call("grantEditor", { member: params.member });
-  }
-
-  revokeEditor(params: { member: string }): Promise<void> {
-    return this.call("revokeEditor", { member: params.member });
-  }
-
-  myRole(): Promise<string> {
-    return this.view("myRole");
-  }
 }
