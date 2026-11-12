@@ -41,7 +41,9 @@ class PollModelTest {
     ): PollView {
         val state =
             when (phase) {
-                Phase.Closed -> transcript.state
+                // The 1.0 contract's seal always carries `aggregate`, which the vectors predate.
+                Phase.Closed ->
+                    transcript.state.copy(closure = transcript.state.closure?.let { it.copy(aggregate = it.aggregate ?: emptyList()) })
                 Phase.KeyCeremony -> transcript.state.copy(phase = phase, election = null, closure = null)
                 else -> transcript.state.copy(phase = phase, closure = null, election = transcript.state.election.takeIf { withElection })
             }
