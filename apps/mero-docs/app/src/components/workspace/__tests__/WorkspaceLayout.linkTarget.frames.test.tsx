@@ -100,22 +100,30 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
     },
   };
 });
-vi.mock('@/lib/docsApi', () => ({
-  DocsClient: class {
-    constructor(
-      _mero: unknown,
-      private ctx: string,
-    ) {}
-    listDocs() {
-      const next = h.reads.get(this.ctx)?.shift();
-      if (!next) return Promise.resolve(h.lastRead.get(this.ctx) ?? []);
-      return next.promise.then((docs) => {
-        h.lastRead.set(this.ctx, docs);
-        return docs;
-      });
-    }
-  },
-}));
+// A context's client is the real class over a fake transport whose `listDocs`
+// answers the context's next queued read (its rows on the wire).
+vi.mock('@/lib/docsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/docsApi')>();
+  const { docsOver, wireDoc } = await import('@/test/docsClient');
+  return {
+    ...actual,
+    MeroDocsClient: function (_transport: unknown, ctx: string) {
+      const fake = {
+        listDocs: () => {
+          const next = h.reads.get(ctx)?.shift();
+          const docs = next
+            ? next.promise.then((read) => {
+                h.lastRead.set(ctx, read);
+                return read;
+              })
+            : Promise.resolve(h.lastRead.get(ctx) ?? []);
+          return docs.then((read) => read.map(wireDoc));
+        },
+      };
+      return docsOver(fake, ctx);
+    },
+  };
+});
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
 }));

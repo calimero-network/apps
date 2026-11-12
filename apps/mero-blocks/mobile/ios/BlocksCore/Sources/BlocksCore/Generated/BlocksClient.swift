@@ -15,26 +15,332 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct BlocksClient: Sendable {
-    /// The app type `Edit`: the ABI names it without its shape, so it is its JSON.
-    public typealias Edit = JSONValue
 
-    /// The app type `OverridesPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias OverridesPage = JSONValue
+    /// The app type `BlockEntry`.
+    public struct BlockEntry: Codable, Sendable, Equatable {
+        public var k: String
+        public var b: UInt8
 
-    /// The app type `PlayerView`: the ABI names it without its shape, so it is its JSON.
-    public typealias PlayerView = JSONValue
+        public init(
+            k: String,
+            b: UInt8
+        ) {
+            self.k = k
+            self.b = b
+        }
 
-    /// The app type `PlayersPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias PlayersPage = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("k"))
+            let v1 = try fields.decode(UInt8.self, forKey: Key("b"))
+            self.k = v0
+            self.b = v1
+        }
 
-    /// The app type `Transform`: the ABI names it without its shape, so it is its JSON.
-    public typealias Transform = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.k, forKey: Key("k"))
+            try fields.encode(self.b, forKey: Key("b"))
+        }
+    }
 
-    /// The app type `WorldMeta`: the ABI names it without its shape, so it is its JSON.
-    public typealias WorldMeta = JSONValue
+    /// The app type `Edit`.
+    public struct Edit: Codable, Sendable, Equatable {
+        public var x: Int32
+        public var y: Int32
+        public var z: Int32
+        public var b: UInt8
 
-    /// The app type `WorldStats`: the ABI names it without its shape, so it is its JSON.
-    public typealias WorldStats = JSONValue
+        public init(
+            x: Int32,
+            y: Int32,
+            z: Int32,
+            b: UInt8
+        ) {
+            self.x = x
+            self.y = y
+            self.z = z
+            self.b = b
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Int32.self, forKey: Key("x"))
+            let v1 = try fields.decode(Int32.self, forKey: Key("y"))
+            let v2 = try fields.decode(Int32.self, forKey: Key("z"))
+            let v3 = try fields.decode(UInt8.self, forKey: Key("b"))
+            self.x = v0
+            self.y = v1
+            self.z = v2
+            self.b = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+            try fields.encode(self.b, forKey: Key("b"))
+        }
+    }
+
+    /// The app type `OverridesPage`.
+    public struct OverridesPage: Codable, Sendable, Equatable {
+        public var items: [BlockEntry]
+        public var next: String?
+
+        public init(
+            items: [BlockEntry],
+            next: String? = nil
+        ) {
+            self.items = items
+            self.next = next
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([BlockEntry].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("next"))
+            self.items = v0
+            self.next = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.next, forKey: Key("next"))
+        }
+    }
+
+    /// The app type `PlayerView`.
+    public struct PlayerView: Codable, Sendable, Equatable {
+        public var id: String
+        public var account: String
+        public var device: String
+        public var name: String
+        public var x: Double
+        public var y: Double
+        public var z: Double
+        public var yaw: Double
+        public var pitch: Double
+        public var sel: UInt8
+        public var online: Bool
+
+        public init(
+            id: String,
+            account: String,
+            device: String,
+            name: String,
+            x: Double,
+            y: Double,
+            z: Double,
+            yaw: Double,
+            pitch: Double,
+            sel: UInt8,
+            online: Bool
+        ) {
+            self.id = id
+            self.account = account
+            self.device = device
+            self.name = name
+            self.x = x
+            self.y = y
+            self.z = z
+            self.yaw = yaw
+            self.pitch = pitch
+            self.sel = sel
+            self.online = online
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("account"))
+            let v2 = try fields.decode(String.self, forKey: Key("device"))
+            let v3 = try fields.decode(String.self, forKey: Key("name"))
+            let v4 = try fields.decode(Double.self, forKey: Key("x"))
+            let v5 = try fields.decode(Double.self, forKey: Key("y"))
+            let v6 = try fields.decode(Double.self, forKey: Key("z"))
+            let v7 = try fields.decode(Double.self, forKey: Key("yaw"))
+            let v8 = try fields.decode(Double.self, forKey: Key("pitch"))
+            let v9 = try fields.decode(UInt8.self, forKey: Key("sel"))
+            let v10 = try fields.decode(Bool.self, forKey: Key("online"))
+            self.id = v0
+            self.account = v1
+            self.device = v2
+            self.name = v3
+            self.x = v4
+            self.y = v5
+            self.z = v6
+            self.yaw = v7
+            self.pitch = v8
+            self.sel = v9
+            self.online = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.device, forKey: Key("device"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+            try fields.encode(self.yaw, forKey: Key("yaw"))
+            try fields.encode(self.pitch, forKey: Key("pitch"))
+            try fields.encode(self.sel, forKey: Key("sel"))
+            try fields.encode(self.online, forKey: Key("online"))
+        }
+    }
+
+    /// The app type `PlayersPage`.
+    public struct PlayersPage: Codable, Sendable, Equatable {
+        public var items: [PlayerView]
+        public var next: String?
+
+        public init(
+            items: [PlayerView],
+            next: String? = nil
+        ) {
+            self.items = items
+            self.next = next
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([PlayerView].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("next"))
+            self.items = v0
+            self.next = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.next, forKey: Key("next"))
+        }
+    }
+
+    /// The app type `Transform`.
+    public struct Transform: Codable, Sendable, Equatable {
+        public var name: String
+        public var x: Double
+        public var y: Double
+        public var z: Double
+        public var yaw: Double
+        public var pitch: Double
+        public var sel: UInt8
+
+        public init(
+            name: String,
+            x: Double,
+            y: Double,
+            z: Double,
+            yaw: Double,
+            pitch: Double,
+            sel: UInt8
+        ) {
+            self.name = name
+            self.x = x
+            self.y = y
+            self.z = z
+            self.yaw = yaw
+            self.pitch = pitch
+            self.sel = sel
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(Double.self, forKey: Key("x"))
+            let v2 = try fields.decode(Double.self, forKey: Key("y"))
+            let v3 = try fields.decode(Double.self, forKey: Key("z"))
+            let v4 = try fields.decode(Double.self, forKey: Key("yaw"))
+            let v5 = try fields.decode(Double.self, forKey: Key("pitch"))
+            let v6 = try fields.decode(UInt8.self, forKey: Key("sel"))
+            self.name = v0
+            self.x = v1
+            self.y = v2
+            self.z = v3
+            self.yaw = v4
+            self.pitch = v5
+            self.sel = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+            try fields.encode(self.yaw, forKey: Key("yaw"))
+            try fields.encode(self.pitch, forKey: Key("pitch"))
+            try fields.encode(self.sel, forKey: Key("sel"))
+        }
+    }
+
+    /// The app type `WorldMeta`.
+    public struct WorldMeta: Codable, Sendable, Equatable {
+        public var name: String
+        public var seed: UInt64
+        public var createdAt: UInt64
+
+        public init(
+            name: String,
+            seed: UInt64,
+            createdAt: UInt64
+        ) {
+            self.name = name
+            self.seed = seed
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("seed")).value
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.name = v0
+            self.seed = v1
+            self.createdAt = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(DecimalString(self.seed), forKey: Key("seed"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
+
+    /// The app type `WorldStats`.
+    public struct WorldStats: Codable, Sendable, Equatable {
+        public var overrides: UInt64
+        public var players: UInt64
+
+        public init(
+            overrides: UInt64,
+            players: UInt64
+        ) {
+            self.overrides = overrides
+            self.players = players
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("overrides")).value
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("players")).value
+            self.overrides = v0
+            self.players = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.overrides), forKey: Key("overrides"))
+            try fields.encode(DecimalString(self.players), forKey: Key("players"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

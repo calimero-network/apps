@@ -15,11 +15,292 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct KombatClient: Sendable {
-    /// The app type `ArenaView`: the ABI names it without its shape, so it is its JSON.
-    public typealias ArenaView = JSONValue
 
-    /// The app type `MatchSummary`: the ABI names it without its shape, so it is its JSON.
-    public typealias MatchSummary = JSONValue
+    /// The app type `ArenaView`.
+    public struct ArenaView: Codable, Sendable, Equatable {
+        public var title: String
+        public var createdAt: UInt64
+        public var matchIndex: UInt32
+        public var round: UInt32
+        public var status: String
+        public var roundResults: [String]
+        public var winner: String
+        public var flawless: Bool
+        public var p1: FighterView
+        public var p2: FighterView
+        public var me: String
+        public var mySeat: String
+        public var hits: [HitView]
+        public var matchActions: UInt32
+        public var totalActions: UInt64
+        public var maxHp: UInt32
+        public var roundsToWin: UInt32
+
+        public init(
+            title: String,
+            createdAt: UInt64,
+            matchIndex: UInt32,
+            round: UInt32,
+            status: String,
+            roundResults: [String],
+            winner: String,
+            flawless: Bool,
+            p1: FighterView,
+            p2: FighterView,
+            me: String,
+            mySeat: String,
+            hits: [HitView],
+            matchActions: UInt32,
+            totalActions: UInt64,
+            maxHp: UInt32,
+            roundsToWin: UInt32
+        ) {
+            self.title = title
+            self.createdAt = createdAt
+            self.matchIndex = matchIndex
+            self.round = round
+            self.status = status
+            self.roundResults = roundResults
+            self.winner = winner
+            self.flawless = flawless
+            self.p1 = p1
+            self.p2 = p2
+            self.me = me
+            self.mySeat = mySeat
+            self.hits = hits
+            self.matchActions = matchActions
+            self.totalActions = totalActions
+            self.maxHp = maxHp
+            self.roundsToWin = roundsToWin
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("title"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            let v2 = try fields.decode(UInt32.self, forKey: Key("matchIndex"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("round"))
+            let v4 = try fields.decode(String.self, forKey: Key("status"))
+            let v5 = try fields.decode([String].self, forKey: Key("roundResults"))
+            let v6 = try fields.decode(String.self, forKey: Key("winner"))
+            let v7 = try fields.decode(Bool.self, forKey: Key("flawless"))
+            let v8 = try fields.decode(FighterView.self, forKey: Key("p1"))
+            let v9 = try fields.decode(FighterView.self, forKey: Key("p2"))
+            let v10 = try fields.decode(String.self, forKey: Key("me"))
+            let v11 = try fields.decode(String.self, forKey: Key("mySeat"))
+            let v12 = try fields.decode([HitView].self, forKey: Key("hits"))
+            let v13 = try fields.decode(UInt32.self, forKey: Key("matchActions"))
+            let v14 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("totalActions")).value
+            let v15 = try fields.decode(UInt32.self, forKey: Key("maxHp"))
+            let v16 = try fields.decode(UInt32.self, forKey: Key("roundsToWin"))
+            self.title = v0
+            self.createdAt = v1
+            self.matchIndex = v2
+            self.round = v3
+            self.status = v4
+            self.roundResults = v5
+            self.winner = v6
+            self.flawless = v7
+            self.p1 = v8
+            self.p2 = v9
+            self.me = v10
+            self.mySeat = v11
+            self.hits = v12
+            self.matchActions = v13
+            self.totalActions = v14
+            self.maxHp = v15
+            self.roundsToWin = v16
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+            try fields.encode(self.matchIndex, forKey: Key("matchIndex"))
+            try fields.encode(self.round, forKey: Key("round"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.roundResults, forKey: Key("roundResults"))
+            try fields.encode(self.winner, forKey: Key("winner"))
+            try fields.encode(self.flawless, forKey: Key("flawless"))
+            try fields.encode(self.p1, forKey: Key("p1"))
+            try fields.encode(self.p2, forKey: Key("p2"))
+            try fields.encode(self.me, forKey: Key("me"))
+            try fields.encode(self.mySeat, forKey: Key("mySeat"))
+            try fields.encode(self.hits, forKey: Key("hits"))
+            try fields.encode(self.matchActions, forKey: Key("matchActions"))
+            try fields.encode(DecimalString(self.totalActions), forKey: Key("totalActions"))
+            try fields.encode(self.maxHp, forKey: Key("maxHp"))
+            try fields.encode(self.roundsToWin, forKey: Key("roundsToWin"))
+        }
+    }
+
+    /// The app type `FighterView`.
+    public struct FighterView: Codable, Sendable, Equatable {
+        public var seat: String
+        public var member: String
+        public var name: String
+        public var fighter: String
+        public var hp: UInt32
+        public var roundsWon: UInt32
+        public var matchesWon: UInt32
+        public var online: Bool
+
+        public init(
+            seat: String,
+            member: String,
+            name: String,
+            fighter: String,
+            hp: UInt32,
+            roundsWon: UInt32,
+            matchesWon: UInt32,
+            online: Bool
+        ) {
+            self.seat = seat
+            self.member = member
+            self.name = name
+            self.fighter = fighter
+            self.hp = hp
+            self.roundsWon = roundsWon
+            self.matchesWon = matchesWon
+            self.online = online
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("seat"))
+            let v1 = try fields.decode(String.self, forKey: Key("member"))
+            let v2 = try fields.decode(String.self, forKey: Key("name"))
+            let v3 = try fields.decode(String.self, forKey: Key("fighter"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("hp"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("roundsWon"))
+            let v6 = try fields.decode(UInt32.self, forKey: Key("matchesWon"))
+            let v7 = try fields.decode(Bool.self, forKey: Key("online"))
+            self.seat = v0
+            self.member = v1
+            self.name = v2
+            self.fighter = v3
+            self.hp = v4
+            self.roundsWon = v5
+            self.matchesWon = v6
+            self.online = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.seat, forKey: Key("seat"))
+            try fields.encode(self.member, forKey: Key("member"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.fighter, forKey: Key("fighter"))
+            try fields.encode(self.hp, forKey: Key("hp"))
+            try fields.encode(self.roundsWon, forKey: Key("roundsWon"))
+            try fields.encode(self.matchesWon, forKey: Key("matchesWon"))
+            try fields.encode(self.online, forKey: Key("online"))
+        }
+    }
+
+    /// The app type `HitView`.
+    public struct HitView: Codable, Sendable, Equatable {
+        public var by: String
+        public var id: UInt32
+        public var kind: String
+        public var damage: UInt32
+        public var blocked: Bool
+        public var at: UInt64
+
+        public init(
+            by: String,
+            id: UInt32,
+            kind: String,
+            damage: UInt32,
+            blocked: Bool,
+            at: UInt64
+        ) {
+            self.by = by
+            self.id = id
+            self.kind = kind
+            self.damage = damage
+            self.blocked = blocked
+            self.at = at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("by"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("id"))
+            let v2 = try fields.decode(String.self, forKey: Key("kind"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("damage"))
+            let v4 = try fields.decode(Bool.self, forKey: Key("blocked"))
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("at")).value
+            self.by = v0
+            self.id = v1
+            self.kind = v2
+            self.damage = v3
+            self.blocked = v4
+            self.at = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.by, forKey: Key("by"))
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.damage, forKey: Key("damage"))
+            try fields.encode(self.blocked, forKey: Key("blocked"))
+            try fields.encode(DecimalString(self.at), forKey: Key("at"))
+        }
+    }
+
+    /// The app type `MatchSummary`.
+    public struct MatchSummary: Codable, Sendable, Equatable {
+        public var index: UInt32
+        public var startedAt: UInt64
+        public var winner: String
+        public var flawless: Bool
+        public var rounds: [String]
+        public var actions: UInt32
+
+        public init(
+            index: UInt32,
+            startedAt: UInt64,
+            winner: String,
+            flawless: Bool,
+            rounds: [String],
+            actions: UInt32
+        ) {
+            self.index = index
+            self.startedAt = startedAt
+            self.winner = winner
+            self.flawless = flawless
+            self.rounds = rounds
+            self.actions = actions
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt32.self, forKey: Key("index"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("startedAt")).value
+            let v2 = try fields.decode(String.self, forKey: Key("winner"))
+            let v3 = try fields.decode(Bool.self, forKey: Key("flawless"))
+            let v4 = try fields.decode([String].self, forKey: Key("rounds"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("actions"))
+            self.index = v0
+            self.startedAt = v1
+            self.winner = v2
+            self.flawless = v3
+            self.rounds = v4
+            self.actions = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.index, forKey: Key("index"))
+            try fields.encode(DecimalString(self.startedAt), forKey: Key("startedAt"))
+            try fields.encode(self.winner, forKey: Key("winner"))
+            try fields.encode(self.flawless, forKey: Key("flawless"))
+            try fields.encode(self.rounds, forKey: Key("rounds"))
+            try fields.encode(self.actions, forKey: Key("actions"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

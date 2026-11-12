@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, render, act, fireEvent, screen } from '@testing-library/react';
 import { createElement, type ChangeEvent } from 'react';
-import type { DocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { useFugueTitle } from '../useFugueTitle';
 
 const publish = vi.fn();
@@ -36,7 +36,7 @@ const applied = (text: string, token = 'tok-1', anchor: string | null = null, an
   token,
   text,
   anchor,
-  anchor_pos,
+  anchorPos: anchor_pos,
   ids: [],
 });
 const refused = (text: string, anchor: string | null = null, anchor_pos: number | null = null) => ({
@@ -44,7 +44,7 @@ const refused = (text: string, anchor: string | null = null, anchor_pos: number 
   token: null,
   text,
   anchor,
-  anchor_pos,
+  anchorPos: anchor_pos,
   ids: [],
 });
 
@@ -101,7 +101,7 @@ const settle = async (ms = 400) => {
 function mount(client: FakeClient, withPresence = false) {
   return renderHook(() =>
     useFugueTitle({
-      client: client as unknown as DocsClient,
+      client: docsOver(client),
       docId: DOC,
       contextId: CTX,
       publish: withPresence ? publish : undefined,
@@ -384,7 +384,7 @@ describe('useFugueTitle', () => {
     client.getTitle.mockResolvedValue('Rich');
     client.titleApplyDeltaOn.mockResolvedValue(applied('TRich!'));
     const Field = () => {
-      const bound = useFugueTitle({ client: client as unknown as DocsClient, docId: DOC, contextId: CTX });
+      const bound = useFugueTitle({ client: docsOver(client), docId: DOC, contextId: CTX });
       return createElement('input', { ref: bound.inputRef, value: bound.title, onChange: bound.onChange });
     };
     render(createElement(Field));

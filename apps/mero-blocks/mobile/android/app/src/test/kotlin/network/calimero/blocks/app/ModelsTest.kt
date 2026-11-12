@@ -72,6 +72,9 @@ object Fixtures {
         online: Boolean,
     ) = buildJsonObject {
         put("id", id)
+        // Every field the contract's `PlayerView` has: the generated client reads them strictly.
+        put("account", id)
+        put("device", "")
         put("name", id.uppercase())
         listOf("x", "y", "z", "yaw", "pitch", "sel").forEach { put(it, 0) }
         put("online", online)

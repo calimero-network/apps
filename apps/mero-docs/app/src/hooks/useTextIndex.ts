@@ -8,7 +8,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@/calimero/react';
-import type { DocsClient } from '@/lib/docsApi';
+import { type MeroDocsClient, toDoc, toBlocks, toSpans } from '@/lib/docsApi';
 import type { BackendBlock } from '@/lib/rich/blocknote';
 import { parseRichEvents } from '@/lib/rich/events';
 import { docTextFromBlocks } from '@/lib/search/docText';
@@ -34,7 +34,7 @@ type Job = {
   folderId: string;
   docId: string;
   contextId: string;
-  client: DocsClient;
+  client: MeroDocsClient;
   updatedAt: number; // the list's version of the doc
   // Queued by a body event, so the list's version is about to be stale: the
   // read asks the doc for its own first, or the list catching up re-reads it.
@@ -54,14 +54,14 @@ async function readBlocks(
 ): Promise<BackendBlock[]> {
   const doc = job.docId;
   if (!held || !changed || [...changed].some((id) => !held.some((b) => b.id === id)))
-    return job.client.getDocument({ doc });
+    return toBlocks(await job.client.getDocument({ doc }));
   try {
     const spans = new Map<string, BackendBlock['spans']>();
     for (const block of changed)
-      spans.set(block, await job.client.getBlockDelta({ doc, block }));
+      spans.set(block, toSpans(await job.client.getBlockDelta({ doc, block })));
     return held.map((b) => (spans.has(b.id) ? { ...b, spans: spans.get(b.id)! } : b));
   } catch {
-    return job.client.getDocument({ doc });
+    return toBlocks(await job.client.getDocument({ doc }));
   }
 }
 
@@ -158,7 +158,7 @@ export function useTextIndex({
           if (job.event) {
             // Its version before its text, so the text is at least that new.
             try {
-              const doc = await job.client.getDoc({ id: job.docId });
+              const doc = toDoc(await job.client.getDoc({ id: job.docId }));
               version = Math.max(version, nsToMs(doc.updated_at));
             } catch {
               // The list's version it is; the next list pass may read it again.

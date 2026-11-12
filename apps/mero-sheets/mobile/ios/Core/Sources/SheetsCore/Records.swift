@@ -7,10 +7,15 @@ import MeroKit
 // derives `AbiType` the ABI names these types without their shape, so the client answers their JSON
 // and they read it (`JSONValue.decoded(as:)`).
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the types below).
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    public func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 

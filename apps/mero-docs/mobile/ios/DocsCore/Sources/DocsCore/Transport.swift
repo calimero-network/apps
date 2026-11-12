@@ -6,9 +6,12 @@ import MeroKitUI
 /// (see ``DocsAPI/readDocument(_:)``).
 public struct DocsAPI: Sendable {
     public let client: DocsClient
+    /// The contract under `client`, for the one read the app decodes itself.
+    let transport: any ContextContractCalling
 
     public init(transport: any ContextContractCalling) {
         self.client = DocsClient(contract: transport)
+        self.transport = transport
     }
 
     /// The document's body as blocks, in order.
@@ -16,10 +19,12 @@ public struct DocsAPI: Sendable {
     /// `getDocument` is decoded leniently: each block's text is its spans, in
     /// order, each with its marks as strings (`"true"` for a boolean mark, as
     /// the web's `canonicalAttrs` reads them). A mark the node writes as a JSON
-    /// boolean, or a span without `attributes`, is read the same way.
+    /// boolean, or a span without `attributes`, is read the same way. So it is
+    /// read off the contract directly: the generated client reads `Block` strictly.
     public func readDocument(_ docId: String) async throws -> [WireBlock] {
-        let blocks = try await client.getDocument(doc: docId)
-        return try JSONDecoder().decode([WireBlock].self, from: MeroJSON.encode(blocks))
+        let args = try MeroJSON.encode(JSONValue.object(["doc": .string(docId)]))
+        let data = try await transport.query(method: "getDocument", argsJSON: args)
+        return try JSONDecoder().decode([WireBlock]?.self, from: data) ?? []
     }
 }
 
