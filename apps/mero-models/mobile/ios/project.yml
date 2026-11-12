@@ -11,7 +11,7 @@
 # The 3D viewport is ../viewer/dist/viewer.html, bundled as a resource: the web
 # studio's own three.js drawing code, built into one local file (no CDN).
 #
-# The swift-sdk is pinned to its v0.7.0 release (Calimero 1.0). To bump it,
+# The swift-sdk is pinned to its v2.0.0 release (Calimero 1.0). To bump it,
 # change `exactVersion` to the new release. Keep both pins (here and
 # ModelsCore/Package.swift) equal.
 name: MeroModels
@@ -25,7 +25,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.7.0
+    exactVersion: 2.0.0
   ModelsCore:
     path: ModelsCore
 

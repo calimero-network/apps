@@ -29,7 +29,7 @@ include(":app")
 // ---------------------------------------------------------------------------
 //
 // The Calimero 1.0 layer this app is built on (MeroAppSession, CalimeroAppBackend, ContextContract,
-// consent) is kotlin-sdk 0.4.0, pinned at its release commit in kotlin-sdk.ref, and is not on
+// consent) is kotlin-sdk 2.0.0, pinned at its release commit in kotlin-sdk.ref, and is not on
 // Maven Central yet. So the
 // SDK is included as a build and its modules replace the `network.calimero:*` coordinates the app
 // declares. Which checkout:
