@@ -8,7 +8,7 @@
 # mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with `swift
 # test --package-path KombatCore` (no simulator). The game itself is the web app's engine, built
 # by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle. The swift-sdk is
-# pinned to its v2.0.0 release (Calimero 1.0). Keep it equal to the version in
+# pinned to its v4.1.0 release (Calimero 1.0). Keep it equal to the version in
 # KombatCore/Package.swift.
 name: MeroKombat
 
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   KombatCore:
     path: KombatCore
 
