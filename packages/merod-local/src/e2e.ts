@@ -13,7 +13,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { basename } from "node:path";
 
-import { CalimeroClient, passkeyConfirm, type CloudEvent } from "@calimero-network/mero-js";
+import { CalimeroClient, passkeyConfirm, type NodeEvent } from "@calimero-network/mero-js";
 
 import { LOCAL_NODES, localClient, signUp, type Person } from "./cluster.ts";
 import { accounts, check, substitute, unsupported, type OrgSpec, type Outcome, type Step } from "./scenario.ts";
@@ -32,7 +32,7 @@ function listen(client: CalimeroClient, app: string): Listener {
   const abort = new AbortController();
   void (async () => {
     try {
-      for await (const event of client.events(app, 0, abort.signal) as AsyncGenerator<CloudEvent>) seen.push(event.kind);
+      for await (const event of client.events(app, 0, abort.signal) as AsyncGenerator<NodeEvent>) seen.push(event.kind);
     } catch {
       // An account the org does not hold, or one removed mid-run, has its stream
       // refused or cut: it simply hears nothing more, which is what the

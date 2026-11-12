@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@calimero-network/mero-js": ">=29.7.4"
+    "@calimero-network/mero-js": ">=31.0.0"
   },
   "devDependencies": {
     "@calimero-network/mero-js": "catalog:component",

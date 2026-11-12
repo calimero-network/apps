@@ -37,8 +37,10 @@ import {
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 const LISTING = { name: "Test App", description: "A test.", package: "com.example.test", dir: "test", dev: true };
-const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
-const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true };
+// The cluster's name and the four-character tag its passkeys' names carry (GET /sign-up).
+const CLUSTER = { cluster: "eu-shared-1", passkeyTag: "k7q2" };
+const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false, ...CLUSTER };
+const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true, ...CLUSTER };
 const LINK = "https://a.example/?invite=tok-1&org=org-1&team=team-1&to=%2Fdeals%2F7";
 
 function memoryStorage(): KeyValueStorage {

@@ -143,6 +143,7 @@ describe("Invitations", () => {
       expired: false,
       createdBy: "acct-ana",
       createdAt: 1,
+      allApps: false,
     },
   ];
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LoginRequired, type CloudEvent } from "@calimero-network/mero-js";
+import { LoginRequired, type NodeEvent } from "@calimero-network/mero-js";
 
 import { GameClient } from "../src/net/client";
 import type { GameEvent } from "../src/net/sync";
@@ -7,7 +7,7 @@ import type { GameEvent } from "../src/net/sync";
 afterEach(() => vi.useRealTimers());
 
 /** An `events` that serves `batches` one stream at a time, then ends (or throws). */
-function fakeEvents(batches: (CloudEvent[] | Error)[]) {
+function fakeEvents(batches: (NodeEvent[] | Error)[]) {
   const froms: number[] = [];
   const events = vi.fn((_app: string, from = 0, signal?: AbortSignal) => {
     froms.push(from);
@@ -22,7 +22,7 @@ function fakeEvents(batches: (CloudEvent[] | Error)[]) {
   return { events, froms };
 }
 
-const ev = (id: number, kind: string, data: unknown): CloudEvent => ({ id: String(id), kind, data });
+const ev = (id: number, kind: string, data: unknown): NodeEvent => ({ id: String(id), kind, data });
 
 describe("GameClient events", () => {
   it("delivers events from the index it is given and resumes after the last seen", async () => {

@@ -13,10 +13,18 @@ import {
   signUpNotice,
 } from "./index";
 
-// What core's `GET /sign-up` answers for each policy.
-const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
-const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true };
-const CLOSED: SignUpPolicy = { policy: "closed", orgInvites: false, signUpInvites: true, inviteRequired: true };
+// What core's `GET /sign-up` answers for each policy, with the cluster's name
+// and the four-character tag its passkeys' names carry.
+const CLUSTER = { cluster: "eu-shared-1", passkeyTag: "k7q2" };
+const OPEN: SignUpPolicy = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false, ...CLUSTER };
+const INVITE: SignUpPolicy = { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true, ...CLUSTER };
+const CLOSED: SignUpPolicy = {
+  policy: "closed",
+  orgInvites: false,
+  signUpInvites: true,
+  inviteRequired: true,
+  ...CLUSTER,
+};
 
 const unknownPasskey = () => new LoginRequired("unknown passkey");
 

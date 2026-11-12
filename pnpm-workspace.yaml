@@ -242,9 +242,12 @@ catalog:
 # document (`client.apps.call(...)`, `client.orgs.inviteCreate(..., { confirm })`)
 # and deprecates the hand-written wrappers; every component package lints
 # `@typescript-eslint/no-deprecated`, so a wrapper call fails CI.
+# 31.0.0 (mero-js#362) renames CloudEvent, CloudPolicy and CloudRetryOptions
+# to NodeEvent, NodePolicy and RetryOptions, after the generated methods
+# replaced the wrappers (30.0.0, mero-js#359; nothing here calls them).
 catalogs:
   component:
-    "@calimero-network/mero-js": ^29.17.0
+    "@calimero-network/mero-js": ^31.0.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

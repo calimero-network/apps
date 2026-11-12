@@ -1,7 +1,7 @@
 // GameClient: the world's contract calls and its event stream, for the world
 // the player entered, over mero-js's `CalimeroClient`.
 
-import type { CalimeroClient, CloudEvent } from "@calimero-network/mero-js";
+import type { CalimeroClient, NodeEvent } from "@calimero-network/mero-js";
 import { LoginRequired } from "@calimero-network/mero-js";
 
 import { blocks, type Blocks } from "./blocks";
@@ -49,7 +49,7 @@ export class GameClient {
         if (!first) onReconnect?.();
         first = false;
         try {
-          for await (const event of this.client.events(this.appId, next, abort.signal) as AsyncGenerator<CloudEvent>) {
+          for await (const event of this.client.events(this.appId, next, abort.signal) as AsyncGenerator<NodeEvent>) {
             const index = Number.parseInt(event.id, 10);
             if (Number.isFinite(index)) next = index + 1;
             onEvent({ kind: event.kind, value: event.data });

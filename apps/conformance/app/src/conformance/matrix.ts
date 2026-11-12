@@ -46,7 +46,7 @@ import {
   ORG_CAPABILITIES,
   orgCapabilities,
   type CalimeroClient,
-  type CloudEvent,
+  type NodeEvent,
   type PasskeyProvider,
 } from "@calimero-network/mero-js";
 
@@ -90,9 +90,9 @@ const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.e
 
 /** Listen to `app`'s events from `from` until `stop()`, keeping what arrives. */
 function listen(
-  stream: (signal: AbortSignal) => AsyncGenerator<CloudEvent>,
-): { seen: CloudEvent[]; failed: () => unknown; stop(): void } {
-  const seen: CloudEvent[] = [];
+  stream: (signal: AbortSignal) => AsyncGenerator<NodeEvent>,
+): { seen: NodeEvent[]; failed: () => unknown; stop(): void } {
+  const seen: NodeEvent[] = [];
   const abort = new AbortController();
   let failure: unknown;
   void (async () => {
@@ -106,11 +106,11 @@ function listen(
 }
 
 async function heardWithin(
-  log: { seen: CloudEvent[]; failed: () => unknown },
-  ok: (e: CloudEvent) => boolean,
+  log: { seen: NodeEvent[]; failed: () => unknown },
+  ok: (e: NodeEvent) => boolean,
   what: string,
   timeoutMs: number,
-): Promise<CloudEvent> {
+): Promise<NodeEvent> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const hit = log.seen.find(ok);
@@ -139,7 +139,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const patience = env.patienceMs ?? 20_000;
   const eventually = <T>(fn: () => Promise<T>, ok: (v: T) => boolean, what: string, ms = patience) => waitFor(fn, ok, what, ms);
   const untilRefused = (fn: () => Promise<unknown>, what: string) => refusedWithin(fn, what, patience);
-  const heard = (log: Parameters<typeof heardWithin>[0], ok: (e: CloudEvent) => boolean, what: string) => heardWithin(log, ok, what, patience);
+  const heard = (log: Parameters<typeof heardWithin>[0], ok: (e: NodeEvent) => boolean, what: string) => heardWithin(log, ok, what, patience);
   const pkg = `${PACKAGE}.run-${tag}`;
 
   const A: Person = { who: "A", client: await env.client(0), passkey: env.passkey() };

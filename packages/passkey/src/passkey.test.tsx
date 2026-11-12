@@ -256,11 +256,13 @@ describe("PasskeySignIn", () => {
   });
 });
 
+// The cluster's name and the four-character tag its passkeys' names carry (GET /sign-up).
+const CLUSTER = { cluster: "eu-shared-1", passkeyTag: "k7q2" };
 // What core's `GET /sign-up` answers for each policy.
 const POLICY: Record<SignUpPolicy["policy"], SignUpPolicy> = {
-  open: { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false },
-  invite: { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true },
-  closed: { policy: "closed", orgInvites: false, signUpInvites: true, inviteRequired: true },
+  open: { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false, ...CLUSTER },
+  invite: { policy: "invite", orgInvites: true, signUpInvites: true, inviteRequired: true, ...CLUSTER },
+  closed: { policy: "closed", orgInvites: false, signUpInvites: true, inviteRequired: true, ...CLUSTER },
 };
 
 describe("sign-up policy", () => {

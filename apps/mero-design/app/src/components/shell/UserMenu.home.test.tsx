@@ -16,14 +16,16 @@ import { withRoutes } from "@calimero-apps/connect/testing";
 afterEach(cleanup);
 
 function signedIn(role: string, mode: string, home = true) {
-  const client = withRoutes({
+  // The wrapper-named mocks the routed client calls through (`packages.get` reaches `package`).
+  const fake = {
     package: vi.fn(async (pkg: string) => {
       if (!home) throw new Error("no such package");
       return { package: pkg, latest: "0.3.0", versions: [{ version: "0.3.0" }] };
     }),
     me: vi.fn(async () => ({ orgs: [{ orgId: "team-1", name: "Acme", role }] })),
     getOrg: vi.fn(async () => ({ orgId: "team-1", mode })),
-  }) as unknown as CalimeroClient;
+  };
+  const client = withRoutes(fake) as unknown as CalimeroClient;
   state.api = {
     session: {
       status: "signed-in",
@@ -33,7 +35,7 @@ function signedIn(role: string, mode: string, home = true) {
     },
     signOut: vi.fn(),
   };
-  return client;
+  return fake;
 }
 
 function renderMenu() {

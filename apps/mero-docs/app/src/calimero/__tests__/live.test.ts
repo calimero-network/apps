@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CalimeroClient, CloudEvent } from '@calimero-network/mero-js';
+import type { CalimeroClient, NodeEvent } from '@calimero-network/mero-js';
 import { EventHub, PresenceHub, type SubscriptionEventData } from '../live';
 import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** A stream that yields `events`, then waits until aborted. */
-async function* stream(events: CloudEvent[], signal?: AbortSignal): AsyncGenerator<CloudEvent> {
+async function* stream(events: NodeEvent[], signal?: AbortSignal): AsyncGenerator<NodeEvent> {
   for (const e of events) yield e;
   await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve()));
 }
