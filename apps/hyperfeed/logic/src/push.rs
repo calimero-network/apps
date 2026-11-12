@@ -54,7 +54,7 @@ pub struct PushKey {
 
 /// What [`crate::Hyperfeed::add_push_device`] takes: the browser's
 /// `PushSubscription.toJSON()`, a name, and how much it may say.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
 pub struct PushDeviceInput {
     pub endpoint: String,
     pub p256dh: String,

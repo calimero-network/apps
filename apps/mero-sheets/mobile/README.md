@@ -133,22 +133,25 @@ Left out, and why:
 
 - **Spreadsheet names** come from the contract (`get_project`), which every member can read; a name
   this device gave is used until the workbook answers. No metadata call is needed.
-- **Generated client.** Generated with `--transport-import`, so it takes the SDK's
-  `ContextContractCalling` and `contract.bound(to: contextId)` goes straight in, no adapter.
+- **Generated client.** It takes the SDK's `ContextContractCalling`, so
+  `contract.bound(to: contextId)` goes straight in, no adapter.
 - **One service.** The sheets bundle has one service, so `createContext` (the package's default
   service) is the right call; no `createServiceContext`.
 
 ## The contract clients
 
 The clients (`ios/Core/Sources/SheetsCore/Generated/SheetsClient.swift`,
-`android/.../generated/SheetsClient.kt`) call the component contract's surface
-(`../logic/res/abi.json` on the component SDK): method and argument names are camelCase
+`android/.../generated/client/SheetsClient.kt`) are generated from the component contract's ABI
+(`../logic/res/abi.json`) by core's `mero-app-build codegen`: run `scripts/mobile-codegen.sh` at the
+repo root after a contract change (CI's `Mobile clients` workflow fails on a stale client). Method
+and argument names are camelCase
 (`setCell { sheetId, rowId, colId, rawValue }`), answers keep their snake_case fields, and every
 u64 is a decimal string both ways (`WireNumbers.swift`, `U64String.kt`). Contract refusals are
 `422 APP_ERROR` with `NotFound` / `Invalid` / `Forbidden` and `fields.message`, shown in plain
-words (`SheetsFormat.errorText`). `WireTests` / `WireTest` pin the wire. The 0.x
-`@calimero/abi-codegen` does not read a component ABI, so `scripts/codegen.sh` regenerates only
-from a v1 ABI; after a contract change, update the clients by hand against `abi.json`.
+words (`SheetsFormat.errorText`). `WireTests` / `WireTest` pin the wire. Until the logic derives
+`AbiType`, the ABI names the workbook's types without their shape, so the client answers their
+JSON and the types first generated from v1's ABI read it (`SheetsCore/Records.swift`,
+`generated/SheetsRecords.kt`).
 
 ## CI
 

@@ -6,14 +6,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.sheets.generated.Cell
+import network.calimero.sheets.generated.CellStyle
 import network.calimero.sheets.generated.Chart
 import network.calimero.sheets.generated.Comment
 import network.calimero.sheets.generated.Member
+import network.calimero.sheets.generated.Project
 import network.calimero.sheets.generated.Protection
 import network.calimero.sheets.generated.Sheet
 import network.calimero.sheets.generated.SheetLayout
 import network.calimero.sheets.generated.SheetView
-import network.calimero.sheets.generated.SheetsClient
+import network.calimero.sheets.generated.client.SheetsClient
+import network.calimero.sheets.generated.toSheets
 import kotlin.coroutines.cancellation.CancellationException
 
 /** A comment thread on a cell: the root comment and its replies, oldest first. */
@@ -89,17 +92,17 @@ class SpreadsheetModel(
         if (s.sheets.isEmpty() && cells.isEmpty()) update { copy(phase = LoadPhase.Loading) }
         try {
             coroutineScope {
-                val sheets = async { client.listSheets() }
-                val all = async { client.getAllCells() }
-                val l = async { client.getLayouts() }
-                val v = async { client.getSheetViews() }
-                val st = async { client.getStyles() }
-                val ch = async { client.getCharts() }
-                val co = async { client.getComments() }
-                val m = async { client.getMembers() }
-                val p = async { client.getProject() }
+                val sheets = async { client.listSheets().map { it.toSheets<Sheet>() } }
+                val all = async { client.getAllCells().map { it.toSheets<Cell>() } }
+                val l = async { client.getLayouts().map { it.toSheets<SheetLayout>() } }
+                val v = async { client.getSheetViews().map { it.toSheets<SheetView>() } }
+                val st = async { client.getStyles().map { it.toSheets<CellStyle>() } }
+                val ch = async { client.getCharts().map { it.toSheets<Chart>() } }
+                val co = async { client.getComments().map { it.toSheets<Comment>() } }
+                val m = async { client.getMembers().map { it.toSheets<Member>() } }
+                val p = async { client.getProject().toSheets<Project>() }
                 val me = async { client.whoami() }
-                val pr = async { client.getProtections() }
+                val pr = async { client.getProtections().map { it.toSheets<Protection>() } }
                 cells = all.await()
                 layouts = l.await().associateBy { it.sheetId }
                 orders.clear()

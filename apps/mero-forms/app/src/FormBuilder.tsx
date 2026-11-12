@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Field, FormView } from "./formsApi";
+import { type Field, type FormView, toForm, fromFields, done } from "./formsApi";
 import { KINDS, KIND_LABEL, isFieldId, isKind, newField, takesOptions, uniqueId, type Kind } from "./lib/fields";
 import { Icon } from "./ui";
 import type { Workspace } from "./useWorkspace";
@@ -83,7 +83,7 @@ export function FormBuilder({
     setBusy(true);
     setError(null);
     workspace
-      .act((c) => c.updateForm({ form_id: form.id, title, description, fields }))
+      .act((c) => c.updateForm({ formId: form.id, title, description, fields: fromFields(fields) }).then(toForm))
       .then((v) => {
         setFields(v.fields);
         setSavedIds(new Set(v.fields.map((f) => f.id)));
@@ -96,14 +96,14 @@ export function FormBuilder({
   function toggleOpen() {
     setError(null);
     workspace
-      .act((c) => c.setFormOpen({ form_id: form.id, open: !form.open }))
+      .act((c) => c.setFormOpen({ formId: form.id, open: !form.open }).then(toForm))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }
 
   function remove() {
     if (!window.confirm(`Delete "${form.title}"? This cannot be undone.`)) return;
     workspace
-      .act((c) => c.deleteForm({ form_id: form.id }))
+      .act((c) => c.deleteForm({ formId: form.id }).then(done))
       .then(onDeleted)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }

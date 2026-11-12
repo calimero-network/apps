@@ -1,5 +1,6 @@
 import CrmCore
 import Foundation
+import MeroKit
 import XCTest
 
 /// The client against the contract's component ABI (`logic/res/abi.json`):
@@ -85,7 +86,7 @@ final class ContractSurfaceTests: XCTestCase {
 
     func testEveryMethodIsTheABIsNameWithItsParameters() async throws {
         let r = Recorder()
-        let c = CrmClient(transport: r)
+        let c = CrmClient(contract: r)
         _ = try await c.addActivity(kind: "call", subject: "Call", dueAt: 1, note: "")
         _ = try await c.addAutomation(stageId: "s", kind: "call", subject: "x", dueInDays: 2)
         _ = try await c.addNote(dealId: "d", body: "b")
@@ -130,7 +131,7 @@ final class ContractSurfaceTests: XCTestCase {
 
     func testANoneIsANullAndAU64IsADecimalString() async throws {
         let r = Recorder()
-        let c = CrmClient(transport: r)
+        let c = CrmClient(contract: r)
         _ = try await c.createDeal(
             title: "t", value: 12_500, organization: "", contactId: nil, stageId: "s", expectedClose: 1_793_181_600_000,
             source: "")
@@ -142,14 +143,14 @@ final class ContractSurfaceTests: XCTestCase {
     }
 
     func testAnswersReadU64sFromDecimalStrings() async throws {
-        let c = CrmClient(transport: Recorder())
-        let deals = try await c.listDeals()
+        let c = CrmClient(contract: Recorder())
+        let deals = try await c.listDeals().map { try $0.decoded(as: DealView.self) }
         let deal = try XCTUnwrap(deals.first)
         XCTAssertEqual(deal.value, 12_500)
         XCTAssertEqual(deal.expectedClose, 1_793_181_600_000)
         XCTAssertNil(deal.closedAt)
         XCTAssertEqual(deal.nextActivity?.dueAt, 1_793_268_000_000)
-        let detail = try await c.getDeal(dealId: "d1")
+        let detail = try await c.getDeal(dealId: "d1").decoded(as: DealDetail.self)
         XCTAssertEqual(detail.deal, deal)
         let back = try JSONDecoder().decode(DealView.self, from: JSONEncoder().encode(deal))
         XCTAssertEqual(back, deal, "encoding writes the wire's strings back")

@@ -229,7 +229,7 @@ class CallModel(
         var attempt = 0
         while (true) {
             try {
-                client.join(name, now() / 1000)
+                client.join(name, (now() / 1000).toULong())
                 _joined.value = true
                 _joinFailed.value = null
                 refreshMembers()
@@ -258,7 +258,7 @@ class CallModel(
         if (trimmed.isEmpty()) return
         _name.value = trimmed
         try {
-            client.join(trimmed, now() / 1000)
+            client.join(trimmed, (now() / 1000).toULong())
             _joined.value = true
             refreshMembers()
         } catch (e: CancellationException) {
@@ -295,7 +295,7 @@ class CallModel(
     }
 
     suspend fun refreshMembers() {
-        runCatching { client.getMembers() }.getOrNull()?.let { _members.value = it }
+        runCatching { client.getMembers().map(Member::from) }.getOrNull()?.let { _members.value = it }
     }
 
     private suspend fun membersLoop() {

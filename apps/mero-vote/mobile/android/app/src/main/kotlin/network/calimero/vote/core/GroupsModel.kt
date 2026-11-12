@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
 import network.calimero.vote.generated.Phase
+import network.calimero.vote.generated.PollSummary
+import network.calimero.vote.generated.toVote
 
 /** One voting group on the home screen, with what its polls look like. */
 data class GroupRow(
@@ -59,7 +61,7 @@ class GroupsModel(
     }
 
     private suspend fun summary(ref: GroupRef): GroupRow {
-        val polls = attempt { voteClient(backend.contract, ref.contextId).listPolls() }.getOrNull() ?: return GroupRow(ref, null, 0, null)
+        val polls = attempt { voteClient(backend.contract, ref.contextId).listPolls().map { it.toVote<PollSummary>() } }.getOrNull() ?: return GroupRow(ref, null, 0, null)
         return GroupRow(ref, polls.size, polls.count { it.phase == Phase.Voting }, polls.maxByOrNull { it.createdAt }?.title)
     }
 

@@ -12,11 +12,11 @@ let package = Package(
         .library(name: "UpdatesCore", targets: ["UpdatesCore"])
     ],
     dependencies: [
-        // swift-sdk v2.0.0 (Calimero 1.0).
+        // swift-sdk v4.1.0 (Calimero 1.0).
         // Keep it equal to the exactVersion in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "2.0.0")
+            exact: "4.1.0")
     ],
     targets: [
         .target(

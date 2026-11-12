@@ -71,10 +71,12 @@ private event so that it invites someone promotes it with `updatePrivateEvent`
 
 ## The contract client
 
-`Core/Sources/CalendarContract/CalendarContract.swift` is a typed client of
-the component contract (`logic/res/abi.json` of the component port, web PR
-#720), the twin of the web app's `app/src/api/calendar.ts` and of the Android
-app's `contract/CalendarClient.kt`: camelCase methods and arguments, no
+`Core/Sources/CalendarContract/Generated/CalendarClient.swift` is generated
+from the component contract's ABI (`scripts/mobile-codegen.sh` at the repo
+root); `CalendarContract.swift` keeps the shapes it takes and answers as JSON
+until the logic derives `AbiType`, the twin of the web app's
+`app/src/api/calendar.ts` and of the Android app's
+`contract/CalendarContract.kt`: camelCase methods and arguments, no
 `timestamp` arguments, account ids as strings, `u64` values as decimal
 strings (`U64`), and the contract's error codes (`CalendarAppCode`), which
 `ErrorText` puts into words. `CalendarContractTests` pins the method list.
@@ -121,7 +123,7 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 ### The SDK pin
 
 `Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
-swift-sdk to its `v2.0.0` release (tag commit `189bcb5`). To bump it, change the
+swift-sdk to its `v4.1.0` release (tag commit `807cfe6`). To bump it, change the
 version in all three files.
 
 ### Pointing it at another environment

@@ -5,6 +5,7 @@ import { PersonName, useOrg } from "./names";
 import { useSignedIn } from "./sessionContext";
 import { Avatar } from "./ui";
 import { useRead, type Workspace } from "./useWorkspace";
+import { toTeam, done } from "./formsApi";
 
 /**
  * Who builds the forms and reads the responses, and how to bring someone in.
@@ -28,7 +29,7 @@ export function TeamCard({
   me: string | null;
 }) {
   const { members, reload } = useOrg();
-  const team = useRead(workspace.client, workspace.version, (c) => c.listTeam(), []);
+  const team = useRead(workspace.client, workspace.version, (c) => c.listTeam().then(toTeam), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +64,7 @@ export function TeamCard({
                 <button
                   className="ghost danger-text"
                   disabled={busy === m.account}
-                  onClick={() => run(m.account, () => workspace.act((c) => c.removeTeamMember({ who: m.account })))}
+                  onClick={() => run(m.account, () => workspace.act((c) => c.removeTeamMember({ who: m.account }).then(done)))}
                 >
                   Remove
                 </button>
@@ -94,7 +95,7 @@ export function TeamCard({
                   disabled={busy === account}
                   onClick={() =>
                     run(account, async () => {
-                      await workspace.act((c) => c.addTeamMember({ who: account }));
+                      await workspace.act((c) => c.addTeamMember({ who: account }).then(done));
                       reload();
                     })
                   }

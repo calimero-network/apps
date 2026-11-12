@@ -152,8 +152,7 @@ apps/my-app/
 │   ├── src/lib.rs        #   #[app::state] state, #[app::logic] methods, #[app::event] events
 │   ├── Cargo.toml        #   [package.metadata.calimero] — the registry manifest
 │   ├── tests/            #   TestHost + convergence. No node needed.
-│   ├── res/              #   abi.json + state-schema.json, emitted by cargo mero
-│   └── workflows/        #   merobox scenarios: real multi-node integration
+│   └── res/              #   abi.json + state-schema.json, emitted by cargo mero
 └── app/                  # Frontend. Vite + React + TypeScript.
     ├── src/              #   talks to the local node via mero-js / mero-react
     │   └── generated/    #   typed client, generated from ../logic/res/abi.json
@@ -182,7 +181,8 @@ apps/                       one directory per application
                             (see Anatomy above for what each contains)
 
 scripts/
-  app-packages.sh           the CI matrices, derived from cargo metadata
+  app-packages.sh           v1 app packages from cargo metadata (release.yml)
+  ci-scope.py               which apps / jobs a change reaches (both CI workflows)
   check-app-metadata.sh     registry manifest vs the workspace pins
   check-app-icons.py        real icons, not cargo-mero's "default" placeholder
   check-desktop-sso.py      every app anchors node trust for the desktop hand-off
@@ -213,7 +213,6 @@ docs/
 Cargo.toml                  ONE SDK pin, the release profiles, and
                             [workspace.metadata.mero-apps] for fleet-wide values
 pnpm-workspace.yaml         ONE version per JS dependency, via catalog:
-requirements-e2e.txt        merobox AND calimero-client-py, pinned together
 tsconfig.base.json
 ```
 
@@ -237,6 +236,9 @@ that existed on 2026-08-26 — all sixteen now share a single value for each row
 
 Thirteen pins × nine apps was up to 117 places to edit for one decision. Here it
 is 13.
+The `merobox` and `calimero-client-py` rows have since gone with the merobox
+e2e job itself: merobox is retired, and component apps run their scenarios on
+`merod local`.
 
 Two of those rows are not cosmetic. **`calimero-client-py` is a transitive
 dependency of merobox that tracks core master** — pinning merobox alone pins
@@ -283,29 +285,36 @@ per-app table and a list of which invariants CI actually holds.
 
 ### The CI signal
 
-`ci.yml` has seven jobs. `changes` runs first and decides which of the rest run,
-and over which apps:
+Two workflows, each with a `changes` job that decides what the rest run, and
+an aggregate `… OK` job that is the one check to require (a job skipped because
+the change does not reach it counts as a pass):
 
-| Job | Runs when | Does |
-| --- | --- | --- |
-| `changes` | always | path-filters the diff into per-app matrices |
-| `metadata` | always | the manifest / icon / SSO / frontend / lockfile gates, plus their own unit tests |
-| `rust` | contract or workspace | `cargo test --workspace` |
-| `wasm` | frontend **or** contract or workspace | `cargo mero build` per app; the ABI is regenerated and diffed |
-| `frontend` | frontend or contract or workspace | typecheck, codegen diff, unit tests, build, `check-vercel-output.sh` |
-| `browser` | frontend or contract or workspace | Playwright per app against a real node |
-| `e2e` | contract or workspace | merobox multi-node scenarios per app |
+| Workflow | Job | Runs on a pull request when | Does |
+| --- | --- | --- | --- |
+| `ci.yml` | `metadata` | always | the manifest / icon / SSO / frontend / lockfile gates, plus their own unit tests |
+| `ci.yml` | `frontend` | a member's frontend, contract or a package it imports changed, or a workspace-wide JS change | lint, typecheck, codegen diff, unit tests, build, `check-vercel-output.sh`, over those members only |
+| `ci.yml` | `conformance` | the rig, a package or a JS pin changed | `conformance.yml` |
+| `components.yml` | `checks` | always | pins, `tools/component-bundle`, `packages/connect` + `passkey` + `merod-local` |
+| `components.yml` | `rust` | per app whose **contract** changed | fmt, clippy, `cargo test` (scenarios), release build, ABI current, dev `.mpk` |
+| `components.yml` | `e2e` | per app whose contract changed, or every app when `packages/merod-local` / a mero-js pin changed | scenarios on `merod local` |
+| `components.yml` | `browser` | per app with a Playwright suite whose frontend, contract or harness inputs changed | the suite on `merod local` |
+| `components.yml` | `cross-app` | Chat, Home or KV Store (or what they import) changed | `e2e/cross-app` |
 
-`wasm` is deliberately the broadest of those — it is a *producer*, and it runs on
-frontend-only changes precisely so that `browser` and `e2e`, which need it, are
-not skipped out from under themselves:
+A push to `main` and a dispatch run everything. `scripts/ci-scope.py` makes the
+per-app call for both workflows; see what a diff would run with
 
-⚠️ **A job whose `needs:` was skipped is skipped too — `if:` cannot rescue it.**
-`browser` and `e2e` both `needs: wasm`, so a producer gate narrower than its
-consumer's silently disables the consumer. That is how the browser suite went
-from running on frontend-only PRs to running on none of them, green by absence.
-`scripts/tests/producer-gate-test.py` asserts no producer is narrower than a
-consumer.
+```bash
+git diff --name-only origin/main... | python3 scripts/ci-scope.py      # ci.yml frontend dirs
+python3 scripts/ci-scope.py components --explain --base origin/main     # components.yml, per job
+```
+
+A change under an app's `mobile/`, its README or `docs/` runs nothing per-app
+(the mobile workflows are path-filtered per app on their own).
+
+⚠️ **A job whose `needs:` was skipped is skipped too — `if:` cannot rescue it**
+unless it carries a status function. `components.yml`'s `e2e` downloads `rust`'s
+wasm, and runs on changes `rust` does not (then it builds the wasm itself);
+`scripts/tests/producer-gate-test.py` asserts that link.
 
 ⚠️ **`Cargo.lock` and `pnpm-lock.yaml` are flat filters** — a one-app change
 touching either fans CI out to every one of them. `scripts/lockfile-fanout.py` answers
@@ -404,8 +413,8 @@ merge. Use `git filter-repo` when the history matters.
 
 ⚠️ **Two failure modes hid behind green CI during the moves**, both worth
 checking on any future one: merobox scenarios landing at a path CI never globs
-(the job passes in seconds having run *nothing* — an `E2E (<app>)` leg green in
-~20s ran zero scenarios), and an inherited `.gitignore` swallowing the committed
+(the job passed in seconds having run *nothing* — an `E2E (<app>)` leg green in
+~20s ran zero scenarios; that job is gone now, with merobox), and an inherited `.gitignore` swallowing the committed
 `res/abi.json`, so codegen silently had nothing to check against.
 
 ## Related
@@ -415,7 +424,6 @@ checking on any future one: merobox scenarios landing at a path CI never globs
 - [swift-sdk](https://github.com/calimero-network/swift-sdk) · [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) — native mobile SDKs
 - [design-system](https://github.com/calimero-network/design-system) — shared UI primitives
 - [cargo-mero](https://github.com/calimero-network/cargo-mero) — build and publish WASM app bundles
-- [merobox](https://github.com/calimero-network/merobox) — spin up multi-node clusters for tests
 - [app-registry](https://github.com/calimero-network/app-registry) — signed app distribution ([apps.calimero.network](https://apps.calimero.network/))
 - [tauri-app](https://github.com/calimero-network/tauri-app) — Calimero Desktop, which runs these apps
 - [documentation](https://github.com/calimero-network/documentation) — [docs.calimero.network](https://docs.calimero.network/)

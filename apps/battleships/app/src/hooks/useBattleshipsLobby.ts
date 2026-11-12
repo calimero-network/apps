@@ -3,7 +3,7 @@ import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network
 import type { AppSource } from '@calimero-apps/connect';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 
-import { lobby, messageOf, type Lobby, type PlayerEntry } from '../battleships';
+import { lobby, messageOf, type Lobby } from '../battleships';
 import {
   createLobby as createLobbyApp,
   inviteToken,
@@ -247,7 +247,7 @@ export function useBattleshipsLobby({
       return;
     }
     try {
-      setPlayerKeys(((await api.contract.getPlayers()) as PlayerEntry[]).map((p) => p.player));
+      setPlayerKeys((await api.contract.getPlayers()).map((p) => p.player));
     } catch {
       // The next poll retries.
     }

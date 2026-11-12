@@ -88,7 +88,8 @@ mero-pixart/
 │   ├── scenarios/         neutral steps, run by cargo test AND on merod local
 │   └── res/abi.json       the component's ABI, committed, diffed in CI
 ├── app/                   Vite + React; CalimeroClient through @calimero-apps/connect
-│   └── src/api/           session, teams (orgs), the contract adapter (pixart.ts), useApi
+│   ├── src/generated/     MeroPixartClient: `mero-app-build codegen` from logic/res/abi.json (`pnpm -F mero-pixart codegen`)
+│   └── src/api/           session, teams (orgs), pixart.ts (the transport: refusals in v1's words), useApi
 └── mobile/                native iOS / Android viewers, still on the v1 contract (see mobile/README.md)
 ```
 
@@ -142,7 +143,7 @@ Pixels never enter the state: the frontend uploads each PNG to the document
 
 | | v1 (calimero-sdk 0.12, merobox, MeroJs) | component (calimero-sdk 1.0.0-rc.7) |
 |---|---|---|
-| methods | snake_case (`update_layer`) | camelCase on the wire (`updateLayer`), same arguments in camelCase; `app/src/api/pixart.ts` keeps v1 names for the screens |
+| methods | snake_case (`update_layer`) | camelCase on the wire (`updateLayer`), same arguments in camelCase; the screens call the generated `MeroPixartClient` (`api.app(doc).updateLayer({ … })`) |
 | 64-bit arguments | JSON numbers | `u64`/`i64` arguments (`updatedAt`, `timestamp`, `x`, `y`) are decimal strings. Integers inside records (a `Layer`, a `Member`, a cursor) stay numbers |
 | reads | every method is a JSON-RPC call | the reads are views (`getDocument`, `getLayers`, `getLayer`, `getMembers`, `getCursors`, `getRole`, `myRole`, `canEdit`, `listRoles`) |
 | errors | a message string | `ViewOnly`, `OwnerOnly`, `Invalid { message }`; a call before sign-in is the node's `401`, an outsider's its `404` |

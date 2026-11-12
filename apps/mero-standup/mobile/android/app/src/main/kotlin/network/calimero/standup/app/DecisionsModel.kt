@@ -5,8 +5,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.standup.contract.DecisionPage
 import network.calimero.standup.contract.DecisionView
 import network.calimero.standup.contract.TagCount
+import network.calimero.standup.contract.toStandup
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.DecisionDraft
 import network.calimero.standup.core.ErrorText
@@ -53,8 +55,8 @@ class DecisionsModel(
         val limit = PAGE * _pages.value
         try {
             coroutineScope {
-                val page = async { team.client.listDecisions(search = query.ifEmpty { null }, tag = tag, standingOnly = standingOnly, limit = limit) }
-                val tags = async { team.client.tags() }
+                val page = async { team.client.listDecisions(search = query.ifEmpty { null }, tag = tag, standingOnly = standingOnly, limit = limit).toStandup<DecisionPage>() }
+                val tags = async { team.client.tags().map { it.toStandup<TagCount>() } }
                 val p = page.await()
                 val t = tags.await()
                 if (query != search.value.trim() || tag != this@DecisionsModel.tag.value || standingOnly != this@DecisionsModel.standingOnly.value) {
@@ -116,7 +118,7 @@ class DecisionsModel(
     }
 
     /** A decision in the list, or read on its own (a link to one filtered out). */
-    suspend fun decision(id: String): DecisionView? = _items.value.firstOrNull { it.id == id } ?: runCatching { team.client.getDecision(id) }.getOrNull()
+    suspend fun decision(id: String): DecisionView? = _items.value.firstOrNull { it.id == id } ?: runCatching { team.client.getDecision(id).toStandup<DecisionView>() }.getOrNull()
 
     fun title(id: String): String? = _items.value.firstOrNull { it.id == id }?.title
 

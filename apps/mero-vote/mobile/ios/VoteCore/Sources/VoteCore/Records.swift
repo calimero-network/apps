@@ -1,0 +1,946 @@
+import Foundation
+import MeroKit
+
+// Mero Vote's types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), kept by hand in step
+// with the web app's adapter (`app/src/meroVote.ts`): answers keep their snake_case fields, and every
+// u64 (`created_at`, `cast_at`…) is a decimal string, read back into a number (`VoteWireDecoding`).
+// The calls are the generated `VoteClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo
+// root); until the logic derives `AbiType` the ABI names these types without their shape, so the
+// client takes and answers their JSON and they read and write it.
+
+extension JSONValue {
+    /// This answer as the app type `T` (one of the types below), its u64 fields read from their
+    /// decimal strings.
+    public func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try VoteWireDecoding.decode(type, from: MeroJSON.encode(self))
+    }
+}
+
+// MARK: - Types
+
+/// A pointer from the context to a public record of the transcript digest.
+public struct Anchor: Codable, Sendable, Equatable {
+    public var digest: String
+    public var network: String
+    public var reference: String
+    public var anchoredAt: UInt64
+
+    public init(digest: String, network: String, reference: String, anchoredAt: UInt64) {
+        self.digest = digest
+        self.network = network
+        self.reference = reference
+        self.anchoredAt = anchoredAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case digest
+        case network
+        case reference
+        case anchoredAt = "anchored_at"
+    }
+}
+
+/// Result of re-verifying a poll from its raw inputs.
+public struct AuditReport: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var phase: Phase
+    /// Every check held. A poll is only as good as its worst check.
+    public var verified: Bool
+    public var checks: [Check]
+    /// Per-option counts, once `t` trustees have published and all checks hold.
+    public var counts: [UInt64]?
+    public var countedBallots: UInt32
+    /// Trustees whose partials were combined, in index order.
+    public var decryptedBy: [String]
+    /// Digest of the canonical transcript. What gets anchored.
+    public var transcriptDigest: String?
+    public var anchor: Anchor?
+    /// Eligible voters whose current ballot is not in the sealed count:
+    /// cast after the creator's node sealed, or left out by the creator.
+    /// Informational — a voter can always add one after the seal, so it
+    /// cannot fail the audit without letting any voter veto the result.
+    public var uncounted: [String]
+
+    public init(pollId: String, phase: Phase, verified: Bool, checks: [Check], counts: [UInt64]? = nil, countedBallots: UInt32, decryptedBy: [String], transcriptDigest: String? = nil, anchor: Anchor? = nil, uncounted: [String]) {
+        self.pollId = pollId
+        self.phase = phase
+        self.verified = verified
+        self.checks = checks
+        self.counts = counts
+        self.countedBallots = countedBallots
+        self.decryptedBy = decryptedBy
+        self.transcriptDigest = transcriptDigest
+        self.anchor = anchor
+        self.uncounted = uncounted
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId = "poll_id"
+        case phase
+        case verified
+        case checks
+        case counts
+        case countedBallots = "counted_ballots"
+        case decryptedBy = "decrypted_by"
+        case transcriptDigest = "transcript_digest"
+        case anchor
+        case uncounted
+    }
+}
+
+/// What a voter's slot holds for a poll: which body is theirs.
+public struct BallotPointer: Codable, Sendable, Equatable {
+    public var digest: String
+    public var frozen: String
+    public var castAt: UInt64
+
+    public init(digest: String, frozen: String, castAt: UInt64) {
+        self.digest = digest
+        self.frozen = frozen
+        self.castAt = castAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case digest
+        case frozen
+        case castAt = "cast_at"
+    }
+}
+
+/// What a trustee's browser needs during the key ceremony.
+public struct Ceremony: Codable, Sendable, Equatable {
+    public var threshold: UInt32
+    public var trustees: [CeremonyTrustee]
+    public var complaints: [ComplaintView]
+
+    public init(threshold: UInt32, trustees: [CeremonyTrustee], complaints: [ComplaintView]) {
+        self.threshold = threshold
+        self.trustees = trustees
+        self.complaints = complaints
+    }
+}
+
+public struct CeremonyTrustee: Codable, Sendable, Equatable {
+    public var account: String
+    public var index: UInt32
+    public var transport: String?
+    public var dealing: WireDealing?
+
+    public init(account: String, index: UInt32, transport: String? = nil, dealing: WireDealing? = nil) {
+        self.account = account
+        self.index = index
+        self.transport = transport
+        self.dealing = dealing
+    }
+}
+
+public struct Check: Codable, Sendable, Equatable {
+    public var name: String
+    public var ok: Bool
+    public var detail: String
+
+    public init(name: String, ok: Bool, detail: String) {
+        self.name = name
+        self.ok = ok
+        self.detail = detail
+    }
+}
+
+public struct Closure: Codable, Sendable, Equatable {
+    public var counted: [CountedBallot]
+    /// Per option, the sum of the counted ballots' ciphertexts, frozen by the seal
+    /// (new on 1.0; absent from a pre-1.0 answer).
+    public var aggregate: [WireCiphertext]?
+    public var closedAt: UInt64
+
+    public init(counted: [CountedBallot], aggregate: [WireCiphertext]? = nil, closedAt: UInt64) {
+        self.counted = counted
+        self.aggregate = aggregate
+        self.closedAt = closedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case counted
+        case aggregate
+        case closedAt = "closed_at"
+    }
+}
+
+/// "Dealer X sent me a share that does not match its commitments", with
+/// the ECDH secret for that one share and a DLEQ proof it is genuine.
+public struct Complaint: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var dealer: String
+    public var secret: String
+    public var proof: WireBranch
+
+    public init(pollId: String, dealer: String, secret: String, proof: WireBranch) {
+        self.pollId = pollId
+        self.dealer = dealer
+        self.secret = secret
+        self.proof = proof
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId = "poll_id"
+        case dealer
+        case secret
+        case proof
+    }
+}
+
+public struct ComplaintView: Codable, Sendable, Equatable {
+    public var recipient: String
+    public var dealer: String
+    /// Proves the dealer cheated. An invalid complaint disqualifies no one.
+    public var valid: Bool
+
+    public init(recipient: String, dealer: String, valid: Bool) {
+        self.recipient = recipient
+        self.dealer = dealer
+        self.valid = valid
+    }
+}
+
+/// One ballot the seal commits to count.
+public struct CountedBallot: Codable, Sendable, Equatable {
+    public var voter: String
+    /// The protocol digest — the voter's receipt.
+    public var digest: String
+    /// Where the body lives in `ballot_bodies`.
+    public var frozen: String
+
+    public init(voter: String, digest: String, frozen: String) {
+        self.voter = voter
+        self.digest = digest
+        self.frozen = frozen
+    }
+}
+
+/// The key ceremony's outcome, frozen at open.
+public struct Election: Codable, Sendable, Equatable {
+    public var key: String
+    public var threshold: UInt32
+    /// Transport keys, in trustee order. Frozen because complaints are
+    /// adjudicated against them.
+    public var transport: [String]
+    /// Dealings that make up the key, in trustee order.
+    public var qualified: [QualifiedDealing]
+    /// Dealers left out because a complaint proved they cheated.
+    public var disqualified: [String]
+    public var openedAt: UInt64
+
+    public init(key: String, threshold: UInt32, transport: [String], qualified: [QualifiedDealing], disqualified: [String], openedAt: UInt64) {
+        self.key = key
+        self.threshold = threshold
+        self.transport = transport
+        self.qualified = qualified
+        self.disqualified = disqualified
+        self.openedAt = openedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case key
+        case threshold
+        case transport
+        case qualified
+        case disqualified
+        case openedAt = "opened_at"
+    }
+}
+
+public struct Event_Anchored: Codable, Sendable, Equatable {
+    public var pollId: String
+
+    public init(pollId: String) {
+        self.pollId = pollId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+    }
+}
+
+public struct Event_BallotCast: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var voter: String
+
+    public init(pollId: String, voter: String) {
+        self.pollId = pollId
+        self.voter = voter
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case voter
+    }
+}
+
+public struct Event_ComplaintFiled: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var recipient: String
+    public var dealer: String
+
+    public init(pollId: String, recipient: String, dealer: String) {
+        self.pollId = pollId
+        self.recipient = recipient
+        self.dealer = dealer
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case recipient
+        case dealer
+    }
+}
+
+public struct Event_DealingPublished: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var trustee: String
+
+    public init(pollId: String, trustee: String) {
+        self.pollId = pollId
+        self.trustee = trustee
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case trustee
+    }
+}
+
+public struct Event_MemberNamed: Codable, Sendable, Equatable {
+    public var account: String
+
+    public init(account: String) {
+        self.account = account
+    }
+}
+
+public struct Event_PartialPublished: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var trustee: String
+
+    public init(pollId: String, trustee: String) {
+        self.pollId = pollId
+        self.trustee = trustee
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case trustee
+    }
+}
+
+public struct Event_PollClosing: Codable, Sendable, Equatable {
+    public var pollId: String
+
+    public init(pollId: String) {
+        self.pollId = pollId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+    }
+}
+
+public struct Event_PollCreated: Codable, Sendable, Equatable {
+    public var pollId: String
+
+    public init(pollId: String) {
+        self.pollId = pollId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+    }
+}
+
+public struct Event_PollSealed: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var counted: UInt32
+
+    public init(pollId: String, counted: UInt32) {
+        self.pollId = pollId
+        self.counted = counted
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case counted
+    }
+}
+
+public struct Event_TransportKeyPublished: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var trustee: String
+
+    public init(pollId: String, trustee: String) {
+        self.pollId = pollId
+        self.trustee = trustee
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+        case trustee
+    }
+}
+
+public struct Event_VotingOpened: Codable, Sendable, Equatable {
+    public var pollId: String
+
+    public init(pollId: String) {
+        self.pollId = pollId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId
+    }
+}
+
+public struct Identity: Codable, Sendable, Equatable {
+    public var account: String
+
+    public init(account: String) {
+        self.account = account
+    }
+}
+
+public struct Member: Codable, Sendable, Equatable {
+    public var account: String
+    public var name: String
+
+    public init(account: String, name: String) {
+        self.account = account
+        self.name = name
+    }
+}
+
+/// What one account may still change. Lives in [`UserStorage`], so only that
+/// account can write it — enforced at merge, not just by this contract.
+///
+/// Nothing the audit requires to stay put is here: a voter re-pointing their
+/// ballot or a trustee re-publishing a partial after the seal changes no
+/// verdict. Ceremony material is write-once, in [`MeroVote`].
+public struct MemberSlot: Codable, Sendable, Equatable {
+    public var name: String
+    public var ballots: [String: BallotPointer]
+    public var partials: [String: StoredPartials]
+
+    public init(name: String, ballots: [String: BallotPointer], partials: [String: StoredPartials]) {
+        self.name = name
+        self.ballots = ballots
+        self.partials = partials
+    }
+}
+
+public struct MeroVote: Codable, Sendable, Equatable {
+    /// Immutable definitions; the key is the poll id.
+    public var definitions: [String: PollDefinition]
+    /// Closing notice and anchor, owned by the creator (checked at merge). Its
+    /// owner stamp must name the definition's `creator`, or the poll is
+    /// ignored: the field alone is forgeable.
+    public var polls: [String: PollControl]
+    /// The frozen election, `"{poll_id}/{nonce}"`. Only the creator's entries
+    /// count; two of them is equivocation, and fails the audit.
+    public var elections: [String: Election]
+    /// The seal, keyed and read like `elections`.
+    public var closures: [String: Closure]
+    /// `"{poll_id}/{trustee}/{content hash}"`.
+    public var transportKeys: [String: TransportKey]
+    /// `"{poll_id}/{dealer}/{content hash}"`.
+    public var dealings: [String: WireDealing]
+    /// `"{poll_id}/{recipient}/{dealer}/{content hash}"`.
+    public var complaints: [String: Complaint]
+    /// Ballot bodies by the SHA-256 of their bytes, owned by the voter who
+    /// cast them. The owner stamp is what shows the voter, not the creator,
+    /// made a counted ballot.
+    public var ballotBodies: [String: StoredBallot]
+    /// One signed slot per account.
+    public var slots: [String: MemberSlot]
+
+    public init(definitions: [String: PollDefinition], polls: [String: PollControl], elections: [String: Election], closures: [String: Closure], transportKeys: [String: TransportKey], dealings: [String: WireDealing], complaints: [String: Complaint], ballotBodies: [String: StoredBallot], slots: [String: MemberSlot]) {
+        self.definitions = definitions
+        self.polls = polls
+        self.elections = elections
+        self.closures = closures
+        self.transportKeys = transportKeys
+        self.dealings = dealings
+        self.complaints = complaints
+        self.ballotBodies = ballotBodies
+        self.slots = slots
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case definitions
+        case polls
+        case elections
+        case closures
+        case transportKeys = "transport_keys"
+        case dealings
+        case complaints
+        case ballotBodies = "ballot_bodies"
+        case slots
+    }
+}
+
+public enum Phase: String, Codable, Sendable, Equatable, CaseIterable {
+    case keyCeremony = "KeyCeremony"
+    case voting = "Voting"
+    case closing = "Closing"
+    case closed = "Closed"
+}
+
+/// The part of a poll its creator may still change: the closing notice
+/// and the anchor. Everything else about a poll's lifecycle is written
+/// once (see `elections` and `closures` in [`MeroVote`]).
+public struct PollControl: Codable, Sendable, Equatable {
+    /// When the close was announced (phase Closing onward).
+    public var closingAt: UInt64?
+    public var anchor: Anchor?
+
+    public init(closingAt: UInt64? = nil, anchor: Anchor? = nil) {
+        self.closingAt = closingAt
+        self.anchor = anchor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case closingAt = "closing_at"
+        case anchor
+    }
+}
+
+/// The immutable part of a poll. Stored content-addressed; its SHA-256 IS
+/// the poll id, so nothing voters relied on can be edited under them.
+public struct PollDefinition: Codable, Sendable, Equatable {
+    public var title: String
+    public var description: String
+    public var options: [String]
+    public var minChoices: UInt32
+    public var maxChoices: UInt32
+    /// Accounts that hold the decryption key between them, in index order
+    /// (trustee `i` in this list has Shamir index `i + 1`).
+    public var trustees: [String]
+    /// How many trustees it takes to decrypt. 1..=trustees.len().
+    public var threshold: UInt32
+    /// Accounts allowed to vote. Empty means any member of the context.
+    public var voters: [String]
+    public var creator: String
+    /// Milliseconds. Also makes two otherwise identical polls distinct.
+    public var createdAt: UInt64
+    /// Informational deadline in milliseconds. Node clocks are not a
+    /// consensus source, so closing is an explicit act of the creator.
+    public var closesAt: UInt64?
+
+    public init(title: String, description: String, options: [String], minChoices: UInt32, maxChoices: UInt32, trustees: [String], threshold: UInt32, voters: [String], creator: String, createdAt: UInt64, closesAt: UInt64? = nil) {
+        self.title = title
+        self.description = description
+        self.options = options
+        self.minChoices = minChoices
+        self.maxChoices = maxChoices
+        self.trustees = trustees
+        self.threshold = threshold
+        self.voters = voters
+        self.creator = creator
+        self.createdAt = createdAt
+        self.closesAt = closesAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case description
+        case options
+        case minChoices = "min_choices"
+        case maxChoices = "max_choices"
+        case trustees
+        case threshold
+        case voters
+        case creator
+        case createdAt = "created_at"
+        case closesAt = "closes_at"
+    }
+}
+
+/// A poll's lifecycle as read: the phase is derived from what has been
+/// written, so a sealed poll can never go back to voting.
+public struct PollState: Codable, Sendable, Equatable {
+    public var phase: Phase
+    public var election: Election?
+    /// When the close was announced (phase Closing onward).
+    public var closingAt: UInt64?
+    public var closure: Closure?
+    public var anchor: Anchor?
+
+    public init(phase: Phase, election: Election? = nil, closingAt: UInt64? = nil, closure: Closure? = nil, anchor: Anchor? = nil) {
+        self.phase = phase
+        self.election = election
+        self.closingAt = closingAt
+        self.closure = closure
+        self.anchor = anchor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case phase
+        case election
+        case closingAt = "closing_at"
+        case closure
+        case anchor
+    }
+}
+
+public struct PollSummary: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var title: String
+    public var creator: String
+    public var phase: Phase
+    public var createdAt: UInt64
+    public var ballots: UInt32
+
+    public init(pollId: String, title: String, creator: String, phase: Phase, createdAt: UInt64, ballots: UInt32) {
+        self.pollId = pollId
+        self.title = title
+        self.creator = creator
+        self.phase = phase
+        self.createdAt = createdAt
+        self.ballots = ballots
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId = "poll_id"
+        case title
+        case creator
+        case phase
+        case createdAt = "created_at"
+        case ballots
+    }
+}
+
+public struct PollView: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var definition: PollDefinition
+    public var state: PollState
+    public var trustees: [TrusteeStatus]
+    public var turnout: [Turnout]
+    /// The caller's own receipt, if they have voted.
+    public var myDigest: String?
+    public var canVote: Bool
+
+    public init(pollId: String, definition: PollDefinition, state: PollState, trustees: [TrusteeStatus], turnout: [Turnout], myDigest: String? = nil, canVote: Bool) {
+        self.pollId = pollId
+        self.definition = definition
+        self.state = state
+        self.trustees = trustees
+        self.turnout = turnout
+        self.myDigest = myDigest
+        self.canVote = canVote
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId = "poll_id"
+        case definition
+        case state
+        case trustees
+        case turnout
+        case myDigest = "my_digest"
+        case canVote = "can_vote"
+    }
+}
+
+public struct QualifiedDealing: Codable, Sendable, Equatable {
+    public var dealer: String
+    public var dealing: WireDealing
+
+    public init(dealer: String, dealing: WireDealing) {
+        self.dealer = dealer
+        self.dealing = dealing
+    }
+}
+
+/// A ballot body, content-addressed.
+public struct StoredBallot: Codable, Sendable, Equatable {
+    public var pollId: String
+    public var voter: String
+    public var ballot: WireBallot
+
+    public init(pollId: String, voter: String, ballot: WireBallot) {
+        self.pollId = pollId
+        self.voter = voter
+        self.ballot = ballot
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pollId = "poll_id"
+        case voter
+        case ballot
+    }
+}
+
+public struct StoredPartials: Codable, Sendable, Equatable {
+    public var options: [WirePartial]
+
+    public init(options: [WirePartial]) {
+        self.options = options
+    }
+}
+
+/// What a trustee's browser needs to compute its partial decryptions.
+public struct TallyInputs: Codable, Sendable, Equatable {
+    public var aggregate: [WireCiphertext]
+    public var counted: UInt32
+
+    public init(aggregate: [WireCiphertext], counted: UInt32) {
+        self.aggregate = aggregate
+        self.counted = counted
+    }
+}
+
+/// Every input of the tally, for verification somewhere other than this node.
+public struct Transcript: Codable, Sendable, Equatable {
+    public var `protocol`: String
+    public var pollId: String
+    public var definition: PollDefinition
+    public var state: PollState
+    public var ballots: [TranscriptBallot]
+    public var partials: [TranscriptPartial]
+    public var report: AuditReport
+
+    public init(`protocol`: String, pollId: String, definition: PollDefinition, state: PollState, ballots: [TranscriptBallot], partials: [TranscriptPartial], report: AuditReport) {
+        self.`protocol` = `protocol`
+        self.pollId = pollId
+        self.definition = definition
+        self.state = state
+        self.ballots = ballots
+        self.partials = partials
+        self.report = report
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case `protocol`
+        case pollId = "poll_id"
+        case definition
+        case state
+        case ballots
+        case partials
+        case report
+    }
+}
+
+public struct TranscriptBallot: Codable, Sendable, Equatable {
+    public var voter: String
+    public var digest: String
+    public var ballot: WireBallot
+    /// Whether the voter's own slot still points at this ballot.
+    /// Informational: authorship is the body's owner stamp, checked by
+    /// the audit as "ballot authorship".
+    public var endorsed: Bool
+
+    public init(voter: String, digest: String, ballot: WireBallot, endorsed: Bool) {
+        self.voter = voter
+        self.digest = digest
+        self.ballot = ballot
+        self.endorsed = endorsed
+    }
+}
+
+public struct TranscriptPartial: Codable, Sendable, Equatable {
+    public var trustee: String
+    public var index: UInt32
+    public var options: [WirePartial]
+
+    public init(trustee: String, index: UInt32, options: [WirePartial]) {
+        self.trustee = trustee
+        self.index = index
+        self.options = options
+    }
+}
+
+/// A trustee's transport key and its proof of knowledge.
+public struct TransportKey: Codable, Sendable, Equatable {
+    public var key: String
+    public var proof: WireBranch
+
+    public init(key: String, proof: WireBranch) {
+        self.key = key
+        self.proof = proof
+    }
+}
+
+public struct TrusteeStatus: Codable, Sendable, Equatable {
+    public var account: String
+    /// 1-based Shamir index.
+    public var index: UInt32
+    public var transportPublished: Bool
+    public var dealingPublished: Bool
+    /// Valid complaints filed against this trustee's dealing.
+    public var complaintsAgainst: UInt32
+    /// Whether this trustee's dealing is part of the key (after open).
+    public var qualified: Bool?
+    public var partialPublished: Bool
+
+    public init(account: String, index: UInt32, transportPublished: Bool, dealingPublished: Bool, complaintsAgainst: UInt32, qualified: Bool? = nil, partialPublished: Bool) {
+        self.account = account
+        self.index = index
+        self.transportPublished = transportPublished
+        self.dealingPublished = dealingPublished
+        self.complaintsAgainst = complaintsAgainst
+        self.qualified = qualified
+        self.partialPublished = partialPublished
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case account
+        case index
+        case transportPublished = "transport_published"
+        case dealingPublished = "dealing_published"
+        case complaintsAgainst = "complaints_against"
+        case qualified
+        case partialPublished = "partial_published"
+    }
+}
+
+/// Who has voted — never what.
+public struct Turnout: Codable, Sendable, Equatable {
+    public var voter: String
+    public var digest: String
+    public var castAt: UInt64
+
+    public init(voter: String, digest: String, castAt: UInt64) {
+        self.voter = voter
+        self.digest = digest
+        self.castAt = castAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case voter
+        case digest
+        case castAt = "cast_at"
+    }
+}
+
+/// An encrypted ballot exactly as the browser built it.
+public struct WireBallot: Codable, Sendable, Equatable {
+    public var choices: [WireChoice]
+    public var sumProof: [WireBranch]
+
+    public init(choices: [WireChoice], sumProof: [WireBranch]) {
+        self.choices = choices
+        self.sumProof = sumProof
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case choices
+        case sumProof = "sum_proof"
+    }
+}
+
+/// One `(c, z)` pair of a proof, as 64-hex scalars.
+public struct WireBranch: Codable, Sendable, Equatable {
+    public var c: String
+    public var z: String
+
+    public init(c: String, z: String) {
+        self.c = c
+        self.z = z
+    }
+}
+
+/// One option's ciphertext and its 0-or-1 proof.
+public struct WireChoice: Codable, Sendable, Equatable {
+    public var a: String
+    public var b: String
+    public var proof: [WireBranch]
+
+    public init(a: String, b: String, proof: [WireBranch]) {
+        self.a = a
+        self.b = b
+        self.proof = proof
+    }
+}
+
+public struct WireCiphertext: Codable, Sendable, Equatable {
+    public var a: String
+    public var b: String
+
+    public init(a: String, b: String) {
+        self.a = a
+        self.b = b
+    }
+}
+
+/// A trustee's contribution to the distributed key.
+public struct WireDealing: Codable, Sendable, Equatable {
+    /// `t` Feldman commitments, constant term first.
+    public var commitments: [String]
+    /// Proof of knowledge of the constant term.
+    public var proof: WireBranch
+    /// One per trustee, in the poll's trustee order.
+    public var shares: [WireEncShare]
+
+    public init(commitments: [String], proof: WireBranch, shares: [WireEncShare]) {
+        self.commitments = commitments
+        self.proof = proof
+        self.shares = shares
+    }
+}
+
+/// One share of a dealing, encrypted to its recipient's transport key.
+public struct WireEncShare: Codable, Sendable, Equatable {
+    public var r: String
+    public var v: String
+
+    public init(r: String, v: String) {
+        self.r = r
+        self.v = v
+    }
+}
+
+/// A trustee's partial decryption of one option's aggregate.
+public struct WirePartial: Codable, Sendable, Equatable {
+    public var d: String
+    public var proof: WireBranch
+
+    public init(d: String, proof: WireBranch) {
+        self.d = d
+        self.proof = proof
+    }
+}
+
+// MARK: - Wire decoding
+
+/// Reads the contract's answers: each u64 field arrives as a decimal string and is
+/// turned back into a number before decoding, as the web adapter's `decode` does.
+/// Timestamps in milliseconds sit far below 2^53, so nothing is lost.
+public enum VoteWireDecoding {
+    /// Every 64-bit field the contract answers, in any answer.
+    public static let u64Fields: Set<String> = [
+        "created_at", "closes_at", "opened_at", "closed_at", "closing_at", "anchored_at", "cast_at",
+    ]
+
+    public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        try JSONDecoder().decode(type, from: normalized(data))
+    }
+
+    /// `data` with every u64 field's decimal string as a JSON number.
+    public static func normalized(_ data: Data) -> Data {
+        guard let root = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return data }
+        var changed = false
+        let walked = walk(root, key: nil, changed: &changed)
+        guard changed, let out = try? JSONSerialization.data(withJSONObject: walked, options: [.fragmentsAllowed])
+        else { return data }
+        return out
+    }
+
+    private static func walk(_ value: Any, key: String?, changed: inout Bool) -> Any {
+        if let array = value as? [Any] { return array.map { walk($0, key: nil, changed: &changed) } }
+        if let object = value as? [String: Any] {
+            var out: [String: Any] = [:]
+            for (k, v) in object { out[k] = walk(v, key: k, changed: &changed) }
+            return out
+        }
+        if let key, u64Fields.contains(key), let text = value as? String, let number = UInt64(text) {
+            changed = true
+            return NSNumber(value: number)
+        }
+        return value
+    }
+}

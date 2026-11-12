@@ -1,14 +1,10 @@
 import Foundation
 import MeroKit
 
-// The contract client declares its own `ContextContractCalling`; MeroKit's
-// bound contract has exactly its two methods.
-extension BoundContextContract: ContextContractCalling {}
-
 extension StandupClient {
     /// The client for one team (app instance), over the account's cluster session.
     public init(backend: any MeroAppBackend, contextId: String) {
-        self.init(transport: backend.contract.bound(to: contextId))
+        self.init(backend: backend, app: contextId)
     }
 }
 

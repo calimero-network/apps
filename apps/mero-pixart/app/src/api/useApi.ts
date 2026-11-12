@@ -2,15 +2,15 @@ import { useMemo } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
-import { invoke } from "./pixart";
+import { pixartClient, type MeroPixartClient } from "./pixart";
 import { useSignedIn } from "./sessionContext";
 
 // ── The app's one way to talk to Calimero ───────────────────────────────────
 //
 // The screens ask `useApi()` and never the client directly, so they kept the
 // shape v1 gave them:
-//   * contract calls → `invoke` (api/pixart): v1 method and argument names,
-//                      translated to the component ABI; views are views.
+//   * contract calls → `app(contextId)`: the document's `MeroPixartClient`
+//                      (src/generated, from the ABI), refusals in v1's words.
 //   * blobs          → the document's own blobs: `client.uploadBlob(app, …)` /
 //                      `client.downloadBlob(app, id)`. v1 announced each blob to
 //                      the context; an upload to the app is the app's already.
@@ -21,8 +21,8 @@ export interface Api {
   client: CalimeroClient;
   /** The signed-in account. */
   accountId: string;
-  /** Call (or view) a contract method of the document `contextId`. */
-  call<T>(contextId: string, method: string, args?: Record<string, unknown>): Promise<T>;
+  /** The contract of the document `contextId`, through its generated client. */
+  app(contextId: string): MeroPixartClient;
   /**
    * Upload a blob to the document `contextId`. `blobId` is the 64-hex id the
    * contract stores (and the base58 form v1 stored is not accepted).
@@ -43,13 +43,7 @@ export function useApi(): Api {
   const { client, accountId, after } = useSignedIn();
 
   return useMemo<Api>(() => {
-    async function call<T>(contextId: string, method: string, args: Record<string, unknown> = {}): Promise<T> {
-      try {
-        return await invoke<T>(client, contextId, method, args);
-      } finally {
-        after();
-      }
-    }
+    const app = (contextId: string) => pixartClient(client, contextId, after);
 
     async function uploadBlob(data: ArrayBuffer | Uint8Array, contextId: string): Promise<{ blobId: string }> {
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -77,6 +71,6 @@ export function useApi(): Api {
       }
     }
 
-    return { client, accountId, call, uploadBlob, getBlob };
+    return { client, accountId, app, uploadBlob, getBlob };
   }, [client, accountId, after]);
 }

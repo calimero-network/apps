@@ -6,7 +6,7 @@ on **Calimero 1.0** (below), as does its Android twin (`../android`).
 ```
 Core/                          local Swift package StandupCore (no UI): `swift test` on macOS
   Sources/StandupCore/
-    StandupContract.swift          the typed component-contract client (../logic/res/abi.json, web PR #709)
+    StandupTypes.swift             the contract's answer types; Generated/StandupClient.swift is the client
     Days, People, Drafts, Digest, RichText, StandupInvitation, Support
     TeamsModel, TeamModel, BoardModel, WeekModel, DecisionsModel, ApprovalsModel   view models
   Tests/StandupCoreTests/      view-model and helper tests on MeroKitTestSupport's InMemoryAppBackend
@@ -58,8 +58,10 @@ to `mero-standup://consent`.
 
 ### The contract client
 
-`Core/Sources/StandupCore/StandupContract.swift` is a typed client of the component contract, the
-twin of the web app's `app/src/standup.ts` and Android's `contract/StandupClient.kt`: camelCase
+`Core/Sources/StandupCore/Generated/StandupClient.swift` is generated from the component contract's
+ABI (`scripts/mobile-codegen.sh` at the repo root); `StandupTypes.swift` keeps the answer types it
+answers as JSON until the logic derives `AbiType`, the twin of the web app's `app/src/standup.ts`
+and Android's `contract/StandupContract.kt`: camelCase
 methods, arguments and results, absent options sent as `null` (the contract refuses unknown keys),
 timestamps as decimal strings, and the contract's error codes (`StandupAppCode`), which `ErrorText`
 puts into words.
@@ -76,7 +78,7 @@ open MeroStandup.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `v2.0.0` (`exactVersion` / `exact:`), its
+`project.yml` and `Core/Package.swift` pin swift-sdk `v4.1.0` (`exactVersion` / `exact:`), its
 Calimero 1.0 release. Bump both together.
 
 ## Configuration

@@ -11,10 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import network.calimero.chess.contract.ChessContract
 import network.calimero.chess.contract.GameSummary
-import network.calimero.chess.contract.MeroChessClient
 import network.calimero.chess.contract.SeatView
 import network.calimero.chess.contract.TableView
+import network.calimero.chess.generated.MeroChessClient
 
 /** A promotion the player has started and not yet chosen a piece for. */
 data class PendingPromotion(
@@ -121,7 +122,7 @@ class TableModel(
         if (reading) return
         reading = true
         try {
-            val next = client.table(nowMillis()).named
+            val next = ChessContract.tableView(client.table(nowMillis())).named
             val key = "${next.fen}|${next.myTurn}"
             _state.update { state ->
                 // A selection cannot survive the position changing under it.
@@ -149,7 +150,7 @@ class TableModel(
         val view = _state.value.view ?: return
         val signature = "${view.gamesPlayed}:${view.result}"
         if (signature == pastSignature) return
-        val rows = runCatching { client.history() }.getOrNull() ?: return
+        val rows = runCatching { ChessContract.gameSummaries(client.history()) }.getOrNull() ?: return
         _state.update { it.copy(past = rows) }
         pastSignature = signature
     }

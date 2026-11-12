@@ -15,8 +15,8 @@ import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.PasskeyRequired
 import com.calimero.mero.app.SignedOutException
 import com.calimero.mero.tee.TeeTrustException
-import network.calimero.merraria.contract.MerrariaClient
 import network.calimero.merraria.contract.MerrariaRefusal
+import network.calimero.merraria.generated.MerrariaClient
 import java.io.IOException
 import kotlin.math.abs
 import kotlin.math.floor
@@ -115,4 +115,4 @@ object MerrariaText {
 }
 
 /** [MerrariaClient] for [contextId] in the account's backend. */
-fun MeroAppBackend.merraria(contextId: String): MerrariaClient = MerrariaClient(contract.bound(contextId))
+fun MeroAppBackend.merraria(contextId: String): MerrariaClient = MerrariaClient(this, contextId)

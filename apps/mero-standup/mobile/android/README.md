@@ -16,7 +16,8 @@ approvals), and per team the Standup, Week, Decisions and Team tabs.
 - **Invitations** are org invite links (`OrgInvitation`, with the team's app instance and name).
 - **Approvals** on Teams: Review shows the confirmation code, then opens the node's consent page in
   a Custom Tab, which returns to `mero-standup://consent`.
-- **Contract**: `contract/StandupClient.kt`, a typed client of the component ABI (web PR #709):
+- **Contract**: `generated/StandupClient.kt`, generated from the component ABI
+  (`scripts/mobile-codegen.sh` at the repo root), with the answer types in `contract/StandupContract.kt`:
   camelCase methods, arguments and results, absent options as `null`, timestamps as decimal
   strings, error codes (`StandupAppCode`) put into words by `ErrorText`.
 
@@ -37,13 +38,13 @@ intent filter). Plain http is allowed only to `10.0.2.2` and `localhost`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `2.0.0` (Calimero 1.0) by its release commit; for a new release, set it
+`kotlin-sdk.ref` pins kotlin-sdk `4.0.0` (Calimero 1.0) by its release commit; for a new release, set it
 to that tag's commit.
 `settings.gradle.kts` includes the checkout as a composite build.
 
 ## Layout
 
-- `contract/StandupClient.kt`: the typed component-contract client.
+- `generated/StandupClient.kt`: the generated component-contract client; `contract/StandupContract.kt`: the answer types.
 - `core/`: pure helpers ported from the web app's `lib/` (days, people, carry-forward, digest,
   tags, rich text), the invitation link format and `ErrorText`.
 - `app/`: view models on `MeroAppBackend` (teams, team, board, week, decisions, approvals) and the

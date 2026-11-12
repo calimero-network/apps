@@ -1284,7 +1284,48 @@
         "type": "object"
       },
       "GameSummary": {
-        "description": "The app type `GameSummary`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "black": {
+            "type": "string"
+          },
+          "index": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "plies": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "white": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "startedAt",
+          "result",
+          "reason",
+          "plies",
+          "white",
+          "black"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "GameSummary"
       },
       "HeartbeatArgs": {
@@ -1483,6 +1524,40 @@
         "required": [],
         "type": "object"
       },
+      "MoveView": {
+        "properties": {
+          "at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "by": {
+            "type": "string"
+          },
+          "ply": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "san": {
+            "type": "string"
+          },
+          "uci": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ply",
+          "uci",
+          "san",
+          "by",
+          "at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "MoveView"
+      },
       "MovedEvent": {
         "properties": {
           "by": {
@@ -1665,6 +1740,30 @@
         ],
         "type": "object"
       },
+      "PlayerView": {
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "online",
+          "color"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PlayerView"
+      },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
         "properties": {
@@ -1824,6 +1923,30 @@
         "properties": {},
         "required": [],
         "type": "object"
+      },
+      "SeatView": {
+        "properties": {
+          "member": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "seat": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "member",
+          "name",
+          "online"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SeatView"
       },
       "SeatedEvent": {
         "properties": {
@@ -2028,7 +2151,109 @@
         "type": "object"
       },
       "TableView": {
-        "description": "The app type `TableView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "black": {
+            "$ref": "#/components/schemas/SeatView"
+          },
+          "check": {
+            "type": "boolean"
+          },
+          "claimableDraw": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "drawOfferFrom": {
+            "type": "string"
+          },
+          "fen": {
+            "type": "string"
+          },
+          "game": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "gamesPlayed": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "legalMoves": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "me": {
+            "type": "string"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/MoveView"
+            },
+            "type": "array"
+          },
+          "myColor": {
+            "type": "string"
+          },
+          "myTurn": {
+            "type": "boolean"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerView"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "sideToMove": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "white": {
+            "$ref": "#/components/schemas/SeatView"
+          }
+        },
+        "required": [
+          "title",
+          "createdAt",
+          "game",
+          "fen",
+          "sideToMove",
+          "moves",
+          "legalMoves",
+          "status",
+          "result",
+          "reason",
+          "check",
+          "claimableDraw",
+          "white",
+          "black",
+          "me",
+          "myColor",
+          "myTurn",
+          "drawOfferFrom",
+          "players",
+          "gamesPlayed"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TableView"
       },
       "Trap": {
