@@ -469,7 +469,9 @@ jobs:
             echo "PNPM_TEST_CONCURRENCY=--workspace-concurrency=1" >> "$GITHUB_ENV"
           else
             filter=$(jq -r '.[] | "--filter ./" + .' <<<"$DIRS" | tr '\n' ' ')
-            apps=$(jq -r '.[] | select(startswith("apps/"))' <<<"$DIRS" | tr '\n' ' ')
+            # Only app frontends (`apps/<a>/app`): an app's MCP server
+            # (`apps/<a>/mcp`) is a member too, but nothing Vercel serves.
+            apps=$(jq -r '.[] | select(startswith("apps/") and endswith("/app"))' <<<"$DIRS" | tr '\n' ' ')
           fi
           echo "PNPM_FILTER=$filter" >> "$GITHUB_ENV"
           echo "VERCEL_APPS=$apps" >> "$GITHUB_ENV"

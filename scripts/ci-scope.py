@@ -53,7 +53,7 @@ CI_RUN_APP_FILES = {"scripts/local-rig.sh"}
 def workspace_members(root: pathlib.Path) -> dict[str, dict]:
     """dir (relative to root) -> parsed package.json, for every pnpm member."""
     members: dict[str, dict] = {}
-    for pattern in ("apps/*/app/package.json", "packages/*/package.json"):
+    for pattern in ("apps/*/app/package.json", "apps/*/mcp/package.json", "packages/*/package.json"):
         for pj in sorted(root.glob(pattern)):
             try:
                 members[str(pj.parent.relative_to(root))] = json.loads(pj.read_text())
@@ -102,6 +102,10 @@ def scope(paths: list[str], root: pathlib.Path = ROOT) -> dict[str, list[str]]:
             elif rest.startswith("app/"):
                 apps.add(app)
                 frontend.add(f"apps/{app}/app")
+            elif rest.startswith("mcp/"):
+                # An app's MCP server (a pnpm member of its own, beside app/):
+                # the frontend job typechecks, tests and builds it. No wasm.
+                frontend.add(f"apps/{app}/mcp")
             elif rest in CI_RUN_APP_FILES:
                 apps.add(app)
             continue

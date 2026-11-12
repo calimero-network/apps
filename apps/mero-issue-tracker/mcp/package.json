@@ -19,8 +19,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/calimero-network/mero-issue-tracker.git",
-    "directory": "mcp"
+    "url": "git+https://github.com/calimero-network/apps.git",
+    "directory": "apps/mero-issue-tracker/mcp"
   },
   "scripts": {
     "start": "tsx src/index.ts",
@@ -30,21 +30,13 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^33.0.0",
+    "@calimero-network/mero-js": "catalog:component",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/commit-analyzer": "^13.0.0",
-    "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^9.2.6",
-    "@semantic-release/npm": "^12.0.1",
-    "@semantic-release/release-notes-generator": "^12.1.0",
     "@types/node": "^25.6.0",
-    "conventional-changelog-conventionalcommits": "^7.0.0",
-    "semantic-release": "^24.2.9",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.0"
+    "typescript": "catalog:"
   }
 }
