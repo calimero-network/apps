@@ -98,7 +98,7 @@ public final class ScenesModel: ObservableObject {
         let backend = backend
         let infos = await withTaskGroup(of: (String, SceneInfo?).self) { group in
             for s in scenes {
-                group.addTask { (s.contextId, try? await backend.modelsClient(s.contextId).getScene()) }
+                group.addTask { (s.contextId, try? await backend.modelsClient(s.contextId).getScene().decoded(as: SceneInfo.self)) }
             }
             var out: [String: SceneInfo] = [:]
             for await (id, info) in group { if let info { out[id] = info } }

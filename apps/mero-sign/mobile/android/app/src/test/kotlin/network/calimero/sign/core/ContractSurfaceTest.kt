@@ -7,8 +7,11 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import network.calimero.sign.generated.ContextDetails
+import network.calimero.sign.generated.DocumentInfo
 import network.calimero.sign.generated.PermissionLevel
-import network.calimero.sign.generated.SignClient
+import network.calimero.sign.generated.SignContract
+import network.calimero.sign.generated.client.SignClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -50,7 +53,7 @@ class ContractSurfaceTest {
         runTest {
             val r = Recorder()
             val c = SignClient(r)
-            c.addParticipant(IDs.alice, PermissionLevel.Sign)
+            c.addParticipant(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Sign))
             c.createSignature("S", IDs.blob, 3u)
             c.deleteDocument("d")
             c.deleteSignature(7u)
@@ -74,15 +77,15 @@ class ContractSurfaceTest {
             c.resolvePrivateIdentity(IDs.me)
             c.searchDocumentByEmbedding(listOf(0.5f), "d")
             c.setConsent("d")
-            c.setParticipantPermission(IDs.alice, PermissionLevel.Read)
+            c.setParticipantPermission(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Read))
             c.setup(false, "Lease")
             c.signDocument("d", "a", IDs.blob, 9u, "b")
             c.uploadDocument("n", "h", IDs.blob, 9u)
             c.whoami()
 
             assertEquals(ABI.keys, r.sent.map { it.method }.toSet())
-            assertEquals(VIEWS, SignClient.VIEWS)
-            assertEquals(ABI.keys - VIEWS, SignClient.CALLS)
+            assertEquals(VIEWS, SignContract.VIEWS)
+            assertEquals(ABI.keys - VIEWS, SignContract.CALLS)
             for (request in r.sent) {
                 assertEquals(request.method, ABI[request.method]!!.toSet(), request.args.keys)
                 assertEquals(request.method, request.method in VIEWS, request.view)
@@ -97,12 +100,12 @@ class ContractSurfaceTest {
     fun `answers read the component wire`() =
         runTest {
             val c = SignClient(Recorder())
-            val document = c.listDocuments().single()
+            val document = SignContract.read<DocumentInfo>(c.listDocuments().single())
             assertEquals(1234uL, document.size)
             assertEquals(1_788_952_411_519uL, document.uploadedAt)
             assertEquals(IDs.blob, document.pdfBlobId.hex)
             assertEquals(listOf(IDs.me, IDs.alice), document.requiredSigners.map { it.hex })
-            val details = c.getContextDetails("c")
+            val details = SignContract.read<ContextDetails>(c.getContextDetails("c"))
             assertEquals(2uL, details.participantCount)
             assertEquals(PermissionLevel.Sign, details.participants.first().permissionLevel)
             assertEquals(7uL, c.createSignature("S", IDs.blob, 3u))

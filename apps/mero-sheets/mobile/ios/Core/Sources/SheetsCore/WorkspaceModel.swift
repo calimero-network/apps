@@ -120,7 +120,7 @@ public final class WorkspaceModel: ObservableObject {
             let names = await withTaskGroup(of: (String, String).self) { group -> [String: String] in
                 for id in ids {
                     group.addTask {
-                        let name = (try? await SheetsClient(contract: contract, contextId: id).getProject().name) ?? ""
+                        let name = (try? await SheetsClient(contract: contract, contextId: id).getProject().decoded(as: Project.self).name) ?? ""
                         return (id, name.trimmingCharacters(in: .whitespacesAndNewlines))
                     }
                 }

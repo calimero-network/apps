@@ -15,8 +15,8 @@ let package = Package(
         .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
     ],
     targets: [
-        // Generated/BlocksClient.swift comes from ../../../logic/res/abi.json
-        // (../../scripts/regenerate.sh); never edit it by hand.
+        // Sources/BlocksCore/Generated/BlocksClient.swift comes from ../../../logic/res/abi.json
+        // (scripts/mobile-codegen.sh at the repo root); never edit it by hand.
         .target(
             name: "BlocksCore",
             dependencies: [.product(name: "MeroKit", package: "swift-sdk")]

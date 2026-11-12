@@ -28,9 +28,9 @@ let package = Package(
             dependencies: [
                 .product(name: "MeroKit", package: "swift-sdk"),
             ]),
-        // Sources/SignCore/Generated/SignClient.swift is written from the
-        // component ABI (../../logic/res/abi.json) and takes MeroKit's
-        // `ContextContractCalling`; ContractSurfaceTests pins it to the ABI.
+        // Sources/SignCore/Generated/SignClient.swift is generated from the
+        // component ABI (../../../logic/res/abi.json) by scripts/mobile-codegen.sh;
+        // ContractSurfaceTests pins it to the ABI.
         .testTarget(
             name: "SignCoreTests",
             dependencies: [

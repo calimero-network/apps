@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 import XCTest
 
 @testable import IssueTrackerCore
@@ -36,7 +37,7 @@ final class ContractWireTests: XCTestCase {
 
     func testEveryCallSendsTheABIsArgumentNames() async throws {
         let wire = Recorder()
-        let c = IssueTrackerClient(transport: wire)
+        let c = IssueTrackerClient(contract: wire)
         _ = try? await c.getRepoInfo()
         _ = try? await c.listIssues()
         _ = try? await c.getIssue(issueId: "i")
@@ -90,7 +91,7 @@ final class ContractWireTests: XCTestCase {
 }
 
 /// Records each request; answers `null` (so typed answers fail to decode, which the test ignores).
-private final class Recorder: ContextContractCalling, @unchecked Sendable {
+private final class Recorder: MeroKit.ContextContractCalling, @unchecked Sendable {
     struct Sent {
         let method: String
         let view: Bool

@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import network.calimero.forum.contract.ForumContract
+import network.calimero.forum.contract.PostPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -94,7 +95,7 @@ class ContractTest {
                 "createdAt":"1700000000000","editedAt":"0","score":"-2","commentCount":"3","myVote":-1}],"nextCursor":"opaque"}"""
             val backend = InMemoryAppBackend(account = "ab".repeat(32))
             backend.recording.handler = { Json.parseToJsonElement(wire) }
-            val page = forumClient(backend.contract, "app1").listPosts("top", null, 20u)
+            val page = ForumContract.read<PostPage>(forumClient(backend.contract, "app1").listPosts("top", null, 20u))
             val call = backend.recording.calls("listPosts").first()
             assertEquals(RecordedContractCall.Path.QUERY, call.path)
             assertEquals(

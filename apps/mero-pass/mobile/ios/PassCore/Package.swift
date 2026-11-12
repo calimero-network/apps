@@ -22,10 +22,11 @@ let package = Package(
             exact: "4.1.0"),
     ],
     targets: [
-        // `node abi-codegen -i ../../logic/res/abi.json --target swift --client-name PassClient`.
-        // Its own module: it declares its own `ContextContractCalling`, which
-        // would shadow MeroKit's in a module that imports both.
-        .target(name: "PassGenerated"),
+        // Generated from ../../../logic/res/abi.json by core's mero-app-build codegen
+        // (scripts/mobile-codegen.sh at the repo root): one target per client, as codegen asks.
+        .target(
+            name: "PassGenerated",
+            dependencies: [.product(name: "MeroKit", package: "swift-sdk")]),
         .target(
             name: "PassCore",
             dependencies: [

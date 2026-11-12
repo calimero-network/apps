@@ -154,7 +154,7 @@ public final class DocumentModel: ObservableObject {
         error = nil
         step = .checking
         do {
-            let me = SignIds.hex(try await client.whoami())
+            let me = SignIds.hex(ContractBytes.text(try await client.whoami()))
             let consented = try await client.hasConsented(userIdStr: me, documentId: documentId)
             step = consented ? .choose : .consent
             if consented { await loadLibrary() }

@@ -55,9 +55,9 @@ public final class AudienceModel: ObservableObject {
     /// Re-read who you are, the overview and the categories.
     public func load() async {
         do {
-            async let me = client.getMe()
-            async let overview = client.getOverview()
-            async let categories = client.listCategories()
+            async let me = client.getMe().decoded(as: MeView.self)
+            async let overview = client.getOverview().decoded(as: Overview.self)
+            async let categories = client.listCategories().map({ try $0.decoded(as: CategoryView.self) })
             let (m, o, c) = try await (me, overview, categories)
             self.me = m
             self.overview = o

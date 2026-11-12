@@ -152,12 +152,16 @@ Left out, and why:
 
 ## Contract client
 
-`ios/VoteCore/Sources/VoteCore/VoteClient.swift` and
-`android/app/src/main/kotlin/network/calimero/vote/generated/VoteClient.kt` are kept by hand
-against the component ABI (`../logic/res/abi.json`), in step with `../app/src/meroVote.ts`; each
-takes the SDK's `ContextContractCalling` (`contract.bound(to: contextId)`). `WireTests` /
-`WireTest` pin the method names, `pollId`, `closesAt` and the u64 decoding. The v1 abi-codegen
-does not read the component ABI, so `scripts/regenerate-client.sh` refuses to run.
+`VoteClient` (`ios/VoteCore/Sources/VoteCore/Generated/VoteClient.swift`,
+`android/app/src/main/kotlin/network/calimero/vote/generated/client/VoteClient.kt`) is generated
+from the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+`scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
+fails on a stale client). It takes the SDK's `ContextContractCalling`
+(`contract.bound(to: contextId)`). Until the logic derives `AbiType`, the ABI names the vote's types
+without their shape, so the client takes and answers their JSON and the kept types
+(`VoteCore/Records.swift`, `generated/VoteRecords.kt`, in step with `../app/src/meroVote.ts`) read
+and write it, u64 fields through `VoteWireDecoding`. `WireTests` / `WireTest` pin the method names,
+`pollId`, `closesAt` and the u64 decoding.
 
 ## Build and test
 

@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 // CrmCore: everything in the iOS app that is not SwiftUI. The generated
-// contract client (its own module, CrmGenerated, because it declares its own
-// `ContextContractCalling`), the CRM's rules (money, dates, deal health, the
+// contract client (its own module, CrmGenerated, one target per client as
+// core's codegen asks), the answer types, the CRM's rules (money, dates, deal health, the
 // assistant, insights) and the view models, on MeroKit only, so `swift test`
 // runs them on macOS without a simulator. ../project.yml links it into the app.
 import PackageDescription
@@ -20,8 +20,12 @@ let package = Package(
             exact: "4.1.0")
     ],
     targets: [
-        // @generated from ../../../logic/res/abi.json; see ../../README.md "Regenerate the client".
-        .target(name: "CrmGenerated", path: "Sources/CrmGenerated"),
+        // Generated from ../../../logic/res/abi.json by core's mero-app-build codegen
+        // (scripts/mobile-codegen.sh at the repo root); see ../../README.md "The contract client".
+        .target(
+            name: "CrmGenerated",
+            dependencies: [.product(name: "MeroKit", package: "swift-sdk")],
+            path: "Sources/CrmGenerated"),
         .target(
             name: "CrmCore",
             dependencies: [

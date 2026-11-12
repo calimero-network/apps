@@ -194,9 +194,13 @@ AutoFill is the biggest win for a phone and is deliberately not in this PR. What
 
 ## Contract client
 
-`ios/PassCore/Sources/PassGenerated/PassClient.swift` and
-`android/app/src/main/kotlin/network/calimero/pass/generated/PassClient.kt` are kept by hand
-against the component ABI (`../logic/res/abi.json`), in step with the web app's
+`PassClient` (`ios/PassCore/Sources/PassGenerated/PassClient.swift`,
+`android/app/src/main/kotlin/network/calimero/pass/generated/client/PassClient.kt`) is generated from
+the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+`scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
+fails on a stale client). Until the logic derives `AbiType`, the ABI names the vault's types without
+their shape, so the client takes and answers their JSON and the kept types read it
+(`PassGenerated/Records.swift`, `generated/PassRecords.kt`), in step with the web app's
 `app/src/lib/meroPass.ts` and `vaultApi.ts`:
 
 - methods, arguments and answer fields are camelCase (`addSecret`, `publicKey`, `createdAt`);
@@ -207,11 +211,9 @@ against the component ABI (`../logic/res/abi.json`), in step with the web app's
 - a refusal is `422 APP_ERROR {code: Forbidden|NotFound|Invalid|Conflict, fields: {message}}`;
   `PassErrorText` rewords it (and the node's own errors) in plain words.
 
-`WireTests` (Swift) / `WireTest` (Kotlin) pin the names and the wire shapes. The v1 abi-codegen does
-not read the component ABI, so `scripts/regenerate-client.sh` refuses to run. Each client declares
-its own `ContextContractCalling`; `PassTransport` (both platforms) adapts the SDK's
-`contract.bound(contextId)` to it. On iOS the client is its own module (`PassGenerated`) so its
-protocol does not shadow MeroKit's.
+`WireTests` (Swift) / `WireTest` (Kotlin) pin the names and the wire shapes. The client runs over
+the SDK's `contract.bound(contextId)`; on iOS it is its own module (`PassGenerated`), one target per
+client as the generator asks.
 
 ## Build and test
 

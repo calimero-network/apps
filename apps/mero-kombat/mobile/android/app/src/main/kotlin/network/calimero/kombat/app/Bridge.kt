@@ -14,8 +14,9 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import network.calimero.kombat.contract.ArenaView
-import network.calimero.kombat.contract.KombatClient
+import network.calimero.kombat.contract.KombatContract
 import network.calimero.kombat.contract.MatchSummary
+import network.calimero.kombat.generated.KombatClient
 
 /** The game page's mode: the web engine's `Mode`. (Swift `GameMode`.) */
 enum class GameMode(
@@ -204,10 +205,10 @@ class GameCalls(
                 }
                 kind == BridgeInbound.CallKind.QUERY && method == "arena" -> {
                     val a = runCatching { JSON.decodeFromString(ArenaArgs.serializer(), argsJson) }.getOrNull()
-                    BridgeOutbound.Result(id, encode(client.arena(a?.now ?: nowMillis())))
+                    BridgeOutbound.Result(id, encode(KombatContract.arenaView(client.arena(a?.now ?: nowMillis()))))
                 }
                 kind == BridgeInbound.CallKind.QUERY && method == "history" ->
-                    BridgeOutbound.Result(id, encode(client.history()))
+                    BridgeOutbound.Result(id, encode(KombatContract.matchSummaries(client.history())))
                 else -> BridgeOutbound.Failure(id, "$method is not open to the game page")
             }
         } catch (e: CancellationException) {

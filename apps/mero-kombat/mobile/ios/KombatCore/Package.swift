@@ -16,8 +16,9 @@ let package = Package(
         .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
     ],
     targets: [
-        // Sources/KombatCore/Contract/KombatClient.swift is typed by hand from the component ABI
-        // (../../../logic/res/abi.json); ContractTests checks its method lists against it.
+        // Sources/KombatCore/Generated/KombatClient.swift is generated from the component ABI
+        // (../../../logic/res/abi.json) by scripts/mobile-codegen.sh; ContractTests checks the
+        // method lists in Contract/KombatContract.swift against it.
         .target(
             name: "KombatCore",
             dependencies: [.product(name: "MeroKit", package: "swift-sdk")]

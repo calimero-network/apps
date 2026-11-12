@@ -1,19 +1,19 @@
 import Foundation
 
-/// The contract's component ABI (`logic/res/abi.json`, `calimero:app@0.5.0`)
-/// under the v1 generated client, as the web app's `app/src/lib/updatesClient.ts`
-/// does it: the one place the wire difference is absorbed, so no model or
-/// screen changed. (== Kotlin `ComponentWire`.)
+/// The contract's component ABI (`logic/res/abi.json`) against the v1 types the
+/// app keeps (`Records.swift`), as the web app's `app/src/lib/updatesClient.ts`
+/// does it. The generated `UpdatesClient` speaks the ABI itself (camelCase
+/// methods and arguments, `null` for an unset `option`, the `u64` `since` as a
+/// decimal string); this is the one place its JSON meets the v1 types:
 ///
-/// - Out: the method name and every argument key become camelCase
-///   (`add_comment {post_id}` → `addComment {postId}`), a parameter the
-///   client left out is sent as `null` (the ABI's `option<…>`), and the `u64`
-///   argument `since` is sent as a decimal string.
-/// - In: every key becomes snake_case again, and the `u64` fields the
-///   contract sends as decimal strings (``u64Fields``) become numbers.
+/// - Out (a record argument, `JSONValue.wire(_:)`): every key becomes camelCase.
+/// - In (`JSONValue.decoded(as:)`): every key becomes snake_case again, and the
+///   `u64` fields the contract sends as decimal strings (``u64Fields``) become
+///   numbers.
 ///
 /// A refusal stays MeroKit's `AppError` (`422 APP_ERROR {code, fields}`).
-public struct ComponentWire: ContextContractCalling {
+/// (== Kotlin `ComponentWire`.)
+public enum ComponentWire {
     /// Every contract method (minus `init`): whether it is a view, and its parameters in order.
     public static let methods: [String: (view: Bool, params: [String])] = [
         "addComment": (false, ["postId", "parentId", "body"]),
@@ -66,40 +66,7 @@ public struct ComponentWire: ContextContractCalling {
         "updates_total",
     ]
 
-    /// `u64` arguments, sent as decimal strings.
-    static let u64Args: Set<String> = ["since"]
-
-    public let inner: any ContextContractCalling
-
-    public init(_ inner: any ContextContractCalling) {
-        self.inner = inner
-    }
-
-    public func query(method: String, argsJSON: Data) async throws -> Data {
-        let (name, args) = try Self.outgoing(method: method, argsJSON: argsJSON)
-        return try Self.incoming(try await inner.query(method: name, argsJSON: args))
-    }
-
-    public func execute(method: String, argsJSON: Data) async throws -> Data {
-        let (name, args) = try Self.outgoing(method: method, argsJSON: argsJSON)
-        return try Self.incoming(try await inner.execute(method: name, argsJSON: args))
-    }
-
     // MARK: Conversion
-
-    /// The method's ABI name, and its arguments as the contract takes them.
-    static func outgoing(method: String, argsJSON: Data) throws -> (String, Data) {
-        let name = camel(method)
-        let parsed = argsJSON.isEmpty ? [:] : (try JSONSerialization.jsonObject(with: argsJSON) as? [String: Any]) ?? [:]
-        var args = toWire(parsed) as? [String: Any] ?? [:]
-        for key in u64Args {
-            if let n = args[key] as? NSNumber { args[key] = n.stringValue }
-        }
-        for param in methods[name]?.params ?? [] where args[param] == nil {
-            args[param] = NSNull()
-        }
-        return (name, try JSONSerialization.data(withJSONObject: args, options: [.sortedKeys]))
-    }
 
     /// The contract's answer as the generated client reads it.
     static func incoming(_ data: Data) throws -> Data {

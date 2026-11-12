@@ -209,19 +209,19 @@ public struct BridgeRouter: Sendable {
         }
         let encoder = JSONEncoder()
         switch name {
-        case "worldMeta": return try encoder.encode(try await client.worldMeta())
-        case "getOverrides": return try encoder.encode(try await client.getOverrides())
+        case "worldMeta": return try encoder.encode(try await client.worldMeta().decoded(as: WorldMeta.self))
+        case "getOverrides": return try encoder.encode(try await client.allOverrides())
         case "overrideCount": return try encoder.encode(try await client.overrideCount())
         case "getPlayers":
-            return try encoder.encode(try await client.getPlayers(now: try args(NowArgs.self).now))
+            return try encoder.encode(try await client.allPlayers(now: try args(NowArgs.self).now))
         case "join":
             let a = try args(JoinArgs.self)
-            return try encoder.encode(try await client.join(name: a.name, now: a.now))
+            return try encoder.encode(try await client.join(name: a.name, now: a.now).decoded(as: PlayerView.self))
         case "leave":
             try await client.leave(now: try args(NowArgs.self).now)
         case "heartbeat":
             let a = try args(HeartbeatArgs.self)
-            try await client.heartbeat(t: a.t, now: a.now)
+            try await client.heartbeat(t: try JSONValue(encoding: a.t), now: a.now)
         case "setBlocks":
             let a = try args(SetBlocksArgs.self)
             if a.edits.count > Self.maxEdits {
@@ -230,7 +230,7 @@ public struct BridgeRouter: Sendable {
             if a.edits.contains(where: { $0.b > Self.maxBlockId }) {
                 throw BridgeError.badArguments(method: method, detail: "block id outside 0 to 15")
             }
-            return try encoder.encode(try await client.setBlocks(edits: a.edits, now: a.now))
+            return try encoder.encode(try await client.setBlocks(edits: a.edits.map { try JSONValue(encoding: $0) }, now: a.now))
         default:
             throw BridgeError.unknownMethod(method)
         }

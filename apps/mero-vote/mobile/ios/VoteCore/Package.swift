@@ -28,7 +28,8 @@ let package = Package(
         // Always optimised, even in a Debug build: field arithmetic at -Onone
         // is ~15x slower, which turns a two-second ballot into half a minute.
         .target(name: "VoteCrypto", swiftSettings: [.unsafeFlags(["-O"])]),
-        // `VoteClient.swift` is generated (../../scripts/regenerate-client.sh).
+        // Sources/VoteCore/Generated/VoteClient.swift is generated from ../../../logic/res/abi.json
+        // by scripts/mobile-codegen.sh at the repo root.
         .target(
             name: "VoteCore",
             dependencies: [

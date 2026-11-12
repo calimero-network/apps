@@ -104,7 +104,7 @@ public final class ProjectsModel: ObservableObject {
         let backend = backend
         let docs = await withTaskGroup(of: (String, DocumentInfo?).self) { group in
             for p in projects {
-                group.addTask { (p.contextId, try? await backend.pixartClient(p.contextId).getDocument()) }
+                group.addTask { (p.contextId, try? await backend.pixartClient(p.contextId).getDocument().decoded(as: DocumentInfo.self)) }
             }
             var out: [String: DocumentInfo] = [:]
             for await (id, doc) in group { if let doc { out[id] = doc } }
@@ -130,7 +130,9 @@ public final class ProjectsModel: ObservableObject {
         thumbing.insert(contextId)
         defer { thumbing.remove(contextId) }
         let client = backend.pixartClient(contextId)
-        guard let layers = try? await client.getLayers(), let doc = try? await client.getDocument() else { return }
+        guard let layers = try? await client.getLayers().map({ try $0.decoded(as: Layer.self) }),
+            let doc = try? await client.getDocument().decoded(as: DocumentInfo.self)
+        else { return }
         let ops = LayerStack.drawOps(layers)
         let images = await blobs.bitmaps(LayerStack.blobIds(ops), contextId: contextId)
         let scale = min(1, Self.thumbSide / Double(max(w, h)))
@@ -307,7 +309,9 @@ public final class ArtworkModel: ObservableObject {
     private func read() async throws -> Bool {
         async let doc = client.getDocument()
         async let list = client.getLayers()
-        let (d, l) = try await (doc, list)
+        let (dj, lj) = try await (doc, list)
+        let d = try dj.decoded(as: DocumentInfo.self)
+        let l = try lj.map { try $0.decoded(as: Layer.self) }
         let changed = d != document || l != layers
         document = d
         layers = l
@@ -317,7 +321,7 @@ public final class ArtworkModel: ObservableObject {
     }
 
     private func readRest() async {
-        async let members = try? client.getMembers()
+        async let members = try? client.getMembers().map { try $0.decoded(as: Member.self) }
         async let role = try? client.myRole()
         if let m = await members { self.members = m }
         if let r = await role { self.role = r }

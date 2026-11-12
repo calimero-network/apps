@@ -26,8 +26,9 @@ while it lives, so member changes and invites get their step-ups.
 
 ## The contract client
 
-`contract/CalendarClient.kt` is a typed client of the component contract (`logic/res/abi.json` of
-the component port, web PR #720), the twin of the web app's `app/src/api/calendar.ts` and iOS's
+`generated/CalendarClient.kt` is generated from the component contract's ABI
+(`scripts/mobile-codegen.sh` at the repo root); `contract/CalendarContract.kt` keeps the shapes it
+takes and answers as JSON until the logic derives `AbiType`, the twin of the web app's `app/src/api/calendar.ts` and iOS's
 `CalendarContract.swift`: camelCase methods and arguments, no `timestamp` arguments, account ids as
 strings, `u64` values as decimal strings, and the contract's error codes (`CalendarAppCode`), which
 `ErrorText` puts into words.
@@ -68,7 +69,7 @@ is allowed only to `10.0.2.2` and `localhost` (`res/xml/network_security_config.
 
 ```
 app/src/main/kotlin/network/calimero/calendar/
-  contract/  CalendarClient (typed component contract)
+  contract/  CalendarContract (the contract's shapes); generated/ CalendarClient
   data/      EventTime, KeyValueStore + LocalNames, CalendarRepository, TeamInvites, CalendarMath,
              EventDraft, ErrorText
   app/       TeamsModel, CalendarsModel, CalendarModel, ApprovalsModel (StateFlow state holders

@@ -35,7 +35,7 @@ So a phone and a browser on the same account see the same agreements and share o
 - **The contract** is the component ABI (`../logic/res/abi.json`): camelCase methods, arguments and
   answer fields, u64s as decimal strings in arguments, accounts as strings, blob ids as 64 hex,
   timestamps in milliseconds, refusals as `APP_ERROR {code, fields}` (`NotFound`, `Forbidden`,
-  `Invalid`, `Conflict`). `SignClient` (Swift and Kotlin) is written from it; `ContractSurfaceTests` /
+  `Invalid`, `Conflict`). `SignClient` (Swift and Kotlin) is generated from it; `ContractSurfaceTests` /
   `ContractSurfaceTest` pin its names, parameters and number encoding to the ABI.
 - **Blobs** go through the signed-in client: `uploadBlob(app, bytes, contentType)` (`application/pdf`
   for a signed version, `image/png` for a signature) and `blobContent(app, id)`; the contract stores
@@ -138,10 +138,13 @@ cd android && ./scripts/fetch-sdk.sh
 
 ## The contract client
 
-No codegen targets a component ABI yet, so `SignClient` (Swift
-`ios/SignCore/Sources/SignCore/Generated/SignClient.swift`, Kotlin
-`android/.../generated/SignClient.kt`) is written from `../logic/res/abi.json`, one line per method.
-After a contract change, update both and the method table in the contract-surface tests.
+`SignClient` (Swift `ios/SignCore/Sources/SignCore/Generated/SignClient.swift`, Kotlin
+`android/.../generated/client/SignClient.kt`) is generated from `../logic/res/abi.json` by core's
+`mero-app-build codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
+commit, and update the method table in the contract-surface tests; CI's `Mobile clients` workflow
+fails on a stale client. Until the logic derives `AbiType`, the ABI names the answer types without
+their shape, so the client takes and answers their JSON and the kept types read it
+(`SignCore/Records.swift`, `generated/SignRecords.kt`).
 
 ## Callbacks
 

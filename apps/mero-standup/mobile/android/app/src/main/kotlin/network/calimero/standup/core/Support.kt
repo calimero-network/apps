@@ -11,6 +11,7 @@ import com.calimero.mero.PasskeyCancelled
 import com.calimero.mero.ReleaseDeadlineError
 import com.calimero.mero.UnavailableError
 import com.calimero.mero.WrongNode
+import com.calimero.mero.app.ContextContractCalling
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.PasskeyRequired
 import com.calimero.mero.app.SignedOutException
@@ -18,9 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonPrimitive
-import network.calimero.standup.contract.ContextContractCalling
 import network.calimero.standup.contract.StandupAppCode
-import network.calimero.standup.contract.StandupClient
+import network.calimero.standup.generated.StandupClient
 import java.io.IOException
 
 /** The client for one team (app instance), over the account's cluster session. */
@@ -28,8 +28,7 @@ fun standupClient(
     backend: MeroAppBackend,
     contextId: String,
 ): StandupClient {
-    // The contract client declares its own `ContextContractCalling`; the SDK's bound contract
-    // has exactly its two methods.
+    // The SDK's bound contract, each request off the main thread.
     val bound = backend.contract.bound(contextId)
     return StandupClient(
         object : ContextContractCalling {

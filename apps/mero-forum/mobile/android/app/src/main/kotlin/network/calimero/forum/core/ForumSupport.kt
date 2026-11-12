@@ -18,7 +18,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import network.calimero.forum.contract.ForumClient
+import network.calimero.forum.generated.ForumClient
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException

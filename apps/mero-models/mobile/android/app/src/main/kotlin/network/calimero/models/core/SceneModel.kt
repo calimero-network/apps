@@ -19,6 +19,7 @@ import network.calimero.models.generated.MeshRef
 import network.calimero.models.generated.SceneInfo
 import network.calimero.models.generated.SceneObject
 import network.calimero.models.generated.TextureRef
+import network.calimero.models.generated.toModels
 import java.util.concurrent.ConcurrentHashMap
 
 /** One row of the outliner: an object at its depth in the hierarchy. */
@@ -160,12 +161,12 @@ class SceneModel(
     private suspend fun load() =
         coroutineScope {
             val at = now()
-            val scene = async { client.getScene() }
-            val objects = async { client.getObjects() }
-            val meshes = async { client.listMeshes() }
-            val textures = async { client.listTextures() }
-            val locks = async { attempt { client.listLocks(at.toULong()) }.getOrNull() }
-            val members = async { attempt { client.getMembers() }.getOrNull() }
+            val scene = async { client.getScene().toModels<SceneInfo>() }
+            val objects = async { client.getObjects().map { it.toModels<SceneObject>() } }
+            val meshes = async { client.listMeshes().map { it.toModels<MeshRef>() } }
+            val textures = async { client.listTextures().map { it.toModels<TextureRef>() } }
+            val locks = async { attempt { client.listLocks(at.toULong()).map { it.toModels<LockView>() } }.getOrNull() }
+            val members = async { attempt { client.getMembers().map { it.toModels<MemberView>() } }.getOrNull() }
             val info = scene.await()
             val objs = objects.await()
             val refs = meshes.await()
