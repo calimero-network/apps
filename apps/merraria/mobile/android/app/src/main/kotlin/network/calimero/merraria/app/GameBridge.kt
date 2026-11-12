@@ -11,13 +11,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import network.calimero.merraria.contract.Edit
-import network.calimero.merraria.contract.MerrariaContract
 import network.calimero.merraria.contract.PlayerView
 import network.calimero.merraria.contract.TileEntry
 import network.calimero.merraria.contract.Transform
 import network.calimero.merraria.contract.WorldMeta
 import network.calimero.merraria.contract.allOverrides
-import network.calimero.merraria.contract.asContractArg
 import network.calimero.merraria.generated.MerrariaClient
 
 // The bridge between the app and the bundled web game (`app/src/native/host.ts`, which documents
@@ -261,16 +259,16 @@ class BridgeDispatcher(
         }
         return when (method) {
             "get_overrides" -> encode(ListSerializer(TileEntry.serializer()), client.allOverrides())
-            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(u32(decode(NowArgs.serializer(), argsJson).now)).map { MerrariaContract.read(PlayerView.serializer(), it) })
-            "world_meta" -> encode(WorldMeta.serializer(), MerrariaContract.read(WorldMeta.serializer(), client.worldMeta()))
+            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(u32(decode(NowArgs.serializer(), argsJson).now)))
+            "world_meta" -> encode(WorldMeta.serializer(), client.worldMeta())
             "heartbeat" -> {
                 val args = decode(HeartbeatArgs.serializer(), argsJson)
-                client.heartbeat(args.t.asContractArg(), u32(args.now))
+                client.heartbeat(args.t, u32(args.now))
                 "null"
             }
             "join" -> {
                 val args = decode(JoinArgs.serializer(), argsJson)
-                encode(PlayerView.serializer(), MerrariaContract.read(PlayerView.serializer(), client.join(args.name, u32(args.now))))
+                encode(PlayerView.serializer(), client.join(args.name, u32(args.now)))
             }
             "leave" -> {
                 client.leave(u32(decode(NowArgs.serializer(), argsJson).now))
@@ -278,7 +276,7 @@ class BridgeDispatcher(
             }
             else -> {
                 val args = decode(SetTilesArgs.serializer(), argsJson)
-                encode(UInt.serializer(), client.setTiles(args.edits.map { it.asContractArg<MerrariaClient.Edit>() }, u32(args.now)))
+                encode(UInt.serializer(), client.setTiles(args.edits, u32(args.now)))
             }
         }
     }
@@ -290,7 +288,7 @@ class BridgeDispatcher(
 
     @Serializable
     private data class HeartbeatArgs(
-        val t: Transform,
+        @Serializable(with = TransformJson::class) val t: Transform,
         val now: Double,
     )
 
@@ -302,7 +300,7 @@ class BridgeDispatcher(
 
     @Serializable
     private data class SetTilesArgs(
-        val edits: List<Edit>,
+        @Serializable(with = EditsJson::class) val edits: List<Edit>,
         val now: Double,
     )
 
@@ -327,3 +325,9 @@ class BridgeDispatcher(
         private val JSON = Json { ignoreUnknownKeys = true }
     }
 }
+
+/** The generated [Transform]'s JSON form, for the page's `heartbeat` arguments. */
+private object TransformJson : KSerializer<Transform> by Transform.serializer()
+
+/** The generated [Edit]s' JSON form, for the page's `set_tiles` arguments. */
+private object EditsJson : KSerializer<List<Edit>> by ListSerializer(Edit.serializer())

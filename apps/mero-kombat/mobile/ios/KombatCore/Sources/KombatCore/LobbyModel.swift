@@ -113,7 +113,7 @@ public final class LobbyModel: ObservableObject {
         let summaries = await withTaskGroup(of: (String, ArenaSummary?).self) { group in
             for ref in refs {
                 group.addTask {
-                    let view = try? await KombatClient.bound(backend, contextId: ref.contextId).arena(now: nowMillis()).decoded(as: ArenaView.self)
+                    let view = try? await KombatClient.bound(backend, contextId: ref.contextId).arena(now: nowMillis())
                     return (ref.contextId, view.map(ArenaSummary.init))
                 }
             }
