@@ -29,7 +29,7 @@ include(":app")
 // ---------------------------------------------------------------------------
 //
 // The Calimero 1.0 client this app is built on (passkeys, the sealed channel, orgs and app
-// instances, presence, the consent page) is kotlin-sdk 0.4.0, which is not on Maven Central yet. So the
+// instances, presence, the consent page) is kotlin-sdk 2.0.0, which is not on Maven Central yet. So the
 // SDK is included as a build and its modules replace the `com.calimero.mero:*` coordinates the app
 // declares. Which checkout:
 //   1. `-PmeroKotlinSdkDir=/path` (or `meroKotlinSdkDir=` in ~/.gradle/gradle.properties),

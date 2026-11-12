@@ -14,8 +14,8 @@ let package = Package(
         .library(name: "PixartCore", targets: ["PixartCore"]),
     ],
     dependencies: [
-        // swift-sdk v0.7.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.7.0"),
+        // swift-sdk v2.0.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "2.0.0"),
     ],
     targets: [
         .target(

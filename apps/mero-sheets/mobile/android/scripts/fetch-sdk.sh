@@ -2,7 +2,7 @@
 # Check out the Calimero Kotlin SDK at the commit pinned in ../kotlin-sdk.ref, into ../.sdk/kotlin-sdk.
 #
 # settings.gradle.kts includes that checkout as a composite build (the Calimero 1.0 layer
-# the app uses is kotlin-sdk 0.4.0, which is not on Maven Central yet). Idempotent: an existing checkout already at
+# the app uses is kotlin-sdk 2.0.0, which is not on Maven Central yet). Idempotent: an existing checkout already at
 # the pinned commit is left alone; one at another commit is moved to it.
 #
 #   ./scripts/fetch-sdk.sh                 # the pinned commit
