@@ -717,5 +717,75 @@
     },
     "version": 1
   },
+  "types": {
+    "BoardInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "elementCount",
+          "u32"
+        ],
+        [
+          "memberCount",
+          "u32"
+        ],
+        [
+          "owner",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ElementPage": {
+      "fields": [
+        [
+          "items",
+          "list<Element>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LabelUpdate": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "label",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberRole": {
+      "fields": [
+        [
+          "member",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ],
+        [
+          "account",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

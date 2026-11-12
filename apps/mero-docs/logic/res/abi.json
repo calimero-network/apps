@@ -1047,5 +1047,328 @@
     },
     "version": 1
   },
+  "types": {
+    "Applied": {
+      "fields": [
+        [
+          "applied",
+          "bool"
+        ],
+        [
+          "token",
+          "option<string>"
+        ],
+        [
+          "spans",
+          "list<Span>"
+        ],
+        [
+          "anchor",
+          "option<string>"
+        ],
+        [
+          "anchorPos",
+          "option<u32>"
+        ],
+        [
+          "ids",
+          "list<Run>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Block": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "depth",
+          "u8"
+        ],
+        [
+          "attrs",
+          "BTreeMap<String,String>"
+        ],
+        [
+          "spans",
+          "list<Span>"
+        ],
+        [
+          "ids",
+          "list<Run>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Change": {
+      "kind": "enum",
+      "untagged": true,
+      "variants": [
+        {
+          "fields": [
+            [
+              "retain",
+              "u32"
+            ],
+            [
+              "attributes",
+              "option<AttrDelta>"
+            ]
+          ],
+          "name": "Retain"
+        },
+        {
+          "fields": [
+            [
+              "insert",
+              "string"
+            ],
+            [
+              "attributes",
+              "option<AttrDelta>"
+            ]
+          ],
+          "name": "Insert"
+        },
+        {
+          "fields": [
+            [
+              "delete",
+              "u32"
+            ]
+          ],
+          "name": "Delete"
+        }
+      ]
+    },
+    "CommentView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "docId",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocSearchHit": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "snippet",
+          "string"
+        ],
+        [
+          "score",
+          "f32"
+        ],
+        [
+          "archived",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocSearchPage": {
+      "fields": [
+        [
+          "hits",
+          "list<DocSearchHit>"
+        ],
+        [
+          "total",
+          "u64"
+        ],
+        [
+          "nextCursor",
+          "option<u32>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DocView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "tags",
+          "list<string>"
+        ],
+        [
+          "archived",
+          "bool"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "updatedBy",
+          "string"
+        ],
+        [
+          "canDelete",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Run": {
+      "fields": [
+        [
+          "replica",
+          "string"
+        ],
+        [
+          "counter",
+          "u32"
+        ],
+        [
+          "len",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Span": {
+      "fields": [
+        [
+          "text",
+          "string"
+        ],
+        [
+          "attributes",
+          "Attrs"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TagView": {
+      "fields": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "deleted",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TitleApplied": {
+      "fields": [
+        [
+          "applied",
+          "bool"
+        ],
+        [
+          "token",
+          "option<string>"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "anchor",
+          "option<string>"
+        ],
+        [
+          "anchorPos",
+          "option<u32>"
+        ],
+        [
+          "ids",
+          "list<Run>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TitleState": {
+      "fields": [
+        [
+          "text",
+          "string"
+        ],
+        [
+          "ids",
+          "list<Run>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ViewView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "query",
+          "string"
+        ],
+        [
+          "createdBy",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

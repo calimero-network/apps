@@ -72,7 +72,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
     Promise.all([
       (pix.listRoles() as Promise<ContractMemberRole[]>).catch(() => [] as ContractMemberRole[]),
       (pix.myRole() as Promise<string>).catch(() => ""),
-      (pix.getDocument() as Promise<DocumentInfo>).catch(() => null),
+      pix.getDocument().catch(() => null),
     ]).then(([roles, mine, document]) => {
       if (cancelled) return;
       const map: Record<string, string> = {};
