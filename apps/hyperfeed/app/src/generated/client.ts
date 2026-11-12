@@ -4,29 +4,177 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ActionDef`: the ABI names it without its shape. */
-export type ActionDef = unknown;
+/** The app type `ActionDef`. */
+export interface ActionDef {
+  id: string;
+  label: string;
+  description: string;
+  category: string;
+  writes: boolean;
+  methods: string[];
+}
 
-/** The app type `ActionInput`: the ABI names it without its shape. */
-export type ActionInput = unknown;
+/** The app type `ActionInput`. */
+export interface ActionInput {
+  app: string;
+  source_context: string;
+  source_label: string;
+  method: string;
+  category: string;
+  writes: boolean;
+  undoable: boolean;
+  title: string;
+  body: string;
+  why: string;
+  outcome: string;
+  intent_hash: string;
+  executor: string;
+  note: string;
+  chain: string;
+  ask: Ask;
+  grant: string;
+  subject: string;
+  send_call: string;
+}
+
+/** The app type `ActionModeView`. */
+export interface ActionModeView {
+  app: string;
+  action: string;
+  mode: string;
+}
+
+/** The app type `Ask`. */
+export interface Ask {
+  kind: string;
+  prompt: string;
+  options: string[];
+  draft: string;
+}
+
+/** The app type `CheckpointInput`. */
+export interface CheckpointInput {
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+}
+
+/** The app type `Folder`. */
+export interface Folder {
+  path: string;
+  write: boolean;
+}
+
+/** The app type `GuardView`. */
+export interface GuardView {
+  category: string;
+  enabled: boolean;
+}
+
+/** The app type `LinkInput`. */
+export interface LinkInput {
+  subject: string;
+  label: string;
+  by: string;
+}
+
+/** The app type `NotificationInput`. */
+export interface NotificationInput {
+  key: string;
+  app: string;
+  source_context: string;
+  source_label: string;
+  from: string;
+  title: string;
+  body: string;
+  event: string;
+  needs_you: boolean;
+  chain: string;
+  ask: Ask;
+  item_type: string;
+  fields: string;
+  reply_call: string;
+}
+
+/** The app type `PolicyView`. */
+export interface PolicyView {
+  app: string;
+  agent: string;
+  notifications: string;
+}
+
+/** The app type `PushDeviceInput`. */
+export interface PushDeviceInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  quiet: boolean;
+  key: string;
+}
+
+/** The app type `ReachLine`. */
+export interface ReachLine {
+  serves: string;
+  profile: string;
+  model: string;
+  attested: boolean;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+}
+
+/** The app type `SettingsView`. */
+export interface SettingsView {
+  owner: string;
+  paused: boolean;
+  policies: PolicyView[];
+  guards: GuardView[];
+  agents: AgentView[];
+  rules: RuleView[];
+  rule_proposals: RuleProposalView[];
+  message_modes: string[];
+  access: AccessView[];
+  reach: ReachView[];
+  assignments: AssignmentView[];
+  agent_rules: AgentRuleView[];
+  action_modes: ActionModeView[];
+  agent_accounts: AgentAccountView[];
+}
+
+/** The app type `Verdict`. */
+export interface Verdict {
+  decision: string;
+  reason: string;
+}
+
+/** The app type `AccessView`: the ABI names it without its shape. */
+export type AccessView = unknown;
 
 /** The app type `ActionSetView`: the ABI names it without its shape. */
 export type ActionSetView = unknown;
 
+/** The app type `AgentAccountView`: the ABI names it without its shape. */
+export type AgentAccountView = unknown;
+
 /** The app type `AgentRuleView`: the ABI names it without its shape. */
 export type AgentRuleView = unknown;
 
-/** The app type `Ask`: the ABI names it without its shape. */
-export type Ask = unknown;
+/** The app type `AgentView`: the ABI names it without its shape. */
+export type AgentView = unknown;
+
+/** The app type `AssignmentView`: the ABI names it without its shape. */
+export type AssignmentView = unknown;
 
 /** The app type `Attachment`: the ABI names it without its shape. */
 export type Attachment = unknown;
 
 /** The app type `AutorunView`: the ABI names it without its shape. */
 export type AutorunView = unknown;
-
-/** The app type `CheckpointInput`: the ABI names it without its shape. */
-export type CheckpointInput = unknown;
 
 /** The app type `CheckpointView`: the ABI names it without its shape. */
 export type CheckpointView = unknown;
@@ -37,17 +185,11 @@ export type FeedItem = unknown;
 /** The app type `FeedPage`: the ABI names it without its shape. */
 export type FeedPage = unknown;
 
-/** The app type `Folder`: the ABI names it without its shape. */
-export type Folder = unknown;
-
 /** The app type `LeaseView`: the ABI names it without its shape. */
 export type LeaseView = unknown;
 
 /** The app type `LensView`: the ABI names it without its shape. */
 export type LensView = unknown;
-
-/** The app type `LinkInput`: the ABI names it without its shape. */
-export type LinkInput = unknown;
 
 /** The app type `LinkView`: the ABI names it without its shape. */
 export type LinkView = unknown;
@@ -58,20 +200,11 @@ export type MemoInput = unknown;
 /** The app type `MemoView`: the ABI names it without its shape. */
 export type MemoView = unknown;
 
-/** The app type `NotificationInput`: the ABI names it without its shape. */
-export type NotificationInput = unknown;
-
-/** The app type `PolicyView`: the ABI names it without its shape. */
-export type PolicyView = unknown;
-
 /** The app type `PrInput`: the ABI names it without its shape. */
 export type PrInput = unknown;
 
 /** The app type `PrView`: the ABI names it without its shape. */
 export type PrView = unknown;
-
-/** The app type `PushDeviceInput`: the ABI names it without its shape. */
-export type PushDeviceInput = unknown;
 
 /** The app type `PushDeviceView`: the ABI names it without its shape. */
 export type PushDeviceView = unknown;
@@ -79,17 +212,14 @@ export type PushDeviceView = unknown;
 /** The app type `PushKeyView`: the ABI names it without its shape. */
 export type PushKeyView = unknown;
 
-/** The app type `ReachLine`: the ABI names it without its shape. */
-export type ReachLine = unknown;
+/** The app type `ReachView`: the ABI names it without its shape. */
+export type ReachView = unknown;
 
 /** The app type `RuleProposalView`: the ABI names it without its shape. */
 export type RuleProposalView = unknown;
 
 /** The app type `RuleView`: the ABI names it without its shape. */
 export type RuleView = unknown;
-
-/** The app type `SettingsView`: the ABI names it without its shape. */
-export type SettingsView = unknown;
 
 /** The app type `SituationInput`: the ABI names it without its shape. */
 export type SituationInput = unknown;
@@ -99,9 +229,6 @@ export type SituationView = unknown;
 
 /** The app type `TurnStep`: the ABI names it without its shape. */
 export type TurnStep = unknown;
-
-/** The app type `Verdict`: the ABI names it without its shape. */
-export type Verdict = unknown;
 
 /** The app type `WatchInput`: the ABI names it without its shape. */
 export type WatchInput = unknown;

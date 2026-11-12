@@ -167,10 +167,9 @@ export function u64(n: number): string {
 }
 
 /**
- * The contract's answer as the screens read it. The ABI names its records
- * without their shapes, so the generated client answers `unknown`; the
- * records are `hyperfeedTypes`' (v1's, field for field), and each answer is
- * read as the type of the {@link FeedBackend} method returning it.
+ * The contract's answer as the screens read it: `hyperfeedTypes`' records
+ * (v1's, field for field), each answer read as the type of the
+ * {@link FeedBackend} method returning it.
  */
 function as<T>(answer: Promise<unknown>): Promise<T> {
   return answer as Promise<T>;

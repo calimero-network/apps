@@ -176,6 +176,10 @@
       }
     },
     "schemas": {
+      "AccessView": {
+        "description": "The app type `AccessView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AccessView"
+      },
       "ActionChangedEvent": {
         "properties": {
           "id": {
@@ -192,12 +196,143 @@
         "type": "object"
       },
       "ActionDef": {
-        "description": "The app type `ActionDef`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "writes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "category",
+          "writes",
+          "methods"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ActionDef"
       },
       "ActionInput": {
-        "description": "The app type `ActionInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "ask": {
+            "$ref": "#/components/schemas/Ask"
+          },
+          "body": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "executor": {
+            "type": "string"
+          },
+          "grant": {
+            "type": "string"
+          },
+          "intent_hash": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "send_call": {
+            "type": "string"
+          },
+          "source_context": {
+            "type": "string"
+          },
+          "source_label": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "undoable": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": "string"
+          },
+          "writes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app",
+          "source_context",
+          "source_label",
+          "method",
+          "category",
+          "writes",
+          "undoable",
+          "title",
+          "body",
+          "why",
+          "outcome",
+          "intent_hash",
+          "executor",
+          "note",
+          "chain",
+          "ask",
+          "grant",
+          "subject",
+          "send_call"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ActionInput"
+      },
+      "ActionModeView": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "app": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "action",
+          "mode"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "ActionModeView"
       },
       "ActionRecordedEvent": {
         "properties": {
@@ -634,6 +769,10 @@
         ],
         "type": "object"
       },
+      "AgentAccountView": {
+        "description": "The app type `AgentAccountView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AgentAccountView"
+      },
       "AgentAckArgs": {
         "description": "The arguments of `agentAck`, by name.",
         "properties": {
@@ -1033,6 +1172,10 @@
         ],
         "type": "object"
       },
+      "AgentView": {
+        "description": "The app type `AgentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AgentView"
+      },
       "AgentWorkArgs": {
         "description": "The arguments of `agentWork`, by name.",
         "properties": {
@@ -1377,8 +1520,35 @@
         "type": "object"
       },
       "Ask": {
-        "description": "The app type `Ask`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "draft": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "prompt",
+          "options",
+          "draft"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Ask"
+      },
+      "AssignmentView": {
+        "description": "The app type `AssignmentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AssignmentView"
       },
       "Attachment": {
         "description": "The app type `Attachment`. The ABI names it without describing its shape, so any JSON value is accepted here.",
@@ -2093,7 +2263,51 @@
         "type": "object"
       },
       "CheckpointInput": {
-        "description": "The app type `CheckpointInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "branches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "done": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          },
+          "prs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "worktrees": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "done",
+          "next",
+          "branches",
+          "worktrees",
+          "prs",
+          "questions",
+          "author"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CheckpointInput"
       },
       "CheckpointRequest": {
@@ -3503,7 +3717,19 @@
         "type": "object"
       },
       "Folder": {
-        "description": "The app type `Folder`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "write": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "write"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Folder"
       },
       "ForbiddenError": {
@@ -3516,6 +3742,22 @@
           "message"
         ],
         "type": "object"
+      },
+      "GuardView": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category",
+          "enabled"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "GuardView"
       },
       "InvalidError": {
         "properties": {
@@ -3670,7 +3912,23 @@
         "type": "object"
       },
       "LinkInput": {
-        "description": "The app type `LinkInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "by": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "label",
+          "by"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LinkInput"
       },
       "LinkView": {
@@ -4003,7 +4261,67 @@
         "type": "object"
       },
       "NotificationInput": {
-        "description": "The app type `NotificationInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "ask": {
+            "$ref": "#/components/schemas/Ask"
+          },
+          "body": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "item_type": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "needs_you": {
+            "type": "boolean"
+          },
+          "reply_call": {
+            "type": "string"
+          },
+          "source_context": {
+            "type": "string"
+          },
+          "source_label": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "app",
+          "source_context",
+          "source_label",
+          "from",
+          "title",
+          "body",
+          "event",
+          "needs_you",
+          "chain",
+          "ask",
+          "item_type",
+          "fields",
+          "reply_call"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "NotificationInput"
       },
       "NotificationRecordedEvent": {
@@ -4085,7 +4403,23 @@
         "type": "object"
       },
       "PolicyView": {
-        "description": "The app type `PolicyView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "app": {
+            "type": "string"
+          },
+          "notifications": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "agent",
+          "notifications"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PolicyView"
       },
       "PrChangedEvent": {
@@ -4377,7 +4711,35 @@
         "type": "object"
       },
       "PushDeviceInput": {
-        "description": "The app type `PushDeviceInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "auth": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "p256dh": {
+            "type": "string"
+          },
+          "quiet": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "endpoint",
+          "p256dh",
+          "auth",
+          "name",
+          "quiet",
+          "key"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PushDeviceInput"
       },
       "PushDeviceView": {
@@ -4558,8 +4920,47 @@
         "type": "object"
       },
       "ReachLine": {
-        "description": "The app type `ReachLine`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "attested": {
+            "type": "boolean"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/Folder"
+            },
+            "type": "array"
+          },
+          "model": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "serves": {
+            "type": "string"
+          },
+          "shell": {
+            "type": "boolean"
+          },
+          "web": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "serves",
+          "profile",
+          "model",
+          "attested",
+          "folders",
+          "shell",
+          "web"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ReachLine"
+      },
+      "ReachView": {
+        "description": "The app type `ReachView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "ReachView"
       },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
@@ -6087,7 +6488,103 @@
         "type": "object"
       },
       "SettingsView": {
-        "description": "The app type `SettingsView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "access": {
+            "items": {
+              "$ref": "#/components/schemas/AccessView"
+            },
+            "type": "array"
+          },
+          "action_modes": {
+            "items": {
+              "$ref": "#/components/schemas/ActionModeView"
+            },
+            "type": "array"
+          },
+          "agent_accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentAccountView"
+            },
+            "type": "array"
+          },
+          "agent_rules": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRuleView"
+            },
+            "type": "array"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentView"
+            },
+            "type": "array"
+          },
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentView"
+            },
+            "type": "array"
+          },
+          "guards": {
+            "items": {
+              "$ref": "#/components/schemas/GuardView"
+            },
+            "type": "array"
+          },
+          "message_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyView"
+            },
+            "type": "array"
+          },
+          "reach": {
+            "items": {
+              "$ref": "#/components/schemas/ReachView"
+            },
+            "type": "array"
+          },
+          "rule_proposals": {
+            "items": {
+              "$ref": "#/components/schemas/RuleProposalView"
+            },
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "owner",
+          "paused",
+          "policies",
+          "guards",
+          "agents",
+          "rules",
+          "rule_proposals",
+          "message_modes",
+          "access",
+          "reach",
+          "assignments",
+          "agent_rules",
+          "action_modes",
+          "agent_accounts"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SettingsView"
       },
       "SituationChangedEvent": {
@@ -6510,7 +7007,19 @@
         "type": "object"
       },
       "Verdict": {
-        "description": "The app type `Verdict`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "decision": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Verdict"
       },
       "WatchChangedEvent": {
