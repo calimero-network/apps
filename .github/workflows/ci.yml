@@ -844,8 +844,8 @@ jobs:
       - run: pnpm -r $PNPM_FILTER typecheck
 
       # A component app's `codegen` is core's `mero-app-build codegen` (its typed
-      # client from the committed ABI), at the tag scripts/install-mero-app-build.sh
-      # pins. Cached by that script's hash, so a run that does not move the tag
+      # client from the committed ABI), at the ref scripts/install-mero-app-build.sh
+      # pins. Cached by that script's hash, so a run that does not move the ref
       # does not compile it.
       - uses: actions/cache@v4
         with:

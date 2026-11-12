@@ -22,6 +22,11 @@ export type SenderCursor = unknown;
 /** The app type `StreamStats`: the ABI names it without its shape. */
 export type StreamStats = unknown;
 
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  name?: string | null;
+}
+
 /** The arguments of `encodeFrame`. */
 export interface EncodeFrameArgs {
   raw: string;
@@ -185,47 +190,164 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroStreamClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroStreamClient` implements, for a test double to stand in for it. */
+export interface MeroStreamApi {
+  /** call `encodeFrame`. */
+  encodeFrame(args: EncodeFrameArgs, options?: CallOptions): Promise<string>;
+  /** view `frameChecksum`. */
+  frameChecksum(args: FrameChecksumArgs, options?: ViewOptions): Promise<string | null>;
+  /** view `getChunks`. */
+  getChunks(args: GetChunksArgs, options?: ViewOptions): Promise<ChunkView[]>;
+  /** view `getFrame`. */
+  getFrame(args: GetFrameArgs, options?: ViewOptions): Promise<DecodedFrame[]>;
+  /** view `getLiveStats`. */
+  getLiveStats(options?: ViewOptions): Promise<LiveStats>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<Member[]>;
+  /** view `getStats`. */
+  getStats(options?: ViewOptions): Promise<StreamStats>;
+  /** view `isMemberAdmin`. */
+  isMemberAdmin(args: IsMemberAdminArgs, options?: ViewOptions): Promise<boolean>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<Member>;
+  /** view `keyframeCursors`. */
+  keyframeCursors(options?: ViewOptions): Promise<SenderCursor[]>;
+  /** call `postChunk`. */
+  postChunk(args: PostChunkArgs, options?: CallOptions): Promise<string>;
+  /** call `pruneChunks`. */
+  pruneChunks(args: PruneChunksArgs, options?: CallOptions): Promise<null>;
+  /** call `pruneFrames`. */
+  pruneFrames(args: PruneFramesArgs, options?: CallOptions): Promise<null>;
+  /** call `renameStream`. */
+  renameStream(args: RenameStreamArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroStreamClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroStreamRawApi {
+  /** call `encodeFrame`. */
+  encodeFrame(args: EncodeFrameArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `frameChecksum`. */
+  frameChecksum(args: FrameChecksumArgs, options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** view `getChunks`. */
+  getChunks(args: GetChunksArgs, options?: ViewOptions): Promise<ViewAnswer<ChunkView[]>>;
+  /** view `getFrame`. */
+  getFrame(args: GetFrameArgs, options?: ViewOptions): Promise<ViewAnswer<DecodedFrame[]>>;
+  /** view `getLiveStats`. */
+  getLiveStats(options?: ViewOptions): Promise<ViewAnswer<LiveStats>>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<ViewAnswer<Member[]>>;
+  /** view `getStats`. */
+  getStats(options?: ViewOptions): Promise<ViewAnswer<StreamStats>>;
+  /** view `isMemberAdmin`. */
+  isMemberAdmin(args: IsMemberAdminArgs, options?: ViewOptions): Promise<ViewAnswer<boolean>>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<CallAnswer<Member>>;
+  /** view `keyframeCursors`. */
+  keyframeCursors(options?: ViewOptions): Promise<ViewAnswer<SenderCursor[]>>;
+  /** call `postChunk`. */
+  postChunk(args: PostChunkArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `pruneChunks`. */
+  pruneChunks(args: PruneChunksArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `pruneFrames`. */
+  pruneFrames(args: PruneFramesArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `renameStream`. */
+  renameStream(args: RenameStreamArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroStreamClient<T extends AppCallTransport = AppTransport> implements MeroStreamApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroStreamRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      encodeFrame: (args, options = {}) => this.#call<string>('encodeFrame', args, options),
+      frameChecksum: (args, options = {}) => this.#view<string | null>('frameChecksum', args, options),
+      getChunks: (args, options = {}) => this.#view<ChunkView[]>('getChunks', args, options),
+      getFrame: (args, options = {}) => this.#view<DecodedFrame[]>('getFrame', args, options),
+      getLiveStats: (options = {}) => this.#view<LiveStats>('getLiveStats', {}, options),
+      getMembers: (options = {}) => this.#view<Member[]>('getMembers', {}, options),
+      getStats: (options = {}) => this.#view<StreamStats>('getStats', {}, options),
+      isMemberAdmin: (args, options = {}) => this.#view<boolean>('isMemberAdmin', args, options),
+      join: (args, options = {}) => this.#call<Member>('join', args, options),
+      keyframeCursors: (options = {}) => this.#view<SenderCursor[]>('keyframeCursors', {}, options),
+      postChunk: (args, options = {}) => this.#call<string>('postChunk', args, options),
+      pruneChunks: (args, options = {}) => this.#call<null>('pruneChunks', args, options),
+      pruneFrames: (args, options = {}) => this.#call<null>('pruneFrames', args, options),
+      renameStream: (args, options = {}) => this.#call<null>('renameStream', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -235,7 +357,8 @@ export class MeroStreamClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -243,76 +366,76 @@ export class MeroStreamClient {
 
   /** call `encodeFrame`. */
   async encodeFrame(args: EncodeFrameArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('encodeFrame', args, options)) as string;
+    return (await this.#call<string>('encodeFrame', args, options)).result;
   }
 
   /** view `frameChecksum`. */
   async frameChecksum(args: FrameChecksumArgs, options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('frameChecksum', args, options)) as string | null;
+    return (await this.#view<string | null>('frameChecksum', args, options)).result;
   }
 
   /** view `getChunks`. */
   async getChunks(args: GetChunksArgs, options: ViewOptions = {}): Promise<ChunkView[]> {
-    return (await this.#view('getChunks', args, options)) as ChunkView[];
+    return (await this.#view<ChunkView[]>('getChunks', args, options)).result;
   }
 
   /** view `getFrame`. */
   async getFrame(args: GetFrameArgs, options: ViewOptions = {}): Promise<DecodedFrame[]> {
-    return (await this.#view('getFrame', args, options)) as DecodedFrame[];
+    return (await this.#view<DecodedFrame[]>('getFrame', args, options)).result;
   }
 
   /** view `getLiveStats`. */
   async getLiveStats(options: ViewOptions = {}): Promise<LiveStats> {
-    return (await this.#view('getLiveStats', {}, options)) as LiveStats;
+    return (await this.#view<LiveStats>('getLiveStats', {}, options)).result;
   }
 
   /** view `getMembers`. */
   async getMembers(options: ViewOptions = {}): Promise<Member[]> {
-    return (await this.#view('getMembers', {}, options)) as Member[];
+    return (await this.#view<Member[]>('getMembers', {}, options)).result;
   }
 
   /** view `getStats`. */
   async getStats(options: ViewOptions = {}): Promise<StreamStats> {
-    return (await this.#view('getStats', {}, options)) as StreamStats;
+    return (await this.#view<StreamStats>('getStats', {}, options)).result;
   }
 
   /** view `isMemberAdmin`. */
   async isMemberAdmin(args: IsMemberAdminArgs, options: ViewOptions = {}): Promise<boolean> {
-    return (await this.#view('isMemberAdmin', args, options)) as boolean;
+    return (await this.#view<boolean>('isMemberAdmin', args, options)).result;
   }
 
   /** call `join`. */
   async join(args: JoinArgs, options: CallOptions = {}): Promise<Member> {
-    return (await this.#call('join', args, options)) as Member;
+    return (await this.#call<Member>('join', args, options)).result;
   }
 
   /** view `keyframeCursors`. */
   async keyframeCursors(options: ViewOptions = {}): Promise<SenderCursor[]> {
-    return (await this.#view('keyframeCursors', {}, options)) as SenderCursor[];
+    return (await this.#view<SenderCursor[]>('keyframeCursors', {}, options)).result;
   }
 
   /** call `postChunk`. */
   async postChunk(args: PostChunkArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('postChunk', args, options)) as string;
+    return (await this.#call<string>('postChunk', args, options)).result;
   }
 
   /** call `pruneChunks`. */
   async pruneChunks(args: PruneChunksArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('pruneChunks', args, options)) as null;
+    return (await this.#call<null>('pruneChunks', args, options)).result;
   }
 
   /** call `pruneFrames`. */
   async pruneFrames(args: PruneFramesArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('pruneFrames', args, options)) as null;
+    return (await this.#call<null>('pruneFrames', args, options)).result;
   }
 
   /** call `renameStream`. */
   async renameStream(args: RenameStreamArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('renameStream', args, options)) as null;
+    return (await this.#call<null>('renameStream', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroStreamClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

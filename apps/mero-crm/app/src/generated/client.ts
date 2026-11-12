@@ -330,47 +330,254 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroCrmClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroCrmClient` implements, for a test double to stand in for it. */
+export interface MeroCrmApi {
+  /** call `addActivity`. */
+  addActivity(args: AddActivityArgs, options?: CallOptions): Promise<string>;
+  /** call `addAutomation`. */
+  addAutomation(args: AddAutomationArgs, options?: CallOptions): Promise<string>;
+  /** call `addNote`. */
+  addNote(args: AddNoteArgs, options?: CallOptions): Promise<string>;
+  /** call `addStage`. */
+  addStage(args: AddStageArgs, options?: CallOptions): Promise<string>;
+  /** call `createContact`. */
+  createContact(args: CreateContactArgs, options?: CallOptions): Promise<string>;
+  /** call `createDeal`. */
+  createDeal(args: CreateDealArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteActivity`. */
+  deleteActivity(args: DeleteActivityArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteAutomation`. */
+  deleteAutomation(args: DeleteAutomationArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteContact`. */
+  deleteContact(args: DeleteContactArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteDeal`. */
+  deleteDeal(args: DeleteDealArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteNote`. */
+  deleteNote(args: DeleteNoteArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteStage`. */
+  deleteStage(args: DeleteStageArgs, options?: CallOptions): Promise<null>;
+  /** view `getDeal`. */
+  getDeal(args: GetDealArgs, options?: ViewOptions): Promise<DealDetail>;
+  /** view `getSettings`. */
+  getSettings(options?: ViewOptions): Promise<Settings>;
+  /** view `listActivities`. */
+  listActivities(args: ListActivitiesArgs, options?: ViewOptions): Promise<ActivityView[]>;
+  /** view `listAutomations`. */
+  listAutomations(options?: ViewOptions): Promise<AutomationView[]>;
+  /** view `listContacts`. */
+  listContacts(options?: ViewOptions): Promise<ContactView[]>;
+  /** view `listDeals`. */
+  listDeals(args: ListDealsArgs, options?: ViewOptions): Promise<DealView[]>;
+  /** view `listStages`. */
+  listStages(options?: ViewOptions): Promise<StageView[]>;
+  /** call `markLost`. */
+  markLost(args: MarkLostArgs, options?: CallOptions): Promise<null>;
+  /** call `markWon`. */
+  markWon(args: MarkWonArgs, options?: CallOptions): Promise<null>;
+  /** call `moveDeal`. */
+  moveDeal(args: MoveDealArgs, options?: CallOptions): Promise<null>;
+  /** call `reopenDeal`. */
+  reopenDeal(args: ReopenDealArgs, options?: CallOptions): Promise<null>;
+  /** call `reorderStages`. */
+  reorderStages(args: ReorderStagesArgs, options?: CallOptions): Promise<null>;
+  /** call `rescheduleActivity`. */
+  rescheduleActivity(args: RescheduleActivityArgs, options?: CallOptions): Promise<null>;
+  /** call `setActivityDone`. */
+  setActivityDone(args: SetActivityDoneArgs, options?: CallOptions): Promise<null>;
+  /** call `setAutomationEnabled`. */
+  setAutomationEnabled(args: SetAutomationEnabledArgs, options?: CallOptions): Promise<null>;
+  /** call `setCurrency`. */
+  setCurrency(args: SetCurrencyArgs, options?: CallOptions): Promise<null>;
+  /** call `setRottingDays`. */
+  setRottingDays(args: SetRottingDaysArgs, options?: CallOptions): Promise<null>;
+  /** call `updateContact`. */
+  updateContact(args: UpdateContactArgs, options?: CallOptions): Promise<null>;
+  /** call `updateDeal`. */
+  updateDeal(args: UpdateDealArgs, options?: CallOptions): Promise<null>;
+  /** call `updateStage`. */
+  updateStage(args: UpdateStageArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroCrmClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroCrmRawApi {
+  /** call `addActivity`. */
+  addActivity(args: AddActivityArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `addAutomation`. */
+  addAutomation(args: AddAutomationArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `addNote`. */
+  addNote(args: AddNoteArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `addStage`. */
+  addStage(args: AddStageArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `createContact`. */
+  createContact(args: CreateContactArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `createDeal`. */
+  createDeal(args: CreateDealArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteActivity`. */
+  deleteActivity(args: DeleteActivityArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteAutomation`. */
+  deleteAutomation(args: DeleteAutomationArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteContact`. */
+  deleteContact(args: DeleteContactArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteDeal`. */
+  deleteDeal(args: DeleteDealArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteNote`. */
+  deleteNote(args: DeleteNoteArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteStage`. */
+  deleteStage(args: DeleteStageArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getDeal`. */
+  getDeal(args: GetDealArgs, options?: ViewOptions): Promise<ViewAnswer<DealDetail>>;
+  /** view `getSettings`. */
+  getSettings(options?: ViewOptions): Promise<ViewAnswer<Settings>>;
+  /** view `listActivities`. */
+  listActivities(args: ListActivitiesArgs, options?: ViewOptions): Promise<ViewAnswer<ActivityView[]>>;
+  /** view `listAutomations`. */
+  listAutomations(options?: ViewOptions): Promise<ViewAnswer<AutomationView[]>>;
+  /** view `listContacts`. */
+  listContacts(options?: ViewOptions): Promise<ViewAnswer<ContactView[]>>;
+  /** view `listDeals`. */
+  listDeals(args: ListDealsArgs, options?: ViewOptions): Promise<ViewAnswer<DealView[]>>;
+  /** view `listStages`. */
+  listStages(options?: ViewOptions): Promise<ViewAnswer<StageView[]>>;
+  /** call `markLost`. */
+  markLost(args: MarkLostArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `markWon`. */
+  markWon(args: MarkWonArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `moveDeal`. */
+  moveDeal(args: MoveDealArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `reopenDeal`. */
+  reopenDeal(args: ReopenDealArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `reorderStages`. */
+  reorderStages(args: ReorderStagesArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `rescheduleActivity`. */
+  rescheduleActivity(args: RescheduleActivityArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setActivityDone`. */
+  setActivityDone(args: SetActivityDoneArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setAutomationEnabled`. */
+  setAutomationEnabled(args: SetAutomationEnabledArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setCurrency`. */
+  setCurrency(args: SetCurrencyArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setRottingDays`. */
+  setRottingDays(args: SetRottingDaysArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `updateContact`. */
+  updateContact(args: UpdateContactArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `updateDeal`. */
+  updateDeal(args: UpdateDealArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `updateStage`. */
+  updateStage(args: UpdateStageArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroCrmClient<T extends AppCallTransport = AppTransport> implements MeroCrmApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroCrmRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      addActivity: (args, options = {}) => this.#call<string>('addActivity', args, options),
+      addAutomation: (args, options = {}) => this.#call<string>('addAutomation', args, options),
+      addNote: (args, options = {}) => this.#call<string>('addNote', args, options),
+      addStage: (args, options = {}) => this.#call<string>('addStage', args, options),
+      createContact: (args, options = {}) => this.#call<string>('createContact', args, options),
+      createDeal: (args, options = {}) => this.#call<string>('createDeal', args, options),
+      deleteActivity: (args, options = {}) => this.#call<null>('deleteActivity', args, options),
+      deleteAutomation: (args, options = {}) => this.#call<null>('deleteAutomation', args, options),
+      deleteContact: (args, options = {}) => this.#call<null>('deleteContact', args, options),
+      deleteDeal: (args, options = {}) => this.#call<null>('deleteDeal', args, options),
+      deleteNote: (args, options = {}) => this.#call<null>('deleteNote', args, options),
+      deleteStage: (args, options = {}) => this.#call<null>('deleteStage', args, options),
+      getDeal: (args, options = {}) => this.#view<DealDetail>('getDeal', args, options),
+      getSettings: (options = {}) => this.#view<Settings>('getSettings', {}, options),
+      listActivities: (args, options = {}) => this.#view<ActivityView[]>('listActivities', args, options),
+      listAutomations: (options = {}) => this.#view<AutomationView[]>('listAutomations', {}, options),
+      listContacts: (options = {}) => this.#view<ContactView[]>('listContacts', {}, options),
+      listDeals: (args, options = {}) => this.#view<DealView[]>('listDeals', args, options),
+      listStages: (options = {}) => this.#view<StageView[]>('listStages', {}, options),
+      markLost: (args, options = {}) => this.#call<null>('markLost', args, options),
+      markWon: (args, options = {}) => this.#call<null>('markWon', args, options),
+      moveDeal: (args, options = {}) => this.#call<null>('moveDeal', args, options),
+      reopenDeal: (args, options = {}) => this.#call<null>('reopenDeal', args, options),
+      reorderStages: (args, options = {}) => this.#call<null>('reorderStages', args, options),
+      rescheduleActivity: (args, options = {}) => this.#call<null>('rescheduleActivity', args, options),
+      setActivityDone: (args, options = {}) => this.#call<null>('setActivityDone', args, options),
+      setAutomationEnabled: (args, options = {}) => this.#call<null>('setAutomationEnabled', args, options),
+      setCurrency: (args, options = {}) => this.#call<null>('setCurrency', args, options),
+      setRottingDays: (args, options = {}) => this.#call<null>('setRottingDays', args, options),
+      updateContact: (args, options = {}) => this.#call<null>('updateContact', args, options),
+      updateDeal: (args, options = {}) => this.#call<null>('updateDeal', args, options),
+      updateStage: (args, options = {}) => this.#call<null>('updateStage', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -380,7 +587,8 @@ export class MeroCrmClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -388,166 +596,166 @@ export class MeroCrmClient {
 
   /** call `addActivity`. */
   async addActivity(args: AddActivityArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addActivity', args, options)) as string;
+    return (await this.#call<string>('addActivity', args, options)).result;
   }
 
   /** call `addAutomation`. */
   async addAutomation(args: AddAutomationArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addAutomation', args, options)) as string;
+    return (await this.#call<string>('addAutomation', args, options)).result;
   }
 
   /** call `addNote`. */
   async addNote(args: AddNoteArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addNote', args, options)) as string;
+    return (await this.#call<string>('addNote', args, options)).result;
   }
 
   /** call `addStage`. */
   async addStage(args: AddStageArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addStage', args, options)) as string;
+    return (await this.#call<string>('addStage', args, options)).result;
   }
 
   /** call `createContact`. */
   async createContact(args: CreateContactArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createContact', args, options)) as string;
+    return (await this.#call<string>('createContact', args, options)).result;
   }
 
   /** call `createDeal`. */
   async createDeal(args: CreateDealArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createDeal', args, options)) as string;
+    return (await this.#call<string>('createDeal', args, options)).result;
   }
 
   /** call `deleteActivity`. */
   async deleteActivity(args: DeleteActivityArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteActivity', args, options)) as null;
+    return (await this.#call<null>('deleteActivity', args, options)).result;
   }
 
   /** call `deleteAutomation`. */
   async deleteAutomation(args: DeleteAutomationArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteAutomation', args, options)) as null;
+    return (await this.#call<null>('deleteAutomation', args, options)).result;
   }
 
   /** call `deleteContact`. */
   async deleteContact(args: DeleteContactArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteContact', args, options)) as null;
+    return (await this.#call<null>('deleteContact', args, options)).result;
   }
 
   /** call `deleteDeal`. */
   async deleteDeal(args: DeleteDealArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteDeal', args, options)) as null;
+    return (await this.#call<null>('deleteDeal', args, options)).result;
   }
 
   /** call `deleteNote`. */
   async deleteNote(args: DeleteNoteArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteNote', args, options)) as null;
+    return (await this.#call<null>('deleteNote', args, options)).result;
   }
 
   /** call `deleteStage`. */
   async deleteStage(args: DeleteStageArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteStage', args, options)) as null;
+    return (await this.#call<null>('deleteStage', args, options)).result;
   }
 
   /** view `getDeal`. */
   async getDeal(args: GetDealArgs, options: ViewOptions = {}): Promise<DealDetail> {
-    return (await this.#view('getDeal', args, options)) as DealDetail;
+    return (await this.#view<DealDetail>('getDeal', args, options)).result;
   }
 
   /** view `getSettings`. */
   async getSettings(options: ViewOptions = {}): Promise<Settings> {
-    return (await this.#view('getSettings', {}, options)) as Settings;
+    return (await this.#view<Settings>('getSettings', {}, options)).result;
   }
 
   /** view `listActivities`. */
   async listActivities(args: ListActivitiesArgs, options: ViewOptions = {}): Promise<ActivityView[]> {
-    return (await this.#view('listActivities', args, options)) as ActivityView[];
+    return (await this.#view<ActivityView[]>('listActivities', args, options)).result;
   }
 
   /** view `listAutomations`. */
   async listAutomations(options: ViewOptions = {}): Promise<AutomationView[]> {
-    return (await this.#view('listAutomations', {}, options)) as AutomationView[];
+    return (await this.#view<AutomationView[]>('listAutomations', {}, options)).result;
   }
 
   /** view `listContacts`. */
   async listContacts(options: ViewOptions = {}): Promise<ContactView[]> {
-    return (await this.#view('listContacts', {}, options)) as ContactView[];
+    return (await this.#view<ContactView[]>('listContacts', {}, options)).result;
   }
 
   /** view `listDeals`. */
   async listDeals(args: ListDealsArgs, options: ViewOptions = {}): Promise<DealView[]> {
-    return (await this.#view('listDeals', args, options)) as DealView[];
+    return (await this.#view<DealView[]>('listDeals', args, options)).result;
   }
 
   /** view `listStages`. */
   async listStages(options: ViewOptions = {}): Promise<StageView[]> {
-    return (await this.#view('listStages', {}, options)) as StageView[];
+    return (await this.#view<StageView[]>('listStages', {}, options)).result;
   }
 
   /** call `markLost`. */
   async markLost(args: MarkLostArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('markLost', args, options)) as null;
+    return (await this.#call<null>('markLost', args, options)).result;
   }
 
   /** call `markWon`. */
   async markWon(args: MarkWonArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('markWon', args, options)) as null;
+    return (await this.#call<null>('markWon', args, options)).result;
   }
 
   /** call `moveDeal`. */
   async moveDeal(args: MoveDealArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('moveDeal', args, options)) as null;
+    return (await this.#call<null>('moveDeal', args, options)).result;
   }
 
   /** call `reopenDeal`. */
   async reopenDeal(args: ReopenDealArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('reopenDeal', args, options)) as null;
+    return (await this.#call<null>('reopenDeal', args, options)).result;
   }
 
   /** call `reorderStages`. */
   async reorderStages(args: ReorderStagesArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('reorderStages', args, options)) as null;
+    return (await this.#call<null>('reorderStages', args, options)).result;
   }
 
   /** call `rescheduleActivity`. */
   async rescheduleActivity(args: RescheduleActivityArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('rescheduleActivity', args, options)) as null;
+    return (await this.#call<null>('rescheduleActivity', args, options)).result;
   }
 
   /** call `setActivityDone`. */
   async setActivityDone(args: SetActivityDoneArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setActivityDone', args, options)) as null;
+    return (await this.#call<null>('setActivityDone', args, options)).result;
   }
 
   /** call `setAutomationEnabled`. */
   async setAutomationEnabled(args: SetAutomationEnabledArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setAutomationEnabled', args, options)) as null;
+    return (await this.#call<null>('setAutomationEnabled', args, options)).result;
   }
 
   /** call `setCurrency`. */
   async setCurrency(args: SetCurrencyArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setCurrency', args, options)) as null;
+    return (await this.#call<null>('setCurrency', args, options)).result;
   }
 
   /** call `setRottingDays`. */
   async setRottingDays(args: SetRottingDaysArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setRottingDays', args, options)) as null;
+    return (await this.#call<null>('setRottingDays', args, options)).result;
   }
 
   /** call `updateContact`. */
   async updateContact(args: UpdateContactArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('updateContact', args, options)) as null;
+    return (await this.#call<null>('updateContact', args, options)).result;
   }
 
   /** call `updateDeal`. */
   async updateDeal(args: UpdateDealArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('updateDeal', args, options)) as null;
+    return (await this.#call<null>('updateDeal', args, options)).result;
   }
 
   /** call `updateStage`. */
   async updateStage(args: UpdateStageArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('updateStage', args, options)) as null;
+    return (await this.#call<null>('updateStage', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroCrmClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

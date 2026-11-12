@@ -218,47 +218,179 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroForumClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroForumClient` implements, for a test double to stand in for it. */
+export interface MeroForumApi {
+  /** call `createComment`. */
+  createComment(args: CreateCommentArgs, options?: CallOptions): Promise<string>;
+  /** call `createPost`. */
+  createPost(args: CreatePostArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `deletePost`. */
+  deletePost(args: DeletePostArgs, options?: CallOptions): Promise<null>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `editPost`. */
+  editPost(args: EditPostArgs, options?: CallOptions): Promise<null>;
+  /** view `getNickname`. */
+  getNickname(args: GetNicknameArgs, options?: ViewOptions): Promise<string>;
+  /** view `getPost`. */
+  getPost(args: GetPostArgs, options?: ViewOptions): Promise<PostView>;
+  /** view `listComments`. */
+  listComments(args: ListCommentsArgs, options?: ViewOptions): Promise<CommentPage>;
+  /** view `listPosts`. */
+  listPosts(args: ListPostsArgs, options?: ViewOptions): Promise<PostPage>;
+  /** call `moderateComment`. */
+  moderateComment(args: ModerateCommentArgs, options?: CallOptions): Promise<null>;
+  /** call `moderatePost`. */
+  moderatePost(args: ModeratePostArgs, options?: CallOptions): Promise<null>;
+  /** view `moderators`. */
+  moderators(options?: ViewOptions): Promise<string[]>;
+  /** call `setModerators`. */
+  setModerators(args: SetModeratorsArgs, options?: CallOptions): Promise<null>;
+  /** call `setNickname`. */
+  setNickname(args: SetNicknameArgs, options?: CallOptions): Promise<null>;
+  /** call `vote`. */
+  vote(args: VoteArgs, options?: CallOptions): Promise<null>;
+  /** call `voteComment`. */
+  voteComment(args: VoteCommentArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroForumClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroForumRawApi {
+  /** call `createComment`. */
+  createComment(args: CreateCommentArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `createPost`. */
+  createPost(args: CreatePostArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteComment`. */
+  deleteComment(args: DeleteCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deletePost`. */
+  deletePost(args: DeletePostArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editComment`. */
+  editComment(args: EditCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `editPost`. */
+  editPost(args: EditPostArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getNickname`. */
+  getNickname(args: GetNicknameArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getPost`. */
+  getPost(args: GetPostArgs, options?: ViewOptions): Promise<ViewAnswer<PostView>>;
+  /** view `listComments`. */
+  listComments(args: ListCommentsArgs, options?: ViewOptions): Promise<ViewAnswer<CommentPage>>;
+  /** view `listPosts`. */
+  listPosts(args: ListPostsArgs, options?: ViewOptions): Promise<ViewAnswer<PostPage>>;
+  /** call `moderateComment`. */
+  moderateComment(args: ModerateCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `moderatePost`. */
+  moderatePost(args: ModeratePostArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `moderators`. */
+  moderators(options?: ViewOptions): Promise<ViewAnswer<string[]>>;
+  /** call `setModerators`. */
+  setModerators(args: SetModeratorsArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setNickname`. */
+  setNickname(args: SetNicknameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `vote`. */
+  vote(args: VoteArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `voteComment`. */
+  voteComment(args: VoteCommentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroForumClient<T extends AppCallTransport = AppTransport> implements MeroForumApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroForumRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      createComment: (args, options = {}) => this.#call<string>('createComment', args, options),
+      createPost: (args, options = {}) => this.#call<string>('createPost', args, options),
+      deleteComment: (args, options = {}) => this.#call<null>('deleteComment', args, options),
+      deletePost: (args, options = {}) => this.#call<null>('deletePost', args, options),
+      editComment: (args, options = {}) => this.#call<null>('editComment', args, options),
+      editPost: (args, options = {}) => this.#call<null>('editPost', args, options),
+      getNickname: (args, options = {}) => this.#view<string>('getNickname', args, options),
+      getPost: (args, options = {}) => this.#view<PostView>('getPost', args, options),
+      listComments: (args, options = {}) => this.#view<CommentPage>('listComments', args, options),
+      listPosts: (args, options = {}) => this.#view<PostPage>('listPosts', args, options),
+      moderateComment: (args, options = {}) => this.#call<null>('moderateComment', args, options),
+      moderatePost: (args, options = {}) => this.#call<null>('moderatePost', args, options),
+      moderators: (options = {}) => this.#view<string[]>('moderators', {}, options),
+      setModerators: (args, options = {}) => this.#call<null>('setModerators', args, options),
+      setNickname: (args, options = {}) => this.#call<null>('setNickname', args, options),
+      vote: (args, options = {}) => this.#call<null>('vote', args, options),
+      voteComment: (args, options = {}) => this.#call<null>('voteComment', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -268,7 +400,8 @@ export class MeroForumClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -276,91 +409,91 @@ export class MeroForumClient {
 
   /** call `createComment`. */
   async createComment(args: CreateCommentArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createComment', args, options)) as string;
+    return (await this.#call<string>('createComment', args, options)).result;
   }
 
   /** call `createPost`. */
   async createPost(args: CreatePostArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createPost', args, options)) as string;
+    return (await this.#call<string>('createPost', args, options)).result;
   }
 
   /** call `deleteComment`. */
   async deleteComment(args: DeleteCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteComment', args, options)) as null;
+    return (await this.#call<null>('deleteComment', args, options)).result;
   }
 
   /** call `deletePost`. */
   async deletePost(args: DeletePostArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deletePost', args, options)) as null;
+    return (await this.#call<null>('deletePost', args, options)).result;
   }
 
   /** call `editComment`. */
   async editComment(args: EditCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editComment', args, options)) as null;
+    return (await this.#call<null>('editComment', args, options)).result;
   }
 
   /** call `editPost`. */
   async editPost(args: EditPostArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('editPost', args, options)) as null;
+    return (await this.#call<null>('editPost', args, options)).result;
   }
 
   /** view `getNickname`. */
   async getNickname(args: GetNicknameArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getNickname', args, options)) as string;
+    return (await this.#view<string>('getNickname', args, options)).result;
   }
 
   /** view `getPost`. */
   async getPost(args: GetPostArgs, options: ViewOptions = {}): Promise<PostView> {
-    return (await this.#view('getPost', args, options)) as PostView;
+    return (await this.#view<PostView>('getPost', args, options)).result;
   }
 
   /** view `listComments`. */
   async listComments(args: ListCommentsArgs, options: ViewOptions = {}): Promise<CommentPage> {
-    return (await this.#view('listComments', args, options)) as CommentPage;
+    return (await this.#view<CommentPage>('listComments', args, options)).result;
   }
 
   /** view `listPosts`. */
   async listPosts(args: ListPostsArgs, options: ViewOptions = {}): Promise<PostPage> {
-    return (await this.#view('listPosts', args, options)) as PostPage;
+    return (await this.#view<PostPage>('listPosts', args, options)).result;
   }
 
   /** call `moderateComment`. */
   async moderateComment(args: ModerateCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('moderateComment', args, options)) as null;
+    return (await this.#call<null>('moderateComment', args, options)).result;
   }
 
   /** call `moderatePost`. */
   async moderatePost(args: ModeratePostArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('moderatePost', args, options)) as null;
+    return (await this.#call<null>('moderatePost', args, options)).result;
   }
 
   /** view `moderators`. */
   async moderators(options: ViewOptions = {}): Promise<string[]> {
-    return (await this.#view('moderators', {}, options)) as string[];
+    return (await this.#view<string[]>('moderators', {}, options)).result;
   }
 
   /** call `setModerators`. */
   async setModerators(args: SetModeratorsArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setModerators', args, options)) as null;
+    return (await this.#call<null>('setModerators', args, options)).result;
   }
 
   /** call `setNickname`. */
   async setNickname(args: SetNicknameArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setNickname', args, options)) as null;
+    return (await this.#call<null>('setNickname', args, options)).result;
   }
 
   /** call `vote`. */
   async vote(args: VoteArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('vote', args, options)) as null;
+    return (await this.#call<null>('vote', args, options)).result;
   }
 
   /** call `voteComment`. */
   async voteComment(args: VoteCommentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('voteComment', args, options)) as null;
+    return (await this.#call<null>('voteComment', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroForumClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

@@ -247,47 +247,184 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroStandupClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroStandupClient` implements, for a test double to stand in for it. */
+export interface MeroStandupApi {
+  /** call `clearUpdate`. */
+  clearUpdate(args: ClearUpdateArgs, options?: CallOptions): Promise<null>;
+  /** view `currentBlockers`. */
+  currentBlockers(options?: ViewOptions): Promise<UpdateView[]>;
+  /** view `getDay`. */
+  getDay(args: GetDayArgs, options?: ViewOptions): Promise<DayView>;
+  /** view `getDecision`. */
+  getDecision(args: GetDecisionArgs, options?: ViewOptions): Promise<DecisionView>;
+  /** view `getName`. */
+  getName(args: GetNameArgs, options?: ViewOptions): Promise<string>;
+  /** view `getWeek`. */
+  getWeek(args: GetWeekArgs, options?: ViewOptions): Promise<DayView[]>;
+  /** view `listDays`. */
+  listDays(args: ListDaysArgs, options?: ViewOptions): Promise<DayPage>;
+  /** view `listDecisions`. */
+  listDecisions(args: ListDecisionsArgs, options?: ViewOptions): Promise<DecisionPage>;
+  /** call `logDecision`. */
+  logDecision(args: LogDecisionArgs, options?: CallOptions): Promise<string>;
+  /** view `members`. */
+  members(options?: ViewOptions): Promise<MemberView[]>;
+  /** call `offerHelp`. */
+  offerHelp(args: OfferHelpArgs, options?: CallOptions): Promise<null>;
+  /** call `postUpdate`. */
+  postUpdate(args: PostUpdateArgs, options?: CallOptions): Promise<null>;
+  /** call `setName`. */
+  setName(args: SetNameArgs, options?: CallOptions): Promise<null>;
+  /** call `setTeamName`. */
+  setTeamName(args: SetTeamNameArgs, options?: CallOptions): Promise<null>;
+  /** view `tags`. */
+  tags(options?: ViewOptions): Promise<TagCount[]>;
+  /** view `teamName`. */
+  teamName(options?: ViewOptions): Promise<string>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<string>;
+  /** call `withdrawHelp`. */
+  withdrawHelp(args: WithdrawHelpArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroStandupClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroStandupRawApi {
+  /** call `clearUpdate`. */
+  clearUpdate(args: ClearUpdateArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `currentBlockers`. */
+  currentBlockers(options?: ViewOptions): Promise<ViewAnswer<UpdateView[]>>;
+  /** view `getDay`. */
+  getDay(args: GetDayArgs, options?: ViewOptions): Promise<ViewAnswer<DayView>>;
+  /** view `getDecision`. */
+  getDecision(args: GetDecisionArgs, options?: ViewOptions): Promise<ViewAnswer<DecisionView>>;
+  /** view `getName`. */
+  getName(args: GetNameArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getWeek`. */
+  getWeek(args: GetWeekArgs, options?: ViewOptions): Promise<ViewAnswer<DayView[]>>;
+  /** view `listDays`. */
+  listDays(args: ListDaysArgs, options?: ViewOptions): Promise<ViewAnswer<DayPage>>;
+  /** view `listDecisions`. */
+  listDecisions(args: ListDecisionsArgs, options?: ViewOptions): Promise<ViewAnswer<DecisionPage>>;
+  /** call `logDecision`. */
+  logDecision(args: LogDecisionArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `members`. */
+  members(options?: ViewOptions): Promise<ViewAnswer<MemberView[]>>;
+  /** call `offerHelp`. */
+  offerHelp(args: OfferHelpArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `postUpdate`. */
+  postUpdate(args: PostUpdateArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setName`. */
+  setName(args: SetNameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setTeamName`. */
+  setTeamName(args: SetTeamNameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `tags`. */
+  tags(options?: ViewOptions): Promise<ViewAnswer<TagCount[]>>;
+  /** view `teamName`. */
+  teamName(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** call `withdrawHelp`. */
+  withdrawHelp(args: WithdrawHelpArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroStandupClient<T extends AppCallTransport = AppTransport> implements MeroStandupApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroStandupRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      clearUpdate: (args, options = {}) => this.#call<null>('clearUpdate', args, options),
+      currentBlockers: (options = {}) => this.#view<UpdateView[]>('currentBlockers', {}, options),
+      getDay: (args, options = {}) => this.#view<DayView>('getDay', args, options),
+      getDecision: (args, options = {}) => this.#view<DecisionView>('getDecision', args, options),
+      getName: (args, options = {}) => this.#view<string>('getName', args, options),
+      getWeek: (args, options = {}) => this.#view<DayView[]>('getWeek', args, options),
+      listDays: (args, options = {}) => this.#view<DayPage>('listDays', args, options),
+      listDecisions: (args, options = {}) => this.#view<DecisionPage>('listDecisions', args, options),
+      logDecision: (args, options = {}) => this.#call<string>('logDecision', args, options),
+      members: (options = {}) => this.#view<MemberView[]>('members', {}, options),
+      offerHelp: (args, options = {}) => this.#call<null>('offerHelp', args, options),
+      postUpdate: (args, options = {}) => this.#call<null>('postUpdate', args, options),
+      setName: (args, options = {}) => this.#call<null>('setName', args, options),
+      setTeamName: (args, options = {}) => this.#call<null>('setTeamName', args, options),
+      tags: (options = {}) => this.#view<TagCount[]>('tags', {}, options),
+      teamName: (options = {}) => this.#view<string>('teamName', {}, options),
+      whoami: (options = {}) => this.#view<string>('whoami', {}, options),
+      withdrawHelp: (args, options = {}) => this.#call<null>('withdrawHelp', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -297,7 +434,8 @@ export class MeroStandupClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -305,96 +443,96 @@ export class MeroStandupClient {
 
   /** call `clearUpdate`. */
   async clearUpdate(args: ClearUpdateArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('clearUpdate', args, options)) as null;
+    return (await this.#call<null>('clearUpdate', args, options)).result;
   }
 
   /** view `currentBlockers`. */
   async currentBlockers(options: ViewOptions = {}): Promise<UpdateView[]> {
-    return (await this.#view('currentBlockers', {}, options)) as UpdateView[];
+    return (await this.#view<UpdateView[]>('currentBlockers', {}, options)).result;
   }
 
   /** view `getDay`. */
   async getDay(args: GetDayArgs, options: ViewOptions = {}): Promise<DayView> {
-    return (await this.#view('getDay', args, options)) as DayView;
+    return (await this.#view<DayView>('getDay', args, options)).result;
   }
 
   /** view `getDecision`. */
   async getDecision(args: GetDecisionArgs, options: ViewOptions = {}): Promise<DecisionView> {
-    return (await this.#view('getDecision', args, options)) as DecisionView;
+    return (await this.#view<DecisionView>('getDecision', args, options)).result;
   }
 
   /** view `getName`. */
   async getName(args: GetNameArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getName', args, options)) as string;
+    return (await this.#view<string>('getName', args, options)).result;
   }
 
   /** view `getWeek`. */
   async getWeek(args: GetWeekArgs, options: ViewOptions = {}): Promise<DayView[]> {
-    return (await this.#view('getWeek', args, options)) as DayView[];
+    return (await this.#view<DayView[]>('getWeek', args, options)).result;
   }
 
   /** view `listDays`. */
   async listDays(args: ListDaysArgs, options: ViewOptions = {}): Promise<DayPage> {
-    return (await this.#view('listDays', args, options)) as DayPage;
+    return (await this.#view<DayPage>('listDays', args, options)).result;
   }
 
   /** view `listDecisions`. */
   async listDecisions(args: ListDecisionsArgs, options: ViewOptions = {}): Promise<DecisionPage> {
-    return (await this.#view('listDecisions', args, options)) as DecisionPage;
+    return (await this.#view<DecisionPage>('listDecisions', args, options)).result;
   }
 
   /** call `logDecision`. */
   async logDecision(args: LogDecisionArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('logDecision', args, options)) as string;
+    return (await this.#call<string>('logDecision', args, options)).result;
   }
 
   /** view `members`. */
   async members(options: ViewOptions = {}): Promise<MemberView[]> {
-    return (await this.#view('members', {}, options)) as MemberView[];
+    return (await this.#view<MemberView[]>('members', {}, options)).result;
   }
 
   /** call `offerHelp`. */
   async offerHelp(args: OfferHelpArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('offerHelp', args, options)) as null;
+    return (await this.#call<null>('offerHelp', args, options)).result;
   }
 
   /** call `postUpdate`. */
   async postUpdate(args: PostUpdateArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('postUpdate', args, options)) as null;
+    return (await this.#call<null>('postUpdate', args, options)).result;
   }
 
   /** call `setName`. */
   async setName(args: SetNameArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setName', args, options)) as null;
+    return (await this.#call<null>('setName', args, options)).result;
   }
 
   /** call `setTeamName`. */
   async setTeamName(args: SetTeamNameArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setTeamName', args, options)) as null;
+    return (await this.#call<null>('setTeamName', args, options)).result;
   }
 
   /** view `tags`. */
   async tags(options: ViewOptions = {}): Promise<TagCount[]> {
-    return (await this.#view('tags', {}, options)) as TagCount[];
+    return (await this.#view<TagCount[]>('tags', {}, options)).result;
   }
 
   /** view `teamName`. */
   async teamName(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('teamName', {}, options)) as string;
+    return (await this.#view<string>('teamName', {}, options)).result;
   }
 
   /** view `whoami`. */
   async whoami(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('whoami', {}, options)) as string;
+    return (await this.#view<string>('whoami', {}, options)).result;
   }
 
   /** call `withdrawHelp`. */
   async withdrawHelp(args: WithdrawHelpArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('withdrawHelp', args, options)) as null;
+    return (await this.#call<null>('withdrawHelp', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroStandupClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

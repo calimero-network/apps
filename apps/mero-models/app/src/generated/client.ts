@@ -212,47 +212,199 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroModelsClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroModelsClient` implements, for a test double to stand in for it. */
+export interface MeroModelsApi {
+  /** call `checkIn`. */
+  checkIn(args: CheckInArgs, options?: CallOptions): Promise<null>;
+  /** call `checkOut`. */
+  checkOut(args: CheckOutArgs, options?: CallOptions): Promise<null>;
+  /** call `clearScene`. */
+  clearScene(options?: CallOptions): Promise<null>;
+  /** call `deleteObjects`. */
+  deleteObjects(args: DeleteObjectsArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteTextures`. */
+  deleteTextures(args: DeleteTexturesArgs, options?: CallOptions): Promise<null>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<MemberView[]>;
+  /** view `getObjects`. */
+  getObjects(options?: ViewOptions): Promise<SceneObject[]>;
+  /** view `getObjectsByIds`. */
+  getObjectsByIds(args: GetObjectsByIdsArgs, options?: ViewOptions): Promise<SceneObject[]>;
+  /** view `getScene`. */
+  getScene(options?: ViewOptions): Promise<SceneInfo>;
+  /** call `grantEditor`. */
+  grantEditor(args: GrantEditorArgs, options?: CallOptions): Promise<null>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<null>;
+  /** view `listHistory`. */
+  listHistory(args: ListHistoryArgs, options?: ViewOptions): Promise<VersionView[]>;
+  /** view `listLocks`. */
+  listLocks(args: ListLocksArgs, options?: ViewOptions): Promise<LockView[]>;
+  /** view `listMeshes`. */
+  listMeshes(options?: ViewOptions): Promise<MeshRef[]>;
+  /** view `listTextures`. */
+  listTextures(options?: ViewOptions): Promise<TextureRef[]>;
+  /** view `myRole`. */
+  myRole(options?: ViewOptions): Promise<string>;
+  /** call `putMesh`. */
+  putMesh(args: PutMeshArgs, options?: CallOptions): Promise<null>;
+  /** call `putObjects`. */
+  putObjects(args: PutObjectsArgs, options?: CallOptions): Promise<string[]>;
+  /** call `putTexture`. */
+  putTexture(args: PutTextureArgs, options?: CallOptions): Promise<null>;
+  /** call `revokeEditor`. */
+  revokeEditor(args: RevokeEditorArgs, options?: CallOptions): Promise<null>;
+  /** call `setEnvironment`. */
+  setEnvironment(args: SetEnvironmentArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroModelsClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroModelsRawApi {
+  /** call `checkIn`. */
+  checkIn(args: CheckInArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `checkOut`. */
+  checkOut(args: CheckOutArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `clearScene`. */
+  clearScene(options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteObjects`. */
+  deleteObjects(args: DeleteObjectsArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteTextures`. */
+  deleteTextures(args: DeleteTexturesArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<ViewAnswer<MemberView[]>>;
+  /** view `getObjects`. */
+  getObjects(options?: ViewOptions): Promise<ViewAnswer<SceneObject[]>>;
+  /** view `getObjectsByIds`. */
+  getObjectsByIds(args: GetObjectsByIdsArgs, options?: ViewOptions): Promise<ViewAnswer<SceneObject[]>>;
+  /** view `getScene`. */
+  getScene(options?: ViewOptions): Promise<ViewAnswer<SceneInfo>>;
+  /** call `grantEditor`. */
+  grantEditor(args: GrantEditorArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `listHistory`. */
+  listHistory(args: ListHistoryArgs, options?: ViewOptions): Promise<ViewAnswer<VersionView[]>>;
+  /** view `listLocks`. */
+  listLocks(args: ListLocksArgs, options?: ViewOptions): Promise<ViewAnswer<LockView[]>>;
+  /** view `listMeshes`. */
+  listMeshes(options?: ViewOptions): Promise<ViewAnswer<MeshRef[]>>;
+  /** view `listTextures`. */
+  listTextures(options?: ViewOptions): Promise<ViewAnswer<TextureRef[]>>;
+  /** view `myRole`. */
+  myRole(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** call `putMesh`. */
+  putMesh(args: PutMeshArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `putObjects`. */
+  putObjects(args: PutObjectsArgs, options?: CallOptions): Promise<CallAnswer<string[]>>;
+  /** call `putTexture`. */
+  putTexture(args: PutTextureArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `revokeEditor`. */
+  revokeEditor(args: RevokeEditorArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setEnvironment`. */
+  setEnvironment(args: SetEnvironmentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroModelsClient<T extends AppCallTransport = AppTransport> implements MeroModelsApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroModelsRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      checkIn: (args, options = {}) => this.#call<null>('checkIn', args, options),
+      checkOut: (args, options = {}) => this.#call<null>('checkOut', args, options),
+      clearScene: (options = {}) => this.#call<null>('clearScene', {}, options),
+      deleteObjects: (args, options = {}) => this.#call<null>('deleteObjects', args, options),
+      deleteTextures: (args, options = {}) => this.#call<null>('deleteTextures', args, options),
+      getMembers: (options = {}) => this.#view<MemberView[]>('getMembers', {}, options),
+      getObjects: (options = {}) => this.#view<SceneObject[]>('getObjects', {}, options),
+      getObjectsByIds: (args, options = {}) => this.#view<SceneObject[]>('getObjectsByIds', args, options),
+      getScene: (options = {}) => this.#view<SceneInfo>('getScene', {}, options),
+      grantEditor: (args, options = {}) => this.#call<null>('grantEditor', args, options),
+      join: (args, options = {}) => this.#call<null>('join', args, options),
+      listHistory: (args, options = {}) => this.#view<VersionView[]>('listHistory', args, options),
+      listLocks: (args, options = {}) => this.#view<LockView[]>('listLocks', args, options),
+      listMeshes: (options = {}) => this.#view<MeshRef[]>('listMeshes', {}, options),
+      listTextures: (options = {}) => this.#view<TextureRef[]>('listTextures', {}, options),
+      myRole: (options = {}) => this.#view<string>('myRole', {}, options),
+      putMesh: (args, options = {}) => this.#call<null>('putMesh', args, options),
+      putObjects: (args, options = {}) => this.#call<string[]>('putObjects', args, options),
+      putTexture: (args, options = {}) => this.#call<null>('putTexture', args, options),
+      revokeEditor: (args, options = {}) => this.#call<null>('revokeEditor', args, options),
+      setEnvironment: (args, options = {}) => this.#call<null>('setEnvironment', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -262,7 +414,8 @@ export class MeroModelsClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -270,111 +423,111 @@ export class MeroModelsClient {
 
   /** call `checkIn`. */
   async checkIn(args: CheckInArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('checkIn', args, options)) as null;
+    return (await this.#call<null>('checkIn', args, options)).result;
   }
 
   /** call `checkOut`. */
   async checkOut(args: CheckOutArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('checkOut', args, options)) as null;
+    return (await this.#call<null>('checkOut', args, options)).result;
   }
 
   /** call `clearScene`. */
   async clearScene(options: CallOptions = {}): Promise<null> {
-    return (await this.#call('clearScene', {}, options)) as null;
+    return (await this.#call<null>('clearScene', {}, options)).result;
   }
 
   /** call `deleteObjects`. */
   async deleteObjects(args: DeleteObjectsArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteObjects', args, options)) as null;
+    return (await this.#call<null>('deleteObjects', args, options)).result;
   }
 
   /** call `deleteTextures`. */
   async deleteTextures(args: DeleteTexturesArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteTextures', args, options)) as null;
+    return (await this.#call<null>('deleteTextures', args, options)).result;
   }
 
   /** view `getMembers`. */
   async getMembers(options: ViewOptions = {}): Promise<MemberView[]> {
-    return (await this.#view('getMembers', {}, options)) as MemberView[];
+    return (await this.#view<MemberView[]>('getMembers', {}, options)).result;
   }
 
   /** view `getObjects`. */
   async getObjects(options: ViewOptions = {}): Promise<SceneObject[]> {
-    return (await this.#view('getObjects', {}, options)) as SceneObject[];
+    return (await this.#view<SceneObject[]>('getObjects', {}, options)).result;
   }
 
   /** view `getObjectsByIds`. */
   async getObjectsByIds(args: GetObjectsByIdsArgs, options: ViewOptions = {}): Promise<SceneObject[]> {
-    return (await this.#view('getObjectsByIds', args, options)) as SceneObject[];
+    return (await this.#view<SceneObject[]>('getObjectsByIds', args, options)).result;
   }
 
   /** view `getScene`. */
   async getScene(options: ViewOptions = {}): Promise<SceneInfo> {
-    return (await this.#view('getScene', {}, options)) as SceneInfo;
+    return (await this.#view<SceneInfo>('getScene', {}, options)).result;
   }
 
   /** call `grantEditor`. */
   async grantEditor(args: GrantEditorArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('grantEditor', args, options)) as null;
+    return (await this.#call<null>('grantEditor', args, options)).result;
   }
 
   /** call `join`. */
   async join(args: JoinArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('join', args, options)) as null;
+    return (await this.#call<null>('join', args, options)).result;
   }
 
   /** view `listHistory`. */
   async listHistory(args: ListHistoryArgs, options: ViewOptions = {}): Promise<VersionView[]> {
-    return (await this.#view('listHistory', args, options)) as VersionView[];
+    return (await this.#view<VersionView[]>('listHistory', args, options)).result;
   }
 
   /** view `listLocks`. */
   async listLocks(args: ListLocksArgs, options: ViewOptions = {}): Promise<LockView[]> {
-    return (await this.#view('listLocks', args, options)) as LockView[];
+    return (await this.#view<LockView[]>('listLocks', args, options)).result;
   }
 
   /** view `listMeshes`. */
   async listMeshes(options: ViewOptions = {}): Promise<MeshRef[]> {
-    return (await this.#view('listMeshes', {}, options)) as MeshRef[];
+    return (await this.#view<MeshRef[]>('listMeshes', {}, options)).result;
   }
 
   /** view `listTextures`. */
   async listTextures(options: ViewOptions = {}): Promise<TextureRef[]> {
-    return (await this.#view('listTextures', {}, options)) as TextureRef[];
+    return (await this.#view<TextureRef[]>('listTextures', {}, options)).result;
   }
 
   /** view `myRole`. */
   async myRole(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('myRole', {}, options)) as string;
+    return (await this.#view<string>('myRole', {}, options)).result;
   }
 
   /** call `putMesh`. */
   async putMesh(args: PutMeshArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('putMesh', args, options)) as null;
+    return (await this.#call<null>('putMesh', args, options)).result;
   }
 
   /** call `putObjects`. */
   async putObjects(args: PutObjectsArgs, options: CallOptions = {}): Promise<string[]> {
-    return (await this.#call('putObjects', args, options)) as string[];
+    return (await this.#call<string[]>('putObjects', args, options)).result;
   }
 
   /** call `putTexture`. */
   async putTexture(args: PutTextureArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('putTexture', args, options)) as null;
+    return (await this.#call<null>('putTexture', args, options)).result;
   }
 
   /** call `revokeEditor`. */
   async revokeEditor(args: RevokeEditorArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('revokeEditor', args, options)) as null;
+    return (await this.#call<null>('revokeEditor', args, options)).result;
   }
 
   /** call `setEnvironment`. */
   async setEnvironment(args: SetEnvironmentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setEnvironment', args, options)) as null;
+    return (await this.#call<null>('setEnvironment', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroModelsClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

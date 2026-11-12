@@ -10,6 +10,12 @@ export type GameSummary = unknown;
 /** The app type `TableView`: the ABI names it without its shape. */
 export type TableView = unknown;
 
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  title?: string | null;
+  now?: string | null;
+}
+
 /** The arguments of `acceptDraw`. */
 export interface AcceptDrawArgs {
   now: string;
@@ -217,47 +223,159 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroChessClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroChessClient` implements, for a test double to stand in for it. */
+export interface MeroChessApi {
+  /** call `acceptDraw`. */
+  acceptDraw(args: AcceptDrawArgs, options?: CallOptions): Promise<null>;
+  /** call `claimDraw`. */
+  claimDraw(args: ClaimDrawArgs, options?: CallOptions): Promise<null>;
+  /** call `declineDraw`. */
+  declineDraw(args: DeclineDrawArgs, options?: CallOptions): Promise<null>;
+  /** call `heartbeat`. */
+  heartbeat(args: HeartbeatArgs, options?: CallOptions): Promise<null>;
+  /** view `history`. */
+  history(options?: ViewOptions): Promise<GameSummary[]>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<null>;
+  /** call `offerDraw`. */
+  offerDraw(args: OfferDrawArgs, options?: CallOptions): Promise<null>;
+  /** call `play`. */
+  play(args: PlayArgs, options?: CallOptions): Promise<string>;
+  /** call `rematch`. */
+  rematch(args: RematchArgs, options?: CallOptions): Promise<number>;
+  /** call `resign`. */
+  resign(args: ResignArgs, options?: CallOptions): Promise<null>;
+  /** call `sit`. */
+  sit(args: SitArgs, options?: CallOptions): Promise<null>;
+  /** call `stand`. */
+  stand(args: StandArgs, options?: CallOptions): Promise<null>;
+  /** view `table`. */
+  table(args: TableArgs, options?: ViewOptions): Promise<TableView>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroChessClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroChessRawApi {
+  /** call `acceptDraw`. */
+  acceptDraw(args: AcceptDrawArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `claimDraw`. */
+  claimDraw(args: ClaimDrawArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `declineDraw`. */
+  declineDraw(args: DeclineDrawArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `heartbeat`. */
+  heartbeat(args: HeartbeatArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `history`. */
+  history(options?: ViewOptions): Promise<ViewAnswer<GameSummary[]>>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `offerDraw`. */
+  offerDraw(args: OfferDrawArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `play`. */
+  play(args: PlayArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `rematch`. */
+  rematch(args: RematchArgs, options?: CallOptions): Promise<CallAnswer<number>>;
+  /** call `resign`. */
+  resign(args: ResignArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `sit`. */
+  sit(args: SitArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `stand`. */
+  stand(args: StandArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `table`. */
+  table(args: TableArgs, options?: ViewOptions): Promise<ViewAnswer<TableView>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroChessClient<T extends AppCallTransport = AppTransport> implements MeroChessApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroChessRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      acceptDraw: (args, options = {}) => this.#call<null>('acceptDraw', args, options),
+      claimDraw: (args, options = {}) => this.#call<null>('claimDraw', args, options),
+      declineDraw: (args, options = {}) => this.#call<null>('declineDraw', args, options),
+      heartbeat: (args, options = {}) => this.#call<null>('heartbeat', args, options),
+      history: (options = {}) => this.#view<GameSummary[]>('history', {}, options),
+      join: (args, options = {}) => this.#call<null>('join', args, options),
+      offerDraw: (args, options = {}) => this.#call<null>('offerDraw', args, options),
+      play: (args, options = {}) => this.#call<string>('play', args, options),
+      rematch: (args, options = {}) => this.#call<number>('rematch', args, options),
+      resign: (args, options = {}) => this.#call<null>('resign', args, options),
+      sit: (args, options = {}) => this.#call<null>('sit', args, options),
+      stand: (args, options = {}) => this.#call<null>('stand', args, options),
+      table: (args, options = {}) => this.#view<TableView>('table', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -267,7 +385,8 @@ export class MeroChessClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -275,71 +394,71 @@ export class MeroChessClient {
 
   /** call `acceptDraw`. */
   async acceptDraw(args: AcceptDrawArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('acceptDraw', args, options)) as null;
+    return (await this.#call<null>('acceptDraw', args, options)).result;
   }
 
   /** call `claimDraw`. */
   async claimDraw(args: ClaimDrawArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('claimDraw', args, options)) as null;
+    return (await this.#call<null>('claimDraw', args, options)).result;
   }
 
   /** call `declineDraw`. */
   async declineDraw(args: DeclineDrawArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('declineDraw', args, options)) as null;
+    return (await this.#call<null>('declineDraw', args, options)).result;
   }
 
   /** call `heartbeat`. */
   async heartbeat(args: HeartbeatArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('heartbeat', args, options)) as null;
+    return (await this.#call<null>('heartbeat', args, options)).result;
   }
 
   /** view `history`. */
   async history(options: ViewOptions = {}): Promise<GameSummary[]> {
-    return (await this.#view('history', {}, options)) as GameSummary[];
+    return (await this.#view<GameSummary[]>('history', {}, options)).result;
   }
 
   /** call `join`. */
   async join(args: JoinArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('join', args, options)) as null;
+    return (await this.#call<null>('join', args, options)).result;
   }
 
   /** call `offerDraw`. */
   async offerDraw(args: OfferDrawArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('offerDraw', args, options)) as null;
+    return (await this.#call<null>('offerDraw', args, options)).result;
   }
 
   /** call `play`. */
   async play(args: PlayArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('play', args, options)) as string;
+    return (await this.#call<string>('play', args, options)).result;
   }
 
   /** call `rematch`. */
   async rematch(args: RematchArgs, options: CallOptions = {}): Promise<number> {
-    return (await this.#call('rematch', args, options)) as number;
+    return (await this.#call<number>('rematch', args, options)).result;
   }
 
   /** call `resign`. */
   async resign(args: ResignArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('resign', args, options)) as null;
+    return (await this.#call<null>('resign', args, options)).result;
   }
 
   /** call `sit`. */
   async sit(args: SitArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('sit', args, options)) as null;
+    return (await this.#call<null>('sit', args, options)).result;
   }
 
   /** call `stand`. */
   async stand(args: StandArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('stand', args, options)) as null;
+    return (await this.#call<null>('stand', args, options)).result;
   }
 
   /** view `table`. */
   async table(args: TableArgs, options: ViewOptions = {}): Promise<TableView> {
-    return (await this.#view('table', args, options)) as TableView;
+    return (await this.#view<TableView>('table', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroChessClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }
