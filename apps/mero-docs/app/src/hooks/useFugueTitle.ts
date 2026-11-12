@@ -16,7 +16,7 @@ import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/r
 import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
-import type { Change as WireChange, DocsClient } from '@/lib/docsApi';
+import { type Change as WireChange, type MeroDocsClient, toTitleApplied, wireOps, toTitleState } from '@/lib/docsApi';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
@@ -28,7 +28,7 @@ const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
 const UNDO_GROUP_MS = 500; // writes closer than this undo as one step, as in the body
 
 export interface UseFugueTitleOptions {
-  client: DocsClient | null;
+  client: MeroDocsClient | null;
   docId: string | null;
   contextId: string | null;
   /** Where to publish this caret; the document view owns the one slot. */
@@ -168,7 +168,9 @@ export function useFugueTitle({
       // `null`; serde reads a missing Option as None, so they go as they are.
       // The anchor claims the write is an insert at it, which the node checks.
       const anchor = typed ? (anchorRef.current?.token ?? null) : null;
-      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as WireChange[], anchor });
+      const result = toTitleApplied(
+        await client.titleApplyDeltaOn({ doc: docId, base, ops: wireOps(ops as unknown as WireChange[]), anchor }),
+      );
       if (result.applied && result.token) {
         if (openGroupRef.current) openGroupRef.current.push(result.token);
         else historyRef.current.record((openGroupRef.current = [result.token]));
@@ -203,7 +205,7 @@ export function useFugueTitle({
   const refresh = useCallback(async () => {
     if (!client || !docId) return;
     try {
-      const { text: remote, ids } = await client.getTitleState({ doc: docId });
+      const { text: remote, ids } = toTitleState(await client.getTitleState({ doc: docId }));
       if (!loadedRef.current) {
         loadedRef.current = true;
         serverRef.current = remote;

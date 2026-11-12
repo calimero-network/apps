@@ -3,7 +3,7 @@
 // which is the only reason a caret stays put while either side keeps typing.
 
 import { useEffect, useRef } from 'react';
-import type { DocsClient } from '@/lib/docsApi';
+import type { MeroDocsClient } from '@/lib/docsApi';
 import {
   blockGeometry,
   type DocNode,
@@ -29,7 +29,7 @@ export interface CursorEditor {
 }
 
 export interface UseBodyCursorsOptions {
-  client: DocsClient | null;
+  client: MeroDocsClient | null;
   docId: string | null;
   editor: CursorEditor | null;
   peers: Map<string, DocPresence>;

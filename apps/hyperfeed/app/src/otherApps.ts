@@ -1,5 +1,4 @@
 import type { AppInfo } from "@calimero-network/mero-js";
-import { camel } from "./hyperfeed";
 import { type ClientRoutes } from "@calimero-apps/connect";
 
 /**
@@ -18,6 +17,11 @@ export interface OtherApps {
   call(app: string, method: string, args: Record<string, unknown>): Promise<unknown>;
   /** A read: what a lens looks up about an event. */
   view(app: string, method: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+/** snake_case to camelCase: `app_key` is `appKey` on the wire. */
+export function camel(name: string): string {
+  return name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 }
 
 /** A v1 method's arguments as a component app takes them. */

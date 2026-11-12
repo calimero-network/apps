@@ -235,17 +235,17 @@ class BridgeRouter(
                 throw BridgeException.badArguments(method, e.message.orEmpty())
             }
         return when (name) {
-            "worldMeta" -> encode(WorldMeta.serializer(), WorldMeta.fromWire(client.worldMeta()))
+            "worldMeta" -> encode(WorldMeta.serializer(), WorldMeta.fromWire(client.worldMeta().asContractJson()))
             "getOverrides" -> encode(ListSerializer(BlockEntry.serializer()), client.allOverrides())
             "overrideCount" -> encode(UInt.serializer(), client.overrideCount())
             "getPlayers" -> encode(ListSerializer(PlayerView.serializer()), client.allPlayers(args(NowArgs.serializer()).now))
-            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), BlocksContract.JSON.decodeFromJsonElement(PlayerView.serializer(), client.join(it.name, it.now))) }
+            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), BlocksContract.JSON.decodeFromJsonElement(PlayerView.serializer(), client.join(it.name, it.now).asContractJson())) }
             "leave" -> client.leave(args(NowArgs.serializer()).now).let { NULL }
-            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(BlocksContract.JSON.encodeToJsonElement(Transform.serializer(), it.t), it.now) }.let { NULL }
+            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(it.t.asContractArg(), it.now) }.let { NULL }
             "setBlocks" ->
                 args(SetBlocksArgs.serializer()).let {
                     checkEdits(method, it.edits)
-                    encode(UInt.serializer(), client.setBlocks(it.edits.map { e -> BlocksContract.JSON.encodeToJsonElement(Edit.serializer(), e) }, it.now))
+                    encode(UInt.serializer(), client.setBlocks(it.edits.map { e -> e.asContractArg<BlocksClient.Edit>() }, it.now))
                 }
             else -> throw BridgeException.unknownMethod(method)
         }

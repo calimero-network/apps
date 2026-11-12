@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.serializer
 
 /**
  * The table's contract on Calimero 1.0, as `logic/res/abi.json` declares it. The calls are the
@@ -72,10 +73,10 @@ object ChessContract {
      * The `table` answer as a [TableView]. The ABI names `TableView` and `GameSummary` without
      * their shape until the app derives `AbiType`, so the generated client answers their JSON.
      */
-    fun tableView(answer: JsonElement): TableView = JSON.decodeFromJsonElement(TableView.serializer(), answer)
+    fun tableView(answer: Any): TableView = JSON.decodeFromJsonElement(TableView.serializer(), answer.asContractJson())
 
     /** The `history` answer as [GameSummary] rows. */
-    fun gameSummaries(answer: List<JsonElement>): List<GameSummary> = answer.map { JSON.decodeFromJsonElement(GameSummary.serializer(), it) }
+    fun gameSummaries(answer: List<Any>): List<GameSummary> = answer.map { JSON.decodeFromJsonElement(GameSummary.serializer(), it.asContractJson()) }
 
     /** The sentence for a contract refusal, or null for a code the app does not know. */
     fun message(appCode: String): String? = MESSAGES[appCode]
@@ -191,3 +192,17 @@ data class TableView(
     /** How many games this table has started, including the current one. */
     val gamesPlayed: UInt,
 )
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

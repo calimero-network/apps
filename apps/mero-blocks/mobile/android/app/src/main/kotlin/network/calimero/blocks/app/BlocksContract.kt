@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.serializer
 import network.calimero.blocks.generated.BlocksClient
 
 // The world contract (`../../logic`, `res/abi.json`), as the component runtime speaks it: camelCase
@@ -119,10 +120,10 @@ object BlocksContract {
 
     internal fun <T> rows(
         method: String,
-        page: JsonElement,
+        page: Any,
         row: KSerializer<T>,
     ): Pair<List<T>, String?> {
-        val o = page.jsonObject
+        val o = page.asContractJson().jsonObject
         val items = JSON.decodeFromJsonElement(ListSerializer(row), o["items"] ?: throw SerializationException("$method: no items"))
         return items to (o["next"] as? JsonPrimitive)?.contentOrNull
     }
@@ -137,7 +138,7 @@ suspend fun BlocksClient.allPlayers(now: ULong): List<PlayerView> = allPages("ge
 private suspend fun <T> allPages(
     method: String,
     row: KSerializer<T>,
-    page: suspend (String?) -> JsonElement,
+    page: suspend (String?) -> Any,
 ): List<T> {
     val rows = mutableListOf<T>()
     var cursor: String? = null
@@ -148,3 +149,17 @@ private suspend fun <T> allPages(
     }
     throw SerializationException("$method: more than ${BlocksContract.MAX_PAGES} pages")
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

@@ -229,7 +229,7 @@ public struct BridgeDispatcher: Sendable {
             return try encode(try await client.worldMeta().decoded(as: WorldMeta.self))
         case "heartbeat":
             let args = try decode(HeartbeatArgs.self, argsJSON)
-            try await client.heartbeat(t: try JSONValue(encoding: args.t), now: u32(args.now))
+            try await client.heartbeat(t: try args.t.converted(), now: u32(args.now))
             return "null"
         case "join":
             let args = try decode(JoinArgs.self, argsJSON)
@@ -240,7 +240,7 @@ public struct BridgeDispatcher: Sendable {
             return "null"
         default:  // set_tiles
             let args = try decode(SetTilesArgs.self, argsJSON)
-            return try encode(try await client.setTiles(edits: args.edits.map { try JSONValue(encoding: $0) }, now: u32(args.now)))
+            return try encode(try await client.setTiles(edits: args.edits.map { try $0.converted() }, now: u32(args.now)))
         }
     }
 

@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
-import type { DocsClient } from '@/lib/docsApi';
+import type { MeroDocsClient } from '@/lib/docsApi';
 import { normalizeQuery } from '@/lib/search/match';
 import {
   folderMatches,
@@ -32,7 +32,7 @@ export type DocSearch = {
   pending: number;
 };
 
-type Folder = { folderId: string; contextId: string; client: DocsClient };
+type Folder = { folderId: string; contextId: string; client: MeroDocsClient };
 
 const EMPTY: DocSearch = { query: '', hits: [], served: new Set(), pending: 0 };
 

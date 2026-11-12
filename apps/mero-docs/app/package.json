@@ -82,7 +82,8 @@
     "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
     "preview": "vite preview",
     "prettier": "exec prettier . --write",
-    "check:bundle": "node scripts/check-bundle-budget.mjs"
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-docs -o src/generated"
   },
   "eslintConfig": {
     "extends": [

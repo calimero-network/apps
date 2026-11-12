@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { MeroDocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { useSavedViewsSource } from '../useSavedViews';
 
 const listViews = vi.fn();
@@ -8,14 +10,11 @@ const deleteView = vi.fn();
 const toastError = vi.hoisted(() => vi.fn());
 let onRegistryEvent: (() => void) | null = null;
 let watched: unknown = null;
-type Client = {
-  listViews: typeof listViews;
-  saveView?: typeof saveView;
-  deleteView?: typeof deleteView;
-};
+/** The workspace's registry: the real class over fakes of its methods. */
+const registry = (fake: object) => docsOver(fake, 'reg-ctx');
 const ws = {
   namespaceId: 'ws1',
-  registryClient: { listViews, saveView, deleteView } as Client | null,
+  registryClient: registry({ listViews, saveView, deleteView }) as MeroDocsClient | null,
   registryContextId: 'reg-ctx',
 };
 
@@ -32,7 +31,7 @@ const dto = (id: string, name: string, createdBy = 'alice') => ({
   id,
   name,
   query: 'tag=design',
-  created_by: createdBy,
+  createdBy,
 });
 
 beforeEach(() => {
@@ -41,7 +40,7 @@ beforeEach(() => {
   listViews.mockReset().mockResolvedValue([]);
   saveView.mockReset().mockResolvedValue(undefined);
   deleteView.mockReset().mockResolvedValue(undefined);
-  ws.registryClient = { listViews, saveView, deleteView };
+  ws.registryClient = registry({ listViews, saveView, deleteView });
   onRegistryEvent = null;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });

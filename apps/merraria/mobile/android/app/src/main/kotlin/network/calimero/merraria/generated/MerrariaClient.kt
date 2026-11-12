@@ -41,21 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `Edit`: the ABI names it without its shape, so it is its JSON. */
-typealias Edit = JsonElement
-
-/** The app type `OverridesPage`: the ABI names it without its shape, so it is its JSON. */
-typealias OverridesPage = JsonElement
-
-/** The app type `PlayerView`: the ABI names it without its shape, so it is its JSON. */
-typealias PlayerView = JsonElement
-
-/** The app type `Transform`: the ABI names it without its shape, so it is its JSON. */
-typealias Transform = JsonElement
-
-/** The app type `WorldMeta`: the ABI names it without its shape, so it is its JSON. */
-typealias WorldMeta = JsonElement
-
 /**
  * The app's methods.
  *
@@ -113,7 +98,7 @@ class MerrariaClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            OverridesPage.serializer(),
         )
 
     /** view `getPlayers`. */
@@ -129,7 +114,7 @@ class MerrariaClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(PlayerView.serializer()),
         )
 
     /** call `heartbeat`. */
@@ -141,7 +126,7 @@ class MerrariaClient private constructor(
         invokeCall(
             "heartbeat",
             buildJsonObject {
-                put("t", encode(JsonElement.serializer(), t))
+                put("t", encode(Transform.serializer(), t))
                 put("now", encode(UInt.serializer(), now))
             },
             idempotencyKey,
@@ -162,7 +147,7 @@ class MerrariaClient private constructor(
                 put("now", encode(UInt.serializer(), now))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            PlayerView.serializer(),
         )
 
     /** call `leave`. */
@@ -189,7 +174,7 @@ class MerrariaClient private constructor(
         invokeCall(
             "setTiles",
             buildJsonObject {
-                put("edits", encode(ListSerializer(JsonElement.serializer()), edits))
+                put("edits", encode(ListSerializer(Edit.serializer()), edits))
                 put("now", encode(UInt.serializer(), now))
             },
             idempotencyKey,
@@ -206,7 +191,7 @@ class MerrariaClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            WorldMeta.serializer(),
         )
 
     /** The app's events from log index [from], then live, until the collector stops. */
@@ -349,6 +334,258 @@ class MerrariaClient private constructor(
         }
     }
 
+    /** The app type `Edit`. */
+    data class Edit(
+        val x: Int,
+        val y: Int,
+        val t: UByte,
+    ) {
+        companion object {
+            /** `Edit`'s JSON form. */
+            fun serializer(): KSerializer<Edit> = Wire
+
+            private object Wire : KSerializer<Edit> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Edit,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("x", encode(Int.serializer(), value.x))
+                            put("y", encode(Int.serializer(), value.y))
+                            put("t", encode(UByte.serializer(), value.t))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Edit {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Edit")
+                    return Edit(
+                        x = field(fields, "x", Int.serializer()),
+                        y = field(fields, "y", Int.serializer()),
+                        t = field(fields, "t", UByte.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `OverridesPage`. */
+    data class OverridesPage(
+        val items: List<TileEntry>,
+        val next: String? = null,
+    ) {
+        companion object {
+            /** `OverridesPage`'s JSON form. */
+            fun serializer(): KSerializer<OverridesPage> = Wire
+
+            private object Wire : KSerializer<OverridesPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: OverridesPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("items", encode(ListSerializer(TileEntry.serializer()), value.items))
+                            put("next", encode(String.serializer().nullable, value.next))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): OverridesPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "OverridesPage")
+                    return OverridesPage(
+                        items = field(fields, "items", ListSerializer(TileEntry.serializer())),
+                        next = field(fields, "next", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PlayerView`. */
+    data class PlayerView(
+        val id: String,
+        val name: String,
+        val x: Double,
+        val y: Double,
+        val dir: Double,
+        val sel: UByte,
+        val action: String,
+        val online: Boolean,
+    ) {
+        companion object {
+            /** `PlayerView`'s JSON form. */
+            fun serializer(): KSerializer<PlayerView> = Wire
+
+            private object Wire : KSerializer<PlayerView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PlayerView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("x", encode(Double.serializer(), value.x))
+                            put("y", encode(Double.serializer(), value.y))
+                            put("dir", encode(Double.serializer(), value.dir))
+                            put("sel", encode(UByte.serializer(), value.sel))
+                            put("action", encode(String.serializer(), value.action))
+                            put("online", encode(Boolean.serializer(), value.online))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PlayerView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PlayerView")
+                    return PlayerView(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        x = field(fields, "x", Double.serializer()),
+                        y = field(fields, "y", Double.serializer()),
+                        dir = field(fields, "dir", Double.serializer()),
+                        sel = field(fields, "sel", UByte.serializer()),
+                        action = field(fields, "action", String.serializer()),
+                        online = field(fields, "online", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TileEntry`. */
+    data class TileEntry(
+        val k: String,
+        val t: UByte,
+    ) {
+        companion object {
+            /** `TileEntry`'s JSON form. */
+            fun serializer(): KSerializer<TileEntry> = Wire
+
+            private object Wire : KSerializer<TileEntry> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TileEntry,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("k", encode(String.serializer(), value.k))
+                            put("t", encode(UByte.serializer(), value.t))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TileEntry {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TileEntry")
+                    return TileEntry(
+                        k = field(fields, "k", String.serializer()),
+                        t = field(fields, "t", UByte.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Transform`. */
+    data class Transform(
+        val name: String,
+        val x: Double,
+        val y: Double,
+        val dir: Double,
+        val sel: UByte,
+        val action: String,
+    ) {
+        companion object {
+            /** `Transform`'s JSON form. */
+            fun serializer(): KSerializer<Transform> = Wire
+
+            private object Wire : KSerializer<Transform> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Transform,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("x", encode(Double.serializer(), value.x))
+                            put("y", encode(Double.serializer(), value.y))
+                            put("dir", encode(Double.serializer(), value.dir))
+                            put("sel", encode(UByte.serializer(), value.sel))
+                            put("action", encode(String.serializer(), value.action))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Transform {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Transform")
+                    return Transform(
+                        name = field(fields, "name", String.serializer()),
+                        x = field(fields, "x", Double.serializer()),
+                        y = field(fields, "y", Double.serializer()),
+                        dir = field(fields, "dir", Double.serializer()),
+                        sel = field(fields, "sel", UByte.serializer()),
+                        action = field(fields, "action", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WorldMeta`. */
+    data class WorldMeta(
+        val name: String,
+        val seed: UInt,
+        val createdAt: UInt,
+    ) {
+        companion object {
+            /** `WorldMeta`'s JSON form. */
+            fun serializer(): KSerializer<WorldMeta> = Wire
+
+            private object Wire : KSerializer<WorldMeta> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WorldMeta,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("seed", encode(UInt.serializer(), value.seed))
+                            put("createdAt", encode(UInt.serializer(), value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WorldMeta {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WorldMeta")
+                    return WorldMeta(
+                        name = field(fields, "name", String.serializer()),
+                        seed = field(fields, "seed", UInt.serializer()),
+                        createdAt = field(fields, "createdAt", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -415,5 +652,11 @@ class MerrariaClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

@@ -24,8 +24,8 @@ extension MerrariaClient {
     public static let overridesPage: UInt32 = 1000
 
     /// Every override, page after page until `next` is nil (the web app's `readAllOverrides`).
-    public func allOverrides() async throws -> [TileEntry] {
-        var all: [TileEntry] = []
+    public func allOverrides() async throws -> [MerrariaCore.TileEntry] {
+        var all: [MerrariaCore.TileEntry] = []
         var cursor: String?
         repeat {
             let page = try await getOverrides(cursor: cursor).decoded(as: MerrariaCore.OverridesPage.self)
@@ -36,12 +36,17 @@ extension MerrariaClient {
     }
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T`. The ABI names the world's types (`WorldMeta`, `Edit`,
     /// `OverridesPage`, `Transform`, `PlayerView`) without their shape until the logic derives
     /// `AbiType`, so the generated client takes and answers their JSON and the types below read it.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 

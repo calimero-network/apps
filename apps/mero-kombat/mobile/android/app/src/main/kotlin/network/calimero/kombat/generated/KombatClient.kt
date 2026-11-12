@@ -41,12 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `ArenaView`: the ABI names it without its shape, so it is its JSON. */
-typealias ArenaView = JsonElement
-
-/** The app type `MatchSummary`: the ABI names it without its shape, so it is its JSON. */
-typealias MatchSummary = JsonElement
-
 /**
  * The app's methods.
  *
@@ -110,7 +104,7 @@ class KombatClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            ArenaView.serializer(),
         )
 
     /** view `history`. */
@@ -123,7 +117,7 @@ class KombatClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MatchSummary.serializer()),
         )
 
     /** call `join`. */
@@ -430,6 +424,237 @@ class KombatClient private constructor(
         }
     }
 
+    /** The app type `ArenaView`. */
+    data class ArenaView(
+        val title: String,
+        val createdAt: ULong,
+        val matchIndex: UInt,
+        val round: UInt,
+        val status: String,
+        val roundResults: List<String>,
+        val winner: String,
+        val flawless: Boolean,
+        val p1: FighterView,
+        val p2: FighterView,
+        val me: String,
+        val mySeat: String,
+        val hits: List<HitView>,
+        val matchActions: UInt,
+        val totalActions: ULong,
+        val maxHp: UInt,
+        val roundsToWin: UInt,
+    ) {
+        companion object {
+            /** `ArenaView`'s JSON form. */
+            fun serializer(): KSerializer<ArenaView> = Wire
+
+            private object Wire : KSerializer<ArenaView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ArenaView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer(), value.title))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("matchIndex", encode(UInt.serializer(), value.matchIndex))
+                            put("round", encode(UInt.serializer(), value.round))
+                            put("status", encode(String.serializer(), value.status))
+                            put("roundResults", encode(ListSerializer(String.serializer()), value.roundResults))
+                            put("winner", encode(String.serializer(), value.winner))
+                            put("flawless", encode(Boolean.serializer(), value.flawless))
+                            put("p1", encode(FighterView.serializer(), value.p1))
+                            put("p2", encode(FighterView.serializer(), value.p2))
+                            put("me", encode(String.serializer(), value.me))
+                            put("mySeat", encode(String.serializer(), value.mySeat))
+                            put("hits", encode(ListSerializer(HitView.serializer()), value.hits))
+                            put("matchActions", encode(UInt.serializer(), value.matchActions))
+                            put("totalActions", encode(U64AsString, value.totalActions))
+                            put("maxHp", encode(UInt.serializer(), value.maxHp))
+                            put("roundsToWin", encode(UInt.serializer(), value.roundsToWin))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ArenaView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ArenaView")
+                    return ArenaView(
+                        title = field(fields, "title", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        matchIndex = field(fields, "matchIndex", UInt.serializer()),
+                        round = field(fields, "round", UInt.serializer()),
+                        status = field(fields, "status", String.serializer()),
+                        roundResults = field(fields, "roundResults", ListSerializer(String.serializer())),
+                        winner = field(fields, "winner", String.serializer()),
+                        flawless = field(fields, "flawless", Boolean.serializer()),
+                        p1 = field(fields, "p1", FighterView.serializer()),
+                        p2 = field(fields, "p2", FighterView.serializer()),
+                        me = field(fields, "me", String.serializer()),
+                        mySeat = field(fields, "mySeat", String.serializer()),
+                        hits = field(fields, "hits", ListSerializer(HitView.serializer())),
+                        matchActions = field(fields, "matchActions", UInt.serializer()),
+                        totalActions = field(fields, "totalActions", U64AsString),
+                        maxHp = field(fields, "maxHp", UInt.serializer()),
+                        roundsToWin = field(fields, "roundsToWin", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `FighterView`. */
+    data class FighterView(
+        val seat: String,
+        val member: String,
+        val name: String,
+        val fighter: String,
+        val hp: UInt,
+        val roundsWon: UInt,
+        val matchesWon: UInt,
+        val online: Boolean,
+    ) {
+        companion object {
+            /** `FighterView`'s JSON form. */
+            fun serializer(): KSerializer<FighterView> = Wire
+
+            private object Wire : KSerializer<FighterView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: FighterView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("seat", encode(String.serializer(), value.seat))
+                            put("member", encode(String.serializer(), value.member))
+                            put("name", encode(String.serializer(), value.name))
+                            put("fighter", encode(String.serializer(), value.fighter))
+                            put("hp", encode(UInt.serializer(), value.hp))
+                            put("roundsWon", encode(UInt.serializer(), value.roundsWon))
+                            put("matchesWon", encode(UInt.serializer(), value.matchesWon))
+                            put("online", encode(Boolean.serializer(), value.online))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): FighterView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "FighterView")
+                    return FighterView(
+                        seat = field(fields, "seat", String.serializer()),
+                        member = field(fields, "member", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        fighter = field(fields, "fighter", String.serializer()),
+                        hp = field(fields, "hp", UInt.serializer()),
+                        roundsWon = field(fields, "roundsWon", UInt.serializer()),
+                        matchesWon = field(fields, "matchesWon", UInt.serializer()),
+                        online = field(fields, "online", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `HitView`. */
+    data class HitView(
+        val by: String,
+        val id: UInt,
+        val kind: String,
+        val damage: UInt,
+        val blocked: Boolean,
+        val at: ULong,
+    ) {
+        companion object {
+            /** `HitView`'s JSON form. */
+            fun serializer(): KSerializer<HitView> = Wire
+
+            private object Wire : KSerializer<HitView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: HitView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("by", encode(String.serializer(), value.by))
+                            put("id", encode(UInt.serializer(), value.id))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("damage", encode(UInt.serializer(), value.damage))
+                            put("blocked", encode(Boolean.serializer(), value.blocked))
+                            put("at", encode(U64AsString, value.at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): HitView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "HitView")
+                    return HitView(
+                        by = field(fields, "by", String.serializer()),
+                        id = field(fields, "id", UInt.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        damage = field(fields, "damage", UInt.serializer()),
+                        blocked = field(fields, "blocked", Boolean.serializer()),
+                        at = field(fields, "at", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MatchSummary`. */
+    data class MatchSummary(
+        val index: UInt,
+        val startedAt: ULong,
+        val winner: String,
+        val flawless: Boolean,
+        val rounds: List<String>,
+        val actions: UInt,
+    ) {
+        companion object {
+            /** `MatchSummary`'s JSON form. */
+            fun serializer(): KSerializer<MatchSummary> = Wire
+
+            private object Wire : KSerializer<MatchSummary> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MatchSummary,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("index", encode(UInt.serializer(), value.index))
+                            put("startedAt", encode(U64AsString, value.startedAt))
+                            put("winner", encode(String.serializer(), value.winner))
+                            put("flawless", encode(Boolean.serializer(), value.flawless))
+                            put("rounds", encode(ListSerializer(String.serializer()), value.rounds))
+                            put("actions", encode(UInt.serializer(), value.actions))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MatchSummary {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MatchSummary")
+                    return MatchSummary(
+                        index = field(fields, "index", UInt.serializer()),
+                        startedAt = field(fields, "startedAt", U64AsString),
+                        winner = field(fields, "winner", String.serializer()),
+                        flawless = field(fields, "flawless", Boolean.serializer()),
+                        rounds = field(fields, "rounds", ListSerializer(String.serializer())),
+                        actions = field(fields, "actions", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -496,5 +721,11 @@ class KombatClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

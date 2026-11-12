@@ -44,17 +44,11 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 /** The app type `CursorState`: the ABI names it without its shape, so it is its JSON. */
 typealias CursorState = JsonElement
 
-/** The app type `DocumentInfo`: the ABI names it without its shape, so it is its JSON. */
-typealias DocumentInfo = JsonElement
-
 /** The app type `Layer`: the ABI names it without its shape, so it is its JSON. */
 typealias Layer = JsonElement
 
 /** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
 typealias Member = JsonElement
-
-/** The app type `MemberRole`: the ABI names it without its shape, so it is its JSON. */
-typealias MemberRole = JsonElement
 
 /**
  * The app's methods.
@@ -173,7 +167,7 @@ class PixartClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            DocumentInfo.serializer(),
         )
 
     /** view `getLayer`. */
@@ -278,7 +272,7 @@ class PixartClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MemberRole.serializer()),
         )
 
     /** call `moveLayer`. */
@@ -805,6 +799,96 @@ class PixartClient private constructor(
         }
     }
 
+    /** The app type `DocumentInfo`. */
+    data class DocumentInfo(
+        val name: String,
+        val description: String,
+        val width: UInt,
+        val height: UInt,
+        val background: String,
+        val layerCount: UInt,
+        val memberCount: UInt,
+        val owner: String? = null,
+    ) {
+        companion object {
+            /** `DocumentInfo`'s JSON form. */
+            fun serializer(): KSerializer<DocumentInfo> = Wire
+
+            private object Wire : KSerializer<DocumentInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DocumentInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("description", encode(String.serializer(), value.description))
+                            put("width", encode(UInt.serializer(), value.width))
+                            put("height", encode(UInt.serializer(), value.height))
+                            put("background", encode(String.serializer(), value.background))
+                            put("layerCount", encode(UInt.serializer(), value.layerCount))
+                            put("memberCount", encode(UInt.serializer(), value.memberCount))
+                            put("owner", encode(String.serializer().nullable, value.owner))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DocumentInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DocumentInfo")
+                    return DocumentInfo(
+                        name = field(fields, "name", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        width = field(fields, "width", UInt.serializer()),
+                        height = field(fields, "height", UInt.serializer()),
+                        background = field(fields, "background", String.serializer()),
+                        layerCount = field(fields, "layerCount", UInt.serializer()),
+                        memberCount = field(fields, "memberCount", UInt.serializer()),
+                        owner = field(fields, "owner", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MemberRole`. */
+    data class MemberRole(
+        val member: String,
+        val role: String,
+    ) {
+        companion object {
+            /** `MemberRole`'s JSON form. */
+            fun serializer(): KSerializer<MemberRole> = Wire
+
+            private object Wire : KSerializer<MemberRole> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MemberRole,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("member", encode(String.serializer(), value.member))
+                            put("role", encode(String.serializer(), value.role))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MemberRole {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MemberRole")
+                    return MemberRole(
+                        member = field(fields, "member", String.serializer()),
+                        role = field(fields, "role", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -895,5 +979,11 @@ class PixartClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

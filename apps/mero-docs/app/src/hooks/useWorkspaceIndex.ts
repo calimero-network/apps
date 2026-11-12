@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useJoinContext, useMero } from '@/calimero/react';
-import { DocsClient, type DocDto } from '@/lib/docsApi';
+import { MeroDocsClient, type DocDto } from '@/lib/docsApi';
 import {
   nsToMs,
   type FolderInfo,
@@ -23,17 +23,17 @@ export type WorkspaceIndex = {
   foldersKnown: boolean; // every folder's access has resolved once for this workspace
   folderStatus: Record<string, FolderIndexStatus>;
   contextOf(folderId: string): string | undefined;
-  clientOf(folderId: string): DocsClient | undefined;
+  clientOf(folderId: string): MeroDocsClient | undefined;
   refetchFolder(folderId: string): void;
 };
 
-type Binding = { contextId: string; client: DocsClient };
+type Binding = { contextId: string; client: MeroDocsClient };
 type Entry = {
-  client: DocsClient;
+  client: MeroDocsClient;
   status: FolderIndexStatus;
   rows: IndexRow[];
 };
-type Read = { client: DocsClient; again: boolean };
+type Read = { client: MeroDocsClient; again: boolean };
 
 export function toIndexRow(folderId: string, doc: DocDto): IndexRow {
   return {
@@ -97,7 +97,7 @@ export function useWorkspaceIndex(): WorkspaceIndex {
   const clientCache = useRef({
     mero,
     selfIdentity,
-    byContext: new Map<string, DocsClient>(),
+    byContext: new Map<string, MeroDocsClient>(),
   });
   const bindings = useMemo(() => {
     const out = new Map<string, Binding>();
@@ -112,7 +112,7 @@ export function useWorkspaceIndex(): WorkspaceIndex {
       if (!contextId) continue;
       let client = byContext.get(contextId);
       if (!client) {
-        client = new DocsClient(mero, contextId);
+        client = new MeroDocsClient(mero.client, contextId);
         byContext.set(contextId, client);
       }
       out.set(f.id, { contextId, client });
@@ -127,7 +127,7 @@ export function useWorkspaceIndex(): WorkspaceIndex {
   const joinedRef = useRef(new Set<string>());
 
   const settle = useCallback(
-    (folderId: string, client: DocsClient, next: Omit<Entry, 'client'>) =>
+    (folderId: string, client: MeroDocsClient, next: Omit<Entry, 'client'>) =>
       setEntries((prev) => {
         const old = prev[folderId];
         const same =
@@ -203,7 +203,7 @@ export function useWorkspaceIndex(): WorkspaceIndex {
     [settle],
   );
 
-  const startedRef = useRef(new Map<string, DocsClient>());
+  const startedRef = useRef(new Map<string, MeroDocsClient>());
   useEffect(() => {
     const started = startedRef.current;
     for (const id of [...started.keys()]) {
