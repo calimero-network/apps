@@ -28,7 +28,7 @@ pub type Attrs = BTreeMap<String, Option<String>>;
 
 /// One step of a note edit, in the Quill delta shape: keep, insert or delete
 /// characters, with formatting on kept or inserted text.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, calimero_sdk::AbiType)]
 #[serde(untagged)]
 pub enum NoteChange {
     Retain {
@@ -47,7 +47,7 @@ pub enum NoteChange {
 }
 
 /// A formatted run: `text` with its attributes (left out when there are none).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, calimero_sdk::AbiType)]
 pub struct Span {
     pub text: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
