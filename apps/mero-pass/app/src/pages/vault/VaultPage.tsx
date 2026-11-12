@@ -22,7 +22,6 @@ import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
 import VaultPeople from '../../components/VaultPeople';
 import { KeyIcon, PlusIcon } from '../../components/icons';
-import type { AuditWire } from '../../lib/meroPass';
 import { type AuditView, toAudit } from '../../lib/vaultApi';
 import { useShellNav } from '../../hooks/useShellNav';
 import { useVaultSession } from '../../hooks/useVaultSession';
@@ -203,7 +202,7 @@ function VaultBody() {
     if (tool !== 'activity' || !client) return;
     void client
       .getAuditLogs()
-      .then((logs) => setEvents((logs as AuditWire[]).map(toAudit)))
+      .then((logs) => setEvents(logs.map(toAudit)))
       .catch(() => setEvents([]));
   }, [tool, client, secrets]);
 

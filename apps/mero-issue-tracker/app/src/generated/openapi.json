@@ -516,6 +516,51 @@
           }
         ]
       },
+      "Comment": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "editedAt": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issueId",
+          "author",
+          "body",
+          "createdAt",
+          "editedAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Comment"
+      },
       "CommentAddedEvent": {
         "properties": {
           "id": {
@@ -1338,7 +1383,22 @@
         "type": "object"
       },
       "IssueDetail": {
-        "description": "The app type `IssueDetail`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            },
+            "type": "array"
+          },
+          "issue": {
+            "$ref": "#/components/schemas/IssueView"
+          }
+        },
+        "required": [
+          "issue",
+          "comments"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "IssueDetail"
       },
       "IssueEditedEvent": {
@@ -1394,7 +1454,72 @@
         "type": "object"
       },
       "IssueView": {
-        "description": "The app type `IssueView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "repro": {
+            "type": "string"
+          },
+          "resolutionCriteria": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "impact",
+          "repro",
+          "resolutionCriteria",
+          "status",
+          "priority",
+          "assignee",
+          "labels",
+          "createdBy",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "IssueView"
       },
       "ListIssuesArgs": {
@@ -1587,7 +1712,15 @@
         "type": "object"
       },
       "RepoInfo": {
-        "description": "The app type `RepoInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "repoUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repoUrl"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "RepoInfo"
       },
       "RepoUrlChangedEvent": {
@@ -2084,7 +2217,22 @@
         "type": "object"
       },
       "StatusCount": {
-        "description": "The app type `StatusCount`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "count": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "StatusCount"
       },
       "Trap": {

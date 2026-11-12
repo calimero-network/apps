@@ -399,7 +399,38 @@
         "type": "object"
       },
       "AuditView": {
-        "description": "The app type `AuditView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "action",
+          "target",
+          "account",
+          "device",
+          "timestamp",
+          "redacted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AuditView"
       },
       "CallEvent": {
@@ -557,7 +588,42 @@
         "type": "object"
       },
       "DeviceView": {
-        "description": "The app type `DeviceView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "addedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "publicKey",
+          "label",
+          "kind",
+          "account",
+          "addedAt",
+          "revoked"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DeviceView"
       },
       "EventFrame": {
@@ -785,11 +851,55 @@
         "type": "object"
       },
       "KeyWrapInput": {
-        "description": "The app type `KeyWrapInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "envelope": {
+            "type": "string"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "wrapper": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyId",
+          "recipient",
+          "wrapper",
+          "envelope"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "KeyWrapInput"
       },
       "KeyWrapView": {
-        "description": "The app type `KeyWrapView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "envelope": {
+            "type": "string"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "wrappedBy": {
+            "type": "string"
+          },
+          "wrapper": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyId",
+          "recipient",
+          "wrapper",
+          "envelope",
+          "wrappedBy"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "KeyWrapView"
       },
       "KeyWrapsForArgs": {
@@ -1018,7 +1128,26 @@
         "type": "object"
       },
       "MemberView": {
-        "description": "The app type `MemberView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "devices": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "role",
+          "devices"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemberView"
       },
       "MembersChangedEvent": {
@@ -1364,7 +1493,30 @@
         "type": "object"
       },
       "RevisionView": {
-        "description": "The app type `RevisionView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          },
+          "replacedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "replacedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "previous",
+          "replacedAt",
+          "replacedBy"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "RevisionView"
       },
       "RevokeDeviceArgs": {
@@ -1552,7 +1704,67 @@
         "type": "object"
       },
       "SecretView": {
-        "description": "The app type `SecretView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          },
+          "trashed": {
+            "type": "boolean"
+          },
+          "trashedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "tags",
+          "fields",
+          "createdAt",
+          "createdBy",
+          "updatedAt",
+          "updatedBy",
+          "trashed",
+          "trashedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SecretView"
       },
       "SetDefaultRoleArgs": {
@@ -1843,7 +2055,31 @@
         "type": "object"
       },
       "VaultInfo": {
-        "description": "The app type `VaultInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "currentKey": {
+            "type": "string"
+          },
+          "defaultRole": {
+            "type": "string"
+          },
+          "myAccount": {
+            "type": "string"
+          },
+          "myRole": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "currentKey",
+          "defaultRole",
+          "myAccount",
+          "myRole"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "VaultInfo"
       },
       "VaultInfoArgs": {

@@ -115,7 +115,7 @@ pub struct LabelTag {
 
 /// An issue as callers see it, labels included. A plain struct: a `Record`
 /// cannot hold a list.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueView {
     pub id: String,
@@ -136,14 +136,14 @@ pub struct IssueView {
 }
 
 /// An issue with its comment thread, oldest comment first.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct IssueDetail {
     pub issue: IssueView,
     pub comments: Vec<Comment>,
 }
 
 /// One board column's count.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct StatusCount {
     pub status: String,
     /// A decimal string on the wire.
@@ -152,7 +152,7 @@ pub struct StatusCount {
 }
 
 /// The repository this board tracks; `repoUrl` is empty until `setRepoUrl`.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoInfo {
     pub repo_url: String,
