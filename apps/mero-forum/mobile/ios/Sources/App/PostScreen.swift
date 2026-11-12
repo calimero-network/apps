@@ -283,7 +283,7 @@ struct PostDetail: View {
             HStack {
                 ActionCount(symbol: "bubble.left", count: nil, label: "Reply", action: reply)
                 Spacer()
-                VoteControl(score: post.score, myVote: post.myVote, size: 19, vote: vote)
+                VoteControl(score: post.score, myVote: Int32(post.myVote), size: 19, vote: vote)
                 Spacer()
                 ShareLink(item: "\(post.title)\n\n\(post.body)") {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 16)).foregroundStyle(Palette.muted)
@@ -338,7 +338,7 @@ struct ReplyRow: View {
                     .textSelection(.enabled)
                 HStack {
                     Spacer()
-                    VoteControl(score: comment.score, myVote: comment.myVote, size: 15, vote: vote)
+                    VoteControl(score: comment.score, myVote: Int32(comment.myVote), size: 15, vote: vote)
                 }
             }
         }

@@ -2,11 +2,8 @@ package network.calimero.calendar.data
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import network.calimero.calendar.contract.CalendarContract
 import network.calimero.calendar.contract.CreateCalendarEvent
-import network.calimero.calendar.contract.Member
 import network.calimero.calendar.contract.UpdateCalendarEvent
-import network.calimero.calendar.contract.asContractArg
 import network.calimero.calendar.generated.CalendarClient
 import network.calimero.calendar.contract.CalendarEvent as WireEvent
 
@@ -27,13 +24,13 @@ class CalendarRepository(
 ) {
     suspend fun events(): List<CalEvent> =
         coroutineScope {
-            val shared = async { client.getEvents().map { CalendarContract.read<WireEvent>(it) } }
-            val mine = async { client.getPrivateEvents().map { CalendarContract.read<WireEvent>(it) } }
+            val shared = async { client.getEvents() }
+            val mine = async { client.getPrivateEvents() }
             val all = shared.await().mapNotNull { toEvent(it, it.private) } + mine.await().mapNotNull { toEvent(it, true) }
             all.distinctBy { it.id }.sortedWith(compareBy({ it.start }, { it.title }))
         }
 
-    suspend fun members(): List<CalMember> = client.getMembers().map { CalendarContract.read<Member>(it) }.map { CalMember(it.id, it.username.trim()) }
+    suspend fun members(): List<CalMember> = client.getMembers().map { CalMember(it.id, it.username.trim()) }
 
     suspend fun create(fields: EventFields): String {
         val data =
@@ -42,11 +39,11 @@ class CalendarRepository(
                 description = fields.description,
                 start = fields.start,
                 end = fields.end,
-                eventType = fields.type,
+                event_type = fields.type,
                 color = fields.color,
                 peers = if (fields.isPrivate) emptyList() else fields.peers,
             )
-        return if (fields.isPrivate) client.createPrivateEvent(data.asContractArg()) else client.createEvent(data.asContractArg())
+        return if (fields.isPrivate) client.createPrivateEvent(data) else client.createEvent(data)
     }
 
     suspend fun update(
@@ -59,11 +56,11 @@ class CalendarRepository(
                 description = fields.description,
                 start = fields.start,
                 end = fields.end,
-                eventType = fields.type,
+                event_type = fields.type,
                 color = fields.color,
                 peers = if (fields.isPrivate) emptyList() else fields.peers,
             )
-        return if (event.isPrivate) client.updatePrivateEvent(event.id, patch.asContractArg()) else client.updateEvent(event.id, patch.asContractArg())
+        return if (event.isPrivate) client.updatePrivateEvent(event.id, patch) else client.updateEvent(event.id, patch)
     }
 
     suspend fun delete(event: CalEvent) {
@@ -85,7 +82,7 @@ class CalendarRepository(
             owner = wire.owner,
             start = start,
             end = if (end.isBefore(start)) start else end,
-            allDay = wire.eventType == CalendarConstants.TYPE_ALL_DAY,
+            allDay = wire.event_type == CalendarConstants.TYPE_ALL_DAY,
             color = wire.color.ifBlank { CalendarConstants.DEFAULT_COLOR },
             peers = wire.peers,
             isPrivate = isPrivate,

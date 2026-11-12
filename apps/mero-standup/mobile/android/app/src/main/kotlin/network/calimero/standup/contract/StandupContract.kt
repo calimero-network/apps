@@ -1,135 +1,50 @@
-// The standup contract (`logic/`, a Calimero 1.0 component): the calls are
-// [network.calimero.standup.generated.StandupClient], generated from `logic/res/abi.json` by core's
-// `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo root). This file keeps the
-// answer types and the method table of the web app's `app/src/standup.ts`; the iOS app's
-// `StandupTypes.swift` is its twin.
+// The standup contract (`logic/`, a Calimero 1.0 component): the calls are [StandupClient],
+// generated from `logic/res/abi.json` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`
+// at the repo root), and so are the answer types. This file keeps the method table of the web app's
+// `app/src/standup.ts`; the iOS app's `StandupTypes.swift` is its twin.
 //
 // What the component ABI changed from v1, and how this file follows it:
 // - method, argument and result names are camelCase (`postUpdate`, `fromDay`, `authorName`,
 //   `nextCursor`); unknown argument keys are refused, so every optional argument is written, as
 //   `null` when absent;
-// - 64-bit timestamps are decimal strings (read as `ULong`, which takes a quoted number); counts
-//   stay `u32` numbers;
+// - 64-bit timestamps are decimal strings (`ULong` in the generated types); counts stay `u32`
+//   numbers;
 // - accounts are the cluster's account ids, as opaque strings;
 // - a refusal is the node's `APP_ERROR` with the contract's `{ code, fields }` ([StandupAppCode]).
 
 package network.calimero.standup.contract
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.serializer
+import network.calimero.standup.generated.StandupClient
 
-/** The JSON the contract speaks. */
-val standupJson = Json { ignoreUnknownKeys = true }
+// The answer types are the generated client's ([StandupClient], from the ABI).
 
-/**
- * An answer of the generated [network.calimero.standup.generated.StandupClient] as the app type
- * [T], read through its JSON: the client answers its own typed records, the app keeps its own.
- */
-inline fun <reified T> Any.toStandup(): T = standupJson.decodeFromJsonElement(serializer<T>(), asContractJson())
+/** Days with at least one update, newest first; pass `nextCursor` back as `before`. */
+typealias DayPage = StandupClient.DayPage
 
-/** Days with at least one update, newest first. */
-@Serializable
-data class DayPage(
-    val days: List<DaySummary>,
-    /** Pass back as `before` for the next page; `None` at the end. */
-    val nextCursor: String? = null,
-)
+/** A day's count of updates, and of those that named a blocker. */
+typealias DaySummary = StandupClient.DaySummary
 
-@Serializable
-data class DaySummary(
-    val day: String,
-    /** How many members posted that day. */
-    val updates: UInt,
-    /** How many of those named a blocker. */
-    val blocked: UInt,
-)
+/** Everyone's standup for one day, ordered by author. */
+typealias DayView = StandupClient.DayView
 
-/** Everyone's standup for one day. */
-@Serializable
-data class DayView(
-    val day: String,
-    /** Ordered by author, so every node lists them the same way. */
-    val updates: List<UpdateView>,
-)
+/** A page of decisions; pass `nextCursor` back as `cursor`. */
+typealias DecisionPage = StandupClient.DecisionPage
 
-@Serializable
-data class DecisionPage(
-    val items: List<DecisionView>,
-    /** Pass back as `cursor` for the next page; `None` at the end. */
-    val nextCursor: String? = null,
-)
-
-@Serializable
-data class DecisionView(
-    val id: String,
-    val author: String,
-    val authorName: String,
-    val title: String,
-    val decision: String,
-    val rationale: String,
-    /** The decision this one replaces, or "" — only when that claim holds. */
-    val supersedes: String,
-    /** The decision that replaced this one, or "" while it stands. */
-    val supersededBy: String,
-    val createdAt: ULong,
-    /** v2 notes; empty for a decision logged before v2. */
-    val tags: List<String>,
-    val with: List<PersonView>,
-    /** The standup day it came out of, or "". */
-    val fromDay: String,
-)
+typealias DecisionView = StandupClient.DecisionView
 
 /** An offer to help with a blocker. */
-@Serializable
-data class HelpView(
-    val account: String,
-    val name: String,
-    val note: String,
-    val at: ULong,
-)
+typealias HelpView = StandupClient.HelpView
 
 /** Someone who has taken part: posted an update or named themselves. */
-@Serializable
-data class MemberView(
-    val account: String,
-    val name: String,
-    /** The latest day they posted for, or "" if they never have. */
-    val lastDay: String,
-)
+typealias MemberView = StandupClient.MemberView
 
 /** Someone named in a view, with the name they chose ("" if none). */
-@Serializable
-data class PersonView(
-    val account: String,
-    val name: String,
-)
+typealias PersonView = StandupClient.PersonView
 
 /** A tag and how many decisions carry it. */
-@Serializable
-data class TagCount(
-    val tag: String,
-    val count: UInt,
-)
+typealias TagCount = StandupClient.TagCount
 
-@Serializable
-data class UpdateView(
-    val day: String,
-    val author: String,
-    /** The author's chosen name, or "" when they have not set one. */
-    val authorName: String,
-    val done: String,
-    val next: String,
-    val blockers: String,
-    val createdAt: ULong,
-    val editedAt: ULong,
-    /**
-     * Teammates who offered to help with the blocker, oldest offer first.
-     * Empty when there is no blocker.
-     */
-    val helpers: List<HelpView>,
-)
+typealias UpdateView = StandupClient.UpdateView
 
 /** The contract's methods, as `abi.json` names them. */
 object StandupMethods {
@@ -171,17 +86,3 @@ enum class StandupAppCode(
         fun of(code: String): StandupAppCode? = entries.firstOrNull { it.code == code }
     }
 }
-
-/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
-fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
-
-/** [this] (an app type, or its JSON) as the generated client's type [R] (an argument), through its JSON. */
-inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
-
-/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
-val contractArgJson =
-    Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }

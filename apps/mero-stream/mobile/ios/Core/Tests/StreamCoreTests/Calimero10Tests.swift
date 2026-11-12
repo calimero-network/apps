@@ -79,7 +79,6 @@ final class Calimero10Tests: XCTestCase {
                 ? .object(["memberId": "a", "username": "Ana", "joinedAt": "1700000000", "updatedAt": "1700000001"]) : .array([])
         }
         let member = try await StreamClient(backend: backend, contextId: "c1").join(username: "Ana", now: 1_700_000_000)
-            .decoded(as: Member.self)
         XCTAssertEqual(member.joinedAt, 1_700_000_000)
         XCTAssertEqual(member.updatedAt, 1_700_000_001)
         XCTAssertEqual(backend.recording.calls("join").first?.args["now"], .string("1700000000"))

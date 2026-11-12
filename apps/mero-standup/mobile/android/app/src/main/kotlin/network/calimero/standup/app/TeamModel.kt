@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import network.calimero.standup.contract.MemberView
-import network.calimero.standup.contract.toStandup
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.People
 import network.calimero.standup.core.StandupInvitation
@@ -81,7 +80,7 @@ class TeamModel(
             coroutineScope {
                 val name = async { client.getName(me) }
                 val teamName = async { client.teamName() }
-                val members = async { client.members().map { it.toStandup<MemberView>() } }
+                val members = async { client.members() }
                 val n = name.await()
                 val t = teamName.await()
                 val m = members.await()

@@ -165,7 +165,7 @@ struct PostRow: View {
                         symbol: "bubble.left", count: post.commentCount > 0 ? ForumFormat.compact(Int64(post.commentCount)) : nil,
                         label: ForumFormat.count(Int(post.commentCount), "reply", "replies"), action: reply)
                     Spacer()
-                    VoteControl(score: post.score, myVote: post.myVote, vote: vote)
+                    VoteControl(score: post.score, myVote: Int32(post.myVote), vote: vote)
                     Spacer()
                     ShareLink(item: "\(post.title)\n\n\(post.body)") {
                         Image(systemName: "square.and.arrow.up").font(.system(size: 15)).foregroundStyle(Palette.muted)

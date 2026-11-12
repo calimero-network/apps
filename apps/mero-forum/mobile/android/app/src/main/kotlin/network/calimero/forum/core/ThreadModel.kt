@@ -7,9 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import network.calimero.forum.contract.CommentPage
 import network.calimero.forum.contract.CommentView
-import network.calimero.forum.contract.ForumContract
 import network.calimero.forum.contract.PostView
 import network.calimero.forum.generated.ForumClient
 
@@ -54,8 +52,8 @@ class ThreadModel(
         if (_post.value == null) _phase.value = LoadPhase.Loading
         attempt {
             coroutineScope {
-                val post = async { ForumContract.read<PostView>(client.getPost(postId)) }
-                val page = async { ForumContract.read<CommentPage>(client.listComments(postId, null, ForumConstants.PAGE_SIZE)) }
+                val post = async { client.getPost(postId) }
+                val page = async { client.listComments(postId, null, ForumConstants.PAGE_SIZE) }
                 post.await() to page.await()
             }
         }.onSuccess { (post, page) ->
@@ -77,7 +75,7 @@ class ThreadModel(
         if (!_hasMore.value || _isLoadingMore.value || next == null) return
         _isLoadingMore.value = true
         try {
-            attempt { ForumContract.read<CommentPage>(client.listComments(postId, next, ForumConstants.PAGE_SIZE)) }
+            attempt { client.listComments(postId, next, ForumConstants.PAGE_SIZE) }
                 .onSuccess { page ->
                     val seen = _comments.value.map { it.id }.toSet()
                     _comments.value = _comments.value + page.items.filter { it.id !in seen }
@@ -104,7 +102,7 @@ class ThreadModel(
 
     suspend fun votePost(value: Int) {
         val before = _post.value ?: return
-        _post.value = before.copy(score = before.score - before.myVote + value, myVote = value)
+        _post.value = before.copy(score = before.score - before.myVote + value, myVote = value.toByte())
         attempt { client.vote(postId, value.toByte()) }.onFailure {
             _post.value = before
             _notice.value = ForumErrorText.describe(it)
@@ -167,7 +165,7 @@ class ThreadModel(
         value: Int,
     ) {
         val before = _comments.value
-        replace(comment.id) { it.copy(score = it.score - it.myVote + value, myVote = value) }
+        replace(comment.id) { it.copy(score = it.score - it.myVote + value, myVote = value.toByte()) }
         attempt { client.voteComment(comment.id, value.toByte()) }.onFailure {
             _comments.value = before
             _notice.value = ForumErrorText.describe(it)

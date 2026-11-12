@@ -23,8 +23,8 @@ public struct CalendarRepository: Sendable {
     /// Shared events (`getEvents`) and the caller's private ones
     /// (`getPrivateEvents`), sorted by start.
     public func events() async throws -> [CalendarItem] {
-        async let shared = client.getEvents().map { try $0.decoded(as: CalendarEvent.self) }
-        async let mine = client.getPrivateEvents().map { try $0.decoded(as: CalendarEvent.self) }
+        async let shared = client.getEvents()
+        async let mine = client.getPrivateEvents()
         var seen = Set<String>()
         let all = (try await shared).compactMap { CalendarItem($0, isPrivate: $0.private) }
             + (try await mine).compactMap { CalendarItem($0, isPrivate: true) }
@@ -34,7 +34,7 @@ public struct CalendarRepository: Sendable {
 
     /// `getMembers`, as people.
     public func members() async throws -> [CalendarPerson] {
-        try await client.getMembers().map { try $0.decoded(as: Member.self) }.map {
+        try await client.getMembers().map {
             CalendarPerson(id: $0.id, name: $0.username.trimmingCharacters(in: .whitespaces))
         }
     }
@@ -45,9 +45,9 @@ public struct CalendarRepository: Sendable {
     @discardableResult
     public func create(_ event: CalendarItem) async throws -> String {
         if event.isPrivate {
-            return try await client.createPrivateEvent(eventData: try createArgs(event).converted())
+            return try await client.createPrivateEvent(eventData: createArgs(event))
         }
-        return try await client.createEvent(eventData: try createArgs(event).converted())
+        return try await client.createEvent(eventData: createArgs(event))
     }
 
     /// Save an edited event. `wasPrivate`: where the event lives now. A
@@ -57,12 +57,12 @@ public struct CalendarRepository: Sendable {
     public func update(_ event: CalendarItem, wasPrivate: Bool) async throws {
         let patch = UpdateCalendarEvent(
             title: event.title, description: event.description, start: EventTime.format(event.start),
-            end: EventTime.format(event.end), eventType: type(event), color: event.color,
+            end: EventTime.format(event.end), event_type: type(event), color: event.color,
             peers: event.isPrivate ? [] : event.peers)
         if wasPrivate {
-            _ = try await client.updatePrivateEvent(eventId: event.id, eventData: try patch.converted())
+            _ = try await client.updatePrivateEvent(eventId: event.id, eventData: patch)
         } else {
-            _ = try await client.updateEvent(eventId: event.id, eventData: try patch.converted())
+            _ = try await client.updateEvent(eventId: event.id, eventData: patch)
         }
     }
 
@@ -83,7 +83,7 @@ public struct CalendarRepository: Sendable {
     private func createArgs(_ event: CalendarItem) -> CreateCalendarEvent {
         CreateCalendarEvent(
             title: event.title, description: event.description, start: EventTime.format(event.start),
-            end: EventTime.format(event.end), eventType: type(event), color: event.color,
+            end: EventTime.format(event.end), event_type: type(event), color: event.color,
             peers: event.isPrivate ? [] : event.peers)
     }
 

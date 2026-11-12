@@ -259,7 +259,7 @@ fun PostRow(
                     ForumFormat.count(post.commentCount.toInt(), "reply", "replies"),
                     open,
                 )
-                VoteControl(post.score, post.myVote, vote = vote)
+                VoteControl(post.score, post.myVote.toInt(), vote = vote)
                 ActionCount(Icons.Outlined.Share, null, "Share") { share(context, "${post.title}\n\n${post.body}") }
             }
         }

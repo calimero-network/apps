@@ -3,6 +3,8 @@ package network.calimero.calendar.contract
 import com.calimero.mero.AppError
 import com.calimero.mero.ConfirmCancelled
 import com.calimero.mero.LoginRequired
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -30,21 +32,25 @@ class CalendarClientTest {
     @Test
     fun `u64s are decimal strings both ways`() {
         val members =
-            CalendarContract.json.decodeFromString(
-                kotlinx.serialization.builtins.ListSerializer(Member.serializer()),
+            Json.decodeFromString(
+                ListSerializer(Member.serializer()),
                 """[{"id":"x","username":"a","joinedAt":"1761650000000000001","usernameUpdatedAt":2}]""",
             )
-        assertEquals(1_761_650_000_000_000_001L, members.single().joinedAt)
-        assertEquals(2L, members.single().usernameUpdatedAt)
+        assertEquals(1_761_650_000_000_000_001uL, members.single().joinedAt)
+        assertEquals(2uL, members.single().usernameUpdatedAt)
         assertEquals(
             """{"id":"x","username":"a","joinedAt":"5","usernameUpdatedAt":"6"}""",
-            CalendarContract.json.encodeToString(Member.serializer(), Member("x", "a", 5, 6)),
+            Json.encodeToString(Member.serializer(), Member("x", "a", 5uL, 6uL)),
         )
     }
 
+    /** The fields an update does not name go as `null`, which the contract leaves alone. */
     @Test
-    fun `an update sends only the fields it names`() {
-        assertEquals("""{"title":"New"}""", CalendarContract.json.encodeToString(UpdateCalendarEvent.serializer(), UpdateCalendarEvent(title = "New")))
+    fun `an update changes only the fields it names`() {
+        assertEquals(
+            """{"title":"New","description":null,"start":null,"end":null,"event_type":null,"color":null,"peers":null}""",
+            Json.encodeToString(UpdateCalendarEvent.serializer(), UpdateCalendarEvent(title = "New")),
+        )
     }
 
     @Test
