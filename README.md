@@ -152,8 +152,7 @@ apps/my-app/
 │   ├── src/lib.rs        #   #[app::state] state, #[app::logic] methods, #[app::event] events
 │   ├── Cargo.toml        #   [package.metadata.calimero] — the registry manifest
 │   ├── tests/            #   TestHost + convergence. No node needed.
-│   ├── res/              #   abi.json + state-schema.json, emitted by cargo mero
-│   └── workflows/        #   merobox scenarios: real multi-node integration
+│   └── res/              #   abi.json + state-schema.json, emitted by cargo mero
 └── app/                  # Frontend. Vite + React + TypeScript.
     ├── src/              #   talks to the local node via mero-js / mero-react
     │   └── generated/    #   typed client, generated from ../logic/res/abi.json
@@ -213,7 +212,6 @@ docs/
 Cargo.toml                  ONE SDK pin, the release profiles, and
                             [workspace.metadata.mero-apps] for fleet-wide values
 pnpm-workspace.yaml         ONE version per JS dependency, via catalog:
-requirements-e2e.txt        merobox AND calimero-client-py, pinned together
 tsconfig.base.json
 ```
 
@@ -237,6 +235,9 @@ that existed on 2026-08-26 — all sixteen now share a single value for each row
 
 Thirteen pins × nine apps was up to 117 places to edit for one decision. Here it
 is 13.
+The `merobox` and `calimero-client-py` rows have since gone with the merobox
+e2e job itself: merobox is retired, and component apps run their scenarios on
+`merod local`.
 
 Two of those rows are not cosmetic. **`calimero-client-py` is a transitive
 dependency of merobox that tracks core master** — pinning merobox alone pins
@@ -283,7 +284,7 @@ per-app table and a list of which invariants CI actually holds.
 
 ### The CI signal
 
-`ci.yml` has seven jobs. `changes` runs first and decides which of the rest run,
+`ci.yml`'s main jobs are below (plus `journey` and `conformance`). `changes` runs first and decides which of the rest run,
 and over which apps:
 
 | Job | Runs when | Does |
@@ -294,14 +295,13 @@ and over which apps:
 | `wasm` | frontend **or** contract or workspace | `cargo mero build` per app; the ABI is regenerated and diffed |
 | `frontend` | frontend or contract or workspace | typecheck, codegen diff, unit tests, build, `check-vercel-output.sh` |
 | `browser` | frontend or contract or workspace | Playwright per app against a real node |
-| `e2e` | contract or workspace | merobox multi-node scenarios per app |
 
 `wasm` is deliberately the broadest of those — it is a *producer*, and it runs on
-frontend-only changes precisely so that `browser` and `e2e`, which need it, are
+frontend-only changes precisely so that `browser` and `journey`, which need it, are
 not skipped out from under themselves:
 
 ⚠️ **A job whose `needs:` was skipped is skipped too — `if:` cannot rescue it.**
-`browser` and `e2e` both `needs: wasm`, so a producer gate narrower than its
+`browser` and `journey` both `needs: wasm`, so a producer gate narrower than its
 consumer's silently disables the consumer. That is how the browser suite went
 from running on frontend-only PRs to running on none of them, green by absence.
 `scripts/tests/producer-gate-test.py` asserts no producer is narrower than a
@@ -404,8 +404,8 @@ merge. Use `git filter-repo` when the history matters.
 
 ⚠️ **Two failure modes hid behind green CI during the moves**, both worth
 checking on any future one: merobox scenarios landing at a path CI never globs
-(the job passes in seconds having run *nothing* — an `E2E (<app>)` leg green in
-~20s ran zero scenarios), and an inherited `.gitignore` swallowing the committed
+(the job passed in seconds having run *nothing* — an `E2E (<app>)` leg green in
+~20s ran zero scenarios; that job is gone now, with merobox), and an inherited `.gitignore` swallowing the committed
 `res/abi.json`, so codegen silently had nothing to check against.
 
 ## Related
@@ -415,7 +415,6 @@ checking on any future one: merobox scenarios landing at a path CI never globs
 - [swift-sdk](https://github.com/calimero-network/swift-sdk) · [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) — native mobile SDKs
 - [design-system](https://github.com/calimero-network/design-system) — shared UI primitives
 - [cargo-mero](https://github.com/calimero-network/cargo-mero) — build and publish WASM app bundles
-- [merobox](https://github.com/calimero-network/merobox) — spin up multi-node clusters for tests
 - [app-registry](https://github.com/calimero-network/app-registry) — signed app distribution ([apps.calimero.network](https://apps.calimero.network/))
 - [tauri-app](https://github.com/calimero-network/tauri-app) — Calimero Desktop, which runs these apps
 - [documentation](https://github.com/calimero-network/documentation) — [docs.calimero.network](https://docs.calimero.network/)

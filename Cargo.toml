@@ -35,7 +35,7 @@ members  = [
 # workspace root is a hard error (`multiple workspace roots found`). Being out of
 # this workspace is also what takes an app out of the v1 pipeline:
 # `scripts/app-packages.sh` reads `cargo metadata` of THIS workspace, so the
-# wasm, browser, merobox and journey matrices stop seeing it, and
+# wasm, browser and journey matrices stop seeing it, and
 # `.github/workflows/components.yml` picks it up instead
 # (`scripts/component-apps.sh`). Each app's port adds its own line, in the same
 # PR that moves it. `tools/component-bundle` is a standalone crate too, but
@@ -149,8 +149,8 @@ unicode-normalization = { version = "0.1.25", default-features = false }
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
 min-runtime-version = "1.0.0-rc.18"
-# The merod image every merobox workflow runs against, matched to the SDK tag so
-# contract and node always agree.
+# The merod release the browser and journey jobs run (`setup-merod` reads the tag
+# from this), matched to the SDK tag so contract and node always agree.
 merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.18"
 # ── component apps (the 1.0 runtime) ─────────────────────────────────────────
 #
