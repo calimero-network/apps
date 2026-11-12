@@ -6,7 +6,7 @@
 #
 # Everything that is not a view (the generated contract client, the helpers and
 # the view models) is the local Swift package in Core/, tested with
-# `swift test` on macOS. The swift-sdk is pinned to its v0.5.0 release
+# `swift test` on macOS. The swift-sdk is pinned to its v2.0.0 release
 # (Calimero 1.0); bump `exactVersion` for a new release. Keep it equal to
 # the version in Core/Package.swift.
 name: MeroUpdates
@@ -20,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 2.0.0
   UpdatesCore:
     path: Core
 

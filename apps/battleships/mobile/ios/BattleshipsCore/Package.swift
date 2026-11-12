@@ -16,11 +16,11 @@ let package = Package(
         .library(name: "BattleshipsCore", targets: ["BattleshipsCore"]),
     ],
     dependencies: [
-        // swift-sdk release v0.5.0 (Calimero 1.0).
+        // swift-sdk release v2.0.0 (Calimero 1.0).
         // Keep it identical to ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "0.5.0"),
+            exact: "2.0.0"),
     ],
     targets: [
         .target(

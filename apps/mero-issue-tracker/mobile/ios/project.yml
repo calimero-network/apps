@@ -6,7 +6,7 @@
 #
 # The non-UI layer (generated contract client, models) is the local SwiftPM
 # package in Core/, tested with `swift test` on macOS. The swift-sdk is pinned to
-# its v0.5.0 release (`exactVersion`). Bump the pins here, in Core/Package.swift
+# its v2.0.0 release (`exactVersion`). Bump the pins here, in Core/Package.swift
 # and Core/Package.resolved together.
 name: MeroIssues
 
@@ -19,7 +19,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 2.0.0
   IssueTrackerCore:
     path: Core
 

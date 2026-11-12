@@ -7,7 +7,7 @@
 # The logic (ballot cryptography, generated contract client, view models,
 # invitation codec) lives in the local VoteCore package, which builds and tests
 # on macOS with `swift test --package-path VoteCore`. The swift-sdk is pinned
-# to its v0.5.0 release (Calimero 1.0); bump `exactVersion` for a new release.
+# to its v2.0.0 release (Calimero 1.0); bump `exactVersion` for a new release.
 # Keep it identical to VoteCore/Package.swift.
 name: MeroVote
 
@@ -20,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 2.0.0
   VoteCore:
     path: VoteCore
 
