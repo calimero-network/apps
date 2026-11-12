@@ -127,7 +127,7 @@ struct LobbyScreen: View {
                 action: model.opponents.isEmpty ? ("Invite players", invite) : ("New match", { choosing = true }))
         } else {
             VStack(spacing: 10) {
-                ForEach(Array(model.myMatches.enumerated()), id: \.element.matchId) { index, match in
+                ForEach(Array(model.myMatches.enumerated()), id: \.element.match_id) { index, match in
                     Button {
                         if let ref = model.ref(for: match) {
                             Haptics.tap()
@@ -181,14 +181,14 @@ struct LobbyScreen: View {
             HStack(spacing: 10) {
                 StatTile(value: model.stats?.wins ?? 0, label: "Wins", highlight: true)
                 StatTile(value: model.stats?.losses ?? 0, label: "Losses")
-                StatTile(value: model.stats?.gamesPlayed ?? 0, label: "Played")
+                StatTile(value: model.stats?.games_played ?? 0, label: "Played")
             }
             SectionLabel(text: "History")
             if model.sortedHistory.isEmpty {
                 EmptyState(symbol: "clock", title: "No results yet", message: "Finished matches in this lobby show up here.")
             } else {
                 VStack(spacing: 10) {
-                    ForEach(model.sortedHistory, id: \.matchId) { result in
+                    ForEach(model.sortedHistory, id: \.match_id) { result in
                         HistoryRow(result: result, me: model.me, names: model.names)
                     }
                 }
@@ -234,7 +234,7 @@ private struct MatchRow: View {
                 SymbolTile(symbol: symbol, tone: tone, size: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("vs \(Names.player(opponent, me: me, names: names))").font(Typeface.display(17)).foregroundStyle(Palette.ink)
-                    Text(Date(timeIntervalSince1970: Double(match.createdMs) / 1000).formatted(date: .abbreviated, time: .shortened))
+                    Text(Date(timeIntervalSince1970: Double(match.created_ms) / 1000).formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
@@ -338,7 +338,7 @@ private struct HistoryRow: View {
                 SymbolTile(symbol: symbol, tone: mine == true ? Palette.lime : Palette.sunken, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
-                    Text(Date(timeIntervalSince1970: Double(result.finishedMs) / 1000).formatted(date: .abbreviated, time: .shortened))
+                    Text(Date(timeIntervalSince1970: Double(result.finished_ms) / 1000).formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 }
                 Spacer()

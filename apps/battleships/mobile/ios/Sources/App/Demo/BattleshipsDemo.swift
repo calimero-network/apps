@@ -122,7 +122,7 @@ enum BattleshipsDemo {
                 let wins = lobby.history.filter { $0.winner == key }.count
                 let losses = lobby.history.filter { $0.loser == key }.count
                 return try DemoReply.json(
-                    PlayerStatsView(wins: UInt64(wins), losses: UInt64(losses), gamesPlayed: UInt64(wins + losses)))
+                    PlayerStatsView(wins: UInt64(wins), losses: UInt64(losses), games_played: UInt64(wins + losses)))
             case "createMatch":
                 let opponent = call.string("player2") ?? ""
                 guard let entry = lobby.players.first(where: { $0.player == opponent }) else {
@@ -132,8 +132,8 @@ enum BattleshipsDemo {
                 let matchId = "\(BattleshipsDemo.me.prefix(8))-\(ms(Date()))-\(next)"
                 lobby.matches.append(
                     MatchSummary(
-                        matchId: matchId, player1: BattleshipsDemo.me, player2: opponent, player2Account: entry.account,
-                        status: .pending, createdMs: ms(Date())))
+                        match_id: matchId, player1: BattleshipsDemo.me, player2: opponent, player2_account: entry.account,
+                        status: .pending, created_ms: ms(Date())))
                 var rng = SeededRandom(seed: matchId)
                 games[matchId] = Game(
                     lobbyContextId: call.contextId, matchId: matchId, opponent: opponent,
@@ -153,8 +153,8 @@ enum BattleshipsDemo {
             case "getMatchState":
                 return try DemoReply.json(
                     MatchStateView(
-                        standing: game.standing, committed: game.committed, endedBy: game.endedBy, loser: game.loser,
-                        revealed: game.revealed, auditFailed: [], winner: game.winner))
+                        standing: game.standing, committed: game.committed, ended_by: game.endedBy, loser: game.loser,
+                        revealed: game.revealed, audit_failed: [], winner: game.winner))
             case "getShots":
                 return try DemoReply.json(ShotsView(size: UInt32(BoardGeometry.size), shots: game.shots))
             case "getIncomingShots":
@@ -219,7 +219,7 @@ enum BattleshipsDemo {
 
         private func activate(_ game: Game) {
             guard var lobby = lobbies[game.lobbyContextId],
-                let index = lobby.matches.firstIndex(where: { $0.matchId == game.matchId })
+                let index = lobby.matches.firstIndex(where: { $0.match_id == game.matchId })
             else { return }
             lobby.matches[index].status = .active
             lobbies[game.lobbyContextId] = lobby
@@ -232,11 +232,11 @@ enum BattleshipsDemo {
             game.endedBy = "sunk"
             game.turn = nil
             guard var lobby = lobbies[game.lobbyContextId] else { return }
-            if let index = lobby.matches.firstIndex(where: { $0.matchId == game.matchId }) {
+            if let index = lobby.matches.firstIndex(where: { $0.match_id == game.matchId }) {
                 lobby.matches[index].status = .finished
                 lobby.matches[index].winner = winner
             }
-            lobby.history.append(MatchRecord(matchId: game.matchId, winner: winner, loser: loser, finishedMs: ms(Date())))
+            lobby.history.append(MatchRecord(match_id: game.matchId, winner: winner, loser: loser, finished_ms: ms(Date())))
             lobbies[game.lobbyContextId] = lobby
         }
 
@@ -259,17 +259,17 @@ enum BattleshipsDemo {
             addGame(to: &anchor, opponent: "Ines", meFirst: true, created: ago(5 * day + 7 * hour), state: .won)
             anchor.matches.append(
                 MatchSummary(
-                    matchId: DemoIds.hex("match:mila-rafael"), player1: player("Mila"), player2: player("Rafael"),
-                    player2Account: accountOf("Rafael"), status: .active,
-                    createdMs: ago(2 * hour)))
+                    match_id: DemoIds.hex("match:mila-rafael"), player1: player("Mila"), player2: player("Rafael"),
+                    player2_account: accountOf("Rafael"), status: .active,
+                    created_ms: ago(2 * hour)))
             for (winner, loser, seconds) in [
                 ("Mila", "Jonah", 4 * day), (me, "Mila", 8 * day), ("Priya", "Tomas", 6 * day), ("Rafael", me, 9 * day),
                 ("Rafael", "Priya", 10 * day), (me, "Tomas", 12 * day), ("Ines", me, 14 * day),
             ] as [(String, String, TimeInterval)] {
                 anchor.history.append(
                     MatchRecord(
-                        matchId: DemoIds.hex("record:\(winner):\(loser):\(seconds)"), winner: key(winner), loser: key(loser),
-                        finishedMs: ago(seconds)))
+                        match_id: DemoIds.hex("record:\(winner):\(loser):\(seconds)"), winner: key(winner), loser: key(loser),
+                        finished_ms: ago(seconds)))
             }
             add(anchor)
 
@@ -327,9 +327,9 @@ enum BattleshipsDemo {
             game.shots = Self.volley(on: enemy, hits: myHits, misses: finished ? 19 : 13, rng: &rng)
             game.incoming = Self.volley(on: board.cells, hits: theirHits, misses: finished ? 21 : 13, rng: &rng)
             var summary = MatchSummary(
-                matchId: matchId, player1: meFirst ? me : opponent, player2: meFirst ? opponent : me,
-                player2Account: meFirst ? accountOf(name) : BattleshipsDemo.account, status: .active,
-                createdMs: created)
+                match_id: matchId, player1: meFirst ? me : opponent, player2: meFirst ? opponent : me,
+                player2_account: meFirst ? accountOf(name) : BattleshipsDemo.account, status: .active,
+                created_ms: created)
             switch state {
             case .won, .lost:
                 game.standing = "won"
@@ -426,8 +426,8 @@ enum BattleshipsDemo {
             games[matchId] = game
             lobby.matches.append(
                 MatchSummary(
-                    matchId: matchId, player1: me, player2: opponent, player2Account: accountOf(name), status: .active,
-                    createdMs: created))
+                    match_id: matchId, player1: me, player2: opponent, player2_account: accountOf(name), status: .active,
+                    created_ms: created))
         }
     }
 }

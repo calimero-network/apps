@@ -128,11 +128,11 @@ class LobbyModel(
     /** Your matches, the ones still going first, newest first within each. */
     fun myMatches(matches: List<MatchSummary> = _matches.value): List<MatchSummary> =
         matches.filter { isMine(it) }.sortedWith(
-            compareBy<MatchSummary> { if (it.status == MatchStatus.Finished) 1 else 0 }.thenByDescending { it.createdMs },
+            compareBy<MatchSummary> { if (it.status == BattleshipsClient.MatchStatus.Finished) 1 else 0 }.thenByDescending { it.created_ms },
         )
 
     /** Newest first. */
-    fun sortedHistory(history: List<MatchRecord> = _history.value): List<MatchRecord> = history.sortedByDescending { it.finishedMs }
+    fun sortedHistory(history: List<MatchRecord> = _history.value): List<MatchRecord> = history.sortedByDescending { it.finished_ms }
 
     fun isMine(match: MatchSummary): Boolean = match.player1.equals(_me.value, true) || match.player2.equals(_me.value, true)
 
@@ -140,7 +140,7 @@ class LobbyModel(
 
     fun ref(match: MatchSummary): MatchRef? {
         val app = _appId.value ?: return null
-        return MatchRef(namespace.id, app, match.matchId, opponent(match))
+        return MatchRef(namespace.id, app, match.match_id, opponent(match))
     }
 
     /** "You", their name in the lobby, or a short handle. */
@@ -189,7 +189,7 @@ class LobbyModel(
         val app = _appId.value ?: return
         val lobby = BattleshipsClient(backend, app)
         try {
-            _matches.value = lobby.getMatches().map { it.toAppType<MatchSummary>() }
+            _matches.value = lobby.getMatches()
             _phase.value = LoadPhase.Loaded
         } catch (e: CancellationException) {
             throw e
@@ -197,9 +197,9 @@ class LobbyModel(
             if (_phase.value != LoadPhase.Loaded) _phase.value = LoadPhase.Failed(ErrorText.describe(e))
             return
         }
-        attempt { lobby.getPlayers().map { it.toAppType<PlayerEntry>() } }?.let { _players.value = it }
-        attempt { lobby.getPlayerStats(_me.value)?.toAppType<PlayerStatsView>() }?.let { _stats.value = it }
-        attempt { lobby.getHistory().map { it.toAppType<MatchRecord>() } }?.let { _history.value = it }
+        attempt { lobby.getPlayers() }?.let { _players.value = it }
+        attempt { lobby.getPlayerStats(_me.value) }?.let { _stats.value = it }
+        attempt { lobby.getHistory() }?.let { _history.value = it }
         attempt { backend.listMembers(namespace.id) }?.let { members ->
             _names.value = members.mapNotNull { m -> m.name?.let { m.identity to it } }.toMap()
         }

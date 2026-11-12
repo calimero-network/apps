@@ -121,14 +121,14 @@ class LobbyModelTest {
                     .path,
             )
             assertEquals(listOf(RIVAL), model.opponents().map { it.player })
-            assertEquals(listOf("m1"), model.myMatches().map { it.matchId })
-            assertEquals(1_700_000_000_000uL, model.myMatches().first().createdMs)
+            assertEquals(listOf("m1"), model.myMatches().map { it.match_id })
+            assertEquals(1_700_000_000_000uL, model.myMatches().first().created_ms)
             assertEquals(PlayerStatsView(2uL, 1uL, 3uL), model.stats.value)
             assertEquals(
                 1_700_000_000_001uL,
                 model.history.value
                     .first()
-                    .finishedMs,
+                    .finished_ms,
             )
             assertEquals("names come from the org's member metadata", "Rafael", model.displayName(RIVAL))
             assertEquals(MatchRef("aa01", "lobby-app", "m1", RIVAL), model.ref(model.myMatches().first()))

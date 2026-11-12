@@ -96,12 +96,12 @@ class MatchModel(
     val stored: StoredBoard? get() = store.load(me, ref.matchId)
 
     val isMyTurn: Boolean
-        get() = _stage.value == Stage.Battle && _turn.value?.lowercase() == me && _state.value?.pendingShot == null
+        get() = _stage.value == Stage.Battle && _turn.value?.lowercase() == me && _state.value?.pending_shot == null
 
     /** Whose move the battle is waiting on, in words. */
     val turnText: String
         get() {
-            val pending = _state.value?.pendingShot
+            val pending = _state.value?.pending_shot
             return when {
                 pending != null -> if (pending.target.equals(me, true)) "Answering their shot…" else "Waiting for their answer…"
                 isMyTurn -> "Your turn. Pick a square."
@@ -124,11 +124,11 @@ class MatchModel(
     val endedText: String?
         get() {
             val state = _state.value ?: return null
-            if (state.auditFailed.any { it.equals(me, true) }) return "Your revealed board did not match your answers."
-            if (state.auditFailed.any { !it.equals(me, true) }) {
+            if (state.audit_failed.any { it.equals(me, true) }) return "Your revealed board did not match your answers."
+            if (state.audit_failed.any { !it.equals(me, true) }) {
                 return "Their revealed board did not match their answers, so the match is yours."
             }
-            return when (state.endedBy) {
+            return when (state.ended_by) {
                 "sunk" -> if (state.loser.equals(me, true)) "Your fleet was sunk." else "Every ship of theirs is sunk."
                 "impossible_misses" -> "Too many misses to be true: a fleet was hidden."
                 else -> null
@@ -167,7 +167,7 @@ class MatchModel(
         val mine: List<Int>
         val incoming: List<Int>
         try {
-            current = game.getMatchState(matchId).toAppType()
+            current = game.getMatchState(matchId)
             mine =
                 game
                     .getShots(matchId)
@@ -210,7 +210,7 @@ class MatchModel(
         }
         var answers = incoming
         if (answerPendingShot(latest, board.cells)) {
-            latest = attempt { game.getMatchState(matchId).toAppType<MatchStateView>() } ?: latest
+            latest = attempt { game.getMatchState(matchId) } ?: latest
             answers = attempt {
                 game
                     .getIncomingShots(matchId)
@@ -221,7 +221,7 @@ class MatchModel(
             _turn.value = attempt { game.getCurrentTurn(matchId) }
         }
         if (revealIfDue(latest, board)) {
-            latest = attempt { game.getMatchState(matchId).toAppType<MatchStateView>() } ?: latest
+            latest = attempt { game.getMatchState(matchId) } ?: latest
         }
         _state.value = latest
         _ownBoard.value = BoardReading.overlay(board.cells, answers)
@@ -244,12 +244,12 @@ class MatchModel(
         state: MatchStateView,
         cells: List<Int>,
     ): Boolean {
-        val shot = state.pendingShot ?: return false
-        if (state.standing != "playing" || !shot.target.equals(me, true) || answeredShot == shot.shotId) return false
-        answeredShot = shot.shotId
+        val shot = state.pending_shot ?: return false
+        if (state.standing != "playing" || !shot.target.equals(me, true) || answeredShot == shot.shot_id) return false
+        answeredShot = shot.shot_id
         val hit = BoardReading.isHit(cells, Coordinate(shot.x.toInt(), shot.y.toInt()))
         return attempt {
-            game.acknowledgeShot(ref.matchId, shot.shotId, hit)
+            game.acknowledgeShot(ref.matchId, shot.shot_id, hit)
             true
         }.let { answered ->
             if (answered == null) answeredShot = null
@@ -263,7 +263,7 @@ class MatchModel(
         board: StoredBoard,
     ): Boolean {
         if (state.standing == "playing" || revealing) return false
-        if (state.revealed.any { it.equals(me, true) } || state.auditFailed.any { it.equals(me, true) }) return false
+        if (state.revealed.any { it.equals(me, true) } || state.audit_failed.any { it.equals(me, true) }) return false
         revealing = true
         return try {
             attempt { game.revealBoard(ref.matchId, Commitment.boardBytes(board.cells).toBytes(), board.saltBytes.toBytes()) } != null

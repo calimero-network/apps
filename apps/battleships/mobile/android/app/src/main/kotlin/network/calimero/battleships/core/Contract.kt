@@ -1,25 +1,17 @@
 package network.calimero.battleships.core
 
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
+import network.calimero.battleships.generated.BattleshipsClient
 import java.util.Base64
 
-// The Battleships component contract (`../logic/res/abi.json`). The calls are
-// [network.calimero.battleships.generated.BattleshipsClient], generated from it by core's
-// `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this file keeps the method lists and the
-// answer types of the web app's `src/battleships.ts`: camelCase method and argument names,
+// The Battleships component contract (`../logic/res/abi.json`). The calls are [BattleshipsClient],
+// generated from it by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`), and so are the
+// answer types but [ShotsView]; this file keeps the method lists of the web app's
+// `src/battleships.ts`: camelCase method and argument names,
 // snake_case result fields, 64-bit integers as decimal strings, bytes as base64url, refusals as
 // `422 APP_ERROR {code, fields}`. (Swift `Contract.swift`.)
 
@@ -35,67 +27,32 @@ object BattleshipsMethods {
 
 // ---- Results ----------------------------------------------------------------------------------
 
-/** A u64 the contract answers as a decimal string (a number from an older node is read too). */
-object U64AsString : KSerializer<ULong> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("U64AsString", PrimitiveKind.STRING)
+// The answer types are the generated client's ([BattleshipsClient], from the ABI), field names as
+// the contract has them (`match_id`, `created_ms`, ...). [ShotsView] is the one the ABI still leaves
+// `unknown`, so it is read from the generated client's JSON below.
 
-    override fun deserialize(decoder: Decoder): ULong {
-        val element = (decoder as JsonDecoder).decodeJsonElement()
-        return element.jsonPrimitive.content.toULong()
-    }
+typealias MatchStatus = BattleshipsClient.MatchStatus
 
-    override fun serialize(
-        encoder: Encoder,
-        value: ULong,
-    ) = encoder.encodeString(value.toString())
-}
+typealias MatchSummary = BattleshipsClient.MatchSummary
 
-@Serializable
-enum class MatchStatus {
-    /** Until both fleets are committed. */
-    @SerialName("Pending")
-    Pending,
+typealias MatchRecord = BattleshipsClient.MatchRecord
 
-    @SerialName("Active")
-    Active,
-
-    /** Once the audited result is recorded. */
-    @SerialName("Finished")
-    Finished,
-}
-
-@Serializable
-data class MatchSummary(
-    @SerialName("match_id") val matchId: String,
-    val player1: String,
-    val player2: String,
-    @SerialName("player2_account") val player2Account: String = player2,
-    val status: MatchStatus,
-    val winner: String? = null,
-    @Serializable(with = U64AsString::class) @SerialName("created_ms") val createdMs: ULong,
-)
-
-@Serializable
-data class MatchRecord(
-    @SerialName("match_id") val matchId: String,
-    val winner: String,
-    val loser: String,
-    @Serializable(with = U64AsString::class) @SerialName("finished_ms") val finishedMs: ULong,
-)
-
-@Serializable
-data class PlayerStatsView(
-    @Serializable(with = U64AsString::class) val wins: ULong,
-    @Serializable(with = U64AsString::class) val losses: ULong,
-    @Serializable(with = U64AsString::class) @SerialName("games_played") val gamesPlayed: ULong,
-)
+typealias PlayerStatsView = BattleshipsClient.PlayerStatsView
 
 /** Someone who opened the lobby. On 1.0 both fields are the account id. */
-@Serializable
-data class PlayerEntry(
-    val account: String,
-    val player: String,
-)
+typealias PlayerEntry = BattleshipsClient.PlayerEntry
+
+/**
+ * The shot waiting for its defender's answer: `shot_id` is what `acknowledgeShot` takes, so an
+ * answer meant for an earlier shot is refused; `target` is the player who has to answer.
+ */
+typealias PendingShotView = BattleshipsClient.PendingShotView
+
+/**
+ * The match as every reader derives it, in one read: `standing` is `playing`, `awaiting_reveal`,
+ * `won` or `void`; `ended_by` is `sunk` or `impossible_misses`, null while playing.
+ */
+typealias MatchStateView = BattleshipsClient.MatchStateView
 
 /** The caller's shots (`getShots`) or the shots at the caller (`getIncomingShots`), one [Cell] byte per square. */
 @Serializable
@@ -104,41 +61,15 @@ data class ShotsView(
     val shots: List<UByte>,
 )
 
-/** The shot waiting for its defender's answer. */
-@Serializable
-data class PendingShotView(
-    /** What `acknowledgeShot` takes, so an answer meant for an earlier shot is refused. */
-    @SerialName("shot_id") val shotId: UInt,
-    val x: UInt,
-    val y: UInt,
-    /** The player who has to answer. */
-    val target: String,
-)
-
-/** The match as every reader derives it, in one read. */
-@Serializable
-data class MatchStateView(
-    /** `playing`, `awaiting_reveal`, `won` or `void`. */
-    val standing: String,
-    val committed: List<String>,
-    @SerialName("pending_shot") val pendingShot: PendingShotView? = null,
-    /** `sunk` or `impossible_misses`; null while playing. */
-    @SerialName("ended_by") val endedBy: String? = null,
-    val loser: String? = null,
-    val revealed: List<String> = emptyList(),
-    @SerialName("audit_failed") val auditFailed: List<String> = emptyList(),
-    val winner: String? = null,
-)
-
 // ---- Reading the generated client's answers ---------------------------------------------------
 
 /** The JSON the contract speaks. */
 internal val contractJson = Json { ignoreUnknownKeys = true }
 
 /**
- * This answer of the generated [network.calimero.battleships.generated.BattleshipsClient] as the
- * app type [T]. The ABI names the contract's types (`MatchSummary`, `MatchStateView`, `ShotsView`,
- * ...) without their shape until the logic derives `AbiType`, so the client answers their JSON.
+ * This answer of the generated [BattleshipsClient] as the app type [T]. The ABI leaves `ShotsView`
+ * `unknown` (its `shots` are bytes the logic does not describe yet), so the client answers its JSON
+ * and [ShotsView] reads it.
  */
 internal inline fun <reified T> Any.toAppType(): T = contractJson.decodeFromJsonElement<T>(asContractJson())
 
@@ -154,9 +85,6 @@ object Base64Url {
 
 /** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
 fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
-
-/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
-inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
 
 /** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
 val contractArgJson =
