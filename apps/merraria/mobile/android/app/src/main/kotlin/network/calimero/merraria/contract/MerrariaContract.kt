@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.serializer
 import network.calimero.merraria.generated.MerrariaClient
 
 // The world contract's component ABI (`logic/res/abi.json`). The calls are
@@ -34,21 +35,11 @@ object MerrariaContract {
     /** The JSON the contract speaks. */
     val JSON = Json { ignoreUnknownKeys = true }
 
-    /**
-     * [value] as the JSON of the app type it is. The ABI names the world's types (`WorldMeta`,
-     * `Edit`, `OverridesPage`, `Transform`, `PlayerView`) without their shape until the logic
-     * derives `AbiType`, so the generated client takes and answers their JSON.
-     */
-    fun <T> json(
-        serializer: KSerializer<T>,
-        value: T,
-    ): JsonElement = JSON.encodeToJsonElement(serializer, value)
-
-    /** [answer] read as the app type [serializer] describes. */
+    /** [answer], an answer of the generated client, read as the app type [serializer] describes. */
     fun <T> read(
         serializer: KSerializer<T>,
-        answer: JsonElement,
-    ): T = JSON.decodeFromJsonElement(serializer, answer)
+        answer: Any,
+    ): T = JSON.decodeFromJsonElement(serializer, answer.asContractJson())
 }
 
 /** Every override, page after page until `next` is null (the web app's `readAllOverrides`). */
@@ -135,3 +126,17 @@ object MerrariaRefusal {
         }
     }
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

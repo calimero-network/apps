@@ -221,7 +221,7 @@ public struct BridgeRouter: Sendable {
             try await client.leave(now: try args(NowArgs.self).now)
         case "heartbeat":
             let a = try args(HeartbeatArgs.self)
-            try await client.heartbeat(t: try JSONValue(encoding: a.t), now: a.now)
+            try await client.heartbeat(t: try a.t.converted(), now: a.now)
         case "setBlocks":
             let a = try args(SetBlocksArgs.self)
             if a.edits.count > Self.maxEdits {
@@ -230,7 +230,7 @@ public struct BridgeRouter: Sendable {
             if a.edits.contains(where: { $0.b > Self.maxBlockId }) {
                 throw BridgeError.badArguments(method: method, detail: "block id outside 0 to 15")
             }
-            return try encoder.encode(try await client.setBlocks(edits: a.edits.map { try JSONValue(encoding: $0) }, now: a.now))
+            return try encoder.encode(try await client.setBlocks(edits: a.edits.map { try $0.converted() }, now: a.now))
         default:
             throw BridgeError.unknownMethod(method)
         }

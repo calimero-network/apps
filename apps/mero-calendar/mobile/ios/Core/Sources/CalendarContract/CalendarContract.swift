@@ -291,11 +291,16 @@ public struct CreateBookingLink: Codable, Sendable, Equatable {
 
 // MARK: Reading the generated client's answers
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the shapes above). The ABI names them without their
     /// shape until the logic derives `AbiType`, so the generated `CalendarClient` (`Generated/`)
     /// takes and answers their JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    public func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }

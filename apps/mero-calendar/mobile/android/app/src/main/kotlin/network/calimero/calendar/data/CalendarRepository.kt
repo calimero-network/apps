@@ -6,6 +6,7 @@ import network.calimero.calendar.contract.CalendarContract
 import network.calimero.calendar.contract.CreateCalendarEvent
 import network.calimero.calendar.contract.Member
 import network.calimero.calendar.contract.UpdateCalendarEvent
+import network.calimero.calendar.contract.asContractArg
 import network.calimero.calendar.generated.CalendarClient
 import network.calimero.calendar.contract.CalendarEvent as WireEvent
 
@@ -45,8 +46,7 @@ class CalendarRepository(
                 color = fields.color,
                 peers = if (fields.isPrivate) emptyList() else fields.peers,
             )
-        val json = CalendarContract.write(data)
-        return if (fields.isPrivate) client.createPrivateEvent(json) else client.createEvent(json)
+        return if (fields.isPrivate) client.createPrivateEvent(data.asContractArg()) else client.createEvent(data.asContractArg())
     }
 
     suspend fun update(
@@ -63,8 +63,7 @@ class CalendarRepository(
                 color = fields.color,
                 peers = if (fields.isPrivate) emptyList() else fields.peers,
             )
-        val json = CalendarContract.write(patch)
-        return if (event.isPrivate) client.updatePrivateEvent(event.id, json) else client.updateEvent(event.id, json)
+        return if (event.isPrivate) client.updatePrivateEvent(event.id, patch.asContractArg()) else client.updateEvent(event.id, patch.asContractArg())
     }
 
     suspend fun delete(event: CalEvent) {

@@ -28,6 +28,7 @@ import network.calimero.docs.core.DocsDirectory
 import network.calimero.docs.core.DocsFormat
 import network.calimero.docs.core.DocumentReader
 import network.calimero.docs.core.NoBlobs
+import network.calimero.docs.core.asContractJson
 import network.calimero.docs.core.docs
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -272,7 +273,7 @@ class WorkspaceModel(
             }
         }
         val docs = backend.docs(ctx)
-        return attempt { docs.client.listDocs(false).map(DocDto::from) }
+        return attempt { docs.client.listDocs(false).map { DocDto.from(it.asContractJson()) } }
             .map { list -> list.map { DocRow(folder.id, ctx, folder.name, it) } }
     }
 
@@ -296,7 +297,7 @@ class WorkspaceModel(
                     .map { folder ->
                         async {
                             val ctx = folder.contextId!!
-                            val page = attempt { DocSearchPage.from(backend.docs(ctx).client.searchDocs(q, false, null, SEARCH_LIMIT)) }.getOrNull()
+                            val page = attempt { DocSearchPage.from(backend.docs(ctx).client.searchDocs(q, false, null, SEARCH_LIMIT).asContractJson()) }.getOrNull()
                             page?.hits.orEmpty().filterNot { it.archived }.map { hit ->
                                 val row =
                                     byContext[ctx]?.firstOrNull { it.doc.id == hit.id }
@@ -499,7 +500,7 @@ class DocumentModel(
         val api = backend.docs(ctx)
         val (info, rows) =
             coroutineScope {
-                val info = async { DocDto.from(api.client.getDoc(docId)) }
+                val info = async { DocDto.from(api.client.getDoc(docId).asContractJson()) }
                 val rows = async { api.readDocument(docId) }
                 info.await() to rows.await()
             }
@@ -511,7 +512,7 @@ class DocumentModel(
 
     private suspend fun readComments(ctx: String) {
         val docs = backend.docs(ctx)
-        val read = attempt { docs.client.listComments(docId).map(CommentDto::from) }.getOrNull()
+        val read = attempt { docs.client.listComments(docId).map { CommentDto.from(it.asContractJson()) } }.getOrNull()
         var list = read?.map { DocComment.of(it) } ?: _threads.value.flatMap { listOf(it.root) + it.replies }
         if (read != null) {
             val ids = list.map { it.id }.toSet()

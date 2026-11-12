@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.serializer
 import java.util.Base64
 
 // The Battleships component contract (`../logic/res/abi.json`). The calls are
@@ -139,7 +140,7 @@ internal val contractJson = Json { ignoreUnknownKeys = true }
  * app type [T]. The ABI names the contract's types (`MatchSummary`, `MatchStateView`, `ShotsView`,
  * ...) without their shape until the logic derives `AbiType`, so the client answers their JSON.
  */
-internal inline fun <reified T> JsonElement.toAppType(): T = contractJson.decodeFromJsonElement<T>(this)
+internal inline fun <reified T> Any.toAppType(): T = contractJson.decodeFromJsonElement<T>(asContractJson())
 
 /** Bytes as the generated client takes them (it writes base64url itself). */
 internal fun List<Int>.toBytes(): ByteArray = ByteArray(size) { this[it].toByte() }
@@ -150,3 +151,17 @@ object Base64Url {
 
     fun decode(text: String): List<Int>? = runCatching { Base64.getUrlDecoder().decode(text).map { it.toInt() and 0xff } }.getOrNull()
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

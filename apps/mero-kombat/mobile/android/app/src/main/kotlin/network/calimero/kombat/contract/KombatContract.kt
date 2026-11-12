@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.serializer
 
 // The arena contract's component ABI (`logic/res/abi.json`). The calls are
 // [network.calimero.kombat.generated.KombatClient], generated from it by core's `mero-app-build
@@ -53,10 +54,10 @@ object KombatContract {
      * The `arena` answer as an [ArenaView]. The ABI names `ArenaView` and `MatchSummary` without
      * their shape until the logic derives `AbiType`, so the generated client answers their JSON.
      */
-    fun arenaView(answer: JsonElement): ArenaView = JSON.decodeFromJsonElement(ArenaView.serializer(), answer)
+    fun arenaView(answer: Any): ArenaView = JSON.decodeFromJsonElement(ArenaView.serializer(), answer.asContractJson())
 
     /** The `history` answer as [MatchSummary] rows. */
-    fun matchSummaries(answer: List<JsonElement>): List<MatchSummary> = answer.map { JSON.decodeFromJsonElement(MatchSummary.serializer(), it) }
+    fun matchSummaries(answer: List<Any>): List<MatchSummary> = answer.map { JSON.decodeFromJsonElement(MatchSummary.serializer(), it.asContractJson()) }
 }
 
 /** A `u64` on the wire: a decimal string. Reads a bare number too (an older node, a fixture). */
@@ -175,3 +176,17 @@ object KombatRefusal {
     /** The sentence for an `APP_ERROR` code, or null for a code the contract does not declare. */
     fun message(code: String): String? = MESSAGES[code]
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

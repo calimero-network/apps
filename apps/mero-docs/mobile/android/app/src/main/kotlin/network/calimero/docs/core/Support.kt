@@ -49,7 +49,7 @@ class DocsApi(
      * marks as strings (`"true"` for a boolean mark, as the web's `canonicalAttrs` reads them). A
      * mark the node writes as a JSON boolean, or a span without `attributes`, is read the same way.
      */
-    suspend fun readDocument(docId: String): List<WireBlock> = client.getDocument(docId).map { WireBlock.from(it) }
+    suspend fun readDocument(docId: String): List<WireBlock> = client.getDocument(docId).map { WireBlock.from(it.asContractJson()) }
 }
 
 /** The docs contract of the folder's app instance [appId]. */

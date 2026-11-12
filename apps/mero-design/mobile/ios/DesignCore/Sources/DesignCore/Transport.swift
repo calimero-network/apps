@@ -26,7 +26,7 @@ extension DesignClient {
         var items: [DesignCore.Element] = []
         var cursor: String?
         while true {
-            let page = try await getElementsPage(cursor: cursor, limit: Self.elementPage)
+            let page = try JSONValue(encoding: try await getElementsPage(cursor: cursor, limit: Self.elementPage))
             items += try (page["items"]?.arrayValue ?? []).map { try $0.decoded(as: DesignCore.Element.self) }
             guard let next = page["nextCursor"]?.stringValue, !next.isEmpty else { break }
             cursor = next

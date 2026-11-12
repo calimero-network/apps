@@ -15,86 +15,1518 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct SheetsClient: Sendable {
-    /// The app type `ActivityEntry`: the ABI names it without its shape, so it is its JSON.
-    public typealias ActivityEntry = JSONValue
+    /// The app type `Attrs`: the ABI names it without its shape, so it is its JSON.
+    public typealias Attrs = JSONValue
 
-    /// The app type `Attachment`: the ABI names it without its shape, so it is its JSON.
-    public typealias Attachment = JSONValue
 
-    /// The app type `AxisOp`: the ABI names it without its shape, so it is its JSON.
-    public typealias AxisOp = JSONValue
+    /// The app type `ActivityEntry`.
+    public struct ActivityEntry: Codable, Sendable, Equatable {
+        public var id: String
+        public var author: String
+        public var at: UInt64
+        public var sheet_id: String
+        public var kind: String
+        public var summary: String
+        public var count: UInt32
+        public var changes: [CellChange]
 
-    /// The app type `AxisSize`: the ABI names it without its shape, so it is its JSON.
-    public typealias AxisSize = JSONValue
+        public init(
+            id: String,
+            author: String,
+            at: UInt64,
+            sheet_id: String,
+            kind: String,
+            summary: String,
+            count: UInt32,
+            changes: [CellChange]
+        ) {
+            self.id = id
+            self.author = author
+            self.at = at
+            self.sheet_id = sheet_id
+            self.kind = kind
+            self.summary = summary
+            self.count = count
+            self.changes = changes
+        }
 
-    /// The app type `Cell`: the ABI names it without its shape, so it is its JSON.
-    public typealias Cell = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("author"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("at")).value
+            let v3 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("kind"))
+            let v5 = try fields.decode(String.self, forKey: Key("summary"))
+            let v6 = try fields.decode(UInt32.self, forKey: Key("count"))
+            let v7 = try fields.decode([CellChange].self, forKey: Key("changes"))
+            self.id = v0
+            self.author = v1
+            self.at = v2
+            self.sheet_id = v3
+            self.kind = v4
+            self.summary = v5
+            self.count = v6
+            self.changes = v7
+        }
 
-    /// The app type `CellOp`: the ABI names it without its shape, so it is its JSON.
-    public typealias CellOp = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(DecimalString(self.at), forKey: Key("at"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.summary, forKey: Key("summary"))
+            try fields.encode(self.count, forKey: Key("count"))
+            try fields.encode(self.changes, forKey: Key("changes"))
+        }
+    }
 
-    /// The app type `CellStyle`: the ABI names it without its shape, so it is its JSON.
-    public typealias CellStyle = JSONValue
+    /// The app type `Attachment`.
+    public struct Attachment: Codable, Sendable, Equatable {
+        public var id: String
+        public var sheet_id: String
+        public var row_id: String
+        public var col_id: String
+        public var blob_id: String
+        public var name: String
+        public var size: UInt64
+        public var mime: String
+        public var created_by: String
+        public var created_at: UInt64
 
-    /// The app type `Chart`: the ABI names it without its shape, so it is its JSON.
-    public typealias Chart = JSONValue
+        public init(
+            id: String,
+            sheet_id: String,
+            row_id: String,
+            col_id: String,
+            blob_id: String,
+            name: String,
+            size: UInt64,
+            mime: String,
+            created_by: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.sheet_id = sheet_id
+            self.row_id = row_id
+            self.col_id = col_id
+            self.blob_id = blob_id
+            self.name = name
+            self.size = size
+            self.mime = mime
+            self.created_by = created_by
+            self.created_at = created_at
+        }
 
-    /// The app type `ChartInput`: the ABI names it without its shape, so it is its JSON.
-    public typealias ChartInput = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("blob_id"))
+            let v5 = try fields.decode(String.self, forKey: Key("name"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("size")).value
+            let v7 = try fields.decode(String.self, forKey: Key("mime"))
+            let v8 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.sheet_id = v1
+            self.row_id = v2
+            self.col_id = v3
+            self.blob_id = v4
+            self.name = v5
+            self.size = v6
+            self.mime = v7
+            self.created_by = v8
+            self.created_at = v9
+        }
 
-    /// The app type `Comment`: the ABI names it without its shape, so it is its JSON.
-    public typealias Comment = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.blob_id, forKey: Key("blob_id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(DecimalString(self.size), forKey: Key("size"))
+            try fields.encode(self.mime, forKey: Key("mime"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
 
-    /// The app type `FunctionDef`: the ABI names it without its shape, so it is its JSON.
-    public typealias FunctionDef = JSONValue
+    /// The app type `AxisEntryView`.
+    public struct AxisEntryView: Codable, Sendable, Equatable {
+        public var id: String
+        public var pos: String
+        public var deleted: Bool
 
-    /// The app type `Link`: the ABI names it without its shape, so it is its JSON.
-    public typealias Link = JSONValue
+        public init(
+            id: String,
+            pos: String,
+            deleted: Bool
+        ) {
+            self.id = id
+            self.pos = pos
+            self.deleted = deleted
+        }
 
-    /// The app type `LinkPush`: the ABI names it without its shape, so it is its JSON.
-    public typealias LinkPush = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("pos"))
+            let v2 = try fields.decode(Bool.self, forKey: Key("deleted"))
+            self.id = v0
+            self.pos = v1
+            self.deleted = v2
+        }
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.pos, forKey: Key("pos"))
+            try fields.encode(self.deleted, forKey: Key("deleted"))
+        }
+    }
 
-    /// The app type `NamedRange`: the ABI names it without its shape, so it is its JSON.
-    public typealias NamedRange = JSONValue
+    /// The app type `AxisOp`.
+    public enum AxisOp: Codable, Sendable, Equatable {
+        /// `InsertRow`.
+        case insertRow(id: String, pos: String)
+        /// `InsertCol`.
+        case insertCol(id: String, pos: String)
+        /// `DeleteRow`.
+        case deleteRow(id: String)
+        /// `DeleteCol`.
+        case deleteCol(id: String)
+        /// `RestoreRow`.
+        case restoreRow(id: String)
+        /// `RestoreCol`.
+        case restoreCol(id: String)
 
-    /// The app type `NoteChange`: the ABI names it without its shape, so it is its JSON.
-    public typealias NoteChange = JSONValue
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            let tag = try container.decode(String.self, forKey: Key("name"))
+            switch tag {
+            case "InsertRow":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                let v1 = try fields.decode(String.self, forKey: Key("pos"))
+                self = .insertRow(id: v0, pos: v1)
+            case "InsertCol":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                let v1 = try fields.decode(String.self, forKey: Key("pos"))
+                self = .insertCol(id: v0, pos: v1)
+            case "DeleteRow":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                self = .deleteRow(id: v0)
+            case "DeleteCol":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                self = .deleteCol(id: v0)
+            case "RestoreRow":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                self = .restoreRow(id: v0)
+            case "RestoreCol":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("id"))
+                self = .restoreCol(id: v0)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: Key("name"), in: container, debugDescription: "AxisOp: unknown variant \(tag)")
+            }
+        }
 
-    /// The app type `NotedCell`: the ABI names it without its shape, so it is its JSON.
-    public typealias NotedCell = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .insertRow(let v0, let v1):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("InsertRow", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+                try fields.encode(v1, forKey: Key("pos"))
+            case .insertCol(let v0, let v1):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("InsertCol", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+                try fields.encode(v1, forKey: Key("pos"))
+            case .deleteRow(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("DeleteRow", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+            case .deleteCol(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("DeleteCol", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+            case .restoreRow(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("RestoreRow", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+            case .restoreCol(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("RestoreCol", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("id"))
+            }
+        }
+    }
 
-    /// The app type `Project`: the ABI names it without its shape, so it is its JSON.
-    public typealias Project = JSONValue
+    /// The app type `AxisSize`.
+    public struct AxisSize: Codable, Sendable, Equatable {
+        public var axis: String
+        public var id: String
+        public var size: UInt32
 
-    /// The app type `Protection`: the ABI names it without its shape, so it is its JSON.
-    public typealias Protection = JSONValue
+        public init(
+            axis: String,
+            id: String,
+            size: UInt32
+        ) {
+            self.axis = axis
+            self.id = id
+            self.size = size
+        }
 
-    /// The app type `Publication`: the ABI names it without its shape, so it is its JSON.
-    public typealias Publication = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("axis"))
+            let v1 = try fields.decode(String.self, forKey: Key("id"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("size"))
+            self.axis = v0
+            self.id = v1
+            self.size = v2
+        }
 
-    /// The app type `Rule`: the ABI names it without its shape, so it is its JSON.
-    public typealias Rule = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.axis, forKey: Key("axis"))
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.size, forKey: Key("size"))
+        }
+    }
 
-    /// The app type `RuleInput`: the ABI names it without its shape, so it is its JSON.
-    public typealias RuleInput = JSONValue
+    /// The app type `Cell`.
+    public struct Cell: Codable, Sendable, Equatable {
+        public var id: String
+        public var sheet_id: String
+        public var row_id: String
+        public var col_id: String
+        public var raw_value: String
+        public var computed_value: String
+        public var format: String
+        public var updated_at: UInt64
+        public var last_editor: String
+        public var last_edited_at: UInt64
 
-    /// The app type `Sheet`: the ABI names it without its shape, so it is its JSON.
-    public typealias Sheet = JSONValue
+        public init(
+            id: String,
+            sheet_id: String,
+            row_id: String,
+            col_id: String,
+            raw_value: String,
+            computed_value: String,
+            format: String,
+            updated_at: UInt64,
+            last_editor: String,
+            last_edited_at: UInt64
+        ) {
+            self.id = id
+            self.sheet_id = sheet_id
+            self.row_id = row_id
+            self.col_id = col_id
+            self.raw_value = raw_value
+            self.computed_value = computed_value
+            self.format = format
+            self.updated_at = updated_at
+            self.last_editor = last_editor
+            self.last_edited_at = last_edited_at
+        }
 
-    /// The app type `SheetLayout`: the ABI names it without its shape, so it is its JSON.
-    public typealias SheetLayout = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("raw_value"))
+            let v5 = try fields.decode(String.self, forKey: Key("computed_value"))
+            let v6 = try fields.decode(String.self, forKey: Key("format"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("updated_at")).value
+            let v8 = try fields.decode(String.self, forKey: Key("last_editor"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("last_edited_at")).value
+            self.id = v0
+            self.sheet_id = v1
+            self.row_id = v2
+            self.col_id = v3
+            self.raw_value = v4
+            self.computed_value = v5
+            self.format = v6
+            self.updated_at = v7
+            self.last_editor = v8
+            self.last_edited_at = v9
+        }
 
-    /// The app type `SheetView`: the ABI names it without its shape, so it is its JSON.
-    public typealias SheetView = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.raw_value, forKey: Key("raw_value"))
+            try fields.encode(self.computed_value, forKey: Key("computed_value"))
+            try fields.encode(self.format, forKey: Key("format"))
+            try fields.encode(DecimalString(self.updated_at), forKey: Key("updated_at"))
+            try fields.encode(self.last_editor, forKey: Key("last_editor"))
+            try fields.encode(DecimalString(self.last_edited_at), forKey: Key("last_edited_at"))
+        }
+    }
 
-    /// The app type `Span`: the ABI names it without its shape, so it is its JSON.
-    public typealias Span = JSONValue
+    /// The app type `CellChange`.
+    public struct CellChange: Codable, Sendable, Equatable {
+        public var row_id: String
+        public var col_id: String
+        public var before_raw: String
+        public var before_format: String
+        public var after_raw: String
+        public var after_format: String
 
-    /// The app type `StyleOp`: the ABI names it without its shape, so it is its JSON.
-    public typealias StyleOp = JSONValue
+        public init(
+            row_id: String,
+            col_id: String,
+            before_raw: String,
+            before_format: String,
+            after_raw: String,
+            after_format: String
+        ) {
+            self.row_id = row_id
+            self.col_id = col_id
+            self.before_raw = before_raw
+            self.before_format = before_format
+            self.after_raw = after_raw
+            self.after_format = after_format
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("before_raw"))
+            let v3 = try fields.decode(String.self, forKey: Key("before_format"))
+            let v4 = try fields.decode(String.self, forKey: Key("after_raw"))
+            let v5 = try fields.decode(String.self, forKey: Key("after_format"))
+            self.row_id = v0
+            self.col_id = v1
+            self.before_raw = v2
+            self.before_format = v3
+            self.after_raw = v4
+            self.after_format = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.before_raw, forKey: Key("before_raw"))
+            try fields.encode(self.before_format, forKey: Key("before_format"))
+            try fields.encode(self.after_raw, forKey: Key("after_raw"))
+            try fields.encode(self.after_format, forKey: Key("after_format"))
+        }
+    }
+
+    /// The app type `CellOp`.
+    public enum CellOp: Codable, Sendable, Equatable {
+        /// `Set`.
+        case set(row_id: String, col_id: String, raw_value: String)
+        /// `Format`.
+        case format(row_id: String, col_id: String, format: String)
+        /// `Clear`.
+        case clear(row_id: String, col_id: String)
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            let tag = try container.decode(String.self, forKey: Key("name"))
+            switch tag {
+            case "Set":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("row_id"))
+                let v1 = try fields.decode(String.self, forKey: Key("col_id"))
+                let v2 = try fields.decode(String.self, forKey: Key("raw_value"))
+                self = .set(row_id: v0, col_id: v1, raw_value: v2)
+            case "Format":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("row_id"))
+                let v1 = try fields.decode(String.self, forKey: Key("col_id"))
+                let v2 = try fields.decode(String.self, forKey: Key("format"))
+                self = .format(row_id: v0, col_id: v1, format: v2)
+            case "Clear":
+                let fields = try container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                let v0 = try fields.decode(String.self, forKey: Key("row_id"))
+                let v1 = try fields.decode(String.self, forKey: Key("col_id"))
+                self = .clear(row_id: v0, col_id: v1)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: Key("name"), in: container, debugDescription: "CellOp: unknown variant \(tag)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .set(let v0, let v1, let v2):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("Set", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("row_id"))
+                try fields.encode(v1, forKey: Key("col_id"))
+                try fields.encode(v2, forKey: Key("raw_value"))
+            case .format(let v0, let v1, let v2):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("Format", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("row_id"))
+                try fields.encode(v1, forKey: Key("col_id"))
+                try fields.encode(v2, forKey: Key("format"))
+            case .clear(let v0, let v1):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("Clear", forKey: Key("name"))
+                var fields = container.nestedContainer(keyedBy: Key.self, forKey: Key("payload"))
+                try fields.encode(v0, forKey: Key("row_id"))
+                try fields.encode(v1, forKey: Key("col_id"))
+            }
+        }
+    }
+
+    /// The app type `CellStyle`.
+    public struct CellStyle: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var row_id: String
+        public var col_id: String
+        public var style: [String: String]
+
+        public init(
+            sheet_id: String,
+            row_id: String,
+            col_id: String,
+            style: [String: String]
+        ) {
+            self.sheet_id = sheet_id
+            self.row_id = row_id
+            self.col_id = col_id
+            self.style = style
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v3 = try fields.decode([String: String].self, forKey: Key("style"))
+            self.sheet_id = v0
+            self.row_id = v1
+            self.col_id = v2
+            self.style = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.style, forKey: Key("style"))
+        }
+    }
+
+    /// The app type `Chart`.
+    public struct Chart: Codable, Sendable, Equatable {
+        public var id: String
+        public var chart: ChartInput
+        public var created_by: String
+
+        public init(
+            id: String,
+            chart: ChartInput,
+            created_by: String
+        ) {
+            self.id = id
+            self.chart = chart
+            self.created_by = created_by
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(ChartInput.self, forKey: Key("chart"))
+            let v2 = try fields.decode(String.self, forKey: Key("created_by"))
+            self.id = v0
+            self.chart = v1
+            self.created_by = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.chart, forKey: Key("chart"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+        }
+    }
+
+    /// The app type `ChartInput`.
+    public struct ChartInput: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var top_row_id: String
+        public var left_col_id: String
+        public var bottom_row_id: String
+        public var right_col_id: String
+        public var kind: String
+        public var title: String
+
+        public init(
+            sheet_id: String,
+            top_row_id: String,
+            left_col_id: String,
+            bottom_row_id: String,
+            right_col_id: String,
+            kind: String,
+            title: String
+        ) {
+            self.sheet_id = sheet_id
+            self.top_row_id = top_row_id
+            self.left_col_id = left_col_id
+            self.bottom_row_id = bottom_row_id
+            self.right_col_id = right_col_id
+            self.kind = kind
+            self.title = title
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("top_row_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("left_col_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("bottom_row_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("right_col_id"))
+            let v5 = try fields.decode(String.self, forKey: Key("kind"))
+            let v6 = try fields.decode(String.self, forKey: Key("title"))
+            self.sheet_id = v0
+            self.top_row_id = v1
+            self.left_col_id = v2
+            self.bottom_row_id = v3
+            self.right_col_id = v4
+            self.kind = v5
+            self.title = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.top_row_id, forKey: Key("top_row_id"))
+            try fields.encode(self.left_col_id, forKey: Key("left_col_id"))
+            try fields.encode(self.bottom_row_id, forKey: Key("bottom_row_id"))
+            try fields.encode(self.right_col_id, forKey: Key("right_col_id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.title, forKey: Key("title"))
+        }
+    }
+
+    /// The app type `Comment`.
+    public struct Comment: Codable, Sendable, Equatable {
+        public var id: String
+        public var sheet_id: String
+        public var row_id: String
+        public var col_id: String
+        public var author: String
+        public var text: String
+        public var mentions: [String]
+        public var parent: String
+        public var resolved: Bool
+        public var created_at: UInt64
+        public var updated_at: UInt64
+
+        public init(
+            id: String,
+            sheet_id: String,
+            row_id: String,
+            col_id: String,
+            author: String,
+            text: String,
+            mentions: [String],
+            parent: String,
+            resolved: Bool,
+            created_at: UInt64,
+            updated_at: UInt64
+        ) {
+            self.id = id
+            self.sheet_id = sheet_id
+            self.row_id = row_id
+            self.col_id = col_id
+            self.author = author
+            self.text = text
+            self.mentions = mentions
+            self.parent = parent
+            self.resolved = resolved
+            self.created_at = created_at
+            self.updated_at = updated_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("author"))
+            let v5 = try fields.decode(String.self, forKey: Key("text"))
+            let v6 = try fields.decode([String].self, forKey: Key("mentions"))
+            let v7 = try fields.decode(String.self, forKey: Key("parent"))
+            let v8 = try fields.decode(Bool.self, forKey: Key("resolved"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            let v10 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("updated_at")).value
+            self.id = v0
+            self.sheet_id = v1
+            self.row_id = v2
+            self.col_id = v3
+            self.author = v4
+            self.text = v5
+            self.mentions = v6
+            self.parent = v7
+            self.resolved = v8
+            self.created_at = v9
+            self.updated_at = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.text, forKey: Key("text"))
+            try fields.encode(self.mentions, forKey: Key("mentions"))
+            try fields.encode(self.parent, forKey: Key("parent"))
+            try fields.encode(self.resolved, forKey: Key("resolved"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+            try fields.encode(DecimalString(self.updated_at), forKey: Key("updated_at"))
+        }
+    }
+
+    /// The app type `FunctionDef`.
+    public struct FunctionDef: Codable, Sendable, Equatable {
+        public var name: String
+        public var category: String
+        public var syntax: String
+        public var description: String
+        public var example: String
+
+        public init(
+            name: String,
+            category: String,
+            syntax: String,
+            description: String,
+            example: String
+        ) {
+            self.name = name
+            self.category = category
+            self.syntax = syntax
+            self.description = description
+            self.example = example
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("category"))
+            let v2 = try fields.decode(String.self, forKey: Key("syntax"))
+            let v3 = try fields.decode(String.self, forKey: Key("description"))
+            let v4 = try fields.decode(String.self, forKey: Key("example"))
+            self.name = v0
+            self.category = v1
+            self.syntax = v2
+            self.description = v3
+            self.example = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.category, forKey: Key("category"))
+            try fields.encode(self.syntax, forKey: Key("syntax"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.example, forKey: Key("example"))
+        }
+    }
+
+    /// The app type `Link`.
+    public struct Link: Codable, Sendable, Equatable {
+        public var id: String
+        public var source_context: String
+        public var source_name: String
+        public var name: String
+        public var rows: UInt32
+        public var cols: UInt32
+        public var updated_at: UInt64
+
+        public init(
+            id: String,
+            source_context: String,
+            source_name: String,
+            name: String,
+            rows: UInt32,
+            cols: UInt32,
+            updated_at: UInt64
+        ) {
+            self.id = id
+            self.source_context = source_context
+            self.source_name = source_name
+            self.name = name
+            self.rows = rows
+            self.cols = cols
+            self.updated_at = updated_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("source_context"))
+            let v2 = try fields.decode(String.self, forKey: Key("source_name"))
+            let v3 = try fields.decode(String.self, forKey: Key("name"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("rows"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("cols"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("updated_at")).value
+            self.id = v0
+            self.source_context = v1
+            self.source_name = v2
+            self.name = v3
+            self.rows = v4
+            self.cols = v5
+            self.updated_at = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.source_context, forKey: Key("source_context"))
+            try fields.encode(self.source_name, forKey: Key("source_name"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.rows, forKey: Key("rows"))
+            try fields.encode(self.cols, forKey: Key("cols"))
+            try fields.encode(DecimalString(self.updated_at), forKey: Key("updated_at"))
+        }
+    }
+
+    /// The app type `LinkPush`.
+    public struct LinkPush: Codable, Sendable, Equatable {
+        public var publication_id: String
+        public var target_context: String
+        public var name: String
+        public var source_name: String
+        public var rows: UInt32
+        public var cols: UInt32
+        public var values: [String]
+
+        public init(
+            publication_id: String,
+            target_context: String,
+            name: String,
+            source_name: String,
+            rows: UInt32,
+            cols: UInt32,
+            values: [String]
+        ) {
+            self.publication_id = publication_id
+            self.target_context = target_context
+            self.name = name
+            self.source_name = source_name
+            self.rows = rows
+            self.cols = cols
+            self.values = values
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("publication_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("target_context"))
+            let v2 = try fields.decode(String.self, forKey: Key("name"))
+            let v3 = try fields.decode(String.self, forKey: Key("source_name"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("rows"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("cols"))
+            let v6 = try fields.decode([String].self, forKey: Key("values"))
+            self.publication_id = v0
+            self.target_context = v1
+            self.name = v2
+            self.source_name = v3
+            self.rows = v4
+            self.cols = v5
+            self.values = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.publication_id, forKey: Key("publication_id"))
+            try fields.encode(self.target_context, forKey: Key("target_context"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.source_name, forKey: Key("source_name"))
+            try fields.encode(self.rows, forKey: Key("rows"))
+            try fields.encode(self.cols, forKey: Key("cols"))
+            try fields.encode(self.values, forKey: Key("values"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var nickname: String
+        public var joined_at: UInt64
+        public var updated_at: UInt64
+        public var account: String
+        public var role: String
+
+        public init(
+            id: String,
+            nickname: String,
+            joined_at: UInt64,
+            updated_at: UInt64,
+            account: String,
+            role: String
+        ) {
+            self.id = id
+            self.nickname = nickname
+            self.joined_at = joined_at
+            self.updated_at = updated_at
+            self.account = account
+            self.role = role
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("nickname"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("joined_at")).value
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("updated_at")).value
+            let v4 = try fields.decode(String.self, forKey: Key("account"))
+            let v5 = try fields.decode(String.self, forKey: Key("role"))
+            self.id = v0
+            self.nickname = v1
+            self.joined_at = v2
+            self.updated_at = v3
+            self.account = v4
+            self.role = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.nickname, forKey: Key("nickname"))
+            try fields.encode(DecimalString(self.joined_at), forKey: Key("joined_at"))
+            try fields.encode(DecimalString(self.updated_at), forKey: Key("updated_at"))
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.role, forKey: Key("role"))
+        }
+    }
+
+    /// The app type `NamedRange`.
+    public struct NamedRange: Codable, Sendable, Equatable {
+        public var name: String
+        public var target: String
+
+        public init(
+            name: String,
+            target: String
+        ) {
+            self.name = name
+            self.target = target
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("target"))
+            self.name = v0
+            self.target = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.target, forKey: Key("target"))
+        }
+    }
+
+    /// The app type `NoteChange`.
+    public enum NoteChange: Codable, Sendable, Equatable {
+        /// `Retain`.
+        case retain(retain: UInt32, attributes: Attrs?)
+        /// `Insert`.
+        case insert(insert: String, attributes: Attrs?)
+        /// `Delete`.
+        case delete(delete: UInt32)
+
+        public init(from decoder: Decoder) throws {
+            do {
+                let fields = try decoder.container(keyedBy: Key.self)
+                let v0 = try fields.decode(UInt32.self, forKey: Key("retain"))
+                let v1 = try fields.decodeIfPresent(Attrs.self, forKey: Key("attributes"))
+                self = .retain(retain: v0, attributes: v1)
+                return
+            } catch {}
+            do {
+                let fields = try decoder.container(keyedBy: Key.self)
+                let v0 = try fields.decode(String.self, forKey: Key("insert"))
+                let v1 = try fields.decodeIfPresent(Attrs.self, forKey: Key("attributes"))
+                self = .insert(insert: v0, attributes: v1)
+                return
+            } catch {}
+            do {
+                let fields = try decoder.container(keyedBy: Key.self)
+                let v0 = try fields.decode(UInt32.self, forKey: Key("delete"))
+                self = .delete(delete: v0)
+                return
+            } catch {}
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "NoteChange: no variant fits"))
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .retain(let v0, let v1):
+                var fields = encoder.container(keyedBy: Key.self)
+                try fields.encode(v0, forKey: Key("retain"))
+                try fields.encode(v1, forKey: Key("attributes"))
+            case .insert(let v0, let v1):
+                var fields = encoder.container(keyedBy: Key.self)
+                try fields.encode(v0, forKey: Key("insert"))
+                try fields.encode(v1, forKey: Key("attributes"))
+            case .delete(let v0):
+                var fields = encoder.container(keyedBy: Key.self)
+                try fields.encode(v0, forKey: Key("delete"))
+            }
+        }
+    }
+
+    /// The app type `NotedCell`.
+    public struct NotedCell: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var row_id: String
+        public var col_id: String
+        public var preview: String
+
+        public init(
+            sheet_id: String,
+            row_id: String,
+            col_id: String,
+            preview: String
+        ) {
+            self.sheet_id = sheet_id
+            self.row_id = row_id
+            self.col_id = col_id
+            self.preview = preview
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("preview"))
+            self.sheet_id = v0
+            self.row_id = v1
+            self.col_id = v2
+            self.preview = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.preview, forKey: Key("preview"))
+        }
+    }
+
+    /// The app type `Project`.
+    public struct Project: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var created_at: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            created_at: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.created_at = created_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            self.id = v0
+            self.name = v1
+            self.created_at = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+        }
+    }
+
+    /// The app type `Protection`.
+    public struct Protection: Codable, Sendable, Equatable {
+        public var id: String
+        public var sheet_id: String
+        public var top_row_id: String
+        public var left_col_id: String
+        public var bottom_row_id: String
+        public var right_col_id: String
+        public var description: String
+        public var editors: [String]
+        public var created_by: String
+
+        public init(
+            id: String,
+            sheet_id: String,
+            top_row_id: String,
+            left_col_id: String,
+            bottom_row_id: String,
+            right_col_id: String,
+            description: String,
+            editors: [String],
+            created_by: String
+        ) {
+            self.id = id
+            self.sheet_id = sheet_id
+            self.top_row_id = top_row_id
+            self.left_col_id = left_col_id
+            self.bottom_row_id = bottom_row_id
+            self.right_col_id = right_col_id
+            self.description = description
+            self.editors = editors
+            self.created_by = created_by
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("top_row_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("left_col_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("bottom_row_id"))
+            let v5 = try fields.decode(String.self, forKey: Key("right_col_id"))
+            let v6 = try fields.decode(String.self, forKey: Key("description"))
+            let v7 = try fields.decode([String].self, forKey: Key("editors"))
+            let v8 = try fields.decode(String.self, forKey: Key("created_by"))
+            self.id = v0
+            self.sheet_id = v1
+            self.top_row_id = v2
+            self.left_col_id = v3
+            self.bottom_row_id = v4
+            self.right_col_id = v5
+            self.description = v6
+            self.editors = v7
+            self.created_by = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.top_row_id, forKey: Key("top_row_id"))
+            try fields.encode(self.left_col_id, forKey: Key("left_col_id"))
+            try fields.encode(self.bottom_row_id, forKey: Key("bottom_row_id"))
+            try fields.encode(self.right_col_id, forKey: Key("right_col_id"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.editors, forKey: Key("editors"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+        }
+    }
+
+    /// The app type `Publication`.
+    public struct Publication: Codable, Sendable, Equatable {
+        public var id: String
+        public var sheet_id: String
+        public var top_row_id: String
+        public var left_col_id: String
+        public var bottom_row_id: String
+        public var right_col_id: String
+        public var target_context: String
+        public var name: String
+        public var created_by: String
+
+        public init(
+            id: String,
+            sheet_id: String,
+            top_row_id: String,
+            left_col_id: String,
+            bottom_row_id: String,
+            right_col_id: String,
+            target_context: String,
+            name: String,
+            created_by: String
+        ) {
+            self.id = id
+            self.sheet_id = sheet_id
+            self.top_row_id = top_row_id
+            self.left_col_id = left_col_id
+            self.bottom_row_id = bottom_row_id
+            self.right_col_id = right_col_id
+            self.target_context = target_context
+            self.name = name
+            self.created_by = created_by
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("top_row_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("left_col_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("bottom_row_id"))
+            let v5 = try fields.decode(String.self, forKey: Key("right_col_id"))
+            let v6 = try fields.decode(String.self, forKey: Key("target_context"))
+            let v7 = try fields.decode(String.self, forKey: Key("name"))
+            let v8 = try fields.decode(String.self, forKey: Key("created_by"))
+            self.id = v0
+            self.sheet_id = v1
+            self.top_row_id = v2
+            self.left_col_id = v3
+            self.bottom_row_id = v4
+            self.right_col_id = v5
+            self.target_context = v6
+            self.name = v7
+            self.created_by = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.top_row_id, forKey: Key("top_row_id"))
+            try fields.encode(self.left_col_id, forKey: Key("left_col_id"))
+            try fields.encode(self.bottom_row_id, forKey: Key("bottom_row_id"))
+            try fields.encode(self.right_col_id, forKey: Key("right_col_id"))
+            try fields.encode(self.target_context, forKey: Key("target_context"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+        }
+    }
+
+    /// The app type `Rule`.
+    public struct Rule: Codable, Sendable, Equatable {
+        public var id: String
+        public var rule: RuleInput
+        public var created_by: String
+
+        public init(
+            id: String,
+            rule: RuleInput,
+            created_by: String
+        ) {
+            self.id = id
+            self.rule = rule
+            self.created_by = created_by
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(RuleInput.self, forKey: Key("rule"))
+            let v2 = try fields.decode(String.self, forKey: Key("created_by"))
+            self.id = v0
+            self.rule = v1
+            self.created_by = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.rule, forKey: Key("rule"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+        }
+    }
+
+    /// The app type `RuleInput`.
+    public struct RuleInput: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var top_row_id: String
+        public var left_col_id: String
+        public var bottom_row_id: String
+        public var right_col_id: String
+        public var kind: String
+        public var condition: String
+        public var args: [String]
+        public var style: [String: String]
+        public var strict: Bool
+        public var recipients: [String]
+
+        public init(
+            sheet_id: String,
+            top_row_id: String,
+            left_col_id: String,
+            bottom_row_id: String,
+            right_col_id: String,
+            kind: String,
+            condition: String,
+            args: [String],
+            style: [String: String],
+            strict: Bool,
+            recipients: [String]
+        ) {
+            self.sheet_id = sheet_id
+            self.top_row_id = top_row_id
+            self.left_col_id = left_col_id
+            self.bottom_row_id = bottom_row_id
+            self.right_col_id = right_col_id
+            self.kind = kind
+            self.condition = condition
+            self.args = args
+            self.style = style
+            self.strict = strict
+            self.recipients = recipients
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("top_row_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("left_col_id"))
+            let v3 = try fields.decode(String.self, forKey: Key("bottom_row_id"))
+            let v4 = try fields.decode(String.self, forKey: Key("right_col_id"))
+            let v5 = try fields.decode(String.self, forKey: Key("kind"))
+            let v6 = try fields.decode(String.self, forKey: Key("condition"))
+            let v7 = try fields.decode([String].self, forKey: Key("args"))
+            let v8 = try fields.decode([String: String].self, forKey: Key("style"))
+            let v9 = try fields.decode(Bool.self, forKey: Key("strict"))
+            let v10 = try fields.decode([String].self, forKey: Key("recipients"))
+            self.sheet_id = v0
+            self.top_row_id = v1
+            self.left_col_id = v2
+            self.bottom_row_id = v3
+            self.right_col_id = v4
+            self.kind = v5
+            self.condition = v6
+            self.args = v7
+            self.style = v8
+            self.strict = v9
+            self.recipients = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.top_row_id, forKey: Key("top_row_id"))
+            try fields.encode(self.left_col_id, forKey: Key("left_col_id"))
+            try fields.encode(self.bottom_row_id, forKey: Key("bottom_row_id"))
+            try fields.encode(self.right_col_id, forKey: Key("right_col_id"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.condition, forKey: Key("condition"))
+            try fields.encode(self.args, forKey: Key("args"))
+            try fields.encode(self.style, forKey: Key("style"))
+            try fields.encode(self.strict, forKey: Key("strict"))
+            try fields.encode(self.recipients, forKey: Key("recipients"))
+        }
+    }
+
+    /// The app type `Sheet`.
+    public struct Sheet: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var position: UInt32
+        public var created_at: UInt64
+        public var linked_from: String
+
+        public init(
+            id: String,
+            name: String,
+            position: UInt32,
+            created_at: UInt64,
+            linked_from: String
+        ) {
+            self.id = id
+            self.name = name
+            self.position = position
+            self.created_at = created_at
+            self.linked_from = linked_from
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("position"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_at")).value
+            let v4 = try fields.decode(String.self, forKey: Key("linked_from"))
+            self.id = v0
+            self.name = v1
+            self.position = v2
+            self.created_at = v3
+            self.linked_from = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.position, forKey: Key("position"))
+            try fields.encode(DecimalString(self.created_at), forKey: Key("created_at"))
+            try fields.encode(self.linked_from, forKey: Key("linked_from"))
+        }
+    }
+
+    /// The app type `SheetLayout`.
+    public struct SheetLayout: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var rows: [AxisEntryView]
+        public var cols: [AxisEntryView]
+
+        public init(
+            sheet_id: String,
+            rows: [AxisEntryView],
+            cols: [AxisEntryView]
+        ) {
+            self.sheet_id = sheet_id
+            self.rows = rows
+            self.cols = cols
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode([AxisEntryView].self, forKey: Key("rows"))
+            let v2 = try fields.decode([AxisEntryView].self, forKey: Key("cols"))
+            self.sheet_id = v0
+            self.rows = v1
+            self.cols = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.rows, forKey: Key("rows"))
+            try fields.encode(self.cols, forKey: Key("cols"))
+        }
+    }
+
+    /// The app type `SheetView`.
+    public struct SheetView: Codable, Sendable, Equatable {
+        public var sheet_id: String
+        public var frozen_rows: UInt32
+        public var frozen_cols: UInt32
+        public var sizes: [AxisSize]
+
+        public init(
+            sheet_id: String,
+            frozen_rows: UInt32,
+            frozen_cols: UInt32,
+            sizes: [AxisSize]
+        ) {
+            self.sheet_id = sheet_id
+            self.frozen_rows = frozen_rows
+            self.frozen_cols = frozen_cols
+            self.sizes = sizes
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("sheet_id"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("frozen_rows"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("frozen_cols"))
+            let v3 = try fields.decode([AxisSize].self, forKey: Key("sizes"))
+            self.sheet_id = v0
+            self.frozen_rows = v1
+            self.frozen_cols = v2
+            self.sizes = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.sheet_id, forKey: Key("sheet_id"))
+            try fields.encode(self.frozen_rows, forKey: Key("frozen_rows"))
+            try fields.encode(self.frozen_cols, forKey: Key("frozen_cols"))
+            try fields.encode(self.sizes, forKey: Key("sizes"))
+        }
+    }
+
+    /// The app type `Span`.
+    public struct Span: Codable, Sendable, Equatable {
+        public var text: String
+        public var attributes: [String: String]?
+
+        public init(
+            text: String,
+            attributes: [String: String]? = nil
+        ) {
+            self.text = text
+            self.attributes = attributes
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("text"))
+            let v1 = try fields.decodeIfPresent([String: String].self, forKey: Key("attributes"))
+            self.text = v0
+            self.attributes = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.text, forKey: Key("text"))
+            try fields.encodeIfPresent(self.attributes, forKey: Key("attributes"))
+        }
+    }
+
+    /// The app type `StyleOp`.
+    public struct StyleOp: Codable, Sendable, Equatable {
+        public var row_id: String
+        public var col_id: String
+        public var field: String
+        public var value: String
+
+        public init(
+            row_id: String,
+            col_id: String,
+            field: String,
+            value: String
+        ) {
+            self.row_id = row_id
+            self.col_id = col_id
+            self.field = field
+            self.value = value
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("row_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("col_id"))
+            let v2 = try fields.decode(String.self, forKey: Key("field"))
+            let v3 = try fields.decode(String.self, forKey: Key("value"))
+            self.row_id = v0
+            self.col_id = v1
+            self.field = v2
+            self.value = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.row_id, forKey: Key("row_id"))
+            try fields.encode(self.col_id, forKey: Key("col_id"))
+            try fields.encode(self.field, forKey: Key("field"))
+            try fields.encode(self.value, forKey: Key("value"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

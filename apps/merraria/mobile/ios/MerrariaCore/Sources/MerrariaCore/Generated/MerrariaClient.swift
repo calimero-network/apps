@@ -15,20 +15,246 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct MerrariaClient: Sendable {
-    /// The app type `Edit`: the ABI names it without its shape, so it is its JSON.
-    public typealias Edit = JSONValue
 
-    /// The app type `OverridesPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias OverridesPage = JSONValue
+    /// The app type `Edit`.
+    public struct Edit: Codable, Sendable, Equatable {
+        public var x: Int32
+        public var y: Int32
+        public var t: UInt8
 
-    /// The app type `PlayerView`: the ABI names it without its shape, so it is its JSON.
-    public typealias PlayerView = JSONValue
+        public init(
+            x: Int32,
+            y: Int32,
+            t: UInt8
+        ) {
+            self.x = x
+            self.y = y
+            self.t = t
+        }
 
-    /// The app type `Transform`: the ABI names it without its shape, so it is its JSON.
-    public typealias Transform = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Int32.self, forKey: Key("x"))
+            let v1 = try fields.decode(Int32.self, forKey: Key("y"))
+            let v2 = try fields.decode(UInt8.self, forKey: Key("t"))
+            self.x = v0
+            self.y = v1
+            self.t = v2
+        }
 
-    /// The app type `WorldMeta`: the ABI names it without its shape, so it is its JSON.
-    public typealias WorldMeta = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.t, forKey: Key("t"))
+        }
+    }
+
+    /// The app type `OverridesPage`.
+    public struct OverridesPage: Codable, Sendable, Equatable {
+        public var items: [TileEntry]
+        public var next: String?
+
+        public init(
+            items: [TileEntry],
+            next: String? = nil
+        ) {
+            self.items = items
+            self.next = next
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([TileEntry].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("next"))
+            self.items = v0
+            self.next = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.next, forKey: Key("next"))
+        }
+    }
+
+    /// The app type `PlayerView`.
+    public struct PlayerView: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var x: Double
+        public var y: Double
+        public var dir: Double
+        public var sel: UInt8
+        public var action: String
+        public var online: Bool
+
+        public init(
+            id: String,
+            name: String,
+            x: Double,
+            y: Double,
+            dir: Double,
+            sel: UInt8,
+            action: String,
+            online: Bool
+        ) {
+            self.id = id
+            self.name = name
+            self.x = x
+            self.y = y
+            self.dir = dir
+            self.sel = sel
+            self.action = action
+            self.online = online
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(Double.self, forKey: Key("x"))
+            let v3 = try fields.decode(Double.self, forKey: Key("y"))
+            let v4 = try fields.decode(Double.self, forKey: Key("dir"))
+            let v5 = try fields.decode(UInt8.self, forKey: Key("sel"))
+            let v6 = try fields.decode(String.self, forKey: Key("action"))
+            let v7 = try fields.decode(Bool.self, forKey: Key("online"))
+            self.id = v0
+            self.name = v1
+            self.x = v2
+            self.y = v3
+            self.dir = v4
+            self.sel = v5
+            self.action = v6
+            self.online = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.dir, forKey: Key("dir"))
+            try fields.encode(self.sel, forKey: Key("sel"))
+            try fields.encode(self.action, forKey: Key("action"))
+            try fields.encode(self.online, forKey: Key("online"))
+        }
+    }
+
+    /// The app type `TileEntry`.
+    public struct TileEntry: Codable, Sendable, Equatable {
+        public var k: String
+        public var t: UInt8
+
+        public init(
+            k: String,
+            t: UInt8
+        ) {
+            self.k = k
+            self.t = t
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("k"))
+            let v1 = try fields.decode(UInt8.self, forKey: Key("t"))
+            self.k = v0
+            self.t = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.k, forKey: Key("k"))
+            try fields.encode(self.t, forKey: Key("t"))
+        }
+    }
+
+    /// The app type `Transform`.
+    public struct Transform: Codable, Sendable, Equatable {
+        public var name: String
+        public var x: Double
+        public var y: Double
+        public var dir: Double
+        public var sel: UInt8
+        public var action: String
+
+        public init(
+            name: String,
+            x: Double,
+            y: Double,
+            dir: Double,
+            sel: UInt8,
+            action: String
+        ) {
+            self.name = name
+            self.x = x
+            self.y = y
+            self.dir = dir
+            self.sel = sel
+            self.action = action
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(Double.self, forKey: Key("x"))
+            let v2 = try fields.decode(Double.self, forKey: Key("y"))
+            let v3 = try fields.decode(Double.self, forKey: Key("dir"))
+            let v4 = try fields.decode(UInt8.self, forKey: Key("sel"))
+            let v5 = try fields.decode(String.self, forKey: Key("action"))
+            self.name = v0
+            self.x = v1
+            self.y = v2
+            self.dir = v3
+            self.sel = v4
+            self.action = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.dir, forKey: Key("dir"))
+            try fields.encode(self.sel, forKey: Key("sel"))
+            try fields.encode(self.action, forKey: Key("action"))
+        }
+    }
+
+    /// The app type `WorldMeta`.
+    public struct WorldMeta: Codable, Sendable, Equatable {
+        public var name: String
+        public var seed: UInt32
+        public var createdAt: UInt32
+
+        public init(
+            name: String,
+            seed: UInt32,
+            createdAt: UInt32
+        ) {
+            self.name = name
+            self.seed = seed
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("seed"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("createdAt"))
+            self.name = v0
+            self.seed = v1
+            self.createdAt = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.seed, forKey: Key("seed"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

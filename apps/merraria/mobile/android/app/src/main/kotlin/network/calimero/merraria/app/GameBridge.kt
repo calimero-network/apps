@@ -17,6 +17,7 @@ import network.calimero.merraria.contract.TileEntry
 import network.calimero.merraria.contract.Transform
 import network.calimero.merraria.contract.WorldMeta
 import network.calimero.merraria.contract.allOverrides
+import network.calimero.merraria.contract.asContractArg
 import network.calimero.merraria.generated.MerrariaClient
 
 // The bridge between the app and the bundled web game (`app/src/native/host.ts`, which documents
@@ -264,7 +265,7 @@ class BridgeDispatcher(
             "world_meta" -> encode(WorldMeta.serializer(), MerrariaContract.read(WorldMeta.serializer(), client.worldMeta()))
             "heartbeat" -> {
                 val args = decode(HeartbeatArgs.serializer(), argsJson)
-                client.heartbeat(MerrariaContract.json(Transform.serializer(), args.t), u32(args.now))
+                client.heartbeat(args.t.asContractArg(), u32(args.now))
                 "null"
             }
             "join" -> {
@@ -277,7 +278,7 @@ class BridgeDispatcher(
             }
             else -> {
                 val args = decode(SetTilesArgs.serializer(), argsJson)
-                encode(UInt.serializer(), client.setTiles(args.edits.map { MerrariaContract.json(Edit.serializer(), it) }, u32(args.now)))
+                encode(UInt.serializer(), client.setTiles(args.edits.map { it.asContractArg<MerrariaClient.Edit>() }, u32(args.now)))
             }
         }
     }
