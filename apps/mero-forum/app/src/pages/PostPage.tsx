@@ -23,7 +23,7 @@ import {
   MessageIcon,
   TrashIcon,
 } from "../components/icons";
-import type { PostView } from "../lib/forumApi";
+import { toPost, type PostView } from "../lib/forumApi";
 import {
   fullDate,
   timeAgo,
@@ -72,8 +72,8 @@ export default function PostPage() {
     if (!client || !postId) return;
     let cancelled = false;
     client
-      .getPost({ post_id: postId })
-      .then((p) => !cancelled && setPost(p))
+      .getPost({ postId })
+      .then((p) => !cancelled && setPost(toPost(p)))
       .catch(
         (e: unknown) =>
           !cancelled && setError(e instanceof Error ? e.message : String(e)),
@@ -97,7 +97,7 @@ export default function PostPage() {
       score: post.score - post.my_vote + value,
       my_vote: value,
     });
-    await client.vote({ post_id: post.id, value }).catch(() => undefined);
+    await client.vote({ postId: post.id, value }).catch(() => undefined);
   };
 
   const voteComment = async (commentId: string, value: number) => {
@@ -112,7 +112,7 @@ export default function PostPage() {
       ),
     );
     try {
-      await client.voteComment({ comment_id: commentId, value });
+      await client.voteComment({ commentId, value });
     } catch {
       reload();
     }
@@ -122,7 +122,7 @@ export default function PostPage() {
     if (!client || !postId) return;
     setBusy(true);
     try {
-      await client.createComment({ post_id: postId, body: draft.trim() });
+      await client.createComment({ postId, body: draft.trim() });
       setDraft("");
       reload();
     } catch (e) {
@@ -136,7 +136,7 @@ export default function PostPage() {
     if (!client || !post) return;
     if (!confirm("Delete this post? Its comments go with it.")) return;
     try {
-      await client.deletePost({ post_id: post.id });
+      await client.deletePost({ postId: post.id });
       // Back to the feed: staying here would render a thread the contract now
       // refuses to load, which reads as a failure rather than as the delete
       // that just succeeded.
@@ -340,13 +340,13 @@ export default function PostPage() {
                 onVote={(v) => void voteComment(c.id, v)}
                 onEdit={async (body) => {
                   if (!client) throw new Error("not signed in");
-                  await client.editComment({ comment_id: c.id, body });
+                  await client.editComment({ commentId: c.id, body });
                   reload();
                 }}
                 onDelete={() => {
                   if (!client) return;
                   void client
-                    .deleteComment({ comment_id: c.id })
+                    .deleteComment({ commentId: c.id })
                     .catch((e: unknown) =>
                       setError(e instanceof Error ? e.message : String(e)),
                     )

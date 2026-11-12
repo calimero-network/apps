@@ -2,6 +2,7 @@ import { useState } from "react";
 import { byPerson, digestMarkdown } from "./lib/digest";
 import { describeWeek, shiftDay, today, weekStart, weekdayShort } from "./lib/days";
 import { PersonName } from "./names";
+import { decodeDays, decodeText } from "./standup";
 import { Avatar, Icon, RichText } from "./ui";
 import { useRead, type Team } from "./useTeam";
 
@@ -13,8 +14,8 @@ import { useRead, type Team } from "./useTeam";
  */
 export function WeekDigest({ team }: { team: Team }) {
   const [start, setStart] = useState(() => weekStart(today()));
-  const week = useRead(team.client, team.version, (c) => c.getWeek({ start }), [start]);
-  const teamName = useRead(team.client, team.version, (c) => c.teamName(), []);
+  const week = useRead(team.client, team.version, (c) => c.getWeek({ start }).then(decodeDays), [start]);
+  const teamName = useRead(team.client, team.version, (c) => c.teamName().then(decodeText), []);
   const [copied, setCopied] = useState(false);
   const people = week.data ? byPerson(week.data) : [];
   const thisWeek = start === weekStart(today());

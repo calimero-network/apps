@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMaybeSignedIn } from "../sessionContext";
-import { ForumClient, type CommentView, type PostView } from "./forumApi";
+import { MeroForumClient } from "../generated/client";
+import { toCommentPage, toPostPage, type CommentView, type PostView } from "./forumApi";
 import { getContextId } from "./session";
 
 /** The forum open in this browser: an app instance id (v1's context id). */
@@ -20,14 +21,18 @@ export function useSelfAccount(): string | null {
   return useMaybeSignedIn()?.accountId ?? null;
 }
 
-/** The open forum's typed client (answers in the shapes the screens use). */
-export function useForumClient(): ForumClient | null {
+/**
+ * The open forum's typed client: `MeroForumClient`, generated from
+ * logic/res/abi.json. Its answers are adapted to the screens' shapes where
+ * they are read (`toPostPage`, `toCommentPage`, `toPost` in forumApi.ts).
+ */
+export function useForumClient(): MeroForumClient | null {
   const signedIn = useMaybeSignedIn();
   const { contextId } = useForumContext();
   const client = signedIn?.client;
   const after = signedIn?.after;
   return useMemo(
-    () => (client && contextId ? new ForumClient(client, contextId, after) : null),
+    () => (client && contextId ? new MeroForumClient(client, contextId, { after }) : null),
     [client, contextId, after],
   );
 }
@@ -74,7 +79,7 @@ export type Sort = "new" | "top";
  * `hasMore` follows `next_cursor` rather than the page length — a page can be
  * short and still have more behind it once deleted rows are filtered out.
  */
-export function useFeed(client: ForumClient | null, sort: Sort) {
+export function useFeed(client: MeroForumClient | null, sort: Sort) {
   const [items, setItems] = useState<PostView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -89,7 +94,7 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
     inFlight.current = true;
     setLoading(true);
     try {
-      const page = await client.listPosts({ sort, cursor, limit: 20 });
+      const page = toPostPage(await client.listPosts({ sort, cursor, limit: 20 }));
       setItems((prev) => {
         const seen = new Set(prev.map((p) => p.id));
         return [...prev, ...page.items.filter((p) => !seen.has(p.id))];
@@ -121,7 +126,7 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
     if (!client || inFlight.current) return;
     inFlight.current = true;
     try {
-      const page = await client.listPosts({ sort, cursor: null, limit: 20 });
+      const page = toPostPage(await client.listPosts({ sort, cursor: null, limit: 20 }));
       setItems(page.items);
       setCursor(page.next_cursor ?? null);
       setHasMore(page.next_cursor != null);
@@ -149,7 +154,7 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
 
 /** Comments on one post, same paging contract as the feed. */
 export function useComments(
-  client: ForumClient | null,
+  client: MeroForumClient | null,
   postId: string | undefined,
 ) {
   const [items, setItems] = useState<CommentView[]>([]);
@@ -163,11 +168,13 @@ export function useComments(
     inFlight.current = true;
     setLoading(true);
     try {
-      const page = await client.listComments({
-        post_id: postId,
-        cursor,
-        limit: 20,
-      });
+      const page = toCommentPage(
+        await client.listComments({
+          postId,
+          cursor,
+          limit: 20,
+        }),
+      );
       setItems((prev) => {
         const seen = new Set(prev.map((c) => c.id));
         return [...prev, ...page.items.filter((c) => !seen.has(c.id))];

@@ -137,7 +137,8 @@ logic/                  a standalone component crate (its own [workspace] and Ca
   scenarios/            neutral steps, also run on merod local by CI's e2e job
   res/abi.json          the component's ABI (committed, diffed in CI)
 app/
-  src/meroVote.ts          the typed client: v1's method surface and answer shapes over CalimeroClient
+  src/generated/           MeroVoteClient: `mero-app-build codegen` from logic/res/abi.json (committed)
+  src/meroVote.ts          v1's answer shapes, and `decode` from the contract's answers to them
   src/session.ts           target (merod local / Cloud) → client → passkey session
   src/groups.ts            voting groups (app instances in their own org), invite links
   src/crypto/protocol.ts   the same protocol in TypeScript (@noble/curves ristretto255)
@@ -221,16 +222,20 @@ v1's convergence tests (`tests/converge.rs`) and its two-node Docker workflow
 the workflow is `scenarios/poll-lifecycle.json` (plus `scenarios/access.json`).
 
 The frontend changed with it: mero-react's provider and node login, the context and namespace
-picker, namespace invitations, the desktop SSO hand-off, the namespace-wide member names, the
-generated `MeroVoteClient` and the Playwright suites against merod 0.x are gone. It now resolves its
+picker, namespace invitations, the desktop SSO hand-off, the namespace-wide member names and the
+Playwright suites against merod 0.x are gone, and v1's abi-codegen `MeroVoteClient` is now core's. It now resolves its
 target from the build (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
 `vite build`), signs in with a **passkey**, lists and creates **voting groups** (app instances in
 an organization of their own: v1's context in a namespace), invites with an **org invite link**
 (making it is approved with your passkey; opening it, then signing in, redeems it and opens that
 group; the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the
-contract through `src/meroVote.ts`, which keeps v1's generated client's method surface and answer
-shapes so the screens did not change; a test checks its methods and parameter names against
-`logic/res/abi.json`.
+contract through `MeroVoteClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+writes from `logic/res/abi.json` (`pnpm -F mero-vote codegen` after a contract change; CI fails
+when the committed copy is stale), with the contract's camelCase arguments. The ABI names its
+records without their shapes, so the generated types are `unknown`: every answer the screens read
+goes through `decode` in `src/meroVote.ts` into v1's answer shapes, so the screens did not change.
+`src/client.test.ts` checks the class against `logic/res/abi.json`: exactly its methods, each sent
+as a call or a view with its parameter names, the session synced after each.
 
 ## Limits
 

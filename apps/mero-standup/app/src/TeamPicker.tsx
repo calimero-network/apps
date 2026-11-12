@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
 import { describeError, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
-import { standup } from "./standup";
+import { MeroStandupClient, type AppTransport } from "./generated/client";
+import { decodeText } from "./standup";
 import { createTeam, listTeams } from "./teams";
 
-type PickerClient = ClientRoutes<{
-  apps: "list" | "create" | "call" | "view";
-  orgs: "create" | "get" | "memberMetadata";
-}>;
+type PickerClient = AppTransport &
+  ClientRoutes<{
+    apps: "list" | "create" | "call" | "view";
+    orgs: "create" | "get" | "memberMetadata";
+  }>;
 
 /**
  * v1's context picker: the teams this account reaches (app instances of this
@@ -47,7 +49,7 @@ export function TeamPicker({
       const pairs = await Promise.all(
         found.map(async (t) => {
           try {
-            return [t.appId, await standup(client, t.appId, after).teamName()] as const;
+            return [t.appId, decodeText(await new MeroStandupClient(client, t.appId, { after }).teamName())] as const;
           } catch {
             return [t.appId, ""] as const;
           }
@@ -75,7 +77,7 @@ export function TeamPicker({
       // Best effort: the team exists either way, and opening it asks once
       // when the org has no name for you.
       await setOrgName(client, org, accountId, myName).catch(() => {});
-      await standup(client, appId, after).setTeamName({ name });
+      await new MeroStandupClient(client, appId, { after }).setTeamName({ name });
       onOpen({ appId, name, org });
     } catch (e) {
       setError(describeError(e));

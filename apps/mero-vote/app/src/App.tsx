@@ -12,7 +12,8 @@ import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePending
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
-import { PACKAGE, meroVote } from "./meroVote";
+import { MeroVoteClient } from "./generated/client";
+import { PACKAGE } from "./meroVote";
 import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { instanceIn, invites as appInvites, listGroups, selectionKey } from "./groups";
 import { VotePanel } from "./VotePanel";
@@ -161,7 +162,7 @@ export function App({
   const group: VoteGroup | null = useMemo(
     () =>
       client && opened
-        ? { client: meroVote(client, opened.appId, after), subscribe: subscribeTo(client, opened.appId) }
+        ? { client: new MeroVoteClient(client, opened.appId, { after }), subscribe: subscribeTo(client, opened.appId) }
         : null,
     [client, opened, after],
   );

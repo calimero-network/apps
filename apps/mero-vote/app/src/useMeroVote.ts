@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { AppError } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
-import type { MeroVoteClient } from "./meroVote";
+import type { MeroVoteClient } from "./generated/client";
 
 /**
  * The open voting group, for every screen under it: the typed client bound to

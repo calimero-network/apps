@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AuditReport, PollView } from "./meroVote";
+import { decode, type AuditReport, type PollView } from "./meroVote";
 import { ballotToWire, castBallot, decodePoint, secureRng } from "./crypto/protocol";
 import { AuditPanel } from "./AuditPanel";
 import { PhaseBadge } from "./VotePanel";
@@ -55,10 +55,10 @@ export function PollDetail({
   const load = useCallback(async () => {
     if (!client) return;
     try {
-      const v = await client.getPoll({ poll_id: pollId });
+      const v = decode<PollView>(await client.getPoll({ pollId }));
       setView(v);
       setSelection((s) => (s.length === v.definition.options.length ? s : v.definition.options.map(() => false)));
-      if (v.state.phase === "Closed") setReport(await client.getResult({ poll_id: pollId }));
+      if (v.state.phase === "Closed") setReport(decode<AuditReport>(await client.getResult({ pollId })));
       else setReport(null);
     } catch (e) {
       setErr(errText(e));
@@ -118,7 +118,7 @@ export function PollDetail({
         const pk = decodePoint(key, "election key");
         const rules = { options: def.options.length, min: def.min_choices, max: def.max_choices };
         const ballot = castBallot(pk, pollId, me, rules, selection, secureRng);
-        await client.castBallot({ poll_id: pollId, ballot: ballotToWire(ballot) });
+        await client.castBallot({ pollId, ballot: ballotToWire(ballot) });
         // Forget the plaintext: nothing in this tab should outlive the vote.
         setSelection(def.options.map(() => false));
       },
@@ -317,7 +317,7 @@ export function PollDetail({
               <span className="empty">Stops new ballots. The count is frozen in the next step.</span>
               <button
                 className="danger"
-                onClick={() => void act("close", () => client!.closePoll({ poll_id: pollId }), "Poll closed to new ballots. Seal the count once ballots in flight have arrived.")}
+                onClick={() => void act("close", () => client!.closePoll({ pollId }), "Poll closed to new ballots. Seal the count once ballots in flight have arrived.")}
                 disabled={!!busy}
               >
                 {busy === "close" ? "Closing…" : "Close poll"}
@@ -329,7 +329,7 @@ export function PollDetail({
               <span className="empty">Freezes every ballot cast so far.</span>
               <button
                 className="danger"
-                onClick={() => void act("seal", () => client!.sealPoll({ poll_id: pollId }), "Count sealed. Trustees can now decrypt the totals.")}
+                onClick={() => void act("seal", () => client!.sealPoll({ pollId }), "Count sealed. Trustees can now decrypt the totals.")}
                 disabled={!!busy}
               >
                 <LockIcon size={16} />

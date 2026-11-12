@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Ceremony, MeroVoteClient, PollView } from "./meroVote";
+import type { MeroVoteClient } from "./generated/client";
+import { decode, type Ceremony, type PollView, type TallyInputs } from "./meroVote";
 import {
   BASE,
   branchToWire,
@@ -90,7 +91,7 @@ export function TrusteePanel({
   const loadCeremony = useCallback(async () => {
     if (!client || phase !== "KeyCeremony") return;
     try {
-      setCeremony(await client.ceremony({ poll_id: pollId }));
+      setCeremony(decode<Ceremony>(await client.ceremony({ pollId })));
     } catch (e) {
       onError(errText(e));
     }
@@ -131,7 +132,7 @@ export function TrusteePanel({
         if (!saveTrusteeKey(key)) throw new Error("this browser cannot store your trustee key (storage blocked)");
         setTrusteeKey(key);
         const [pub, proof] = makeTransportKey(pollId, me, e, secureRng);
-        await client.publishTransportKey({ poll_id: pollId, key: encodePoint(pub), proof: branchToWire(proof) });
+        await client.publishTransportKey({ pollId, key: encodePoint(pub), proof: branchToWire(proof) });
       },
       "Transport key published. Download the backup now — without it this browser is the only place your trustee key exists.",
     );
@@ -145,7 +146,7 @@ export function TrusteePanel({
         const keys = ceremony.trustees.map((x) => decodePoint(x.transport!, "transport key"));
         // The polynomial lives only inside this call.
         const d = deal(pollId, me, t, keys, secureRng);
-        await client.publishDealing({ poll_id: pollId, dealing: dealingToWire(d) });
+        await client.publishDealing({ pollId, dealing: dealingToWire(d) });
       },
       "Shares dealt. Each trustee received one, encrypted to them alone.",
     );
@@ -159,7 +160,7 @@ export function TrusteePanel({
       `complain:${dealer}`,
       async () => {
         const [secret, proof] = makeComplaint(pollId, me, dealer, myIndex, decodeScalar(trusteeKey.secret), dealingFromWire(w), secureRng);
-        await client.fileComplaint({ poll_id: pollId, dealer, secret: encodePoint(secret), proof: branchToWire(proof) });
+        await client.fileComplaint({ pollId, dealer, secret: encodePoint(secret), proof: branchToWire(proof) });
       },
       `Complaint filed. It proves ${label(dealer)}'s share to you was bad, and their dealing will be left out of the key.`,
     );
@@ -182,12 +183,12 @@ export function TrusteePanel({
           }
           x += s;
         }
-        const inputs = await client.tallyInputs({ poll_id: pollId });
+        const inputs = decode<TallyInputs>(await client.tallyInputs({ pollId }));
         const partials = inputs.aggregate.map((ct, j) => {
           const [d, proof] = partialDecrypt(pollId, me, j, x, decodePoint(ct.a, "aggregate"), secureRng);
           return { d: encodePoint(d), proof: branchToWire(proof) };
         });
-        await client.publishPartial({ poll_id: pollId, partials });
+        await client.publishPartial({ pollId, partials });
       },
       "Decryption share published. It decrypts only the per-option totals, never a single ballot.",
     );
@@ -422,7 +423,7 @@ export function TrusteePanel({
                   : "Every trustee has dealt."}
           </span>
           <button
-            onClick={() => void act("open", () => client!.openVoting({ poll_id: pollId }), "Voting is open. The election key is frozen.")}
+            onClick={() => void act("open", () => client!.openVoting({ pollId }), "Voting is open. The election key is frozen.")}
             disabled={!allTransport || qualifiedNow < t || !!busy}
           >
             {busy === "open" ? "Opening…" : "Open voting"}

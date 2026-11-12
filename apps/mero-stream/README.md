@@ -179,7 +179,7 @@ through `@calimero-apps/connect`'s org-app module
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-stream/logic/Cargo.toml` | the codec's unit tests (C1 bit identity, >255 runs, truncated and oversized streams, the 4-bit contract); v1's `TestHost` tests method for method on core's wasmtime engine (encode/decode, chunking, the frame window, checksums, approach 2's per-sender rings, keyframe clamp, wall-clock window, count backstop, stale-sender sweep, four broadcasters); v1's forged-write tests as "every write is the caller's own"; access and wire checks; every `scenarios/*.json` | no |
-| `pnpm -F mero-stream test` | the typed client's methods and parameter names are exactly `logic/res/abi.json`'s, and its conversions; streams (orgs), rooms (app instances) and invitation links; presence encoding; the media framing, codecs, metrics, slots, congestion control; sign-up, stream and room creation, invitation, redemption into a room (mocked client) | no |
+| `pnpm -F mero-stream test` | the generated client has exactly `logic/res/abi.json`'s methods, sent as calls or views with its parameter names, the session synced after each, and the conversions of its answers; streams (orgs), rooms (app instances) and invitation links; presence encoding; the media framing, codecs, metrics, slots, congestion control; sign-up, stream and room creation, invitation, redemption into a room (mocked client) | no |
 | `pnpm merod-local e2e mero-stream` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node | yes |
 
 The scenarios are v1's two- and three-node Docker workflows with accounts instead of nodes:
@@ -249,10 +249,14 @@ The frontend changed with it:
   call carries media on the node's **presence** channel (`publishPresence`,
   `presenceStream`); `/stream` listens on the room's event stream
   (`client.events`).
-- `src/lib/meroStream.ts` is the one typed adapter: it calls the contract by
-  method name and converts the answers back to the shapes the screens were
-  written against (numbers, `pixels` as bytes), so the pages kept their logic.
-  A test checks its method list against `logic/res/abi.json`.
+- The contract is called through `MeroStreamClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-stream codegen` after a contract change, and CI fails when it
+  is stale); `src/client.test.ts` checks it against the ABI. The ABI names its
+  records without their shapes, so the generated types are `unknown`:
+  `src/lib/meroStream.ts` converts each answer back to the shapes the screens
+  were written against (numbers, `pixels` as bytes) in `hooks/useMeroStream.ts`,
+  so the pages kept their logic.
 - Rooms are no longer "joined" separately from the stream: everyone in the
   org reaches every room, and a room row shows "joined" once you have called
   `join` in it.

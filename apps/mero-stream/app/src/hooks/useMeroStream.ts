@@ -1,16 +1,31 @@
 import { useCallback, useMemo, useState } from "react";
 import { describeError } from "@calimero-apps/connect";
 import { useSessionApi } from "../session";
-import { meroStream, type ChunkInput } from "../lib/meroStream";
+import { MeroStreamClient } from "../generated/client";
+import {
+  num,
+  toBase64Url,
+  toChunks,
+  toCursors,
+  toFrames,
+  toLiveStats,
+  toMember,
+  toMembers,
+  toStats,
+  u64,
+  wireCursors,
+  type ChunkInput,
+} from "../lib/meroStream";
 import { getContextId, nowMillis, nowSecs } from "../lib/session";
 import type { SenderCursor } from "../types";
 
 /**
  * The contract of the active room, for the screens.
  *
- * v1 wrapped mero-react's `useExecute`; this wraps mero-js's `CalimeroClient`
- * through `lib/meroStream` (which turns the component's wire shapes back into
- * the ones the screens were written against). The API is the one the pages
+ * v1 wrapped mero-react's `useExecute`; this calls `MeroStreamClient`, which
+ * `mero-app-build codegen` writes from logic/res/abi.json, and turns its
+ * answers back into the shapes the screens were written against
+ * (`lib/meroStream`'s `to*`). The API is the one the pages
  * already used:
  *
  * - `contextId` is the room's app id (v1: its context id);
@@ -35,7 +50,7 @@ export function useMeroStream() {
   }, [client, store]);
 
   const api = useMemo(
-    () => (client && contextId ? meroStream(client, contextId, after) : null),
+    () => (client && contextId ? new MeroStreamClient(client, contextId, { after }) : null),
     [client, contextId, after],
   );
 
@@ -70,22 +85,46 @@ export function useMeroStream() {
       myId: accountId,
       loading: false,
       error,
-      join: (username: string) => soft((c) => c.join(username, nowSecs())),
-      getMembers: () => soft((c) => c.getMembers()),
+      join: (username: string) => soft(async (c) => toMember(await c.join({ username, now: u64(nowSecs()) }))),
+      getMembers: () => soft(async (c) => toMembers(await c.getMembers())),
       encodeFrame: (
         raw: number[] | Uint8Array,
         width: number,
         height: number,
         track: number,
-      ) => hard((c) => c.encodeFrame(raw, width, height, track, nowMillis())),
-      getFrame: (afterSeq: number) => soft((c) => c.getFrame(afterSeq)),
-      pruneFrames: (beforeSeq: number) => soft((c) => c.pruneFrames(beforeSeq)),
-      getStats: () => soft((c) => c.getStats()),
-      renameStream: (name: string) => soft((c) => c.renameStream(name)),
-      postChunk: (chunk: ChunkInput) => hard((c) => c.postChunk(chunk, nowMillis())),
-      getChunks: (cursors: SenderCursor[]) => soft((c) => c.getChunks(cursors)),
-      keyframeCursors: () => soft((c) => c.keyframeCursors()),
-      getLiveStats: () => soft((c) => c.getLiveStats()),
+      ) =>
+        hard(async (c) =>
+          num(await c.encodeFrame({ raw: toBase64Url(raw), width, height, track, now: u64(nowMillis()) })),
+        ),
+      getFrame: (afterSeq: number) => soft(async (c) => toFrames(await c.getFrame({ afterSeq: u64(afterSeq) }))),
+      pruneFrames: (beforeSeq: number) =>
+        soft(async (c) => {
+          await c.pruneFrames({ beforeSeq: u64(beforeSeq) });
+        }),
+      getStats: () => soft(async (c) => toStats(await c.getStats())),
+      renameStream: (name: string) =>
+        soft(async (c) => {
+          await c.renameStream({ name });
+        }),
+      postChunk: (chunk: ChunkInput) =>
+        hard(async (c) =>
+          num(
+            await c.postChunk({
+              dataB64: chunk.dataB64,
+              track: chunk.track,
+              isKeyframe: chunk.isKeyframe,
+              codec: chunk.codec,
+              width: chunk.width,
+              height: chunk.height,
+              timestampUs: u64(chunk.timestampUs),
+              now: u64(nowMillis()),
+            }),
+          ),
+        ),
+      getChunks: (cursors: SenderCursor[]) =>
+        soft(async (c) => toChunks(await c.getChunks({ cursors: wireCursors(cursors) }))),
+      keyframeCursors: () => soft(async (c) => toCursors(await c.keyframeCursors())),
+      getLiveStats: () => soft(async (c) => toLiveStats(await c.getLiveStats())),
     }),
     // `error` is deliberately not a dep: it flips on every refusal, and a new
     // object identity would tear down every effect keyed on this one (the

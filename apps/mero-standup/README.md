@@ -53,9 +53,11 @@ pnpm -F mero-standup lint typecheck test build                         # the fro
 - `logic/scenarios/access.json`: what merobox could not express: a guest, an
   outsider, an anonymous caller, and members trying to write someone else's
   update, help offer or name.
-- `app/src/standup.test.ts` checks the client's method list and parameter
-  names against the committed `logic/res/abi.json`; `app/src/App.test.tsx`
-  drives the screens with a mocked client.
+- `app/src/client.test.ts` checks the generated client (`MeroStandupClient`)
+  against the committed `logic/res/abi.json`: exactly its methods, each sent as
+  a call or a view with its parameter names, the session synced after each;
+  `app/src/standup.test.ts` checks the decoding to the screens' shapes, and
+  `app/src/App.test.tsx` drives the screens with a mocked client.
 
 ## The contract
 
@@ -145,9 +147,13 @@ The frontend keeps every screen; what changed underneath:
   session exists. The pending invite is `@calimero-apps/connect`'s shared store
   (`createInviteStore`, captured in `main.tsx`): joining, or being in the org
   already, opens that org's team, and signing out drops the invite.
-- The generated `StandupClient` (abi-codegen) is replaced by a typed wrapper
-  (`standup.ts`) over `client.call` / `client.view` that keeps the screens'
-  shapes (snake_case, numeric timestamps) and converts in one place.
+- v1's abi-codegen `StandupClient` is now core's `MeroStandupClient`
+  (`src/generated/client.ts`: `mero-app-build codegen` from
+  `logic/res/abi.json`, committed; `pnpm -F mero-standup codegen` after a
+  contract change, and CI fails when it is stale). The ABI names its records
+  without their shapes, so the generated types are `unknown`: each read passes
+  its answer through a `decode*` in `standup.ts`, which keeps the screens'
+  shapes (snake_case, numeric timestamps).
 - Live updates come from `client.events(app)` (coalesced), with the 30 s poll as
   before.
 - No namespace-wide names: v1 fell back to the name a person set for the whole
@@ -190,8 +196,9 @@ logic/scenarios/            standup.json (from the merobox workflow), access.jso
 logic/res/abi.json          the component's ABI, committed, diffed in CI
 app/src/session.ts          target -> client -> passkey session (from kv-store)
 app/src/teams.ts            teams (app instances in their own org), invites
-app/src/standup.ts          the typed client over CalimeroClient
-app/src/useTeam.ts          the client for one team + re-read on events
+app/src/generated/          MeroStandupClient, generated from logic/res/abi.json (committed)
+app/src/standup.ts          the screens' shapes and the decoding to them
+app/src/useTeam.ts          the generated client for one team + re-read on events
 app/src/StandupBoard.tsx    week strip, your update (carried forward), the team, help, sidebar
 app/src/WeekDigest.tsx      a week per person, copy as Markdown
 app/src/DecisionLog.tsx     log, supersede, tags, people, timeline

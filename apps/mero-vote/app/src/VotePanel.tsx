@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import type { Member, PollSummary } from "./meroVote";
+import { decode, type Identity, type Member, type PollSummary } from "./meroVote";
 import { CreatePoll } from "./CreatePoll";
 import { PollDetail } from "./PollDetail";
 import { errText, short, useLiveRefresh, useMeroVote } from "./useMeroVote";
@@ -54,7 +54,11 @@ export function VotePanel({
   const refresh = useCallback(async () => {
     if (!client) return;
     try {
-      const [who, r, p] = await Promise.all([client.whoami(), client.roster(), client.listPolls()]);
+      const [who, r, p] = await Promise.all([
+        client.whoami().then((v) => decode<Identity>(v)),
+        client.roster().then((v) => decode<Member[]>(v)),
+        client.listPolls().then((v) => decode<PollSummary[]>(v)),
+      ]);
       setMe(who.account);
       setRoster(r);
       setPolls(p);

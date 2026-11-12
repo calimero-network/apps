@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { describeError, type ClientRoutes } from "@calimero-apps/connect";
-import { standup, type StandupClient } from "./standup";
+import { MeroStandupClient } from "./generated/client";
 
 /**
  * Re-read on a timer too, not only on events. An event is a nudge, and a
@@ -14,7 +14,8 @@ const POLL_MS = 30_000;
 export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>;
 
 /**
- * The typed client bound to one team (an app instance), plus a `version` that
+ * The typed client bound to one team (an app instance): `MeroStandupClient`,
+ * which `mero-app-build codegen` writes from logic/res/abi.json, plus a `version` that
  * bumps whenever the team's state may have changed: a local write, or an event
  * from the app's stream (a teammate's write). Views re-read when it moves.
  *
@@ -22,7 +23,7 @@ export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps
  * once the contract has taken it, which is the only point at which it is true.
  */
 export function useTeam(transport: TeamTransport, appId: string, after: () => void = () => {}) {
-  const client = useMemo(() => standup(transport, appId, after), [transport, appId, after]);
+  const client = useMemo(() => new MeroStandupClient(transport, appId, { after }), [transport, appId, after]);
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
@@ -57,7 +58,7 @@ export function useTeam(transport: TeamTransport, appId: string, after: () => vo
 
   /** Run one contract call, then re-read everything. */
   const act = useCallback(
-    async <T,>(fn: (c: StandupClient) => Promise<T>): Promise<T> => {
+    async <T,>(fn: (c: MeroStandupClient) => Promise<T>): Promise<T> => {
       try {
         return await fn(client);
       } finally {
@@ -78,9 +79,9 @@ export type Team = ReturnType<typeof useTeam>;
  * reports a failed read without throwing it away.
  */
 export function useRead<T>(
-  client: StandupClient | null,
+  client: MeroStandupClient | null,
   version: number,
-  load: (c: StandupClient) => Promise<T>,
+  load: (c: MeroStandupClient) => Promise<T>,
   deps: unknown[],
 ): { data: T | null; error: string | null; loading: boolean } {
   const [data, setData] = useState<T | null>(null);

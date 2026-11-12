@@ -135,11 +135,15 @@ v1.
   and the namespace/subgroup/context plumbing in `lib/groups.ts` are gone. The
   session is `@calimero-apps/connect` (`src/session.ts`, `src/sessionContext.tsx`):
   passkey sign-in/up, the session stored per app and per target.
-- `src/lib/forumApi.ts` is the typed client and the **one adapter**: it calls the
-  contract by its ABI names and turns its answers back into the shapes the screens
-  were written against (snake_case, numbers), so the feed, post, comment and
-  nickname screens are unchanged. `forumApi.test.ts` checks its method lists and
-  argument names against the committed `logic/res/abi.json`.
+- The contract is called through `MeroForumClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-forum codegen` after a contract change, and CI fails when it is
+  stale). `src/client.test.ts` checks it has exactly the ABI's methods, sends
+  each as a call or a view with its parameter names, and syncs the session after
+  each. The ABI names its records without their shapes, so the generated types
+  are `unknown`: `src/lib/forumApi.ts` is the **one adapter** that turns each
+  answer back into the shapes the screens were written against (snake_case,
+  numbers), so the feed, post, comment and nickname screens are unchanged.
 - `src/lib/spaces.ts` replaces `lib/groups.ts`: spaces are orgs (`/me`,
   `createOrg`, `getOrg`, `deleteOrg`, `removeMember`), forums are instances
   (`listApps` by the dev bundle or the package, `createApp(name, source, { org })`,
@@ -159,7 +163,7 @@ v1.
 
 The native iOS and Android apps move to Calimero 1.0 in #689, which calls this
 contract's component ABI (the same 17 methods, camelCase arguments and answers
-as `app/src/lib/forumApi.ts`) and lands after this port. This port leaves
+as `app/src/generated/client.ts`) and lands after this port. This port leaves
 `mobile/` as it is on `main`.
 
 ## Production

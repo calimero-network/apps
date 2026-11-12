@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useMaybeSignedIn } from "../sessionContext";
-import type { ForumClient } from "./forumApi";
+import type { MeroForumClient } from "../generated/client";
 import { getActiveNamespaceId, getUsername, setUsername } from "./session";
 import { publishSpaceName, readMembers } from "./spaces";
 
@@ -75,7 +75,7 @@ export interface Nickname {
   rename: (next: string) => Promise<void>;
 }
 
-export function useNickname(client: ForumClient | null, selfAccount?: string | null): Nickname {
+export function useNickname(client: MeroForumClient | null, selfAccount?: string | null): Nickname {
   const signedIn = useMaybeSignedIn();
   const namespaceId = getActiveNamespaceId();
   const { nameOf } = useSpaceNames(namespaceId);

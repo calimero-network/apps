@@ -1,23 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import abiText from "../../../logic/res/abi.json?raw";
-import { fromBase64Url, meroStream, METHODS, toBase64Url } from "./meroStream";
+import { MeroStreamClient } from "../generated/client";
+import {
+  fromBase64Url,
+  num,
+  toBase64Url,
+  toChunks,
+  toCursors,
+  toFrames,
+  toLiveStats,
+  toMembers,
+  toStats,
+  u64,
+  wireCursors,
+} from "./meroStream";
 import { withRoutes } from "@calimero-apps/connect/testing";
-
-interface Abi {
-  methods: Record<string, { kind: string; params: [string, string][] }>;
-}
-const abi = JSON.parse(abiText) as Abi;
-
-describe("the typed client matches the committed ABI", () => {
-  it("covers every method but init, with the ABI's parameter names in order", () => {
-    const fromAbi = Object.fromEntries(
-      Object.entries(abi.methods)
-        .filter(([, m]) => m.kind !== "init")
-        .map(([name, m]) => [name, m.params.map(([p]) => p)]),
-    );
-    expect(METHODS).toEqual(fromAbi);
-  });
-});
 
 function fake(results: Record<string, unknown>) {
   return withRoutes({
@@ -33,12 +29,14 @@ function fake(results: Record<string, unknown>) {
   });
 }
 
-describe("meroStream: wire shapes back to the screens' shapes", () => {
+describe("the generated client, with the wire shapes turned back into the screens' shapes", () => {
   it("sends u64s as decimal strings and raw luma as base64url", async () => {
     const client = fake({ encodeFrame: "7" });
     const after = vi.fn();
-    const s = meroStream(withRoutes(client), "room-1", after);
-    const seq = await s.encodeFrame([0, 17, 255], 3, 1, 0, 1751955010000.7);
+    const s = new MeroStreamClient(withRoutes(client), "room-1", { after });
+    const seq = num(
+      await s.encodeFrame({ raw: toBase64Url([0, 17, 255]), width: 3, height: 1, track: 0, now: u64(1751955010000.7) }),
+    );
     expect(seq).toBe(7);
     expect(client.call).toHaveBeenCalledWith("room-1", "encodeFrame", {
       raw: toBase64Url([0, 17, 255]),
@@ -65,7 +63,7 @@ describe("meroStream: wire shapes back to the screens' shapes", () => {
         },
       ],
     });
-    const frames = await meroStream(withRoutes(client), "r").getFrame(3);
+    const frames = toFrames(await new MeroStreamClient(withRoutes(client), "r").getFrame({ afterSeq: u64(3) }));
     expect(client.view).toHaveBeenCalledWith("r", "getFrame", { afterSeq: "3" });
     expect(frames).toEqual([
       {
@@ -125,26 +123,28 @@ describe("meroStream: wire shapes back to the screens' shapes", () => {
         ],
       },
     });
-    const s = meroStream(withRoutes(client), "r");
-    expect(await s.getMembers()).toEqual([
+    const s = new MeroStreamClient(withRoutes(client), "r");
+    expect(toMembers(await s.getMembers())).toEqual([
       { memberId: "a", username: "A", joinedAt: 1, updatedAt: 2 },
     ]);
-    expect((await s.getStats()).nextSeq).toBe(3);
-    const [c] = await s.getChunks([{ from: "a", afterSeq: 0 }]);
+    expect(toStats(await s.getStats()).nextSeq).toBe(3);
+    const [c] = toChunks(await s.getChunks({ cursors: wireCursors([{ from: "a", afterSeq: 0 }]) }));
     expect(client.view).toHaveBeenCalledWith("r", "getChunks", {
       cursors: [{ from: "a", afterSeq: "0" }],
     });
     expect(c.timestampUs).toBe(33333);
     expect(c.dataB64).toBe("AAAAAWf//oA=");
-    expect(await s.keyframeCursors()).toEqual([{ from: "a", afterSeq: 1 }]);
-    const live = await s.getLiveStats();
+    expect(toCursors(await s.keyframeCursors())).toEqual([{ from: "a", afterSeq: 1 }]);
+    const live = toLiveStats(await s.getLiveStats());
     expect(live.liveBytes).toBe(8);
     expect(live.senders[0].lastKeyframe).toBe(1);
   });
 
   it("keeps the checksum a string: a u64 does not fit a JS number", async () => {
     const client = fake({ frameChecksum: "18446744073709551557" });
-    expect(await meroStream(withRoutes(client), "r").frameChecksum(1)).toBe("18446744073709551557");
+    expect(await new MeroStreamClient(withRoutes(client), "r").frameChecksum({ seq: u64(1) })).toBe(
+      "18446744073709551557",
+    );
   });
 
   it("round-trips base64url", () => {
