@@ -15,11 +15,13 @@ function client(apps: Array<{ appId: string; name: string; org: string | null }>
   let listed = 0;
   const filters: unknown[] = [];
   const c = {
-    me: async () => ({ orgs: [{ orgId: 'org-1', name: 'Platform' }, { orgId: 'org-2', name: 'Other' }] }),
-    listApps: async (filter: unknown) => {
-      listed += 1;
-      filters.push(filter);
-      return apps;
+    auth: { me: async () => ({ orgs: [{ orgId: 'org-1', name: 'Platform' }, { orgId: 'org-2', name: 'Other' }] }) },
+    apps: {
+      list: async (filter: unknown) => {
+        listed += 1;
+        filters.push(filter);
+        return { apps };
+      },
     },
   } as unknown as Client;
   return { c, listed: () => listed, filters };

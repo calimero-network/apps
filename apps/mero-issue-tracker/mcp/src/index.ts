@@ -219,7 +219,8 @@ export async function addRepo(
   if (existing.some((r) => r.name === name)) {
     throw new Error(`Repo "${name}" already exists.`);
   }
-  const appId = await client.createApp(name, cfg.source, { org: org.orgId });
+  const target = typeof cfg.source === 'string' ? { bundle: cfg.source } : cfg.source;
+  const { appId } = await client.apps.create({ name, ...target, org: org.orgId });
   await callMethod(client, { appId }, 'setRepoUrl', { url });
   return { appId, name, url };
 }
