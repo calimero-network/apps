@@ -102,7 +102,7 @@ pub struct MemberState {
 
 /// A calendar event as the frontend sees it. `private` tells a private entry
 /// from a shared one so the UI can render them alike.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct CalendarEvent {
     pub id: String,
     pub title: String,
@@ -116,7 +116,7 @@ pub struct CalendarEvent {
     pub private: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct CreateCalendarEvent {
     pub title: String,
@@ -129,7 +129,7 @@ pub struct CreateCalendarEvent {
     pub peers: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateCalendarEvent {
     #[serde(default)]
@@ -149,7 +149,7 @@ pub struct UpdateCalendarEvent {
 }
 
 /// A member with a display name. `id` is the account.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub id: String,
