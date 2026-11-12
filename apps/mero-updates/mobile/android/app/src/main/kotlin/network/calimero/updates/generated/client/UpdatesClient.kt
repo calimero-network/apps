@@ -41,48 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `AskView`: the ABI names it without its shape, so it is its JSON. */
-typealias AskView = JsonElement
-
-/** The app type `CategoryView`: the ABI names it without its shape, so it is its JSON. */
-typealias CategoryView = JsonElement
-
-/** The app type `CommentView`: the ABI names it without its shape, so it is its JSON. */
-typealias CommentView = JsonElement
-
-/** The app type `ContributionView`: the ABI names it without its shape, so it is its JSON. */
-typealias ContributionView = JsonElement
-
-/** The app type `DraftView`: the ABI names it without its shape, so it is its JSON. */
-typealias DraftView = JsonElement
-
-/** The app type `EngagementRow`: the ABI names it without its shape, so it is its JSON. */
-typealias EngagementRow = JsonElement
-
-/** The app type `MeView`: the ABI names it without its shape, so it is its JSON. */
-typealias MeView = JsonElement
-
-/** The app type `MetricSeries`: the ABI names it without its shape, so it is its JSON. */
-typealias MetricSeries = JsonElement
-
-/** The app type `Overview`: the ABI names it without its shape, so it is its JSON. */
-typealias Overview = JsonElement
-
-/** The app type `PersonView`: the ABI names it without its shape, so it is its JSON. */
-typealias PersonView = JsonElement
-
-/** The app type `PostPage`: the ABI names it without its shape, so it is its JSON. */
-typealias PostPage = JsonElement
-
-/** The app type `PostView`: the ABI names it without its shape, so it is its JSON. */
-typealias PostView = JsonElement
-
-/** The app type `Settings`: the ABI names it without its shape, so it is its JSON. */
-typealias Settings = JsonElement
-
-/** The app type `UpdateInput`: the ABI names it without its shape, so it is its JSON. */
-typealias UpdateInput = JsonElement
-
 /**
  * The app's methods.
  *
@@ -283,7 +241,7 @@ class UpdatesClient private constructor(
             "editUpdate",
             buildJsonObject {
                 put("postId", encode(String.serializer(), postId))
-                put("input", encode(JsonElement.serializer(), input))
+                put("input", encode(UpdateInput.serializer(), input))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -300,7 +258,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(EngagementRow.serializer()),
         )
 
     /** view `getMe`. */
@@ -313,7 +271,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            MeView.serializer(),
         )
 
     /** view `getOverview`. */
@@ -326,7 +284,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            Overview.serializer(),
         )
 
     /** view `getPost`. */
@@ -342,7 +300,7 @@ class UpdatesClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PostView.serializer(),
         )
 
     /** view `getSettings`. */
@@ -355,7 +313,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            Settings.serializer(),
         )
 
     /** view `listAsks`. */
@@ -371,7 +329,7 @@ class UpdatesClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(AskView.serializer()),
         )
 
     /** view `listCategories`. */
@@ -384,7 +342,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CategoryView.serializer()),
         )
 
     /** view `listComments`. */
@@ -400,7 +358,7 @@ class UpdatesClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CommentView.serializer()),
         )
 
     /** view `listContributions`. */
@@ -416,7 +374,7 @@ class UpdatesClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(ContributionView.serializer()),
         )
 
     /** view `listDrafts`. */
@@ -429,7 +387,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(DraftView.serializer()),
         )
 
     /** view `listMetrics`. */
@@ -442,7 +400,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MetricSeries.serializer()),
         )
 
     /** view `listPeople`. */
@@ -455,7 +413,7 @@ class UpdatesClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(PersonView.serializer()),
         )
 
     /** view `listPosts`. */
@@ -477,7 +435,7 @@ class UpdatesClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PostPage.serializer(),
         )
 
     /** call `markRead`. */
@@ -520,7 +478,7 @@ class UpdatesClient private constructor(
         invokeCall(
             "publishUpdate",
             buildJsonObject {
-                put("input", encode(JsonElement.serializer(), input))
+                put("input", encode(UpdateInput.serializer(), input))
             },
             idempotencyKey,
             String.serializer(),
@@ -896,6 +854,1089 @@ class UpdatesClient private constructor(
         }
     }
 
+    /** The app type `AskInput`. */
+    data class AskInput(
+        val id: String? = null,
+        val kind: String,
+        val title: String,
+        val detail: String,
+    ) {
+        companion object {
+            /** `AskInput`'s JSON form. */
+            fun serializer(): KSerializer<AskInput> = Wire
+
+            private object Wire : KSerializer<AskInput> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: AskInput,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer().nullable, value.id))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("title", encode(String.serializer(), value.title))
+                            put("detail", encode(String.serializer(), value.detail))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): AskInput {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "AskInput")
+                    return AskInput(
+                        id = field(fields, "id", String.serializer().nullable),
+                        kind = field(fields, "kind", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        detail = field(fields, "detail", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `AskView`. */
+    data class AskView(
+        val id: String,
+        val postId: String,
+        val postTitle: String,
+        val kind: String,
+        val title: String,
+        val detail: String,
+        val status: String,
+        val createdAt: ULong,
+        val offerCount: ULong,
+        val offers: List<OfferView>,
+        val myOffer: OfferView? = null,
+    ) {
+        companion object {
+            /** `AskView`'s JSON form. */
+            fun serializer(): KSerializer<AskView> = Wire
+
+            private object Wire : KSerializer<AskView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: AskView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("postId", encode(String.serializer(), value.postId))
+                            put("postTitle", encode(String.serializer(), value.postTitle))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("title", encode(String.serializer(), value.title))
+                            put("detail", encode(String.serializer(), value.detail))
+                            put("status", encode(String.serializer(), value.status))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("offerCount", encode(U64AsString, value.offerCount))
+                            put("offers", encode(ListSerializer(OfferView.serializer()), value.offers))
+                            put("myOffer", encode(OfferView.serializer().nullable, value.myOffer))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): AskView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "AskView")
+                    return AskView(
+                        id = field(fields, "id", String.serializer()),
+                        postId = field(fields, "postId", String.serializer()),
+                        postTitle = field(fields, "postTitle", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        detail = field(fields, "detail", String.serializer()),
+                        status = field(fields, "status", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        offerCount = field(fields, "offerCount", U64AsString),
+                        offers = field(fields, "offers", ListSerializer(OfferView.serializer())),
+                        myOffer = field(fields, "myOffer", OfferView.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CategoryView`. */
+    data class CategoryView(
+        val id: String,
+        val name: String,
+        val emoji: String,
+        val color: String,
+        val updateCount: ULong,
+        val unreadCount: ULong,
+        val muted: Boolean,
+    ) {
+        companion object {
+            /** `CategoryView`'s JSON form. */
+            fun serializer(): KSerializer<CategoryView> = Wire
+
+            private object Wire : KSerializer<CategoryView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CategoryView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("emoji", encode(String.serializer(), value.emoji))
+                            put("color", encode(String.serializer(), value.color))
+                            put("updateCount", encode(U64AsString, value.updateCount))
+                            put("unreadCount", encode(U64AsString, value.unreadCount))
+                            put("muted", encode(Boolean.serializer(), value.muted))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CategoryView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CategoryView")
+                    return CategoryView(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        emoji = field(fields, "emoji", String.serializer()),
+                        color = field(fields, "color", String.serializer()),
+                        updateCount = field(fields, "updateCount", U64AsString),
+                        unreadCount = field(fields, "unreadCount", U64AsString),
+                        muted = field(fields, "muted", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CommentView`. */
+    data class CommentView(
+        val id: String,
+        val postId: String,
+        val parentId: String,
+        val author: String,
+        val authorName: String,
+        val authorIsTeam: Boolean,
+        val body: String,
+        val createdAt: ULong,
+        val editedAt: ULong,
+    ) {
+        companion object {
+            /** `CommentView`'s JSON form. */
+            fun serializer(): KSerializer<CommentView> = Wire
+
+            private object Wire : KSerializer<CommentView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CommentView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("postId", encode(String.serializer(), value.postId))
+                            put("parentId", encode(String.serializer(), value.parentId))
+                            put("author", encode(String.serializer(), value.author))
+                            put("authorName", encode(String.serializer(), value.authorName))
+                            put("authorIsTeam", encode(Boolean.serializer(), value.authorIsTeam))
+                            put("body", encode(String.serializer(), value.body))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("editedAt", encode(U64AsString, value.editedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CommentView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CommentView")
+                    return CommentView(
+                        id = field(fields, "id", String.serializer()),
+                        postId = field(fields, "postId", String.serializer()),
+                        parentId = field(fields, "parentId", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        authorName = field(fields, "authorName", String.serializer()),
+                        authorIsTeam = field(fields, "authorIsTeam", Boolean.serializer()),
+                        body = field(fields, "body", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        editedAt = field(fields, "editedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ContributionView`. */
+    data class ContributionView(
+        val askId: String,
+        val askTitle: String,
+        val askKind: String,
+        val account: String,
+        val name: String,
+        val firm: String,
+        val note: String,
+        val acceptedAt: ULong,
+    ) {
+        companion object {
+            /** `ContributionView`'s JSON form. */
+            fun serializer(): KSerializer<ContributionView> = Wire
+
+            private object Wire : KSerializer<ContributionView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ContributionView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("askId", encode(String.serializer(), value.askId))
+                            put("askTitle", encode(String.serializer(), value.askTitle))
+                            put("askKind", encode(String.serializer(), value.askKind))
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                            put("firm", encode(String.serializer(), value.firm))
+                            put("note", encode(String.serializer(), value.note))
+                            put("acceptedAt", encode(U64AsString, value.acceptedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ContributionView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ContributionView")
+                    return ContributionView(
+                        askId = field(fields, "askId", String.serializer()),
+                        askTitle = field(fields, "askTitle", String.serializer()),
+                        askKind = field(fields, "askKind", String.serializer()),
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        firm = field(fields, "firm", String.serializer()),
+                        note = field(fields, "note", String.serializer()),
+                        acceptedAt = field(fields, "acceptedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DraftView`. */
+    data class DraftView(
+        val id: String,
+        val title: String,
+        val payload: String,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `DraftView`'s JSON form. */
+            fun serializer(): KSerializer<DraftView> = Wire
+
+            private object Wire : KSerializer<DraftView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DraftView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("title", encode(String.serializer(), value.title))
+                            put("payload", encode(String.serializer(), value.payload))
+                            put("updatedAt", encode(U64AsString, value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DraftView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DraftView")
+                    return DraftView(
+                        id = field(fields, "id", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        payload = field(fields, "payload", String.serializer()),
+                        updatedAt = field(fields, "updatedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `EngagementRow`. */
+    data class EngagementRow(
+        val postId: String,
+        val title: String,
+        val categoryId: String,
+        val publishedAt: ULong,
+        val readers: List<ReaderView>,
+        val notRead: List<ReaderView>,
+        val reactions: ULong,
+        val comments: ULong,
+        val offers: ULong,
+    ) {
+        companion object {
+            /** `EngagementRow`'s JSON form. */
+            fun serializer(): KSerializer<EngagementRow> = Wire
+
+            private object Wire : KSerializer<EngagementRow> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: EngagementRow,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("postId", encode(String.serializer(), value.postId))
+                            put("title", encode(String.serializer(), value.title))
+                            put("categoryId", encode(String.serializer(), value.categoryId))
+                            put("publishedAt", encode(U64AsString, value.publishedAt))
+                            put("readers", encode(ListSerializer(ReaderView.serializer()), value.readers))
+                            put("notRead", encode(ListSerializer(ReaderView.serializer()), value.notRead))
+                            put("reactions", encode(U64AsString, value.reactions))
+                            put("comments", encode(U64AsString, value.comments))
+                            put("offers", encode(U64AsString, value.offers))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): EngagementRow {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "EngagementRow")
+                    return EngagementRow(
+                        postId = field(fields, "postId", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        categoryId = field(fields, "categoryId", String.serializer()),
+                        publishedAt = field(fields, "publishedAt", U64AsString),
+                        readers = field(fields, "readers", ListSerializer(ReaderView.serializer())),
+                        notRead = field(fields, "notRead", ListSerializer(ReaderView.serializer())),
+                        reactions = field(fields, "reactions", U64AsString),
+                        comments = field(fields, "comments", U64AsString),
+                        offers = field(fields, "offers", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MeView`. */
+    data class MeView(
+        val account: String,
+        val name: String,
+        val firm: String,
+        val isAdmin: Boolean,
+        val isTeam: Boolean,
+        val muted: List<String>,
+    ) {
+        companion object {
+            /** `MeView`'s JSON form. */
+            fun serializer(): KSerializer<MeView> = Wire
+
+            private object Wire : KSerializer<MeView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MeView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                            put("firm", encode(String.serializer(), value.firm))
+                            put("isAdmin", encode(Boolean.serializer(), value.isAdmin))
+                            put("isTeam", encode(Boolean.serializer(), value.isTeam))
+                            put("muted", encode(ListSerializer(String.serializer()), value.muted))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MeView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MeView")
+                    return MeView(
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        firm = field(fields, "firm", String.serializer()),
+                        isAdmin = field(fields, "isAdmin", Boolean.serializer()),
+                        isTeam = field(fields, "isTeam", Boolean.serializer()),
+                        muted = field(fields, "muted", ListSerializer(String.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Metric`. */
+    data class Metric(
+        val name: String,
+        val value: String,
+        val unit: String,
+    ) {
+        companion object {
+            /** `Metric`'s JSON form. */
+            fun serializer(): KSerializer<Metric> = Wire
+
+            private object Wire : KSerializer<Metric> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Metric,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("value", encode(String.serializer(), value.value))
+                            put("unit", encode(String.serializer(), value.unit))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Metric {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Metric")
+                    return Metric(
+                        name = field(fields, "name", String.serializer()),
+                        value = field(fields, "value", String.serializer()),
+                        unit = field(fields, "unit", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MetricPoint`. */
+    data class MetricPoint(
+        val postId: String,
+        val postTitle: String,
+        val at: ULong,
+        val value: String,
+    ) {
+        companion object {
+            /** `MetricPoint`'s JSON form. */
+            fun serializer(): KSerializer<MetricPoint> = Wire
+
+            private object Wire : KSerializer<MetricPoint> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MetricPoint,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("postId", encode(String.serializer(), value.postId))
+                            put("postTitle", encode(String.serializer(), value.postTitle))
+                            put("at", encode(U64AsString, value.at))
+                            put("value", encode(String.serializer(), value.value))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MetricPoint {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MetricPoint")
+                    return MetricPoint(
+                        postId = field(fields, "postId", String.serializer()),
+                        postTitle = field(fields, "postTitle", String.serializer()),
+                        at = field(fields, "at", U64AsString),
+                        value = field(fields, "value", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MetricSeries`. */
+    data class MetricSeries(
+        val name: String,
+        val unit: String,
+        val points: List<MetricPoint>,
+    ) {
+        companion object {
+            /** `MetricSeries`'s JSON form. */
+            fun serializer(): KSerializer<MetricSeries> = Wire
+
+            private object Wire : KSerializer<MetricSeries> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MetricSeries,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("unit", encode(String.serializer(), value.unit))
+                            put("points", encode(ListSerializer(MetricPoint.serializer()), value.points))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MetricSeries {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MetricSeries")
+                    return MetricSeries(
+                        name = field(fields, "name", String.serializer()),
+                        unit = field(fields, "unit", String.serializer()),
+                        points = field(fields, "points", ListSerializer(MetricPoint.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `OfferView`. */
+    data class OfferView(
+        val askId: String,
+        val account: String,
+        val name: String,
+        val firm: String,
+        val note: String,
+        val status: String,
+        val createdAt: ULong,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `OfferView`'s JSON form. */
+            fun serializer(): KSerializer<OfferView> = Wire
+
+            private object Wire : KSerializer<OfferView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: OfferView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("askId", encode(String.serializer(), value.askId))
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                            put("firm", encode(String.serializer(), value.firm))
+                            put("note", encode(String.serializer(), value.note))
+                            put("status", encode(String.serializer(), value.status))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("updatedAt", encode(U64AsString, value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): OfferView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "OfferView")
+                    return OfferView(
+                        askId = field(fields, "askId", String.serializer()),
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        firm = field(fields, "firm", String.serializer()),
+                        note = field(fields, "note", String.serializer()),
+                        status = field(fields, "status", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        updatedAt = field(fields, "updatedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Overview`. */
+    data class Overview(
+        val companyName: String,
+        val cadenceDays: UInt,
+        val lastUpdateAt: ULong,
+        val nextDueAt: ULong,
+        val updatesTotal: ULong,
+        val unreadUpdates: ULong,
+        val openAsks: ULong,
+        val openQuestions: ULong,
+        val people: ULong,
+        val isTeam: Boolean,
+    ) {
+        companion object {
+            /** `Overview`'s JSON form. */
+            fun serializer(): KSerializer<Overview> = Wire
+
+            private object Wire : KSerializer<Overview> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Overview,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("companyName", encode(String.serializer(), value.companyName))
+                            put("cadenceDays", encode(UInt.serializer(), value.cadenceDays))
+                            put("lastUpdateAt", encode(U64AsString, value.lastUpdateAt))
+                            put("nextDueAt", encode(U64AsString, value.nextDueAt))
+                            put("updatesTotal", encode(U64AsString, value.updatesTotal))
+                            put("unreadUpdates", encode(U64AsString, value.unreadUpdates))
+                            put("openAsks", encode(U64AsString, value.openAsks))
+                            put("openQuestions", encode(U64AsString, value.openQuestions))
+                            put("people", encode(U64AsString, value.people))
+                            put("isTeam", encode(Boolean.serializer(), value.isTeam))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Overview {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Overview")
+                    return Overview(
+                        companyName = field(fields, "companyName", String.serializer()),
+                        cadenceDays = field(fields, "cadenceDays", UInt.serializer()),
+                        lastUpdateAt = field(fields, "lastUpdateAt", U64AsString),
+                        nextDueAt = field(fields, "nextDueAt", U64AsString),
+                        updatesTotal = field(fields, "updatesTotal", U64AsString),
+                        unreadUpdates = field(fields, "unreadUpdates", U64AsString),
+                        openAsks = field(fields, "openAsks", U64AsString),
+                        openQuestions = field(fields, "openQuestions", U64AsString),
+                        people = field(fields, "people", U64AsString),
+                        isTeam = field(fields, "isTeam", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PersonView`. */
+    data class PersonView(
+        val account: String,
+        val name: String,
+        val firm: String,
+        val isAdmin: Boolean,
+        val isTeam: Boolean,
+        val joinedAt: ULong,
+        val updatesRead: ULong,
+        val updatesTotal: ULong,
+        val lastReadAt: ULong,
+        val comments: ULong,
+        val offers: ULong,
+        val acceptedOffers: ULong,
+    ) {
+        companion object {
+            /** `PersonView`'s JSON form. */
+            fun serializer(): KSerializer<PersonView> = Wire
+
+            private object Wire : KSerializer<PersonView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PersonView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                            put("firm", encode(String.serializer(), value.firm))
+                            put("isAdmin", encode(Boolean.serializer(), value.isAdmin))
+                            put("isTeam", encode(Boolean.serializer(), value.isTeam))
+                            put("joinedAt", encode(U64AsString, value.joinedAt))
+                            put("updatesRead", encode(U64AsString, value.updatesRead))
+                            put("updatesTotal", encode(U64AsString, value.updatesTotal))
+                            put("lastReadAt", encode(U64AsString, value.lastReadAt))
+                            put("comments", encode(U64AsString, value.comments))
+                            put("offers", encode(U64AsString, value.offers))
+                            put("acceptedOffers", encode(U64AsString, value.acceptedOffers))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PersonView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PersonView")
+                    return PersonView(
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        firm = field(fields, "firm", String.serializer()),
+                        isAdmin = field(fields, "isAdmin", Boolean.serializer()),
+                        isTeam = field(fields, "isTeam", Boolean.serializer()),
+                        joinedAt = field(fields, "joinedAt", U64AsString),
+                        updatesRead = field(fields, "updatesRead", U64AsString),
+                        updatesTotal = field(fields, "updatesTotal", U64AsString),
+                        lastReadAt = field(fields, "lastReadAt", U64AsString),
+                        comments = field(fields, "comments", U64AsString),
+                        offers = field(fields, "offers", U64AsString),
+                        acceptedOffers = field(fields, "acceptedOffers", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PostCard`. */
+    data class PostCard(
+        val id: String,
+        val kind: String,
+        val author: String,
+        val authorName: String,
+        val authorIsTeam: Boolean,
+        val title: String,
+        val summary: String,
+        val categoryId: String,
+        val status: String,
+        val createdAt: ULong,
+        val editedAt: ULong,
+        val commentCount: ULong,
+        val askCount: ULong,
+        val openAskCount: ULong,
+        val metricCount: ULong,
+        val readCount: ULong,
+        val readByMe: Boolean,
+        val reactions: List<ReactionCount>,
+    ) {
+        companion object {
+            /** `PostCard`'s JSON form. */
+            fun serializer(): KSerializer<PostCard> = Wire
+
+            private object Wire : KSerializer<PostCard> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PostCard,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("author", encode(String.serializer(), value.author))
+                            put("authorName", encode(String.serializer(), value.authorName))
+                            put("authorIsTeam", encode(Boolean.serializer(), value.authorIsTeam))
+                            put("title", encode(String.serializer(), value.title))
+                            put("summary", encode(String.serializer(), value.summary))
+                            put("categoryId", encode(String.serializer(), value.categoryId))
+                            put("status", encode(String.serializer(), value.status))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                            put("editedAt", encode(U64AsString, value.editedAt))
+                            put("commentCount", encode(U64AsString, value.commentCount))
+                            put("askCount", encode(U64AsString, value.askCount))
+                            put("openAskCount", encode(U64AsString, value.openAskCount))
+                            put("metricCount", encode(U64AsString, value.metricCount))
+                            put("readCount", encode(U64AsString, value.readCount))
+                            put("readByMe", encode(Boolean.serializer(), value.readByMe))
+                            put("reactions", encode(ListSerializer(ReactionCount.serializer()), value.reactions))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PostCard {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PostCard")
+                    return PostCard(
+                        id = field(fields, "id", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        authorName = field(fields, "authorName", String.serializer()),
+                        authorIsTeam = field(fields, "authorIsTeam", Boolean.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        summary = field(fields, "summary", String.serializer()),
+                        categoryId = field(fields, "categoryId", String.serializer()),
+                        status = field(fields, "status", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                        editedAt = field(fields, "editedAt", U64AsString),
+                        commentCount = field(fields, "commentCount", U64AsString),
+                        askCount = field(fields, "askCount", U64AsString),
+                        openAskCount = field(fields, "openAskCount", U64AsString),
+                        metricCount = field(fields, "metricCount", U64AsString),
+                        readCount = field(fields, "readCount", U64AsString),
+                        readByMe = field(fields, "readByMe", Boolean.serializer()),
+                        reactions = field(fields, "reactions", ListSerializer(ReactionCount.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PostPage`. */
+    data class PostPage(
+        val items: List<PostCard>,
+        val nextCursor: String? = null,
+    ) {
+        companion object {
+            /** `PostPage`'s JSON form. */
+            fun serializer(): KSerializer<PostPage> = Wire
+
+            private object Wire : KSerializer<PostPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PostPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("items", encode(ListSerializer(PostCard.serializer()), value.items))
+                            put("nextCursor", encode(String.serializer().nullable, value.nextCursor))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PostPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PostPage")
+                    return PostPage(
+                        items = field(fields, "items", ListSerializer(PostCard.serializer())),
+                        nextCursor = field(fields, "nextCursor", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PostView`. */
+    data class PostView(
+        val card: PostCard,
+        val sections: List<Section>,
+        val metrics: List<Metric>,
+        val asks: List<AskView>,
+    ) {
+        companion object {
+            /** `PostView`'s JSON form. */
+            fun serializer(): KSerializer<PostView> = Wire
+
+            private object Wire : KSerializer<PostView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PostView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("card", encode(PostCard.serializer(), value.card))
+                            put("sections", encode(ListSerializer(Section.serializer()), value.sections))
+                            put("metrics", encode(ListSerializer(Metric.serializer()), value.metrics))
+                            put("asks", encode(ListSerializer(AskView.serializer()), value.asks))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PostView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PostView")
+                    return PostView(
+                        card = field(fields, "card", PostCard.serializer()),
+                        sections = field(fields, "sections", ListSerializer(Section.serializer())),
+                        metrics = field(fields, "metrics", ListSerializer(Metric.serializer())),
+                        asks = field(fields, "asks", ListSerializer(AskView.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ReactionCount`. */
+    data class ReactionCount(
+        val emoji: String,
+        val count: ULong,
+        val mine: Boolean,
+    ) {
+        companion object {
+            /** `ReactionCount`'s JSON form. */
+            fun serializer(): KSerializer<ReactionCount> = Wire
+
+            private object Wire : KSerializer<ReactionCount> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ReactionCount,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("emoji", encode(String.serializer(), value.emoji))
+                            put("count", encode(U64AsString, value.count))
+                            put("mine", encode(Boolean.serializer(), value.mine))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ReactionCount {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ReactionCount")
+                    return ReactionCount(
+                        emoji = field(fields, "emoji", String.serializer()),
+                        count = field(fields, "count", U64AsString),
+                        mine = field(fields, "mine", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ReaderView`. */
+    data class ReaderView(
+        val account: String,
+        val name: String,
+        val firm: String,
+        val firstAt: ULong,
+    ) {
+        companion object {
+            /** `ReaderView`'s JSON form. */
+            fun serializer(): KSerializer<ReaderView> = Wire
+
+            private object Wire : KSerializer<ReaderView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ReaderView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("name", encode(String.serializer(), value.name))
+                            put("firm", encode(String.serializer(), value.firm))
+                            put("firstAt", encode(U64AsString, value.firstAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ReaderView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ReaderView")
+                    return ReaderView(
+                        account = field(fields, "account", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        firm = field(fields, "firm", String.serializer()),
+                        firstAt = field(fields, "firstAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Section`. */
+    data class Section(
+        val kind: String,
+        val title: String,
+        val body: String,
+    ) {
+        companion object {
+            /** `Section`'s JSON form. */
+            fun serializer(): KSerializer<Section> = Wire
+
+            private object Wire : KSerializer<Section> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Section,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("title", encode(String.serializer(), value.title))
+                            put("body", encode(String.serializer(), value.body))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Section {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Section")
+                    return Section(
+                        kind = field(fields, "kind", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        body = field(fields, "body", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Settings`. */
+    data class Settings(
+        val companyName: String,
+        val cadenceDays: UInt,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `Settings`'s JSON form. */
+            fun serializer(): KSerializer<Settings> = Wire
+
+            private object Wire : KSerializer<Settings> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Settings,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("companyName", encode(String.serializer(), value.companyName))
+                            put("cadenceDays", encode(UInt.serializer(), value.cadenceDays))
+                            put("updatedAt", encode(U64AsString, value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Settings {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Settings")
+                    return Settings(
+                        companyName = field(fields, "companyName", String.serializer()),
+                        cadenceDays = field(fields, "cadenceDays", UInt.serializer()),
+                        updatedAt = field(fields, "updatedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `UpdateInput`. */
+    data class UpdateInput(
+        val title: String,
+        val summary: String,
+        val categoryId: String,
+        val sections: List<Section>,
+        val metrics: List<Metric>,
+        val asks: List<AskInput>,
+    ) {
+        companion object {
+            /** `UpdateInput`'s JSON form. */
+            fun serializer(): KSerializer<UpdateInput> = Wire
+
+            private object Wire : KSerializer<UpdateInput> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: UpdateInput,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer(), value.title))
+                            put("summary", encode(String.serializer(), value.summary))
+                            put("categoryId", encode(String.serializer(), value.categoryId))
+                            put("sections", encode(ListSerializer(Section.serializer()), value.sections))
+                            put("metrics", encode(ListSerializer(Metric.serializer()), value.metrics))
+                            put("asks", encode(ListSerializer(AskInput.serializer()), value.asks))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): UpdateInput {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "UpdateInput")
+                    return UpdateInput(
+                        title = field(fields, "title", String.serializer()),
+                        summary = field(fields, "summary", String.serializer()),
+                        categoryId = field(fields, "categoryId", String.serializer()),
+                        sections = field(fields, "sections", ListSerializer(Section.serializer())),
+                        metrics = field(fields, "metrics", ListSerializer(Metric.serializer())),
+                        asks = field(fields, "asks", ListSerializer(AskInput.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -962,5 +2003,11 @@ class UpdatesClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

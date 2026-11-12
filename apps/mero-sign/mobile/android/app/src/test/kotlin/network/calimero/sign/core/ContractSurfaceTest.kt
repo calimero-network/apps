@@ -11,6 +11,7 @@ import network.calimero.sign.generated.ContextDetails
 import network.calimero.sign.generated.DocumentInfo
 import network.calimero.sign.generated.PermissionLevel
 import network.calimero.sign.generated.SignContract
+import network.calimero.sign.generated.asContractArg
 import network.calimero.sign.generated.client.SignClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -53,7 +54,7 @@ class ContractSurfaceTest {
         runTest {
             val r = Recorder()
             val c = SignClient(r)
-            c.addParticipant(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Sign))
+            c.addParticipant(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Sign).asContractArg<SignClient.PermissionLevel>())
             c.createSignature("S", IDs.blob, 3u)
             c.deleteDocument("d")
             c.deleteSignature(7u)
@@ -77,7 +78,7 @@ class ContractSurfaceTest {
             c.resolvePrivateIdentity(IDs.me)
             c.searchDocumentByEmbedding(listOf(0.5f), "d")
             c.setConsent("d")
-            c.setParticipantPermission(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Read))
+            c.setParticipantPermission(IDs.alice, SignContract.json<PermissionLevel>(PermissionLevel.Read).asContractArg<SignClient.PermissionLevel>())
             c.setup(false, "Lease")
             c.signDocument("d", "a", IDs.blob, 9u, "b")
             c.uploadDocument("n", "h", IDs.blob, 9u)
