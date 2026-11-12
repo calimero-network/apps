@@ -255,7 +255,7 @@ catalog:
 # `Written` schema; nothing else here calls those.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^33.1.0
+    "@calimero-network/mero-js": ^33.3.2
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
