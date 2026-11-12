@@ -15,7 +15,6 @@ import network.calimero.updates.generated.EngagementRow
 import network.calimero.updates.generated.MetricSeries
 import network.calimero.updates.generated.PersonView
 import network.calimero.updates.generated.PostCard
-import network.calimero.updates.generated.Settings
 import network.calimero.updates.generated.client.UpdatesClient
 import java.time.Clock
 
