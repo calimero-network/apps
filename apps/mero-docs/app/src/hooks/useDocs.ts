@@ -1,6 +1,6 @@
 // Docs facade for a single folder - resolves the folder's docs
 // context from core (the one context in its subgroup), instantiates
-// a DocsClient against it, and exposes list / get / create / edit / delete + SSE-driven
+// a MeroDocsClient against it, and exposes list / get / create / edit / delete + SSE-driven
 // refresh. Consumers pass a folderId and get a reactive list of
 // docs plus a typed set of mutations.
 //
@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext, useMero } from '@/calimero/react';
-import type { DocDto, DocsClient } from '@/lib/docsApi';
+import { type DocDto, type MeroDocsClient, toDocs, toDoc } from '@/lib/docsApi';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
@@ -52,7 +52,7 @@ export interface UseDocsState {
   archive: (id: string) => Promise<void>;
   unarchive: (id: string) => Promise<void>;
   /** The client bound to this folder's docs context, for the CRDT hooks. */
-  client: DocsClient | null;
+  client: MeroDocsClient | null;
 }
 
 // Module-level fan-out so every useDocs instance for the same
@@ -131,14 +131,14 @@ function isMissingOwnedIdentityError(err: unknown): boolean {
 /** A folder's docs, joining its docs context when this node has no identity there
  *  yet; `joined` holds contexts already tried, so a second miss is an error. */
 export async function listDocsJoining(
-  client: DocsClient,
+  client: MeroDocsClient,
   contextId: string | null,
   includeArchived: boolean,
   join: (contextId: string) => Promise<unknown>,
   joined: Set<string>,
 ): Promise<DocDto[]> {
   try {
-    return await client.listDocs({ include_archived: includeArchived });
+    return toDocs(await client.listDocs({ includeArchived }));
   } catch (e) {
     // A node can be a folder-SUBGROUP member without an owned identity in the
     // docs CONTEXT: core's join-via-inheritance is subgroup-scoped.
@@ -150,13 +150,13 @@ export async function listDocsJoining(
       contextId,
     );
     await healContext(contextId, join);
-    return client.listDocs({ include_archived: includeArchived });
+    return toDocs(await client.listDocs({ includeArchived }));
   }
 }
 
 /** One client's list read in flight, and the read queued behind it. */
 interface ListReads {
-  client: DocsClient;
+  client: MeroDocsClient;
   running: Promise<void>;
   queued: Promise<void> | null;
 }
@@ -249,7 +249,7 @@ export function useDocs(
   // folder confirmed unbound. Anything else is a read still to come.
   const [listedFor, setListedFor] = useState<{
     folderId: string;
-    client: DocsClient | null;
+    client: MeroDocsClient | null;
   } | null>(null);
   // The client's read in flight, and the one read queued behind it. A refetch
   // asked for meanwhile waits for the queued read, which begins after the ask,
@@ -258,7 +258,7 @@ export function useDocs(
   // waited for the asks to stop would never open its document.
   const readRef = useRef<ListReads | null>(null);
   // The current client, so a read that lands after a folder switch is dropped.
-  const clientRef = useRef<DocsClient | null>(null);
+  const clientRef = useRef<MeroDocsClient | null>(null);
   clientRef.current = docsClient;
   // Last rendered list signature - lets refetch skip a no-op setList when
   // an SSE-driven refetch returns visually-identical data (diff-guard).
@@ -417,7 +417,7 @@ export function useDocs(
   );
 
   const mutate = useCallback(
-    async (write: (client: DocsClient) => Promise<void>): Promise<void> => {
+    async (write: (client: MeroDocsClient) => Promise<unknown>): Promise<void> => {
       if (!docsClient) throw new Error('docs context not ready');
       await write(docsClient);
       notifyDocsRefetch(contextId);
@@ -434,7 +434,7 @@ export function useDocs(
   const get = useCallback(
     async (id: string): Promise<DocDto> => {
       if (!docsClient) throw new Error('docs context not ready');
-      return docsClient.getDoc({ id });
+      return toDoc(await docsClient.getDoc({ id }));
     },
     [docsClient],
   );

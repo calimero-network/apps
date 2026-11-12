@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { nameCollator } from '@/lib/collate';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { useRegistryRead } from './useRegistryRead';
+import { toViews } from '@/lib/docsApi';
 
 const VIEWS_KEY_PREFIX = 'mero-drive:views:'; // + workspace id
 const SAVE_FAILED = "Couldn't save the view. Try again.";
@@ -104,7 +105,7 @@ export function useSavedViewsSource(): SavedViewsState {
     dataRef: sharedRef,
     reload,
   } = useRegistryRead('useSavedViews', (client) =>
-    client.listViews().then((dtos) =>
+    client.listViews().then(toViews).then((dtos) =>
       dtos.map((d) => ({
         id: d.id,
         name: d.name,

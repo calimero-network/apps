@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import type { DocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
 
@@ -187,7 +187,7 @@ async function replay(seed: number, orphansLast: boolean) {
   editor.mount(host);
   const view = renderHook(() =>
     useFugueBody({
-      client: client as unknown as DocsClient,
+      client: docsOver(client),
       docId: DOC,
       contextId: CTX,
       editor: editor as unknown as BodyEditor,

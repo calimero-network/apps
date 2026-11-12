@@ -50,14 +50,22 @@ vi.mock('../useContextEvents', () => ({
     eventHandler = handler;
   },
 }));
-vi.mock('@/lib/docsApi', () => ({
-  DocsClient: class {
-    listDocs: ReturnType<typeof vi.fn>;
-    constructor(_mero: unknown, contextId: string) {
-      this.listDocs = listDocs.get(contextId) ?? vi.fn(async () => []);
-    }
-  },
-}));
+// Each context's client is the real class over a fake transport whose
+// `listDocs` is the test's mock for that context (its v1 rows on the wire).
+vi.mock('@/lib/docsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/docsApi')>();
+  const { docsOver, wireDoc } = await import('@/test/docsClient');
+  return {
+    ...actual,
+    MeroDocsClient: function (_transport: unknown, contextId: string) {
+      const read = (listDocs.get(contextId) ?? vi.fn(async () => [])) as (args: unknown) => Promise<unknown>;
+      const fake = {
+        listDocs: async (args: unknown) => ((await read(args)) as Array<{ id: string }>).map(wireDoc),
+      };
+      return docsOver(fake, contextId);
+    },
+  };
+});
 
 function doc(id: string, over: Record<string, unknown> = {}) {
   return {
@@ -136,7 +144,7 @@ describe('useWorkspaceIndex', () => {
     const { result } = renderHook(() => useWorkspaceIndex());
 
     await waitFor(() => expect(result.current.rows).toHaveLength(2));
-    expect(listDocs.get('c1')).toHaveBeenCalledWith({ include_archived: true });
+    expect(listDocs.get('c1')).toHaveBeenCalledWith({ includeArchived: true });
     const b = result.current.rows.find((r) => r.docId === 'b');
     expect(b).toEqual({
       folderId: 'f2',

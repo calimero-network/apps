@@ -3,8 +3,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import type { DocsClient } from '@/lib/docsApi';
-import type { RegistryClient } from '@/lib/docsApi';
+import { type MeroDocsClient, toTags } from '@/lib/docsApi';
 import {
   findTagByName,
   normalizeTagName,
@@ -46,7 +45,7 @@ export type TagsState = {
 type IndexSource = {
   rows: IndexRow[];
   contextOf(folderId: string): string | undefined;
-  clientOf(folderId: string): DocsClient | undefined;
+  clientOf(folderId: string): MeroDocsClient | undefined;
 };
 
 const notReady = () => Promise.reject(new Error('tags are not ready'));
@@ -85,7 +84,7 @@ export function useTagsSource(index: IndexSource): TagsState {
     update,
   } = useRegistryRead(
     'useTags',
-    (client) => client.listTags(),
+    (client) => client.listTags().then(toTags),
     FIRST_READ_TRIES,
   );
 
@@ -105,7 +104,7 @@ export function useTagsSource(index: IndexSource): TagsState {
   // Until the list is read, a new key could reuse a deleted one, so nothing is written.
   const write = useCallback(
     async (
-      op: (client: RegistryClient, tags: Tag[]) => Promise<void>,
+      op: (client: MeroDocsClient, tags: Tag[]) => Promise<unknown>,
       failed: string,
     ) => {
       try {

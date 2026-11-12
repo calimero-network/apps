@@ -42,7 +42,7 @@ import { setOrgName } from '@calimero-apps/names';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { REGISTRY_APP_KEY, type OrgView } from '@/calimero/orgs';
-import { RegistryClient } from '@/lib/docsApi';
+import { MeroDocsClient } from '@/lib/docsApi';
 import { useContextEvents } from './useContextEvents';
 import { useLocalStorage } from './useLocalStorage';
 import { useAppRoute } from './useAppRoute';
@@ -117,7 +117,7 @@ export interface DriveWorkspaceState {
   registryDuplicates: string[];
   /** Always false on 1.0. */
   registryUnsynced: boolean;
-  registryClient: RegistryClient | null;
+  registryClient: MeroDocsClient | null;
   folders: MergedFolder[];
   allFolderNodes: { id: string; parent_id: string | null }[];
   registryFolders: CoreFolder[] | null;
@@ -292,8 +292,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     admin.createContext({ groupId: view.orgId, name: 'Registry' }).catch((e) => setRegError(toError(e)));
   }, [admin, view, registryContextId, selfIdentity]);
 
-  const registryClient = useMemo<RegistryClient | null>(
-    () => (client && registryContextId ? new RegistryClient(client, registryContextId) : null),
+  const registryClient = useMemo<MeroDocsClient | null>(
+    () => (client && registryContextId ? new MeroDocsClient(client, registryContextId) : null),
     [client, registryContextId],
   );
 

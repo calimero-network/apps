@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient, DocSearchPage } from '@/lib/docsApi';
+import type { DocSearchPage } from '@/lib/docsApi';
+import { docsOver, wireSearchPage } from '@/test/docsClient';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
 import { INDEX_CATCH_UP_MS, useDocSearch } from '../useDocSearch';
 
@@ -33,9 +34,8 @@ const zebra: DocSearchPage = {
 
 // The peer's edit has reached this node's index by the time it is asked again.
 let indexed = nothing;
-const client = {
-  searchDocs: vi.fn(async () => indexed),
-} as unknown as DocsClient;
+const searchDocs = vi.fn(async (_args: unknown) => wireSearchPage(indexed));
+const client = docsOver({ searchDocs });
 let rows = [row(1)];
 
 vi.mock('@/context/WorkspaceIndexContext', () => ({
@@ -64,6 +64,6 @@ describe('useDocSearch', () => {
       { timeout: INDEX_CATCH_UP_MS * 3 },
     );
     expect(result.current.hits[0].ranges).toEqual([[12, 17]]);
-    expect(vi.mocked(client.searchDocs)).toHaveBeenCalledTimes(2);
+    expect(searchDocs).toHaveBeenCalledTimes(2);
   });
 });
