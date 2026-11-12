@@ -38,13 +38,13 @@ public final class PostModel: ObservableObject {
     public func load() async {
         let client = audience.client
         do {
-            async let post = client.getPost(postId: postId)
-            async let comments = client.listComments(postId: postId)
+            async let post = client.getPost(postId: postId).decoded(as: PostView.self)
+            async let comments = client.listComments(postId: postId).map({ try $0.decoded(as: CommentView.self) })
             let (p, c) = try await (post, comments)
             self.post = p
             self.comments = c
             error = nil
-            if !p.metrics.isEmpty { series = (try? await client.listMetrics()) ?? series }
+            if !p.metrics.isEmpty { series = (try? await client.listMetrics().map({ try $0.decoded(as: MetricSeries.self) })) ?? series }
             await markReadOnce(p)
         } catch {
             if post == nil { self.error = ErrorText.describe(error) }

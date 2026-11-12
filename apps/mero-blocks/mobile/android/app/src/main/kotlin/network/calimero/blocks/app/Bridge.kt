@@ -12,6 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
+import network.calimero.blocks.generated.BlocksClient
 
 // The app half of the bridge between the game page (`../game/src/bridge.ts`) and the signed-in
 // session. The page posts JSON text; the app answers by evaluating
@@ -234,17 +235,17 @@ class BridgeRouter(
                 throw BridgeException.badArguments(method, e.message.orEmpty())
             }
         return when (name) {
-            "worldMeta" -> encode(WorldMeta.serializer(), client.worldMeta())
-            "getOverrides" -> encode(ListSerializer(BlockEntry.serializer()), client.getOverrides())
+            "worldMeta" -> encode(WorldMeta.serializer(), WorldMeta.fromWire(client.worldMeta()))
+            "getOverrides" -> encode(ListSerializer(BlockEntry.serializer()), client.allOverrides())
             "overrideCount" -> encode(UInt.serializer(), client.overrideCount())
-            "getPlayers" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(args(NowArgs.serializer()).now))
-            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), client.join(it.name, it.now)) }
+            "getPlayers" -> encode(ListSerializer(PlayerView.serializer()), client.allPlayers(args(NowArgs.serializer()).now))
+            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), BlocksContract.JSON.decodeFromJsonElement(PlayerView.serializer(), client.join(it.name, it.now))) }
             "leave" -> client.leave(args(NowArgs.serializer()).now).let { NULL }
-            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(it.t, it.now) }.let { NULL }
+            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(BlocksContract.JSON.encodeToJsonElement(Transform.serializer(), it.t), it.now) }.let { NULL }
             "setBlocks" ->
                 args(SetBlocksArgs.serializer()).let {
                     checkEdits(method, it.edits)
-                    encode(UInt.serializer(), client.setBlocks(it.edits, it.now))
+                    encode(UInt.serializer(), client.setBlocks(it.edits.map { e -> BlocksContract.JSON.encodeToJsonElement(Edit.serializer(), e) }, it.now))
                 }
             else -> throw BridgeException.unknownMethod(method)
         }

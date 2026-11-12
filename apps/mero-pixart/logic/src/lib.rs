@@ -55,7 +55,7 @@ pub const ROLE_VIEWER: &str = "viewer";
 // arguments, which travel as decimal strings.
 
 /// Non-destructive adjustments, applied at composite time.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Adjustments {
     /// -100..=100, 0 = neutral
@@ -77,7 +77,7 @@ pub struct Adjustments {
 }
 
 /// Text layer properties.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct TextProps {
     pub content: String,
@@ -199,7 +199,7 @@ pub struct Document {
 
 // ── Answers ──────────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfo {
     pub name: String,
@@ -213,7 +213,7 @@ pub struct DocumentInfo {
 }
 
 /// A member and their document role, for the settings screen.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct MemberRole {
     pub member: String,
     pub role: String,

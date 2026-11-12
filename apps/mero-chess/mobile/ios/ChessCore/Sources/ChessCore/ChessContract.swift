@@ -1,9 +1,9 @@
 import Foundation
 import MeroKit
 
-/// The table's contract on Calimero 1.0, typed by hand from `logic/res/abi.json` (no client is
-/// generated from a component ABI yet). The port of the web app's `src/chess.ts`, method for
-/// method:
+/// The table's contract on Calimero 1.0, as `logic/res/abi.json` declares it. The calls are the
+/// generated `MeroChessClient`; this file keeps the method lists, the refusal sentences and the
+/// answer types the web app's `src/chess.ts` has:
 ///
 /// - method names are the ABI's camelCase ones (`offerDraw`, not v1's `offer_draw`);
 /// - every `now` argument and every `u64` in an answer is a decimal string on the wire
@@ -11,8 +11,6 @@ import MeroKit
 /// - answer fields are camelCase (`sideToMove`, `legalMoves`, `myTurn`, …);
 /// - a refusal is `APP_ERROR {code, fields}` (MeroKit's ``AppError``), worded by
 ///   ``ChessContract/message(appCode:)``.
-///
-/// Views (`table`, `history`) go through `query`, everything else through `execute`.
 public enum ChessContract {
     /// The ABI's calls (writes, through the app's log). `ContractTests` checks these against the
     /// committed ABI.
@@ -50,79 +48,20 @@ public enum ChessContract {
     }
 }
 
-/// Typed calls to one table's contract. (Swift side of the web app's `chess()`.)
-public struct MeroChessClient: Sendable {
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    /// `MeroChessClient` for `contextId` (the table's app id) in the account's backend.
+extension MeroChessClient {
+    /// `MeroChessClient` (`Generated/`, written from `logic/res/abi.json` by
+    /// `scripts/mobile-codegen.sh`) for `contextId` (the table's app id) in the account's backend.
     public static func bound(_ backend: any MeroAppBackend, contextId: String) -> MeroChessClient {
-        MeroChessClient(transport: backend.contract.bound(to: contextId))
+        MeroChessClient(backend: backend, app: contextId)
     }
+}
 
-    // MARK: Views
-
-    /// The whole table in one read.
-    public func table(now: UInt64) async throws -> TableView {
-        try await view("table", ["now": .string(String(now))])
-    }
-
-    /// Every game this table has played, oldest first.
-    public func history() async throws -> [GameSummary] {
-        try await view("history", [:])
-    }
-
-    // MARK: Calls
-
-    /// Announce yourself at the table, or refresh your presence and name.
-    public func join(name: String, now: UInt64) async throws { try await call("join", ["name": .string(name)], now) }
-    /// Presence only.
-    public func heartbeat(now: UInt64) async throws { try await call("heartbeat", [:], now) }
-    /// Take the `white` or `black` chair, if it is free.
-    public func sit(seat: String, name: String, now: UInt64) async throws {
-        try await call("sit", ["seat": .string(seat), "name": .string(name)], now)
-    }
-    /// Give up your chair (only before you have played at this table).
-    public func stand(now: UInt64) async throws { try await call("stand", [:], now) }
-
-    /// Play a move in UCI (`e2e4`, `e7e8q`). Returns its SAN.
-    @discardableResult
-    public func play(uci: String, now: UInt64) async throws -> String {
-        let data = try await execute("play", ["uci": .string(uci)], now)
-        return try JSONDecoder().decode(String.self, from: data)
-    }
-
-    public func resign(now: UInt64) async throws { try await call("resign", [:], now) }
-    public func offerDraw(now: UInt64) async throws { try await call("offerDraw", [:], now) }
-    public func acceptDraw(now: UInt64) async throws { try await call("acceptDraw", [:], now) }
-    public func declineDraw(now: UInt64) async throws { try await call("declineDraw", [:], now) }
-    public func claimDraw(now: UInt64) async throws { try await call("claimDraw", [:], now) }
-
-    /// Start the next game (colours swap). Returns its index.
-    @discardableResult
-    public func rematch(now: UInt64) async throws -> UInt32 {
-        let data = try await execute("rematch", [:], now)
-        return try JSONDecoder().decode(UInt32.self, from: data)
-    }
-
-    // MARK: Wire
-
-    private func view<T: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> T {
-        let data = try await transport.query(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func call(_ method: String, _ args: [String: JSONValue], _ now: UInt64) async throws {
-        _ = try await execute(method, args, now)
-    }
-
-    private func execute(_ method: String, _ args: [String: JSONValue], _ now: UInt64) async throws -> Data {
-        var args = args
-        args["now"] = .string(String(now))
-        return try await transport.execute(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
+extension JSONValue {
+    /// This answer as the app type `T`. The ABI names `TableView` and `GameSummary` without their
+    /// shape until the app derives `AbiType`, so the generated client answers their JSON and the
+    /// types below read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }
 

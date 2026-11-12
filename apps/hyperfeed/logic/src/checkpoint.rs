@@ -40,7 +40,7 @@ pub struct Checkpoint {
 
 /// What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.
 /// `done` and `next` are prose; the lists may be empty.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
 pub struct CheckpointInput {
     /// What is done so far.
     pub done: String,

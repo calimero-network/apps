@@ -1,6 +1,5 @@
 package network.calimero.battleships.core
 
-import com.calimero.mero.app.ContextContract
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -12,20 +11,16 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import java.util.Base64
 
-// The Battleships component contract (`../logic/res/abi.json`), typed by hand: no client is
-// generated from a component ABI yet. The same surface as the web app's `src/battleships.ts`:
-// camelCase method and argument names, snake_case result fields, 64-bit integers as decimal
-// strings, bytes as base64url, refusals as `422 APP_ERROR {code, fields}`. (Swift `Contract.swift`.)
+// The Battleships component contract (`../logic/res/abi.json`). The calls are
+// [network.calimero.battleships.generated.BattleshipsClient], generated from it by core's
+// `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this file keeps the method lists and the
+// answer types of the web app's `src/battleships.ts`: camelCase method and argument names,
+// snake_case result fields, 64-bit integers as decimal strings, bytes as base64url, refusals as
+// `422 APP_ERROR {code, fields}`. (Swift `Contract.swift`.)
 
 /** The contract's methods by their ABI names: calls go through the app's log, views do not write. */
 object BattleshipsMethods {
@@ -134,126 +129,20 @@ data class MatchStateView(
     val winner: String? = null,
 )
 
-// ---- The client -------------------------------------------------------------------------------
+// ---- Reading the generated client's answers ---------------------------------------------------
+
+/** The JSON the contract speaks. */
+internal val contractJson = Json { ignoreUnknownKeys = true }
 
 /**
- * One lobby's contract: the app instance [appId], through the session's [ContextContract].
- * (Swift `BattleshipsContract`; the web app's `battleships(client, app)`.)
+ * This answer of the generated [network.calimero.battleships.generated.BattleshipsClient] as the
+ * app type [T]. The ABI names the contract's types (`MatchSummary`, `MatchStateView`, `ShotsView`,
+ * ...) without their shape until the logic derives `AbiType`, so the client answers their JSON.
  */
-class BattleshipsContract(
-    val contract: ContextContract,
-    val appId: String,
-) {
-    suspend fun registerPlayer(): String = call("registerPlayer").string()
+internal inline fun <reified T> JsonElement.toAppType(): T = contractJson.decodeFromJsonElement<T>(this)
 
-    suspend fun createMatch(player2: String): String = call("createMatch", buildJsonObject { put("player2", player2) }).string()
-
-    suspend fun commitBoard(
-        matchId: String,
-        commitment: String,
-    ) {
-        call(
-            "commitBoard",
-            buildJsonObject {
-                put("matchId", matchId)
-                put("commitment", commitment)
-            },
-        )
-    }
-
-    suspend fun proposeShot(
-        matchId: String,
-        x: Int,
-        y: Int,
-    ) {
-        call(
-            "proposeShot",
-            buildJsonObject {
-                put("matchId", matchId)
-                put("x", x)
-                put("y", y)
-            },
-        )
-    }
-
-    /** `"hit"` or `"miss"`. */
-    suspend fun acknowledgeShot(
-        matchId: String,
-        shotId: UInt,
-        hit: Boolean,
-    ): String? =
-        call(
-            "acknowledgeShot",
-            buildJsonObject {
-                put("matchId", matchId)
-                put("shotId", shotId.toLong())
-                put("hit", hit)
-            },
-        ).stringOrNull()
-
-    /** Open the board at the end: `cells` as borsh bytes and the 16-byte salt, both base64url. */
-    suspend fun revealBoard(
-        matchId: String,
-        cells: List<Int>,
-        salt: List<Int>,
-    ) {
-        call(
-            "revealBoard",
-            buildJsonObject {
-                put("matchId", matchId)
-                put("boardBytes", Base64Url.encode(Commitment.boardBytes(cells)))
-                put("salt", Base64Url.encode(salt))
-            },
-        )
-    }
-
-    suspend fun getPlayers(): List<PlayerEntry> = view("getPlayers").decode()
-
-    suspend fun getMatches(): List<MatchSummary> = view("getMatches").decode()
-
-    suspend fun getPlayerStats(player: String): PlayerStatsView? = view("getPlayerStats", buildJsonObject { put("player", player) }).decode()
-
-    suspend fun getHistory(): List<MatchRecord> = view("getHistory").decode()
-
-    suspend fun getShots(matchId: String): ShotsView = view("getShots", match(matchId)).decode()
-
-    suspend fun getIncomingShots(matchId: String): ShotsView = view("getIncomingShots", match(matchId)).decode()
-
-    suspend fun getMatchState(matchId: String): MatchStateView = view("getMatchState", match(matchId)).decode()
-
-    suspend fun getActiveMatchId(): String? = view("getActiveMatchId").stringOrNull()
-
-    /** Whose turn it is, null once the match is over. */
-    suspend fun getCurrentTurn(matchId: String): String? = view("getCurrentTurn", match(matchId)).stringOrNull()
-
-    suspend fun getWinner(matchId: String): String? = view("getWinner", match(matchId)).stringOrNull()
-
-    suspend fun getCurrentUser(): String = view("getCurrentUser").string()
-
-    // ---- wire ----
-
-    private fun match(matchId: String) = buildJsonObject { put("matchId", matchId) }
-
-    private suspend fun call(
-        method: String,
-        args: JsonObject = JsonObject(emptyMap()),
-    ): JsonElement = contract.execute(appId, method, args) ?: JsonNull
-
-    private suspend fun view(
-        method: String,
-        args: JsonObject = JsonObject(emptyMap()),
-    ): JsonElement = contract.query(appId, method, args) ?: JsonNull
-
-    private inline fun <reified T> JsonElement.decode(): T = json.decodeFromJsonElement<T>(this)
-
-    private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-
-    private fun JsonElement.string(): String = stringOrNull() ?: error("expected a string, got $this")
-
-    companion object {
-        val json = Json { ignoreUnknownKeys = true }
-    }
-}
+/** Bytes as the generated client takes them (it writes base64url itself). */
+internal fun List<Int>.toBytes(): ByteArray = ByteArray(size) { this[it].toByte() }
 
 /** Bytes as the contract takes them: base64url, no padding. */
 object Base64Url {

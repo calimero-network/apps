@@ -149,20 +149,23 @@ final class TransportTests: XCTestCase {
             let json = #"{"items":["# + el + #"],"nextCursor":"# + (first ? #""c1""# : "null") + "}"
             return try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
         }
-        let elements = try await backend.designClient("board").getElements()
+        let elements = try await backend.designClient("board").allElements()
         XCTAssertEqual(elements.count, 2)
         XCTAssertEqual(backend.recording.calls("getElementsPage").map { $0.args["cursor"] }, [.null, .string("c1")])
     }
 
-    func testV1NamesMapOntoTheComponentWire() throws {
-        XCTAssertEqual(ComponentTransport.camel("update_member_username"), "updateMemberUsername")
-        XCTAssertEqual(ComponentTransport.camel("join"), "join")
-        let wire = try ComponentTransport.wire(
-            "update_cursor", Data(#"{"x":-3,"y":4,"updated_at":1700000000000}"#.utf8))
-        XCTAssertEqual(wire.name, "updateCursor")
-        XCTAssertEqual(wire.args, .object(["x": "-3", "y": "4", "updatedAt": "1700000000000"]))
-        let other = try ComponentTransport.wire("get_role", Data(#"{"member":"ab"}"#.utf8))
-        XCTAssertEqual(other.args, .object(["member": "ab"]), "only 64-bit arguments become strings")
+    func testCallsGoOutOnTheComponentWire() async throws {
+        let backend = InMemoryAppBackend()
+        backend.recording.setHandler { call in call.method == "getRole" ? .string("viewer") : .null }
+        let client = backend.designClient("board")
+        try await client.updateCursor(x: -3, y: 4, updatedAt: 1_700_000_000_000)
+        let cursor = try XCTUnwrap(backend.recording.calls("updateCursor").first)
+        XCTAssertEqual(cursor.path, .execute)
+        XCTAssertEqual(cursor.args, .object(["x": "-3", "y": "4", "updatedAt": "1700000000000"]))
+        _ = try await client.getRole(member: "ab")
+        let role = try XCTUnwrap(backend.recording.calls("getRole").first)
+        XCTAssertEqual(role.path, .query)
+        XCTAssertEqual(role.args, .object(["member": "ab"]), "only 64-bit arguments become strings")
     }
 
     func testRefusalsInWords() {

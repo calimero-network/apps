@@ -31,8 +31,8 @@ Bumping is one line per platform (iOS: both `exactVersion` / `exact:` values; An
   in `ios/project.yml`; Android `-PmeroCluster=…`, `-PmeroNodeUrl=…`, `-PmeroAllowMock=true`.
 - **Words**: an arena lives in an **organization** (one link admits to every arena in it) and is an
   **app instance** of `com.calimero.mero-kombat` there. Technical ids sit behind **Details**.
-- **The contract** (`KombatClient`, typed by hand on both platforms from the component ABI, as the
-  web app's `app/src/kombat.ts`): calls `join`, `pick`, `sit`, `stand`, `act`, `rematch`; views
+- **The contract** (`KombatClient`, generated on both platforms from the component ABI, as the
+  web app's client is): calls `join`, `pick`, `sit`, `stand`, `act`, `rematch`; views
   `arena`, `history`. Fields are camelCase (`matchIndex`, `mySeat`, `roundsWon`), every `u64` is a
   decimal string (`now`, `createdAt`, `totalActions`, `hits[].at`, `startedAt`), and `init(title?, now?)`
   gets both from the app. `ContractTests` / `ContractTest` check the method lists against the ABI.
@@ -112,11 +112,14 @@ confirmed transaction count and the last round trip.
 
 ## Contract client
 
-`ios/KombatCore/Sources/KombatCore/Contract/KombatClient.swift` and
-`android/app/src/main/kotlin/network/calimero/kombat/contract/KombatClient.kt` are typed by hand
-from the component ABI: abi-codegen does not read a component ABI yet. They take the SDKs'
-`ContextContractCalling` (`contract.bound(appId)`). After an ABI change, update both and the web
-app's `kombat.ts` together.
+`KombatClient` (`ios/KombatCore/Sources/KombatCore/Generated/` and
+`android/app/src/main/kotlin/network/calimero/kombat/generated/`) is generated from
+`../logic/res/abi.json` by core's `mero-app-build codegen`: after an ABI change, run
+`scripts/mobile-codegen.sh` at the repo root and commit (CI's `Mobile clients` workflow fails on a
+stale client). The apps build it over the SDKs' `MeroAppBackend` (`KombatClient(backend, appId)`).
+Until the logic derives `AbiType`, the ABI names `ArenaView` and `MatchSummary` without their
+shape, so the client answers their JSON; `Contract/KombatContract.swift` and
+`contract/KombatContract.kt` keep those types, the method lists and the refusal sentences.
 
 ## Build and test
 

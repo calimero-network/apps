@@ -18,7 +18,7 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated (README "Regenerate the contract client").
+            // The contract client is generated (scripts/mobile-codegen.sh); it is not edited here.
             exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }

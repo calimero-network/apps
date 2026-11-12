@@ -4,20 +4,63 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `MatchRecord`: the ABI names it without its shape. */
-export type MatchRecord = unknown;
+/** The app type `MatchRecord`. */
+export interface MatchRecord {
+  match_id: string;
+  winner: string;
+  loser: string;
+  finished_ms: string;
+}
 
-/** The app type `MatchStateView`: the ABI names it without its shape. */
-export type MatchStateView = unknown;
+/** The app type `MatchStateView`. */
+export interface MatchStateView {
+  standing: string;
+  committed: string[];
+  pending_shot: PendingShotView | null;
+  ended_by: string | null;
+  loser: string | null;
+  revealed: string[];
+  audit_failed: string[];
+  winner: string | null;
+}
 
-/** The app type `MatchSummary`: the ABI names it without its shape. */
-export type MatchSummary = unknown;
+/** The app type `MatchStatus`. */
+export type MatchStatus =
+  | 'Pending'
+  | 'Active'
+  | 'Finished';
 
-/** The app type `PlayerEntry`: the ABI names it without its shape. */
-export type PlayerEntry = unknown;
+/** The app type `MatchSummary`. */
+export interface MatchSummary {
+  match_id: string;
+  player1: string;
+  player2: string;
+  player2_account: string;
+  status: MatchStatus;
+  winner: string | null;
+  created_ms: string;
+}
 
-/** The app type `PlayerStatsView`: the ABI names it without its shape. */
-export type PlayerStatsView = unknown;
+/** The app type `PendingShotView`. */
+export interface PendingShotView {
+  shot_id: number;
+  x: number;
+  y: number;
+  target: string;
+}
+
+/** The app type `PlayerEntry`. */
+export interface PlayerEntry {
+  account: string;
+  player: string;
+}
+
+/** The app type `PlayerStatsView`. */
+export interface PlayerStatsView {
+  wins: string;
+  losses: string;
+  games_played: string;
+}
 
 /** The app type `ShotsView`: the ABI names it without its shape. */
 export type ShotsView = unknown;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FormsClient, type LinkFormView } from "./formsApi";
+import { type LinkFormView, toLinkForm, fromAnswers, fromCaptchaPass, formsClient, type MeroFormsClient } from "./formsApi";
 import { FieldInput } from "./FormFill";
 import { fetchCaptchaConfig, mountCaptcha, requestPass } from "./lib/captcha";
 import { missingRequired, toAnswers, type Draft } from "./lib/fields";
@@ -27,7 +27,7 @@ export function PublicForm() {
     api.session.status === "signed-out" || api.session.status === "signed-in" ? api.session.target : null;
   const unconfigured =
     api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
-  const [forms, setForms] = useState<FormsClient | null>(null);
+  const [forms, setForms] = useState<MeroFormsClient | null>(null);
   const [linkId, setLinkId] = useState<string | null>(null);
   const [form, setForm] = useState<LinkFormView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -48,9 +48,9 @@ export function PublicForm() {
     (async () => {
       const client = await deps.makeClient(where);
       client.useApiKey(target.token);
-      const f = new FormsClient(client, target.app);
+      const f = formsClient(client, target.app);
       const link = await sha256Hex(target.token);
-      const view = await f.linkForm({ link });
+      const view = toLinkForm(await f.linkForm({ link }));
       if (!live) return;
       setForms(f);
       setLinkId(link);
@@ -102,9 +102,9 @@ export function PublicForm() {
           : null;
       await forms.submitViaLink({
         link: linkId,
-        answers: toAnswers(form, draft),
-        captcha: pass,
-        captcha_token: null,
+        answers: fromAnswers(toAnswers(form, draft)),
+        captcha: fromCaptchaPass(pass),
+        captchaToken: null,
       });
       setSent(true);
       setDraft({});

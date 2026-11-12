@@ -20,7 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import network.calimero.pixart.generated.PixartClient
+import network.calimero.pixart.generated.client.PixartClient
 import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
@@ -29,7 +29,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** The generated client over this backend's contract, bound to [contextId]. */
-fun MeroAppBackend.pixartClient(contextId: String): PixartClient = PixartClient(contract.bound(contextId))
+fun MeroAppBackend.pixartClient(contextId: String): PixartClient = PixartClient(this, contextId)
 
 /**
  * Bytes stored as blobs on a project's app instance, read through the signed-in backend (`MeroAppBackend.getBlob(blobId, contextId)`, `/apps/{app}/blobs` on the node).

@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import network.calimero.kombat.contract.ArenaView
-import network.calimero.kombat.contract.KombatClient
+import network.calimero.kombat.contract.KombatContract
 import network.calimero.kombat.contract.MatchSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -29,8 +29,8 @@ class ContractTest {
         val methods = abi["methods"]!!.jsonObject
 
         fun of(kind: String) = methods.filter { (it.value.jsonObject["kind"] as? JsonPrimitive)?.content == kind }.keys.sorted()
-        assertEquals(KombatClient.CALLS, of("call"))
-        assertEquals(KombatClient.VIEWS, of("view"))
+        assertEquals(KombatContract.CALLS, of("call"))
+        assertEquals(KombatContract.VIEWS, of("view"))
     }
 
     @Test
@@ -44,14 +44,14 @@ class ContractTest {
              "me":"acc_a","mySeat":"p1","hits":[{"by":"p1","id":7,"kind":"punch","damage":5,"blocked":false,"at":"1700000000123"}],
              "matchActions":4,"totalActions":"18446744073709551615","maxHp":100,"roundsToWin":2}
             """.trimIndent()
-        val view = KombatClient.JSON.decodeFromString(ArenaView.serializer(), wire)
+        val view = KombatContract.JSON.decodeFromString(ArenaView.serializer(), wire)
         assertEquals(2u, view.matchIndex)
         assertEquals("p1", view.mySeat)
         assertEquals(3u, view.p2.matchesWon)
         assertEquals(1_700_000_000_000uL, view.createdAt)
         assertEquals("a u64 keeps every digit", ULong.MAX_VALUE, view.totalActions)
         assertEquals(1_700_000_000_123uL, view.hits.first().at)
-        val back = Json.parseToJsonElement(KombatClient.JSON.encodeToString(ArenaView.serializer(), view)).jsonObject
+        val back = Json.parseToJsonElement(KombatContract.JSON.encodeToString(ArenaView.serializer(), view)).jsonObject
         assertEquals(JsonPrimitive("18446744073709551615"), back["totalActions"])
         assertEquals(JsonPrimitive("p1"), back["mySeat"])
     }
@@ -59,7 +59,7 @@ class ContractTest {
     @Test
     fun `the history reads the component wire`() {
         val wire = """[{"index":0,"startedAt":"5","winner":"p2","flawless":true,"rounds":["p2","p2"],"actions":12}]"""
-        val past = KombatClient.JSON.decodeFromString(ListSerializer(MatchSummary.serializer()), wire)
+        val past = KombatContract.JSON.decodeFromString(ListSerializer(MatchSummary.serializer()), wire)
         assertEquals(listOf(MatchSummary(0u, 5uL, "p2", true, listOf("p2", "p2"), 12u)), past)
     }
 
@@ -83,7 +83,7 @@ class ContractTest {
     fun `init args carry now as a decimal string`() {
         assertEquals(
             JsonObject(mapOf("title" to JsonPrimitive("Friday"), "now" to JsonPrimitive("42"))),
-            KombatClient.initArgs("Friday", 42uL),
+            KombatContract.initArgs("Friday", 42uL),
         )
     }
 }

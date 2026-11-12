@@ -26,8 +26,9 @@ while it lives, so member changes and invites get their step-ups.
 
 ## The contract client
 
-`contract/CalendarClient.kt` is a typed client of the component contract (`logic/res/abi.json` of
-the component port, web PR #720), the twin of the web app's `app/src/api/calendar.ts` and iOS's
+`generated/CalendarClient.kt` is generated from the component contract's ABI
+(`scripts/mobile-codegen.sh` at the repo root); `contract/CalendarContract.kt` keeps the shapes it
+takes and answers as JSON until the logic derives `AbiType`, the twin of the web app's `app/src/api/calendar.ts` and iOS's
 `CalendarContract.swift`: camelCase methods and arguments, no `timestamp` arguments, account ids as
 strings, `u64` values as decimal strings, and the contract's error codes (`CalendarAppCode`), which
 `ErrorText` puts into words.
@@ -52,8 +53,8 @@ cd apps/mero-calendar/mobile/android
 
 ### The SDK pin
 
-`kotlin-sdk.ref` pins `ce7b54075b8b448fcfaf925f7118c6c00a1fde50`, the commit of the kotlin-sdk
-`2.0.0` release (Calimero 1.0), which is not on Maven Central. The SDK
+`kotlin-sdk.ref` pins `e18ef8acdd06c505918a97e212f8b5291f7cfc00`, the commit of the kotlin-sdk
+`4.0.0` release (Calimero 1.0), which is not on Maven Central. The SDK
 is built from source as a Gradle composite build (`settings.gradle.kts`): `-PmeroKotlinSdkDir=/path`,
 else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`.
 
@@ -68,7 +69,7 @@ is allowed only to `10.0.2.2` and `localhost` (`res/xml/network_security_config.
 
 ```
 app/src/main/kotlin/network/calimero/calendar/
-  contract/  CalendarClient (typed component contract)
+  contract/  CalendarContract (the contract's shapes); generated/ CalendarClient
   data/      EventTime, KeyValueStore + LocalNames, CalendarRepository, TeamInvites, CalendarMath,
              EventDraft, ErrorText
   app/       TeamsModel, CalendarsModel, CalendarModel, ApprovalsModel (StateFlow state holders

@@ -68,7 +68,7 @@ const ROLE_VIEWER: &str = "viewer";
 
 /// What an element is, as a JSON object tagged by `kind`: `rect`, `circle`, `line`,
 /// `arrow`, `path`, `text`, `image` or `svg`, plus that kind's own fields.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "kind")]
 pub enum ElementData {
@@ -208,7 +208,7 @@ pub struct Member {
 }
 
 /// Board summary: name, description, counts and owner.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardInfo {
     /// The board's name; `""` until its owner sets one (`updateBoard`), and then the
@@ -225,7 +225,7 @@ pub struct BoardInfo {
 }
 
 /// A member with their effective role.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
     /// The member's account.
@@ -318,7 +318,7 @@ pub struct ElementPatch {
 }
 
 /// One element's new label in an `updateElementLabels` call.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 pub struct LabelUpdate {
     /// The element to rename; an unknown id is skipped.
     pub id: String,
@@ -327,7 +327,7 @@ pub struct LabelUpdate {
 }
 
 /// One page of the canvas in paint order, and the cursor of the next (`null` at the end).
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ElementPage {
     pub items: Vec<Element>,

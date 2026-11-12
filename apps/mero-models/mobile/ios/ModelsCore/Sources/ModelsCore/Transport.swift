@@ -3,10 +3,8 @@ import MeroKit
 
 extension MeroAppBackend {
     /// The generated client over this backend's contract, bound to one scene.
-    /// The client is generated with `--transport-import MeroKit`, so the SDK's
-    /// bound contract is its transport as is.
     public func modelsClient(_ contextId: String) -> ModelsClient {
-        ModelsClient(transport: contract.bound(to: contextId))
+        ModelsClient(backend: self, app: contextId)
     }
 }
 

@@ -155,10 +155,10 @@ class InvitationTest {
     fun theClientCallsTheComponentSurface() {
         assertEquals(
             setOf("worldMeta", "getOverrides", "getPlayers", "overrideCount", "join", "heartbeat", "leave", "setBlocks"),
-            BlocksClient.METHODS.keys,
+            BlocksContract.METHODS.keys,
         )
-        assertEquals(listOf("now", "cursor", "limit"), BlocksClient.METHODS["getPlayers"])
-        assertEquals(BlocksClient.METHODS.keys, BridgeRouter.NAMES.values.toSet())
+        assertEquals(listOf("now", "cursor", "limit"), BlocksContract.METHODS["getPlayers"])
+        assertEquals(BlocksContract.METHODS.keys, BridgeRouter.NAMES.values.toSet())
     }
 }
 

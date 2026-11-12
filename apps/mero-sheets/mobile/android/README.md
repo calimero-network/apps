@@ -23,5 +23,5 @@ allow cleartext to it). The node's consent page returns to `meroConsentCallback`
 `https://links.calimero.network/com.calimero.mero-sheets/join?…` and
 `calimero://com.calimero.mero-sheets/join?…`.
 
-`kotlin-sdk.ref` pins kotlin-sdk `2.0.0` (Calimero 1.0) by its release commit; for a new release, set it to
+`kotlin-sdk.ref` pins kotlin-sdk `4.0.0` (Calimero 1.0) by its release commit; for a new release, set it to
 that tag's commit.

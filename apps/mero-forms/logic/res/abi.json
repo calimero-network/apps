@@ -575,5 +575,412 @@
     },
     "version": 1
   },
+  "types": {
+    "Answer": {
+      "fields": [
+        [
+          "fieldId",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "values",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AnswerInput": {
+      "fields": [
+        [
+          "fieldId",
+          "string"
+        ],
+        [
+          "values",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CaptchaPass": {
+      "fields": [
+        [
+          "nonce",
+          "string"
+        ],
+        [
+          "expiresMs",
+          "u64"
+        ],
+        [
+          "signature",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CaptchaSettings": {
+      "fields": [
+        [
+          "siteKey",
+          "string"
+        ],
+        [
+          "secretSet",
+          "bool"
+        ],
+        [
+          "teeAvailable",
+          "bool"
+        ],
+        [
+          "needsResealing",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CrmLink": {
+      "fields": [
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "stageId",
+          "string"
+        ],
+        [
+          "nameField",
+          "string"
+        ],
+        [
+          "emailField",
+          "string"
+        ],
+        [
+          "phoneField",
+          "string"
+        ],
+        [
+          "organizationField",
+          "string"
+        ],
+        [
+          "titleField",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Field": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "help",
+          "string"
+        ],
+        [
+          "required",
+          "bool"
+        ],
+        [
+          "options",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FormKeyView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "formId",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "responses",
+          "u32"
+        ],
+        [
+          "lastResponseAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FormSummary": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "open",
+          "bool"
+        ],
+        [
+          "fields",
+          "u32"
+        ],
+        [
+          "responses",
+          "u32"
+        ],
+        [
+          "newResponses",
+          "u32"
+        ],
+        [
+          "lastResponseAt",
+          "u64"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FormView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "fields",
+          "list<Field>"
+        ],
+        [
+          "open",
+          "bool"
+        ],
+        [
+          "crm",
+          "CrmLink"
+        ],
+        [
+          "public",
+          "bool"
+        ],
+        [
+          "linkCap",
+          "u32"
+        ],
+        [
+          "captchaKey",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LinkFormView": {
+      "fields": [
+        [
+          "formId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "fields",
+          "list<Field>"
+        ],
+        [
+          "accepting",
+          "bool"
+        ],
+        [
+          "captcha",
+          "bool"
+        ],
+        [
+          "captchaByNode",
+          "bool"
+        ],
+        [
+          "captchaSiteKey",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LinkView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "formId",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "grantId",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "responses",
+          "u32"
+        ],
+        [
+          "lastHour",
+          "u32"
+        ],
+        [
+          "lastResponseAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ResponseView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "formId",
+          "string"
+        ],
+        [
+          "answers",
+          "list<Answer>"
+        ],
+        [
+          "source",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "submittedBy",
+          "string"
+        ],
+        [
+          "link",
+          "string"
+        ],
+        [
+          "archived",
+          "bool"
+        ],
+        [
+          "crmContext",
+          "string"
+        ],
+        [
+          "crmDeal",
+          "string"
+        ],
+        [
+          "crmSentAt",
+          "u64"
+        ],
+        [
+          "crmSentBy",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TeamMember": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "admin",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

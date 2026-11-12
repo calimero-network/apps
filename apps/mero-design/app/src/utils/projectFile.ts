@@ -1,4 +1,4 @@
-import { rpcCall } from "../api/rpc";
+import { design, i64, readElements } from "../api/rpc";
 import { addElements, deleteElements } from "../api/elementBatch";
 import { saveText } from "./saveFile";
 import type { CanvasComment, Element } from "../types";
@@ -24,9 +24,9 @@ export function validateSnapshot(data: unknown): data is ProjectSnapshot {
 /** Writes the board to a `.merodesign` file. Resolves the filename, or null if the user cancelled. */
 export async function exportProject(contextId: string): Promise<string | null> {
   const [elements, comments, board] = await Promise.all([
-    rpcCall<Element[]>(contextId, "get_elements", {}),
-    rpcCall<CanvasComment[]>(contextId, "get_comments", {}),
-    rpcCall<{ name: string; description: string }>(contextId, "get_board", {}),
+    readElements(design(contextId)),
+    (design(contextId).getComments() as Promise<CanvasComment[]>),
+    (design(contextId).getBoard() as Promise<{ name: string; description: string }>),
   ]);
 
   const snapshot: ProjectSnapshot = {
@@ -54,15 +54,15 @@ export async function importProject(
   // then drew the file on top of the old board. Now: delete only what the file
   // does not have, in batches sized to the board, and write the rest over the
   // top (an `add_elements` with an existing id overwrites it in place).
-  const existing = await rpcCall<Element[] | null>(contextId, "get_elements", {}).catch(() => null);
+  const existing = await readElements(design(contextId)).catch(() => null);
   const current = Array.isArray(existing) ? existing : [];
   const keep = new Set(snapshot.elements.map((el) => el.id));
   const stale = current.map((el) => el.id).filter((id) => !keep.has(id));
   await deleteElements(contextId, stale, current.length, () => {});
-  await rpcCall(contextId, "clear_comments", {}).catch(() => {});
+  await design(contextId).clearComments().catch(() => {});
 
   if (snapshot.boardName) {
-    await rpcCall(contextId, "update_board", {
+    await design(contextId).updateBoard({
       name: snapshot.boardName,
       description: snapshot.boardDescription ?? null,
     }).catch(() => {});
@@ -73,19 +73,19 @@ export async function importProject(
   // On import, comment/reply authorship is re-attributed to the importer
   // (the signer) — author is no longer client-supplied.
   for (const comment of snapshot.comments) {
-    await rpcCall(contextId, "add_comment", {
+    await design(contextId).addComment({
       id: comment.id,
-      x: comment.x,
-      y: comment.y,
+      x: i64(comment.x),
+      y: i64(comment.y),
       content: comment.content,
-      created_at: comment.createdAt,
+      createdAt: i64(comment.createdAt),
     }).catch(() => {});
     for (const reply of comment.replies ?? []) {
-      await rpcCall(contextId, "add_reply", {
-        comment_id: comment.id,
-        reply_id: reply.id,
+      await design(contextId).addReply({
+        commentId: comment.id,
+        replyId: reply.id,
         content: reply.content,
-        created_at: reply.createdAt,
+        createdAt: i64(reply.createdAt),
       }).catch(() => {});
     }
   }

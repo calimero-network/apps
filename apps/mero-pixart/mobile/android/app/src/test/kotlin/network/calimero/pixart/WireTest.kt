@@ -3,11 +3,11 @@ package network.calimero.pixart
 import com.calimero.mero.testkit.InMemoryAppBackend
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.pixart.core.pixartClient
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -34,7 +34,7 @@ class WireTest {
             val call = backend.recording.calls("updateLayer").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, call.path)
             assertEquals(JsonPrimitive("5"), call.args.jsonObject["x"])
-            assertFalse("an unset optional is left out", "y" in call.args.jsonObject)
+            assertEquals("an unset optional goes out as null, which the contract reads as none", JsonNull, call.args.jsonObject["y"])
             assertEquals(JsonPrimitive(false), call.args.jsonObject["visible"])
 
             runCatching { client.getLayers() }

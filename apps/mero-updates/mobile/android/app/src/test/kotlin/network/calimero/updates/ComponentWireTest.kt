@@ -1,5 +1,6 @@
 package network.calimero.updates
 
+import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -8,16 +9,15 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.updates.core.ComponentWire
 import network.calimero.updates.generated.AskInput
-import network.calimero.updates.generated.ContextContractCalling
 import network.calimero.updates.generated.MetricPoint
 import network.calimero.updates.generated.PostPage
 import network.calimero.updates.generated.UpdateInput
-import network.calimero.updates.generated.UpdatesClient
+import network.calimero.updates.generated.client.UpdatesClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** The v1 client's calls reach the contract as its component ABI takes them. (Swift `ComponentWireTests`.) */
+/** The generated client's calls reach the contract as its component ABI takes them. (Swift `ComponentWireTests`.) */
 class ComponentWireTest {
     private class Recorder : ContextContractCalling {
         val sent = mutableListOf<Triple<String, Boolean, JsonObject>>()
@@ -47,7 +47,7 @@ class ComponentWireTest {
     fun `every client method is in the ABI`() =
         runTest {
             val wire = Recorder()
-            val c = UpdatesClient(ComponentWire(wire))
+            val c = UpdatesClient(wire)
             val input = UpdateInput("Oct", "s", "c", emptyList(), emptyList(), listOf(AskInput(null, "intro", "t", "d")))
             runCatching { c.getMe() }
             runCatching { c.getOverview() }
@@ -72,10 +72,10 @@ class ComponentWireTest {
             runCatching { c.deletePost("p") }
             runCatching { c.editCategory("c", "n", "e", "c") }
             runCatching { c.editComment("c", "b") }
-            runCatching { c.editUpdate("p", input) }
+            runCatching { c.editUpdate("p", ComponentWire.wire(input)) }
             runCatching { c.markRead("p") }
             runCatching { c.offerHelp("a", "n") }
-            runCatching { c.publishUpdate(input) }
+            runCatching { c.publishUpdate(ComponentWire.wire(input)) }
             runCatching { c.react("p", "e", true) }
             runCatching { c.removeTeammate("a") }
             runCatching { c.saveDraft(title = "t", payload = "{}") }

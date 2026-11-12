@@ -8,8 +8,6 @@ import {
   toTableView,
   type GameSummary,
   type TableView,
-  type WireGameSummary,
-  type WireTableView,
 } from "./chess";
 import { MeroChessClient } from "./generated/client";
 import { type ClientRoutes } from "@calimero-apps/connect";
@@ -148,7 +146,7 @@ export function useChessTable(conn: TableConn): ChessTable {
     try {
       do {
         again.current = false;
-        setView(toTableView((await client.chess.table({ now: now() })) as WireTableView));
+        setView(toTableView(await client.chess.table({ now: now() })));
         if (readFailed.current) {
           readFailed.current = false;
           setError(null);
@@ -241,7 +239,7 @@ export function usePastGames(conn: TableConn, signature: string): GameSummary[] 
     void client.chess
       .history()
       .then((rows) => {
-        if (live) setGames((rows as WireGameSummary[]).map(toGameSummary));
+        if (live) setGames(rows.map(toGameSummary));
       })
       .catch(() => {
         // The record is a nicety next to the board.

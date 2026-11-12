@@ -65,7 +65,7 @@ const BOOKING_COLOR: &str = "rgb(121, 134, 203)";
 
 /// One stretch of the week the owner takes bookings in: `weekday` 0 is Monday,
 /// minutes are wall-clock minutes of that day at the link's UTC offset.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WeeklyWindow {
     pub weekday: u8,
@@ -134,7 +134,7 @@ pub struct BookingLinkState {
 // 64-bit integers are decimal strings in JSON (core's D20 rule), in both
 // directions.
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateBookingLink {
     /// Hex SHA-256 of the API key (the guest's token). The token itself never
@@ -158,7 +158,7 @@ pub struct CreateBookingLink {
     pub expires_at_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GuestDetails {
     pub name: String,
@@ -167,7 +167,7 @@ pub struct GuestDetails {
     pub note: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingView {
     #[serde(with = "calimero_sdk::json::u64_str")]
@@ -183,7 +183,7 @@ pub struct BookingView {
 }
 
 /// What a guest sees of a link.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingPage {
     pub title: String,
@@ -198,7 +198,7 @@ pub struct BookingPage {
 }
 
 /// What the owner sees of a link.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingLinkView {
     pub link_id: String,

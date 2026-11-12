@@ -1,27 +1,30 @@
 # CI for component apps: `calimero-sdk` on core's wasmtime component
 # runtime (`wasm32-wasip2`), developed and e2e-tested on `merod local`.
 #
-# The v1 pipeline (ci.yml) finds its apps through `cargo metadata` of the root
-# workspace, which a component app is excluded from (root Cargo.toml,
-# `[workspace].exclude`), so each app is covered by exactly one of the two. The
-# v1 `frontend` job still typechecks, tests and builds every pnpm member, a
-# component app's frontend included; this file adds what is specific to them.
+# Every app is a component app now; ci.yml keeps the workspace-wide checks and
+# the `frontend` job (lint, typecheck, test, build, codegen of every pnpm member
+# a change reaches, scripts/ci-scope.py). This file adds what needs a contract:
 #
 #   checks    always: pins, tools/component-bundle, packages/connect + passkey + merod-local
 #   rust      per app: fmt, clippy -D warnings (host and wasm32-wasip2), cargo test
 #             (core's TestApp harness + scenarios/*.json), release build, ABI current,
 #             a dev-signed .mpk
-#   frontend  per app: lint, typecheck, test, build
 #   e2e       per app: the app's scenarios/*.json on `merod local` (core's release
 #             binary at component-core-tag), as real accounts through mero-js
 #   browser   per app with an `app/playwright.config.ts`: its Playwright suite in
 #             Chromium on the same `merod local`
 #   cross-app e2e/cross-app: Chat, Calimero Home and KV Store over one org on the
-#             same `merod local`, each from its own dev server, when any of the
-#             three (or what they share) changes
+#             same `merod local`, each from its own dev server
+#   ok        the one check to require: fails if any job above failed or was cancelled
 #
-# ci.yml's `browser` job runs only over v1 apps (scripts/app-packages.sh), and
-# none is left, so a component app's browser e2e runs here.
+# WHICH APPS, PER JOB. On a pull request scripts/ci-scope.py components reads the
+# diff and decides each job's matrix separately: a contract change runs that
+# app's rust + e2e (+ any suite that bundles it), a frontend change runs only
+# the suites that serve it, a `mobile/` or README change runs nothing here, and
+# a change to merod-local or a shared JS pin runs every e2e leg without
+# rebuilding every contract. `python3 scripts/ci-scope.py components --explain
+# <paths>` shows the answer for any diff. A push to main and a dispatch run
+# everything: main is where an app nothing touched still has to prove itself.
 
 name: Components
 
@@ -48,80 +51,50 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      apps: ${{ steps.set.outputs.apps }}
-      # `apps` narrowed to those that ship a Playwright suite.
-      browser_apps: ${{ steps.set.outputs.browser_apps }}
-      # Whether e2e/cross-app runs: a change reaching Chat, Home or KV Store, or the suite.
+      # Each job's own matrix: see scripts/ci-scope.py components.
+      rust: ${{ steps.set.outputs.rust }}
+      # [{app, build}]: `build` legs make their own wasm (the contract did not
+      # change, only the JS that drives it), the rest take it from `rust`.
+      e2e: ${{ steps.set.outputs.e2e }}
+      browser_apps: ${{ steps.set.outputs.browser }}
       cross_app: ${{ steps.set.outputs.cross_app }}
       tag: ${{ steps.set.outputs.tag }}
+      # The shared Rust cache: one entry for every app (they all pin the same
+      # core), saved only from main. Per-app keys were 1.1 GB each; 27 of them
+      # overflow the repository's 10 GB, so every leg restored nothing.
+      cache_key: ${{ steps.set.outputs.cache_key }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve the app matrix
+      - name: Resolve the matrices
         id: set
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           EVENT: ${{ github.event_name }}
+          LOCKS: ${{ hashFiles('apps/*/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
         run: |
           set -euo pipefail
           tag=$(awk -F'"' '/^component-core-tag/{print $2}' Cargo.toml)
           [ -n "$tag" ] || { echo "::error::no component-core-tag in Cargo.toml"; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "cache_key=component-target-${RUNNER_OS}-${tag}-${LOCKS}" >> "$GITHUB_OUTPUT"
 
-          all=$(scripts/component-apps.sh all)
-          # What every component app builds against or is tested with: a change
-          # here covers all of them. A brand-new branch (no usable base) does too.
-          #
-          # Cargo.toml and pnpm-lock.yaml are judged by scripts/lockfile-fanout.py
-          # rather than by name: every port edits both (its crate joins
-          # `[workspace].exclude`, its frontend becomes a pnpm importer), and
-          # neither edit reaches another component app.
-          shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/(connect|passkey|merod-local)/|scripts/(component-apps\.sh|check-component-pins\.py|lockfile-fanout\.py)|\.github/workflows/components\.yml)'
-          if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
-             || ! changed=$(git diff --name-only "$BASE" HEAD); then
-            apps="$all"
-          elif grep -Eq "$shared" <<<"$changed"; then
-            apps="$all"
-          else
-            extra=""
-            if grep -qx 'Cargo.toml' <<<"$changed"; then
-              verdict=$(python3 scripts/lockfile-fanout.py manifest --for components --base "$BASE" --head HEAD) || verdict=all
-              [ "$verdict" = "all" ] && extra=all
-            fi
-            if [ -z "$extra" ] && grep -qx 'pnpm-lock.yaml' <<<"$changed"; then
-              verdict=$(python3 scripts/lockfile-fanout.py pnpm --base "$BASE" --head HEAD) || verdict=all
-              if [ "$verdict" = "all" ]; then
-                extra=all
-              else
-                # Importer dirs (`apps/x/app`), mapped like a changed file there.
-                changed=$(printf '%s\n%s\n' "$changed" "$(sed '/^$/d; s|$|/package.json|' <<<"$verdict")")
-              fi
-            fi
-            if [ "$extra" = "all" ]; then
-              apps="$all"
-            else
-              apps=$(scripts/component-apps.sh from-paths <<<"$changed")
-            fi
+          # Only a pull request is scoped. A failure of the script covers
+          # everything: the one wrong answer that fails loudly.
+          if [ "$EVENT" != "pull_request" ]; then
+            scope=$(python3 scripts/ci-scope.py components --all)
+          elif ! scope=$(python3 scripts/ci-scope.py components --explain --base "$BASE" --head HEAD); then
+            echo "::warning::ci-scope.py components failed — covering every app"
+            scope=$(python3 scripts/ci-scope.py components --all)
           fi
-          echo "apps=$apps" >> "$GITHUB_OUTPUT"
-          echo "::notice::component apps: $apps (core $tag)"
-
-          browser_apps=$(jq -r '.[]' <<<"$apps" | while read -r app; do
-            if [ -f "apps/$app/app/playwright.config.ts" ]; then echo "$app"; fi
-          done | jq -Rsc 'split("\n") | map(select(length > 0))')
-          echo "browser_apps=$browser_apps" >> "$GITHUB_OUTPUT"
-          echo "::notice::browser e2e: $browser_apps"
-
-          # `changed` is unset when every app is in (no usable base, a dispatch).
-          cross_app=false
-          if jq -e 'any(.[]; . == "mero-chat" or . == "mero-home" or . == "kv-store")' <<<"$apps" >/dev/null \
-             || grep -Eq '^(e2e/cross-app/|packages/(glass|members|names|node-served)/)' <<<"${changed:-}"; then
-            cross_app=true
-          fi
-          echo "cross_app=$cross_app" >> "$GITHUB_OUTPUT"
-          echo "::notice::cross-app e2e: $cross_app"
+          echo "scope: $scope"
+          for k in rust e2e browser; do
+            echo "$k=$(jq -c ".$k" <<<"$scope")" >> "$GITHUB_OUTPUT"
+          done
+          echo "cross_app=$(jq -r '.cross_app' <<<"$scope")" >> "$GITHUB_OUTPUT"
+          echo "::notice::rust: $(jq -c .rust <<<"$scope") | e2e: $(jq -c '[.e2e[].app]' <<<"$scope") | browser: $(jq -c .browser <<<"$scope") | cross-app: $(jq -r .cross_app <<<"$scope") (core $tag)"
 
   checks:
     name: Pins, tooling and shared packages
@@ -174,13 +147,13 @@ jobs:
   rust:
     name: Rust (${{ matrix.app }})
     needs: changes
-    if: needs.changes.outputs.apps != '[]'
+    if: needs.changes.outputs.rust != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
+        app: ${{ fromJSON(needs.changes.outputs.rust != '[]' && needs.changes.outputs.rust || '["none"]') }}
     env:
       LOGIC: apps/${{ matrix.app }}/logic
       # One target dir for the app, its nested wasm32-wasip2 test build and the
@@ -192,14 +165,17 @@ jobs:
         with:
           targets: wasm32-wasip2
           components: rustfmt, clippy
-      - uses: actions/cache@v4
+      # The shared cache (see `changes`): restored everywhere, saved from main.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target-components
-          key: component-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/logic/Cargo.lock', matrix.app), 'tools/component-bundle/Cargo.lock') }}
-          restore-keys: component-${{ matrix.app }}-${{ runner.os }}-
+          key: ${{ needs.changes.outputs.cache_key }}
+          restore-keys: |
+            component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
+            component-target-${{ runner.os }}-
 
       - run: cargo fmt --manifest-path "$LOGIC/Cargo.toml" -- --check
       - name: Clippy (host, tests included)
@@ -228,6 +204,18 @@ jobs:
             bundle "$LOGIC" --dev --no-frontend --wasm "$wasm" --app-version 0.0.0 --output "dist/${{ matrix.app }}-dev.mpk"
           cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
             inspect "dist/${{ matrix.app }}-dev.mpk" > /dev/null
+      # One leg saves (a key is write-once, so a second save is only a warning),
+      # and only on main: a pull request's cache is visible to that PR alone,
+      # and 27 of them evicted main's.
+      - name: Save the shared cache (main only)
+        if: github.event_name == 'push' && matrix.app == fromJSON(needs.changes.outputs.rust)[0]
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          key: ${{ needs.changes.outputs.cache_key }}
       - uses: actions/upload-artifact@v4
         with:
           name: component-${{ matrix.app }}-${{ github.sha }}
@@ -236,49 +224,52 @@ jobs:
             dist/${{ matrix.app }}-dev.mpk
           retention-days: 7
 
-  frontend:
-    name: Frontend (${{ matrix.app }})
-    needs: changes
-    if: needs.changes.outputs.apps != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Lint, typecheck, test, build
-        run: |
-          app="./apps/${{ matrix.app }}/app"
-          pnpm --filter "$app" lint
-          pnpm --filter "$app" typecheck
-          pnpm --filter "$app" test
-          pnpm --filter "$app" build
-
   e2e:
     name: E2E on merod local (${{ matrix.app }})
     needs: [changes, rust]
-    if: needs.changes.outputs.apps != '[]'
+    # `rust` is skipped when no contract changed (a merod-local or mero-js
+    # change), and a skipped `needs:` skips this job unless the `if:` says
+    # otherwise. A failed or cancelled `rust` still stops it.
+    if: >-
+      !cancelled() && needs.changes.outputs.e2e != '[]'
+      && (needs.rust.result == 'success' || needs.rust.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
+        include: ${{ fromJSON(needs.changes.outputs.e2e != '[]' && needs.changes.outputs.e2e || '[{"app":"none","build":false}]') }}
     env:
       TAG: ${{ needs.changes.outputs.tag }}
+      LOGIC: apps/${{ matrix.app }}/logic
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - if: ${{ !matrix.build }}
+        uses: actions/download-artifact@v4
         with:
           name: component-${{ matrix.app }}-${{ github.sha }}
+
+      # A `build` leg: the contract is unchanged, so only its release wasm is
+      # needed, not the whole `rust` leg (fmt, clippy, tests) to get it.
+      - if: matrix.build
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - if: matrix.build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          key: ${{ needs.changes.outputs.cache_key }}
+          restore-keys: |
+            component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
+            component-target-${{ runner.os }}-
+      - name: Release build
+        if: matrix.build
+        run: cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- build "$LOGIC"
 
       # core's release binary for the pinned tag, checked against the release's
       # SHA256SUMS. A release whose binaries are not uploaded yet fails here
@@ -338,14 +329,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target-components
-          key: component-browser-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles('apps/*/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
-          restore-keys: component-browser-${{ matrix.app }}-${{ runner.os }}-
+          key: ${{ needs.changes.outputs.cache_key }}
+          restore-keys: |
+            component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
+            component-target-${{ runner.os }}-
 
       # Same binary and checksum check as `e2e`.
       - name: Install merod ${{ env.TAG }}
@@ -410,14 +403,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target-components
-          key: component-cross-app-${{ runner.os }}-${{ hashFiles('apps/mero-chat/logic/Cargo.lock', 'apps/kv-store/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
-          restore-keys: component-cross-app-${{ runner.os }}-
+          key: ${{ needs.changes.outputs.cache_key }}
+          restore-keys: |
+            component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
+            component-target-${{ runner.os }}-
 
       # Same binary and checksum check as `e2e`.
       - name: Install merod ${{ env.TAG }}
@@ -465,3 +460,24 @@ jobs:
           include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
+
+  # The one check to require. A job skipped because the change does not reach
+  # it is a pass; a failure or a cancellation anywhere is not. Without it, the
+  # checks a PR shows depend on which apps it touched, so no fixed set of
+  # per-app check names can be required.
+  ok:
+    name: Components OK
+    needs: [changes, checks, rust, e2e, browser, cross-app]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every needed job passed or was out of scope
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          if jq -e 'any(.[]; .result == "failure" or .result == "cancelled")' <<<"$NEEDS" >/dev/null; then
+            echo "::error::a Components job failed or was cancelled"
+            exit 1
+          fi

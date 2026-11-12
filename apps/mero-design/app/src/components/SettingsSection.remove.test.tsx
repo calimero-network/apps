@@ -5,6 +5,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withRoutes } from "@calimero-apps/connect/testing";
+import { boardAnswering } from "../test/board";
 
 const ME = "a".repeat(64);
 const BEN = "b".repeat(64);
@@ -16,7 +17,7 @@ const showToast = vi.fn();
 vi.mock("../api/rpc", () => (withRoutes({
   getNodeIdentity: vi.fn().mockResolvedValue({ accountId: ME }),
   listGroupMembers: (...a: unknown[]) => listGroupMembers(...a),
-  rpcCall: vi.fn().mockResolvedValue([]),
+  design: boardAnswering([]),
   updateMemberRole: vi.fn(),
   removeTeamMember: (...a: unknown[]) => removeGroupMembers(...a),
   readTeam: vi.fn().mockResolvedValue({ name: "", roles: new Map(), names: new Map() }),

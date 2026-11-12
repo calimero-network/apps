@@ -6,68 +6,16 @@ import type { AppTransport } from "./generated/client";
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-kombat";
 
-/** One corner (the contract's `FighterView`). */
-export interface FighterView {
-  seat: string;
-  /** The account in this corner, or `""` when it is empty. */
-  member: string;
-  name: string;
-  fighter: string;
-  hp: number;
-  roundsWon: number;
-  matchesWon: number;
-  online: boolean;
-}
-
-/** One blow of the current round (`HitView`). */
-export interface HitView {
-  by: string;
-  id: number;
-  kind: string;
-  damage: number;
-  blocked: boolean;
-  /** A u64: a decimal string on the wire. */
-  at: string;
-}
-
-/** Everything the arena draws (`ArenaView`). */
-export interface ArenaView {
-  title: string;
-  createdAt: string;
-  matchIndex: number;
-  round: number;
-  status: "waiting" | "fighting" | "finished" | string;
-  roundResults: string[];
-  winner: string;
-  flawless: boolean;
-  p1: FighterView;
-  p2: FighterView;
-  me: string;
-  mySeat: string;
-  hits: HitView[];
-  matchActions: number;
-  /** A u64: a decimal string on the wire. */
-  totalActions: string;
-  maxHp: number;
-  roundsToWin: number;
-}
-
-/** One match of the arena's record (`MatchSummary`). */
-export interface MatchSummary {
-  index: number;
-  startedAt: string;
-  winner: string;
-  flawless: boolean;
-  rounds: string[];
-  actions: number;
-}
+// The contract's records (`ArenaView`, its `FighterView`s and `HitView`s, and
+// `MatchSummary`), as the generated client types them from the ABI: u64s are
+// decimal strings.
+export type { ArenaView, FighterView, HitView, MatchSummary } from "./generated/client";
 
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
 // The contract is called through `MeroKombatClient`, which `mero-app-build
-// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). The ABI
-// names `ArenaView` and `MatchSummary` without their shapes, so the generated
-// types are `unknown`: the shapes above type them where they are read.
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`), typed
+// from the ABI's record shapes.
 
 /** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
 export const now = (clock: () => number = Date.now): string => String(Math.floor(clock()));

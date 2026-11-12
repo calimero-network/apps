@@ -1,4 +1,5 @@
-import { rpcCall } from "./rpc";
+import { design, i64, optI64, readElements, readElementsByIds, wireElement, wireLabels, wireLabel } from "./rpc";
+import type { UpdateElementArgs } from "../generated/client";
 import { isVersionSkew } from "../utils/mutationErrors";
 import type { Element } from "../types";
 
@@ -49,6 +50,22 @@ export interface ElementPatch {
   corner_radius?: number | null;
 }
 
+/**
+ * A patch as `updateElement` takes it, for a board without `updateElements`:
+ * camelCase, `x`/`y` as 64-bit decimal strings. Only the fields the patch has.
+ */
+export function wirePatch(patch: ElementPatch): Omit<UpdateElementArgs, "updatedAt"> {
+  const { id, x, y, stroke_width, corner_radius, ...same } = patch;
+  return {
+    id,
+    ...same,
+    ...(x === undefined ? {} : { x: optI64(x) }),
+    ...(y === undefined ? {} : { y: optI64(y) }),
+    ...(stroke_width === undefined ? {} : { strokeWidth: stroke_width }),
+    ...(corner_radius === undefined ? {} : { cornerRadius: corner_radius }),
+  };
+}
+
 export type OnBatchError = (method: string, error: unknown) => void;
 
 export function chunk<T>(items: readonly T[], size: number): T[][] {
@@ -85,14 +102,14 @@ export function resetBatchSupport(): void {
 async function sendBatch<T>(
   contextId: string,
   method: string,
-  batchArgs: Record<string, unknown>,
+  batch: () => Promise<unknown>,
   part: readonly T[],
   single: (item: T) => Promise<unknown>,
 ): Promise<void> {
   const key = `${contextId}:${method}`;
   if (!unsupported.has(key)) {
     try {
-      await rpcCall(contextId, method, batchArgs);
+      await batch();
       return;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -115,8 +132,8 @@ export async function addElements(
   onError: OnBatchError,
 ): Promise<void> {
   for (const part of chunk(elements, WRITE_CHUNK)) {
-    await sendBatch(contextId, "add_elements", { elements: part }, part,
-      (element) => rpcCall(contextId, "add_element", { element }))
+    await sendBatch(contextId, "add_elements", () => design(contextId).addElements({ elements: part.map(wireElement) }), part,
+      (element) => design(contextId).addElement({ element: wireElement(element) }))
       .catch((e) => onError("add_elements", e));
   }
 }
@@ -129,12 +146,12 @@ export async function updateElements(
   onError: OnBatchError,
 ): Promise<void> {
   for (const part of chunk(patches, WRITE_CHUNK)) {
-    await sendBatch(contextId, "update_elements", { patches: part, updated_at: updatedAt }, part,
-      (patch) => rpcCall(contextId, "update_element", {
+    await sendBatch(contextId, "update_elements", () => design(contextId).updateElements({ patches: part, updatedAt: i64(updatedAt) }), part,
+      (patch) => design(contextId).updateElement({
         x: null, y: null, width: null, height: null, rotation: null,
-        fill: null, stroke: null, stroke_width: null, opacity: null, corner_radius: null,
-        ...patch,
-        updated_at: updatedAt,
+        fill: null, stroke: null, strokeWidth: null, opacity: null, cornerRadius: null,
+        ...wirePatch(patch),
+        updatedAt: i64(updatedAt),
       }))
       .catch((e) => onError("update_elements", e));
   }
@@ -149,8 +166,9 @@ export async function updateElementLabels(
 ): Promise<void> {
   const entries = Object.entries(labels).map(([id, label]) => ({ id, label }));
   for (const part of chunk(entries, WRITE_CHUNK)) {
-    await sendBatch(contextId, "update_element_labels", { labels: part, updated_at: updatedAt }, part,
-      ({ id, label }) => rpcCall(contextId, "update_element_label", { id, label, updated_at: updatedAt }))
+    await sendBatch(contextId, "update_element_labels",
+      () => design(contextId).updateElementLabels({ labels: wireLabels(part), updatedAt: i64(updatedAt) }), part,
+      ({ id, label }) => design(contextId).updateElementLabel({ id, label: wireLabel(id, label), updatedAt: i64(updatedAt) }))
       .catch((e) => onError("update_element_labels", e));
   }
 }
@@ -176,8 +194,8 @@ export async function deleteElements(
     const n = Math.min(cap, deleteChunkSize(size), remaining.length);
     const part = remaining.slice(0, n);
     try {
-      await sendBatch(contextId, "delete_elements", { ids: part }, part,
-        (id) => rpcCall(contextId, "delete_element", { id }));
+      await sendBatch(contextId, "delete_elements", () => design(contextId).deleteElements({ ids: part }), part,
+        (id) => design(contextId).deleteElement({ id }));
     } catch (e) {
       if (isOutOfGas(e) && n > 1) {
         cap = Math.max(1, Math.floor(n / 2));
@@ -200,7 +218,7 @@ export async function getElementsByIds(
   for (const part of chunk(ids, WRITE_CHUNK)) {
     if (!unsupported.has(key)) {
       try {
-        const got = await rpcCall<Element[] | null>(contextId, "get_elements_by_ids", { ids: part });
+        const got = await readElementsByIds(design(contextId), [...part]);
         if (Array.isArray(got)) out.push(...got);
         continue;
       } catch (e) {
@@ -210,7 +228,7 @@ export async function getElementsByIds(
       }
     }
     // An older board: one full read answers every id at once.
-    const all = await rpcCall<Element[] | null>(contextId, "get_elements", {});
+    const all: Element[] | null = await readElements(design(contextId));
     const wanted = new Set(ids);
     return (Array.isArray(all) ? all : []).filter((el) => wanted.has(el.id));
   }

@@ -89,8 +89,8 @@ final class ContractSurfaceTests: XCTestCase {
 
     func testEveryMethodIsTheABIsNameWithItsParameters() async throws {
         let r = Recorder()
-        let c = SignClient(transport: r)
-        try await c.addParticipant(userIdStr: IDs.bob, permission: .sign)
+        let c = SignClient(contract: r)
+        try await c.addParticipant(userIdStr: IDs.bob, permission: try JSONValue(encoding: PermissionLevel.sign))
         _ = try await c.createSignature(name: "S", blobIdStr: IDs.blob, dataSize: 3)
         try await c.deleteDocument(documentId: "d")
         try await c.deleteSignature(signatureId: 7)
@@ -114,7 +114,7 @@ final class ContractSurfaceTests: XCTestCase {
         _ = try await c.resolvePrivateIdentity(sharedIdentityStr: IDs.me)
         _ = try await c.searchDocumentByEmbedding(queryEmbedding: [0.5], documentId: "d")
         try await c.setConsent(documentId: "d")
-        try await c.setParticipantPermission(userIdStr: IDs.bob, permission: .read)
+        try await c.setParticipantPermission(userIdStr: IDs.bob, permission: try JSONValue(encoding: PermissionLevel.read))
         try await c.setup(isPrivate: false, contextName: "Lease")
         try await c.signDocument(documentId: "d", baseHash: "a", pdfBlobIdStr: IDs.blob, fileSize: 9, newHash: "b")
         _ = try await c.uploadDocument(name: "n", hash: "h", pdfBlobIdStr: IDs.blob, fileSize: 9)
@@ -136,14 +136,14 @@ final class ContractSurfaceTests: XCTestCase {
     }
 
     func testAnswersReadTheComponentWire() async throws {
-        let c = SignClient(transport: Recorder())
-        let documents = try await c.listDocuments()
+        let c = SignClient(contract: Recorder())
+        let documents = try await c.listDocuments().map { try $0.decoded(as: DocumentInfo.self) }
         let document = try XCTUnwrap(documents.first)
         XCTAssertEqual(document.size, 1234)
         XCTAssertEqual(document.uploadedAt, 1_788_952_411_519)
         XCTAssertEqual(document.pdfBlobId.hex, IDs.blob)
         XCTAssertEqual(document.requiredSigners.map(\.hex), [IDs.me, IDs.alice])
-        let details = try await c.getContextDetails(contextIdStr: "c")
+        let details = try await c.getContextDetails(contextIdStr: "c").decoded(as: ContextDetails.self)
         XCTAssertEqual(details.participantCount, 2)
         XCTAssertEqual(details.participants.first?.permissionLevel, .sign)
         let created = try await c.createSignature(name: "S", blobIdStr: IDs.blob, dataSize: 3)

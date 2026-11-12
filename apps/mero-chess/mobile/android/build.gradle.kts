@@ -18,6 +18,8 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
+            // The contract client is generated (scripts/mobile-codegen.sh); it is not edited here.
+            exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }
 
@@ -25,6 +27,10 @@ subprojects {
         buildUponDefaultConfig = true
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         parallel = true
+    }
+
+    tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+        exclude("**/generated/**")
     }
 }
 

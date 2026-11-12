@@ -7,10 +7,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import network.calimero.sign.generated.ContextDetails
+import network.calimero.sign.generated.ContractBytes
 import network.calimero.sign.generated.DocumentInfo
 import network.calimero.sign.generated.DocumentSignature
 import network.calimero.sign.generated.DocumentStatus
 import network.calimero.sign.generated.PermissionLevel
+import network.calimero.sign.generated.SignContract
 import java.security.MessageDigest
 
 /** Which inbox list a document belongs in for the signed-in account. (Swift `InboxBucket`.) */
@@ -79,9 +81,9 @@ suspend fun AgreementDirectory.snapshot(
 ): AgreementSnapshot =
     coroutineScope {
         val sign = client(agreement.contextId)
-        val details = async { sign.getContextDetails(agreement.contextId) }
-        val me = async { SignIds.hex(sign.whoami()) }
-        val documents = async { sign.listDocuments() }
+        val details = async { SignContract.read<ContextDetails>(sign.getContextDetails(agreement.contextId)) }
+        val me = async { SignIds.hex(ContractBytes.Text(sign.whoami())) }
+        val documents = async { sign.listDocuments().map { SignContract.read<DocumentInfo>(it) } }
         val level =
             details
                 .await()
@@ -96,7 +98,7 @@ suspend fun AgreementDirectory.snapshot(
                 .map { document ->
                     async {
                         val needs = document.status != DocumentStatus.FullySigned || signaturesForCompleted
-                        val signatures = if (needs) sign.getDocumentSignatures(document.id) else emptyList()
+                        val signatures = if (needs) sign.getDocumentSignatures(document.id).map { SignContract.read<DocumentSignature>(it) } else emptyList()
                         DocumentEntry(named, document, signatures, me.await(), level)
                     }
                 }.awaitAll()

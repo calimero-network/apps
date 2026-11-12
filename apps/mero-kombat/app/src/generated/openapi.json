@@ -794,7 +794,106 @@
         "type": "object"
       },
       "ArenaView": {
-        "description": "The app type `ArenaView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "flawless": {
+            "type": "boolean"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitView"
+            },
+            "type": "array"
+          },
+          "matchActions": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "matchIndex": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "maxHp": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "me": {
+            "type": "string"
+          },
+          "mySeat": {
+            "type": "string"
+          },
+          "p1": {
+            "$ref": "#/components/schemas/FighterView"
+          },
+          "p2": {
+            "$ref": "#/components/schemas/FighterView"
+          },
+          "round": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "roundResults": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "roundsToWin": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalActions": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "winner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "createdAt",
+          "matchIndex",
+          "round",
+          "status",
+          "roundResults",
+          "winner",
+          "flawless",
+          "p1",
+          "p2",
+          "me",
+          "mySeat",
+          "hits",
+          "matchActions",
+          "totalActions",
+          "maxHp",
+          "roundsToWin"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ArenaView"
       },
       "CallEvent": {
@@ -1169,6 +1268,55 @@
           }
         ]
       },
+      "FighterView": {
+        "properties": {
+          "fighter": {
+            "type": "string"
+          },
+          "hp": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "matchesWon": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "member": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "roundsWon": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "seat": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "member",
+          "name",
+          "fighter",
+          "hp",
+          "roundsWon",
+          "matchesWon",
+          "online"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "FighterView"
+      },
       "HistoryArgs": {
         "description": "The arguments of `history`, by name.",
         "properties": {},
@@ -1221,6 +1369,47 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "HitView": {
+        "properties": {
+          "at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "by": {
+            "type": "string"
+          },
+          "damage": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "id": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "by",
+          "id",
+          "kind",
+          "damage",
+          "blocked",
+          "at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "HitView"
       },
       "InOtherCornerError": {
         "properties": {},
@@ -1347,7 +1536,47 @@
         "type": "object"
       },
       "MatchSummary": {
-        "description": "The app type `MatchSummary`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "actions": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "flawless": {
+            "type": "boolean"
+          },
+          "index": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "rounds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "winner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "startedAt",
+          "winner",
+          "flawless",
+          "rounds",
+          "actions"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MatchSummary"
       },
       "NotInCornerError": {

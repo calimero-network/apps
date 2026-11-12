@@ -4,6 +4,18 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `SceneInfo`. */
+export interface SceneInfo {
+  name: string;
+  environment: Environment;
+  object_count: number;
+  mesh_count: number;
+  texture_count: number;
+  member_count: number;
+  me: string;
+  my_role: string;
+}
+
 /** The app type `Environment`: the ABI names it without its shape. */
 export type Environment = unknown;
 
@@ -15,9 +27,6 @@ export type MemberView = unknown;
 
 /** The app type `MeshRef`: the ABI names it without its shape. */
 export type MeshRef = unknown;
-
-/** The app type `SceneInfo`: the ABI names it without its shape. */
-export type SceneInfo = unknown;
 
 /** The app type `SceneObject`: the ABI names it without its shape. */
 export type SceneObject = unknown;

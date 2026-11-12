@@ -4,29 +4,91 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `AttachmentView`. */
+export interface AttachmentView {
+  name: string;
+  mimeType: string;
+  size: string;
+  blobId: string;
+  uploadedAt: string;
+}
+
+/** The app type `ContextInfo`. */
+export interface ContextInfo {
+  name: string;
+  contextType: ContextType;
+  description: string;
+  createdAt: string;
+  creator: string;
+}
+
+/** The app type `ContextType`. */
+export type ContextType =
+  | 'Channel'
+  | 'Dm';
+
+/** The app type `FullMessageResponse`. */
+export interface FullMessageResponse {
+  totalCount: number;
+  messages: MessageView[];
+  startPosition: number;
+}
+
+/** The app type `MessageView`. */
+export interface MessageView {
+  index: string;
+  timestamp: string;
+  sender: string;
+  mentions: string[];
+  mentionsUsernames: string[];
+  files: AttachmentView[];
+  images: AttachmentView[];
+  id: string;
+  text: string;
+  editedOn: string | null;
+  reactions: Record<string, string[]> | null;
+  deleted: boolean | null;
+  threadCount: number;
+  threadLastTimestamp: string;
+  parentMessageId: string | null;
+}
+
+/** The app type `Role`. */
+export type Role =
+  | 'User'
+  | 'Mod'
+  | 'Admin'
+  | 'Banned';
+
+/** The app type `SearchHit`. */
+export interface SearchHit {
+  id: string;
+  parentMessageId: string | null;
+  index: string | null;
+  timestamp: string;
+  anchorTimestamp: string;
+  sender: string;
+  snippet: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** The app type `SearchPage`. */
+export interface SearchPage {
+  hits: SearchHit[];
+  nextCursor: string | null;
+  frontierTimestamp: string | null;
+}
+
+/** The app type `UserProfile`. */
+export interface UserProfile {
+  identity: string;
+  username: string;
+  avatar: string | null;
+}
+
 /** The app type `AttachmentInput`: the ABI names it without its shape. */
 export type AttachmentInput = unknown;
-
-/** The app type `ContextInfo`: the ABI names it without its shape. */
-export type ContextInfo = unknown;
-
-/** The app type `ContextType`: the ABI names it without its shape. */
-export type ContextType = unknown;
-
-/** The app type `FullMessageResponse`: the ABI names it without its shape. */
-export type FullMessageResponse = unknown;
-
-/** The app type `MessageView`: the ABI names it without its shape. */
-export type MessageView = unknown;
-
-/** The app type `Role`: the ABI names it without its shape. */
-export type Role = unknown;
-
-/** The app type `SearchPage`: the ABI names it without its shape. */
-export type SearchPage = unknown;
-
-/** The app type `UserProfile`: the ABI names it without its shape. */
-export type UserProfile = unknown;
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

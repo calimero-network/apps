@@ -9,6 +9,7 @@ import com.calimero.mero.PasskeyCancelled
 import com.calimero.mero.ReleaseDeadlineError
 import com.calimero.mero.UnavailableError
 import com.calimero.mero.WrongNode
+import com.calimero.mero.app.ContextContractCalling
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.PasskeyRequired
 import com.calimero.mero.app.SignedOutException
@@ -17,32 +18,28 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import network.calimero.updates.generated.ContextContractCalling
-import network.calimero.updates.generated.UpdatesClient
+import network.calimero.updates.generated.client.UpdatesClient
 import java.io.IOException
 
-/** The client for one audience (an app instance), over the account's cluster session, speaking the component ABI ([ComponentWire]). */
+/** The client for one audience (an app instance), over the account's cluster session. */
 fun updatesClient(
     backend: MeroAppBackend,
     contextId: String,
 ): UpdatesClient {
-    // The generated client declares its own `ContextContractCalling`; the SDK's bound contract
-    // has exactly its two methods.
+    // The SDK's bound contract, each request off the main thread.
     val bound = backend.contract.bound(contextId)
     return UpdatesClient(
-        ComponentWire(
-            object : ContextContractCalling {
-                override suspend fun query(
-                    method: String,
-                    argsJson: String,
-                ): String = withContext(Dispatchers.IO) { bound.query(method, argsJson) }
+        object : ContextContractCalling {
+            override suspend fun query(
+                method: String,
+                argsJson: String,
+            ): String = withContext(Dispatchers.IO) { bound.query(method, argsJson) }
 
-                override suspend fun execute(
-                    method: String,
-                    argsJson: String,
-                ): String = withContext(Dispatchers.IO) { bound.execute(method, argsJson) }
-            },
-        ),
+            override suspend fun execute(
+                method: String,
+                argsJson: String,
+            ): String = withContext(Dispatchers.IO) { bound.execute(method, argsJson) }
+        },
     )
 }
 

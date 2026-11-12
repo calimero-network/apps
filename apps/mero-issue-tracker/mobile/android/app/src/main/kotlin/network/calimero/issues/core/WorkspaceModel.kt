@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
-import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueTrackerContract
+import network.calimero.issues.contract.RepoInfo
+import network.calimero.issues.generated.IssueTrackerClient
 import kotlin.coroutines.cancellation.CancellationException
 
 /** One repository: a context in the workspace's root group running the tracker. */
@@ -123,7 +125,7 @@ class WorkspaceModel(
                                 async {
                                     id to
                                         try {
-                                            client(id).getRepoInfo().repoUrl
+                                            IssueTrackerContract.read<RepoInfo>(client(id).getRepoInfo()).repoUrl
                                         } catch (e: CancellationException) {
                                             throw e
                                         } catch (_: Exception) {

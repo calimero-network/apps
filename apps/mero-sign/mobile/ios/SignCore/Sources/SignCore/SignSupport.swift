@@ -18,10 +18,9 @@ public enum SignConstants {
 // MARK: - The contract client
 
 extension SignClient {
-    /// The contract client for one app instance, through the signed-in backend. The
-    /// generated client takes MeroKit's `ContextContractCalling` directly.
+    /// The contract client for one app instance, through the signed-in backend.
     public static func make(contract: any ContextContract, contextId: String) -> SignClient {
-        SignClient(transport: contract.bound(to: contextId))
+        SignClient(contract: contract.bound(to: contextId))
     }
 }
 

@@ -27,6 +27,7 @@ import network.calimero.pixart.core.pixartClient
 import network.calimero.pixart.generated.DocumentInfo
 import network.calimero.pixart.generated.Layer
 import network.calimero.pixart.generated.Member
+import network.calimero.pixart.generated.toPixart
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.max
 import kotlin.math.min
@@ -149,7 +150,7 @@ class ProjectsModel(
         val docs: Map<String, DocumentInfo> =
             coroutineScope {
                 _projects.value
-                    .map { p -> async { p.contextId to attempt { backend.pixartClient(p.contextId).getDocument() }.getOrNull() } }
+                    .map { p -> async { p.contextId to attempt { backend.pixartClient(p.contextId).getDocument().toPixart<DocumentInfo>() }.getOrNull() } }
                     .awaitAll()
             }.mapNotNull { (id, doc) -> doc?.let { id to it } }.toMap()
         _projects.update { list ->
@@ -177,8 +178,8 @@ class ProjectsModel(
         thumbing += contextId
         try {
             val client = backend.pixartClient(contextId)
-            val layers = attempt { client.getLayers() }.getOrNull() ?: return
-            val doc = attempt { client.getDocument() }.getOrNull() ?: return
+            val layers = attempt { client.getLayers().map { it.toPixart<Layer>() } }.getOrNull() ?: return
+            val doc = attempt { client.getDocument().toPixart<DocumentInfo>() }.getOrNull() ?: return
             val ops = LayerStack.drawOps(layers)
             val images = blobs.bitmaps(LayerStack.blobIds(ops), contextId)
             val scale = min(1.0, THUMB_SIDE / max(w, h).toDouble())
@@ -359,8 +360,8 @@ class ArtworkModel(
     private suspend fun read(): Boolean {
         val (d, l) =
             coroutineScope {
-                val doc = async { client.getDocument() }
-                val list = async { client.getLayers() }
+                val doc = async { client.getDocument().toPixart<DocumentInfo>() }
+                val list = async { client.getLayers().map { it.toPixart<Layer>() } }
                 doc.await() to list.await()
             }
         val changed = d != _document.value || l != _layers.value
@@ -376,7 +377,7 @@ class ArtworkModel(
     }
 
     private suspend fun readRest() {
-        attempt { client.getMembers() }.getOrNull()?.let { _members.value = it }
+        attempt { client.getMembers().map { it.toPixart<Member>() } }.getOrNull()?.let { _members.value = it }
         attempt { client.myRole() }.getOrNull()?.let { _role.value = it }
     }
 

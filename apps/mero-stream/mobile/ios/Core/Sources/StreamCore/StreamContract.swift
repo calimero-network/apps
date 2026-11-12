@@ -47,40 +47,28 @@ public struct Member: Codable, Sendable, Equatable {
     }
 }
 
-/// The room contract (`../../logic`, `res/abi.json`), bound to one room's app
-/// instance. Only the methods the phone calls: the probe's in-WASM codec and
-/// chunk paths are measurement tools the web keeps. Names and arguments are
-/// the component ABI's: camelCase, u64 as a decimal string.
-public struct StreamClient: Sendable {
-    /// Every contract method this client calls, with its parameters in ABI
-    /// order. `ContractSurfaceTests` pins it to the component ABI.
+/// The room contract (`../../logic`, `res/abi.json`) is `StreamClient`, generated from it into
+/// `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`). The phone calls
+/// only `join` and `getMembers`: the probe's in-WASM codec and chunk paths are measurement tools the
+/// web keeps. Until the logic derives `AbiType`, the ABI names `Member` without its shape, so the
+/// client answers its JSON and the type above reads it.
+extension StreamClient {
+    /// Every contract method the app calls, with its parameters in ABI order.
+    /// `ContractSurfaceTests` pins it to the component ABI.
     public static let methods: [String: [String]] = [
         "join": ["username", "now"],
         "getMembers": [],
     ]
 
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
     /// The client for one room's call (app instance), through the signed-in backend.
     public init(backend: any MeroAppBackend, contextId: String) {
-        self.init(transport: backend.contract.bound(to: contextId))
+        self.init(backend: backend, app: contextId)
     }
+}
 
-    /// Record (or rename) the caller in the room. `now` is unix seconds.
-    @discardableResult
-    public func join(username: String, now: UInt64) async throws -> Member {
-        let args = try JSONEncoder().encode(["username": username, "now": String(now)])
-        let response = try await transport.execute(method: "join", argsJSON: args)
-        return try JSONDecoder().decode(Member.self, from: response)
-    }
-
-    /// Everyone who joined the room, in account order (a view).
-    public func getMembers() async throws -> [Member] {
-        let response = try await transport.query(method: "getMembers", argsJSON: Data("{}".utf8))
-        return try JSONDecoder().decode([Member].self, from: response)
+extension JSONValue {
+    /// This answer as the app type `T` (`Member`).
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }

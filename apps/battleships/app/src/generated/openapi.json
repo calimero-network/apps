@@ -1896,15 +1896,167 @@
         "type": "object"
       },
       "MatchRecord": {
-        "description": "The app type `MatchRecord`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "finished_ms": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "loser": {
+            "type": "string"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "winner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "match_id",
+          "winner",
+          "loser",
+          "finished_ms"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MatchRecord"
       },
       "MatchStateView": {
-        "description": "The app type `MatchStateView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "audit_failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "committed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ended_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "loser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_shot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingShotView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revealed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "standing": {
+            "type": "string"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "standing",
+          "committed",
+          "pending_shot",
+          "ended_by",
+          "loser",
+          "revealed",
+          "audit_failed",
+          "winner"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MatchStateView"
       },
+      "MatchStatus": {
+        "oneOf": [
+          {
+            "const": "Pending"
+          },
+          {
+            "const": "Active"
+          },
+          {
+            "const": "Finished"
+          }
+        ],
+        "x-calimero-abi-type": "MatchStatus"
+      },
       "MatchSummary": {
-        "description": "The app type `MatchSummary`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "created_ms": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "player1": {
+            "type": "string"
+          },
+          "player2": {
+            "type": "string"
+          },
+          "player2_account": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MatchStatus"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "match_id",
+          "player1",
+          "player2",
+          "player2_account",
+          "status",
+          "winner",
+          "created_ms"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MatchSummary"
       },
       "NotFoundError": {
@@ -1918,8 +2070,53 @@
         ],
         "type": "object"
       },
+      "PendingShotView": {
+        "properties": {
+          "shot_id": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "target": {
+            "type": "string"
+          },
+          "x": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "y": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          }
+        },
+        "required": [
+          "shot_id",
+          "x",
+          "y",
+          "target"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PendingShotView"
+      },
       "PlayerEntry": {
-        "description": "The app type `PlayerEntry`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "player": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "player"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PlayerEntry"
       },
       "PlayerStatsUpdatedEvent": {
@@ -1928,7 +2125,32 @@
         "type": "object"
       },
       "PlayerStatsView": {
-        "description": "The app type `PlayerStatsView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "games_played": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "losses": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "wins": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "wins",
+          "losses",
+          "games_played"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PlayerStatsView"
       },
       "PlayersUpdatedEvent": {

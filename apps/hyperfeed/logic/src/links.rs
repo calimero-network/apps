@@ -47,7 +47,7 @@ pub struct Link {
 }
 
 /// What [`crate::Hyperfeed::add_link`] takes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
 pub struct LinkInput {
     /// `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
     pub subject: String,

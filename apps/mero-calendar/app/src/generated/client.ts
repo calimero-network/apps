@@ -4,32 +4,116 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `BookingLinkView`: the ABI names it without its shape. */
-export type BookingLinkView = unknown;
+/** The app type `BookingLinkView`. */
+export interface BookingLinkView {
+  linkId: string;
+  grantId: string;
+  title: string;
+  description: string;
+  durationMinutes: number;
+  weeklyHours: WeeklyWindow[];
+  utcOffsetMinutes: number;
+  horizonDays: number;
+  minNoticeMinutes: number;
+  createdAtMs: string;
+  expiresAtMs: string | null;
+  status: string;
+  booking: BookingView | null;
+}
 
-/** The app type `BookingPage`: the ABI names it without its shape. */
-export type BookingPage = unknown;
+/** The app type `BookingPage`. */
+export interface BookingPage {
+  title: string;
+  description: string;
+  ownerName: string | null;
+  durationMinutes: number;
+  status: string;
+  expiresAtMs: string | null;
+  booking: BookingView | null;
+}
 
-/** The app type `BookingView`: the ABI names it without its shape. */
-export type BookingView = unknown;
+/** The app type `BookingView`. */
+export interface BookingView {
+  startMs: string;
+  endMs: string;
+  guestName: string;
+  guestEmail: string;
+  guestNote: string;
+  bookedAtMs: string;
+  rescheduledCount: number;
+}
 
-/** The app type `CalendarEvent`: the ABI names it without its shape. */
-export type CalendarEvent = unknown;
+/** The app type `CalendarEvent`. */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  owner: string;
+  start: string;
+  end: string;
+  event_type: string;
+  color: string;
+  peers: string[];
+  private: boolean;
+}
 
-/** The app type `CreateBookingLink`: the ABI names it without its shape. */
-export type CreateBookingLink = unknown;
+/** The app type `CreateBookingLink`. */
+export interface CreateBookingLink {
+  tokenHash: string;
+  grantId: string;
+  title: string;
+  description: string;
+  durationMinutes: number;
+  weeklyHours: WeeklyWindow[];
+  utcOffsetMinutes: number;
+  horizonDays: number;
+  minNoticeMinutes: number;
+  expiresAtMs: string | null;
+}
 
-/** The app type `CreateCalendarEvent`: the ABI names it without its shape. */
-export type CreateCalendarEvent = unknown;
+/** The app type `CreateCalendarEvent`. */
+export interface CreateCalendarEvent {
+  title: string;
+  description: string;
+  start: string;
+  end: string;
+  event_type: string;
+  color: string;
+  peers: string[];
+}
 
-/** The app type `GuestDetails`: the ABI names it without its shape. */
-export type GuestDetails = unknown;
+/** The app type `GuestDetails`. */
+export interface GuestDetails {
+  name: string;
+  email: string;
+  note: string;
+}
 
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
+/** The app type `Member`. */
+export interface Member {
+  id: string;
+  username: string;
+  joinedAt: string;
+  usernameUpdatedAt: string;
+}
 
-/** The app type `UpdateCalendarEvent`: the ABI names it without its shape. */
-export type UpdateCalendarEvent = unknown;
+/** The app type `UpdateCalendarEvent`. */
+export interface UpdateCalendarEvent {
+  title: string | null;
+  description: string | null;
+  start: string | null;
+  end: string | null;
+  event_type: string | null;
+  color: string | null;
+  peers: string[] | null;
+}
+
+/** The app type `WeeklyWindow`. */
+export interface WeeklyWindow {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+}
 
 /** The arguments of `bookSlot`. */
 export interface BookSlotArgs {
