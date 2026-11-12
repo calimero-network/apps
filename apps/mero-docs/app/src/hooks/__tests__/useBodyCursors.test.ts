@@ -2,7 +2,7 @@
 // has fixed positions, so every assertion is an exact position or call.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { DocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import type { DocNode } from '@/components/editor/presence/geometry';
 import type { DocPresence } from '@/lib/rich/presence';
 import { useBodyCursors, type CursorEditor, type UseBodyCursorsOptions } from '../useBodyCursors';
@@ -110,7 +110,7 @@ function mount(
 ) {
   return renderHook(() =>
     useBodyCursors({
-      client: client as unknown as DocsClient,
+      client: docsOver(client),
       docId: DOC,
       editor,
       peers,

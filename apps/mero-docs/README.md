@@ -134,7 +134,7 @@ The screens and components are unchanged; the client layer under them is new.
 |---|---|
 | `MeroProvider`, mero-react hooks, node login, desktop SSO | `src/calimero/session.tsx`: the target from the environment (merod local in `vite`, Cloud in `vite build`), passkey sign-in or sign-up, the stored session (`SessionStore`) |
 | admin API (`listGroupMembers`, `createGroupInNamespace`, `createContext`, `addGroupMembers`, …) | `src/calimero/orgs.ts`: the same calls on organizations and teams, read from one `GET /orgs/{org}` snapshot; `src/calimero/react.tsx` has the hooks the screens used, by the same names |
-| generated `DocsClient` / `RegistryClient` (abi-codegen) | `src/lib/docsApi.ts`: the same method names and answer shapes (snake_case, nanoseconds) over `client.call` / `client.view`; its test checks every method and parameter against `logic/res/abi.json` |
+| generated `DocsClient` / `RegistryClient` (abi-codegen) | `MeroDocsClient` (`src/generated/client.ts`), which core's `mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F mero-docs codegen`; CI fails when it is stale), for both the folder and the registry instances; `src/lib/docsApi.ts` turns its answers into v1's shapes (snake_case, nanoseconds) with `to*`; `src/client.test.ts` checks the class against the ABI |
 | SSE subscriptions and ephemeral messages | `src/calimero/live.ts`: one `client.events` stream per instance, and the node's presence API for cursors |
 | v1 errors (`RpcError`, `ReadOnlyWriteRefused`) | mero-js 28 typed errors (`src/calimero/errors.ts`); a node `403` on a write is the Read only message |
 

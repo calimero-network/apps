@@ -1,7 +1,7 @@
 // One list read from the workspace registry, re-read on every registry change.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RegistryClient } from '@/lib/docsApi';
+import type { MeroDocsClient } from '@/lib/docsApi';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
@@ -11,14 +11,14 @@ const RETRY_BASE_MS = 1_000; // doubles after each failed first read
 /** Null until a read of this workspace's registry lands; a stale or failed read never replaces the last good one. */
 export function useRegistryRead<T>(
   label: string, // names the hook in the failed-read warning
-  read: (client: RegistryClient) => Promise<T>,
+  read: (client: MeroDocsClient) => Promise<T>,
   firstReadTries = 1, // only the first read retries: until then there is nothing to show
 ) {
   const { registryClient, registryContextId } = useDriveWorkspace();
   const readRef = useRef(read);
   readRef.current = read;
   const [loaded, setLoaded] = useState<{
-    client: RegistryClient;
+    client: MeroDocsClient;
     data: T;
   } | null>(null);
   const seqRef = useRef(0);
