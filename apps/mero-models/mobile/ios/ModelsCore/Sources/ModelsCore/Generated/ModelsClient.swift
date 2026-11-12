@@ -27,9 +27,6 @@ public struct ModelsClient: Sendable {
     /// The app type `MeshRef`: the ABI names it without its shape, so it is its JSON.
     public typealias MeshRef = JSONValue
 
-    /// The app type `SceneInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias SceneInfo = JSONValue
-
     /// The app type `SceneObject`: the ABI names it without its shape, so it is its JSON.
     public typealias SceneObject = JSONValue
 
@@ -38,6 +35,71 @@ public struct ModelsClient: Sendable {
 
     /// The app type `VersionView`: the ABI names it without its shape, so it is its JSON.
     public typealias VersionView = JSONValue
+
+
+    /// The app type `SceneInfo`.
+    public struct SceneInfo: Codable, Sendable, Equatable {
+        public var name: String
+        public var environment: Environment
+        public var object_count: UInt32
+        public var mesh_count: UInt32
+        public var texture_count: UInt32
+        public var member_count: UInt32
+        public var me: String
+        public var my_role: String
+
+        public init(
+            name: String,
+            environment: Environment,
+            object_count: UInt32,
+            mesh_count: UInt32,
+            texture_count: UInt32,
+            member_count: UInt32,
+            me: String,
+            my_role: String
+        ) {
+            self.name = name
+            self.environment = environment
+            self.object_count = object_count
+            self.mesh_count = mesh_count
+            self.texture_count = texture_count
+            self.member_count = member_count
+            self.me = me
+            self.my_role = my_role
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(Environment.self, forKey: Key("environment"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("object_count"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("mesh_count"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("texture_count"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("member_count"))
+            let v6 = try fields.decode(String.self, forKey: Key("me"))
+            let v7 = try fields.decode(String.self, forKey: Key("my_role"))
+            self.name = v0
+            self.environment = v1
+            self.object_count = v2
+            self.mesh_count = v3
+            self.texture_count = v4
+            self.member_count = v5
+            self.me = v6
+            self.my_role = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.environment, forKey: Key("environment"))
+            try fields.encode(self.object_count, forKey: Key("object_count"))
+            try fields.encode(self.mesh_count, forKey: Key("mesh_count"))
+            try fields.encode(self.texture_count, forKey: Key("texture_count"))
+            try fields.encode(self.member_count, forKey: Key("member_count"))
+            try fields.encode(self.me, forKey: Key("me"))
+            try fields.encode(self.my_role, forKey: Key("my_role"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

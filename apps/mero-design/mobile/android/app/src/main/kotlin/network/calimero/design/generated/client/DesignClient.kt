@@ -41,9 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `BoardInfo`: the ABI names it without its shape, so it is its JSON. */
-typealias BoardInfo = JsonElement
-
 /** The app type `Comment`: the ABI names it without its shape, so it is its JSON. */
 typealias Comment = JsonElement
 
@@ -53,20 +50,11 @@ typealias CursorState = JsonElement
 /** The app type `Element`: the ABI names it without its shape, so it is its JSON. */
 typealias Element = JsonElement
 
-/** The app type `ElementPage`: the ABI names it without its shape, so it is its JSON. */
-typealias ElementPage = JsonElement
-
 /** The app type `ElementPatch`: the ABI names it without its shape, so it is its JSON. */
 typealias ElementPatch = JsonElement
 
-/** The app type `LabelUpdate`: the ABI names it without its shape, so it is its JSON. */
-typealias LabelUpdate = JsonElement
-
 /** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
 typealias Member = JsonElement
-
-/** The app type `MemberRole`: the ABI names it without its shape, so it is its JSON. */
-typealias MemberRole = JsonElement
 
 /**
  * The app's methods.
@@ -287,7 +275,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            BoardInfo.serializer(),
         )
 
     /** view `getComments`. */
@@ -376,7 +364,7 @@ class DesignClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            ElementPage.serializer(),
         )
 
     /** view `getMembers`. */
@@ -452,7 +440,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MemberRole.serializer()),
         )
 
     /** view `myRole`. */
@@ -633,7 +621,7 @@ class DesignClient private constructor(
         invokeCall(
             "updateElementLabels",
             buildJsonObject {
-                put("labels", encode(ListSerializer(JsonElement.serializer()), labels))
+                put("labels", encode(ListSerializer(LabelUpdate.serializer()), labels))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -933,6 +921,162 @@ class DesignClient private constructor(
         }
     }
 
+    /** The app type `BoardInfo`. */
+    data class BoardInfo(
+        val name: String,
+        val description: String,
+        val elementCount: UInt,
+        val memberCount: UInt,
+        val owner: String? = null,
+    ) {
+        companion object {
+            /** `BoardInfo`'s JSON form. */
+            fun serializer(): KSerializer<BoardInfo> = Wire
+
+            private object Wire : KSerializer<BoardInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: BoardInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("description", encode(String.serializer(), value.description))
+                            put("elementCount", encode(UInt.serializer(), value.elementCount))
+                            put("memberCount", encode(UInt.serializer(), value.memberCount))
+                            put("owner", encode(String.serializer().nullable, value.owner))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): BoardInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "BoardInfo")
+                    return BoardInfo(
+                        name = field(fields, "name", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        elementCount = field(fields, "elementCount", UInt.serializer()),
+                        memberCount = field(fields, "memberCount", UInt.serializer()),
+                        owner = field(fields, "owner", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ElementPage`. */
+    data class ElementPage(
+        val items: List<Element>,
+        val nextCursor: String? = null,
+    ) {
+        companion object {
+            /** `ElementPage`'s JSON form. */
+            fun serializer(): KSerializer<ElementPage> = Wire
+
+            private object Wire : KSerializer<ElementPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ElementPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("items", encode(ListSerializer(JsonElement.serializer()), value.items))
+                            put("nextCursor", encode(String.serializer().nullable, value.nextCursor))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ElementPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ElementPage")
+                    return ElementPage(
+                        items = field(fields, "items", ListSerializer(JsonElement.serializer())),
+                        nextCursor = field(fields, "nextCursor", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `LabelUpdate`. */
+    data class LabelUpdate(
+        val id: String,
+        val label: String? = null,
+    ) {
+        companion object {
+            /** `LabelUpdate`'s JSON form. */
+            fun serializer(): KSerializer<LabelUpdate> = Wire
+
+            private object Wire : KSerializer<LabelUpdate> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: LabelUpdate,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("label", encode(String.serializer().nullable, value.label))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): LabelUpdate {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "LabelUpdate")
+                    return LabelUpdate(
+                        id = field(fields, "id", String.serializer()),
+                        label = field(fields, "label", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MemberRole`. */
+    data class MemberRole(
+        val member: String,
+        val role: String,
+        val account: String? = null,
+    ) {
+        companion object {
+            /** `MemberRole`'s JSON form. */
+            fun serializer(): KSerializer<MemberRole> = Wire
+
+            private object Wire : KSerializer<MemberRole> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MemberRole,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("member", encode(String.serializer(), value.member))
+                            put("role", encode(String.serializer(), value.role))
+                            put("account", encode(String.serializer().nullable, value.account))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MemberRole {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MemberRole")
+                    return MemberRole(
+                        member = field(fields, "member", String.serializer()),
+                        role = field(fields, "role", String.serializer()),
+                        account = field(fields, "account", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -999,5 +1143,11 @@ class DesignClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

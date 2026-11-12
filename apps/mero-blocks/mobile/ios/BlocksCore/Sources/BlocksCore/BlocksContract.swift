@@ -159,9 +159,9 @@ extension BlocksClient {
     public static let maxPages = 1_100
 
     /// Every changed block, following the pages.
-    public func allOverrides() async throws -> [BlockEntry] {
+    public func allOverrides() async throws -> [BlocksCore.BlockEntry] {
         try await Self.allPages("getOverrides") { cursor in
-            try await getOverrides(cursor: cursor).decoded(as: Page<BlockEntry>.self)
+            try await getOverrides(cursor: cursor).decoded(as: Page<BlocksCore.BlockEntry>.self)
         }
     }
 
@@ -187,11 +187,16 @@ extension BlocksClient {
     }
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T`. The ABI names the world's types (`WorldMeta`, `Edit`,
     /// `PlayerView`, `Transform`, the pages) without their shape until the logic derives `AbiType`,
     /// so the generated client takes and answers their JSON and the types above read it.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }

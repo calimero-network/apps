@@ -237,11 +237,16 @@ extension DocsClient {
     public static let methods = ["listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment"]
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T` (one of the shapes above). The ABI names them without their
     /// shape until the logic derives `AbiType`, so the generated `DocsClient` (`Generated/`) answers
     /// their JSON.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }

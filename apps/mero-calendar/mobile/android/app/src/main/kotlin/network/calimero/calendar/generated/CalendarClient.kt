@@ -41,33 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `BookingLinkView`: the ABI names it without its shape, so it is its JSON. */
-typealias BookingLinkView = JsonElement
-
-/** The app type `BookingPage`: the ABI names it without its shape, so it is its JSON. */
-typealias BookingPage = JsonElement
-
-/** The app type `BookingView`: the ABI names it without its shape, so it is its JSON. */
-typealias BookingView = JsonElement
-
-/** The app type `CalendarEvent`: the ABI names it without its shape, so it is its JSON. */
-typealias CalendarEvent = JsonElement
-
-/** The app type `CreateBookingLink`: the ABI names it without its shape, so it is its JSON. */
-typealias CreateBookingLink = JsonElement
-
-/** The app type `CreateCalendarEvent`: the ABI names it without its shape, so it is its JSON. */
-typealias CreateCalendarEvent = JsonElement
-
-/** The app type `GuestDetails`: the ABI names it without its shape, so it is its JSON. */
-typealias GuestDetails = JsonElement
-
-/** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
-typealias Member = JsonElement
-
-/** The app type `UpdateCalendarEvent`: the ABI names it without its shape, so it is its JSON. */
-typealias UpdateCalendarEvent = JsonElement
-
 /**
  * The app's methods.
  *
@@ -103,10 +76,10 @@ class CalendarClient private constructor(
             buildJsonObject {
                 put("token", encode(String.serializer(), token))
                 put("startMs", encode(U64AsString, startMs))
-                put("guest", encode(JsonElement.serializer(), guest))
+                put("guest", encode(GuestDetails.serializer(), guest))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            BookingView.serializer(),
         )
 
     /** call `cancelBooking`. */
@@ -132,10 +105,10 @@ class CalendarClient private constructor(
         invokeCall(
             "createBookingLink",
             buildJsonObject {
-                put("link", encode(JsonElement.serializer(), link))
+                put("link", encode(CreateBookingLink.serializer(), link))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            BookingLinkView.serializer(),
         )
 
     /** call `createEvent`. */
@@ -146,7 +119,7 @@ class CalendarClient private constructor(
         invokeCall(
             "createEvent",
             buildJsonObject {
-                put("eventData", encode(JsonElement.serializer(), eventData))
+                put("eventData", encode(CreateCalendarEvent.serializer(), eventData))
             },
             idempotencyKey,
             String.serializer(),
@@ -160,7 +133,7 @@ class CalendarClient private constructor(
         invokeCall(
             "createPrivateEvent",
             buildJsonObject {
-                put("eventData", encode(JsonElement.serializer(), eventData))
+                put("eventData", encode(CreateCalendarEvent.serializer(), eventData))
             },
             idempotencyKey,
             String.serializer(),
@@ -241,7 +214,7 @@ class CalendarClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            BookingPage.serializer(),
         )
 
     /** view `getEvents`. */
@@ -254,7 +227,7 @@ class CalendarClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CalendarEvent.serializer()),
         )
 
     /** view `getMembers`. */
@@ -267,7 +240,7 @@ class CalendarClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Member.serializer()),
         )
 
     /** view `getPrivateEvents`. */
@@ -280,7 +253,7 @@ class CalendarClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CalendarEvent.serializer()),
         )
 
     /** view `listBookingLinks`. */
@@ -293,7 +266,7 @@ class CalendarClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(BookingLinkView.serializer()),
         )
 
     /** call `rescheduleBooking`. */
@@ -309,7 +282,7 @@ class CalendarClient private constructor(
                 put("startMs", encode(U64AsString, startMs))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            BookingView.serializer(),
         )
 
     /** call `setUsername`. */
@@ -337,7 +310,7 @@ class CalendarClient private constructor(
             "updateEvent",
             buildJsonObject {
                 put("eventId", encode(String.serializer(), eventId))
-                put("eventData", encode(JsonElement.serializer(), eventData))
+                put("eventData", encode(UpdateCalendarEvent.serializer(), eventData))
             },
             idempotencyKey,
             String.serializer(),
@@ -353,7 +326,7 @@ class CalendarClient private constructor(
             "updatePrivateEvent",
             buildJsonObject {
                 put("eventId", encode(String.serializer(), eventId))
-                put("eventData", encode(JsonElement.serializer(), eventData))
+                put("eventData", encode(UpdateCalendarEvent.serializer(), eventData))
             },
             idempotencyKey,
             String.serializer(),
@@ -527,6 +500,519 @@ class CalendarClient private constructor(
         }
     }
 
+    /** The app type `BookingLinkView`. */
+    data class BookingLinkView(
+        val linkId: String,
+        val grantId: String,
+        val title: String,
+        val description: String,
+        val durationMinutes: UInt,
+        val weeklyHours: List<WeeklyWindow>,
+        val utcOffsetMinutes: Int,
+        val horizonDays: UInt,
+        val minNoticeMinutes: UInt,
+        val createdAtMs: ULong,
+        val expiresAtMs: ULong? = null,
+        val status: String,
+        val booking: BookingView? = null,
+    ) {
+        companion object {
+            /** `BookingLinkView`'s JSON form. */
+            fun serializer(): KSerializer<BookingLinkView> = Wire
+
+            private object Wire : KSerializer<BookingLinkView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: BookingLinkView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("linkId", encode(String.serializer(), value.linkId))
+                            put("grantId", encode(String.serializer(), value.grantId))
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("durationMinutes", encode(UInt.serializer(), value.durationMinutes))
+                            put("weeklyHours", encode(ListSerializer(WeeklyWindow.serializer()), value.weeklyHours))
+                            put("utcOffsetMinutes", encode(Int.serializer(), value.utcOffsetMinutes))
+                            put("horizonDays", encode(UInt.serializer(), value.horizonDays))
+                            put("minNoticeMinutes", encode(UInt.serializer(), value.minNoticeMinutes))
+                            put("createdAtMs", encode(U64AsString, value.createdAtMs))
+                            put("expiresAtMs", encode(U64AsString.nullable, value.expiresAtMs))
+                            put("status", encode(String.serializer(), value.status))
+                            put("booking", encode(BookingView.serializer().nullable, value.booking))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): BookingLinkView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "BookingLinkView")
+                    return BookingLinkView(
+                        linkId = field(fields, "linkId", String.serializer()),
+                        grantId = field(fields, "grantId", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        durationMinutes = field(fields, "durationMinutes", UInt.serializer()),
+                        weeklyHours = field(fields, "weeklyHours", ListSerializer(WeeklyWindow.serializer())),
+                        utcOffsetMinutes = field(fields, "utcOffsetMinutes", Int.serializer()),
+                        horizonDays = field(fields, "horizonDays", UInt.serializer()),
+                        minNoticeMinutes = field(fields, "minNoticeMinutes", UInt.serializer()),
+                        createdAtMs = field(fields, "createdAtMs", U64AsString),
+                        expiresAtMs = field(fields, "expiresAtMs", U64AsString.nullable),
+                        status = field(fields, "status", String.serializer()),
+                        booking = field(fields, "booking", BookingView.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `BookingPage`. */
+    data class BookingPage(
+        val title: String,
+        val description: String,
+        val ownerName: String? = null,
+        val durationMinutes: UInt,
+        val status: String,
+        val expiresAtMs: ULong? = null,
+        val booking: BookingView? = null,
+    ) {
+        companion object {
+            /** `BookingPage`'s JSON form. */
+            fun serializer(): KSerializer<BookingPage> = Wire
+
+            private object Wire : KSerializer<BookingPage> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: BookingPage,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("ownerName", encode(String.serializer().nullable, value.ownerName))
+                            put("durationMinutes", encode(UInt.serializer(), value.durationMinutes))
+                            put("status", encode(String.serializer(), value.status))
+                            put("expiresAtMs", encode(U64AsString.nullable, value.expiresAtMs))
+                            put("booking", encode(BookingView.serializer().nullable, value.booking))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): BookingPage {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "BookingPage")
+                    return BookingPage(
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        ownerName = field(fields, "ownerName", String.serializer().nullable),
+                        durationMinutes = field(fields, "durationMinutes", UInt.serializer()),
+                        status = field(fields, "status", String.serializer()),
+                        expiresAtMs = field(fields, "expiresAtMs", U64AsString.nullable),
+                        booking = field(fields, "booking", BookingView.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `BookingView`. */
+    data class BookingView(
+        val startMs: ULong,
+        val endMs: ULong,
+        val guestName: String,
+        val guestEmail: String,
+        val guestNote: String,
+        val bookedAtMs: ULong,
+        val rescheduledCount: UInt,
+    ) {
+        companion object {
+            /** `BookingView`'s JSON form. */
+            fun serializer(): KSerializer<BookingView> = Wire
+
+            private object Wire : KSerializer<BookingView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: BookingView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("startMs", encode(U64AsString, value.startMs))
+                            put("endMs", encode(U64AsString, value.endMs))
+                            put("guestName", encode(String.serializer(), value.guestName))
+                            put("guestEmail", encode(String.serializer(), value.guestEmail))
+                            put("guestNote", encode(String.serializer(), value.guestNote))
+                            put("bookedAtMs", encode(U64AsString, value.bookedAtMs))
+                            put("rescheduledCount", encode(UInt.serializer(), value.rescheduledCount))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): BookingView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "BookingView")
+                    return BookingView(
+                        startMs = field(fields, "startMs", U64AsString),
+                        endMs = field(fields, "endMs", U64AsString),
+                        guestName = field(fields, "guestName", String.serializer()),
+                        guestEmail = field(fields, "guestEmail", String.serializer()),
+                        guestNote = field(fields, "guestNote", String.serializer()),
+                        bookedAtMs = field(fields, "bookedAtMs", U64AsString),
+                        rescheduledCount = field(fields, "rescheduledCount", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CalendarEvent`. */
+    data class CalendarEvent(
+        val id: String,
+        val title: String,
+        val description: String,
+        val owner: String,
+        val start: String,
+        val end: String,
+        val event_type: String,
+        val color: String,
+        val peers: List<String>,
+        val private: Boolean,
+    ) {
+        companion object {
+            /** `CalendarEvent`'s JSON form. */
+            fun serializer(): KSerializer<CalendarEvent> = Wire
+
+            private object Wire : KSerializer<CalendarEvent> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CalendarEvent,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("owner", encode(String.serializer(), value.owner))
+                            put("start", encode(String.serializer(), value.start))
+                            put("end", encode(String.serializer(), value.end))
+                            put("event_type", encode(String.serializer(), value.event_type))
+                            put("color", encode(String.serializer(), value.color))
+                            put("peers", encode(ListSerializer(String.serializer()), value.peers))
+                            put("private", encode(Boolean.serializer(), value.private))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CalendarEvent {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CalendarEvent")
+                    return CalendarEvent(
+                        id = field(fields, "id", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        owner = field(fields, "owner", String.serializer()),
+                        start = field(fields, "start", String.serializer()),
+                        end = field(fields, "end", String.serializer()),
+                        event_type = field(fields, "event_type", String.serializer()),
+                        color = field(fields, "color", String.serializer()),
+                        peers = field(fields, "peers", ListSerializer(String.serializer())),
+                        private = field(fields, "private", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CreateBookingLink`. */
+    data class CreateBookingLink(
+        val tokenHash: String,
+        val grantId: String,
+        val title: String,
+        val description: String,
+        val durationMinutes: UInt,
+        val weeklyHours: List<WeeklyWindow>,
+        val utcOffsetMinutes: Int,
+        val horizonDays: UInt,
+        val minNoticeMinutes: UInt,
+        val expiresAtMs: ULong? = null,
+    ) {
+        companion object {
+            /** `CreateBookingLink`'s JSON form. */
+            fun serializer(): KSerializer<CreateBookingLink> = Wire
+
+            private object Wire : KSerializer<CreateBookingLink> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CreateBookingLink,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("tokenHash", encode(String.serializer(), value.tokenHash))
+                            put("grantId", encode(String.serializer(), value.grantId))
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("durationMinutes", encode(UInt.serializer(), value.durationMinutes))
+                            put("weeklyHours", encode(ListSerializer(WeeklyWindow.serializer()), value.weeklyHours))
+                            put("utcOffsetMinutes", encode(Int.serializer(), value.utcOffsetMinutes))
+                            put("horizonDays", encode(UInt.serializer(), value.horizonDays))
+                            put("minNoticeMinutes", encode(UInt.serializer(), value.minNoticeMinutes))
+                            put("expiresAtMs", encode(U64AsString.nullable, value.expiresAtMs))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CreateBookingLink {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CreateBookingLink")
+                    return CreateBookingLink(
+                        tokenHash = field(fields, "tokenHash", String.serializer()),
+                        grantId = field(fields, "grantId", String.serializer()),
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        durationMinutes = field(fields, "durationMinutes", UInt.serializer()),
+                        weeklyHours = field(fields, "weeklyHours", ListSerializer(WeeklyWindow.serializer())),
+                        utcOffsetMinutes = field(fields, "utcOffsetMinutes", Int.serializer()),
+                        horizonDays = field(fields, "horizonDays", UInt.serializer()),
+                        minNoticeMinutes = field(fields, "minNoticeMinutes", UInt.serializer()),
+                        expiresAtMs = field(fields, "expiresAtMs", U64AsString.nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CreateCalendarEvent`. */
+    data class CreateCalendarEvent(
+        val title: String,
+        val description: String,
+        val start: String,
+        val end: String,
+        val event_type: String,
+        val color: String,
+        val peers: List<String>,
+    ) {
+        companion object {
+            /** `CreateCalendarEvent`'s JSON form. */
+            fun serializer(): KSerializer<CreateCalendarEvent> = Wire
+
+            private object Wire : KSerializer<CreateCalendarEvent> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CreateCalendarEvent,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer(), value.title))
+                            put("description", encode(String.serializer(), value.description))
+                            put("start", encode(String.serializer(), value.start))
+                            put("end", encode(String.serializer(), value.end))
+                            put("event_type", encode(String.serializer(), value.event_type))
+                            put("color", encode(String.serializer(), value.color))
+                            put("peers", encode(ListSerializer(String.serializer()), value.peers))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CreateCalendarEvent {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CreateCalendarEvent")
+                    return CreateCalendarEvent(
+                        title = field(fields, "title", String.serializer()),
+                        description = field(fields, "description", String.serializer()),
+                        start = field(fields, "start", String.serializer()),
+                        end = field(fields, "end", String.serializer()),
+                        event_type = field(fields, "event_type", String.serializer()),
+                        color = field(fields, "color", String.serializer()),
+                        peers = field(fields, "peers", ListSerializer(String.serializer())),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `GuestDetails`. */
+    data class GuestDetails(
+        val name: String,
+        val email: String,
+        val note: String,
+    ) {
+        companion object {
+            /** `GuestDetails`'s JSON form. */
+            fun serializer(): KSerializer<GuestDetails> = Wire
+
+            private object Wire : KSerializer<GuestDetails> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: GuestDetails,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("email", encode(String.serializer(), value.email))
+                            put("note", encode(String.serializer(), value.note))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): GuestDetails {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "GuestDetails")
+                    return GuestDetails(
+                        name = field(fields, "name", String.serializer()),
+                        email = field(fields, "email", String.serializer()),
+                        note = field(fields, "note", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Member`. */
+    data class Member(
+        val id: String,
+        val username: String,
+        val joinedAt: ULong,
+        val usernameUpdatedAt: ULong,
+    ) {
+        companion object {
+            /** `Member`'s JSON form. */
+            fun serializer(): KSerializer<Member> = Wire
+
+            private object Wire : KSerializer<Member> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Member,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("username", encode(String.serializer(), value.username))
+                            put("joinedAt", encode(U64AsString, value.joinedAt))
+                            put("usernameUpdatedAt", encode(U64AsString, value.usernameUpdatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Member {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Member")
+                    return Member(
+                        id = field(fields, "id", String.serializer()),
+                        username = field(fields, "username", String.serializer()),
+                        joinedAt = field(fields, "joinedAt", U64AsString),
+                        usernameUpdatedAt = field(fields, "usernameUpdatedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `UpdateCalendarEvent`. */
+    data class UpdateCalendarEvent(
+        val title: String? = null,
+        val description: String? = null,
+        val start: String? = null,
+        val end: String? = null,
+        val event_type: String? = null,
+        val color: String? = null,
+        val peers: List<String>? = null,
+    ) {
+        companion object {
+            /** `UpdateCalendarEvent`'s JSON form. */
+            fun serializer(): KSerializer<UpdateCalendarEvent> = Wire
+
+            private object Wire : KSerializer<UpdateCalendarEvent> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: UpdateCalendarEvent,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("title", encode(String.serializer().nullable, value.title))
+                            put("description", encode(String.serializer().nullable, value.description))
+                            put("start", encode(String.serializer().nullable, value.start))
+                            put("end", encode(String.serializer().nullable, value.end))
+                            put("event_type", encode(String.serializer().nullable, value.event_type))
+                            put("color", encode(String.serializer().nullable, value.color))
+                            put("peers", encode(ListSerializer(String.serializer()).nullable, value.peers))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): UpdateCalendarEvent {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "UpdateCalendarEvent")
+                    return UpdateCalendarEvent(
+                        title = field(fields, "title", String.serializer().nullable),
+                        description = field(fields, "description", String.serializer().nullable),
+                        start = field(fields, "start", String.serializer().nullable),
+                        end = field(fields, "end", String.serializer().nullable),
+                        event_type = field(fields, "event_type", String.serializer().nullable),
+                        color = field(fields, "color", String.serializer().nullable),
+                        peers = field(fields, "peers", ListSerializer(String.serializer()).nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `WeeklyWindow`. */
+    data class WeeklyWindow(
+        val weekday: UByte,
+        val startMinute: UShort,
+        val endMinute: UShort,
+    ) {
+        companion object {
+            /** `WeeklyWindow`'s JSON form. */
+            fun serializer(): KSerializer<WeeklyWindow> = Wire
+
+            private object Wire : KSerializer<WeeklyWindow> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: WeeklyWindow,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("weekday", encode(UByte.serializer(), value.weekday))
+                            put("startMinute", encode(UShort.serializer(), value.startMinute))
+                            put("endMinute", encode(UShort.serializer(), value.endMinute))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): WeeklyWindow {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "WeeklyWindow")
+                    return WeeklyWindow(
+                        weekday = field(fields, "weekday", UByte.serializer()),
+                        startMinute = field(fields, "startMinute", UShort.serializer()),
+                        endMinute = field(fields, "endMinute", UShort.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -593,5 +1079,11 @@ class CalendarClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

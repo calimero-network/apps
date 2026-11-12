@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.serializer
 import network.calimero.design.generated.Element
 import network.calimero.design.generated.client.DesignClient
 import java.io.IOException
@@ -49,14 +50,14 @@ val designJson = Json { ignoreUnknownKeys = true }
  * An answer of the generated client as the board type [T]. The ABI names the board's types without
  * their shape until the logic derives `AbiType`, so the client answers their JSON.
  */
-inline fun <reified T> JsonElement.toDesign(): T = designJson.decodeFromJsonElement(this)
+inline fun <reified T> Any.toDesign(): T = designJson.decodeFromJsonElement(asContractJson())
 
 /** Every element in paint order, read a page at a time. */
 suspend fun DesignClient.allElements(): List<Element> {
     val items = mutableListOf<Element>()
     var cursor: String? = null
     do {
-        val page = getElementsPage(cursor, ELEMENT_PAGE) as? JsonObject
+        val page = getElementsPage(cursor, ELEMENT_PAGE).asContractJson() as? JsonObject
         (page?.get("items") as? JsonArray)?.forEach { items += it.toDesign<Element>() }
         cursor = (page?.get("nextCursor") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotEmpty() }
     } while (cursor != null)
@@ -214,3 +215,17 @@ object DesignFormat {
         }
     }
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

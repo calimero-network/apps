@@ -20,8 +20,12 @@ import com.calimero.mero.app.SignedOutException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import network.calimero.docs.app.Folder
 import network.calimero.docs.generated.DocsClient
 import java.io.IOException
@@ -38,7 +42,7 @@ import kotlin.math.max
  * (Swift `DocsAPI`.)
  */
 class DocsApi(
-    transport: ContextContractCalling,
+    private val transport: ContextContractCalling,
 ) {
     val client = DocsClient(transport)
 
@@ -48,8 +52,12 @@ class DocsApi(
      * `getDocument` is decoded leniently: each block's text is its spans, in order, each with its
      * marks as strings (`"true"` for a boolean mark, as the web's `canonicalAttrs` reads them). A
      * mark the node writes as a JSON boolean, or a span without `attributes`, is read the same way.
+     * So it is read off the contract directly: the generated client reads `Block` strictly.
      */
-    suspend fun readDocument(docId: String): List<WireBlock> = client.getDocument(docId).map { WireBlock.from(it) }
+    suspend fun readDocument(docId: String): List<WireBlock> {
+        val answer = Json.parseToJsonElement(transport.query("getDocument", buildJsonObject { put("doc", docId) }.toString()))
+        return (answer as? JsonArray)?.map { WireBlock.from(it) } ?: emptyList()
+    }
 }
 
 /** The docs contract of the folder's app instance [appId]. */

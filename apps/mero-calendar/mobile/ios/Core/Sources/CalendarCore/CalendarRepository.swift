@@ -45,9 +45,9 @@ public struct CalendarRepository: Sendable {
     @discardableResult
     public func create(_ event: CalendarItem) async throws -> String {
         if event.isPrivate {
-            return try await client.createPrivateEvent(eventData: try JSONValue(encoding: createArgs(event)))
+            return try await client.createPrivateEvent(eventData: try createArgs(event).converted())
         }
-        return try await client.createEvent(eventData: try JSONValue(encoding: createArgs(event)))
+        return try await client.createEvent(eventData: try createArgs(event).converted())
     }
 
     /// Save an edited event. `wasPrivate`: where the event lives now. A
@@ -60,9 +60,9 @@ public struct CalendarRepository: Sendable {
             end: EventTime.format(event.end), eventType: type(event), color: event.color,
             peers: event.isPrivate ? [] : event.peers)
         if wasPrivate {
-            _ = try await client.updatePrivateEvent(eventId: event.id, eventData: try JSONValue(encoding: patch))
+            _ = try await client.updatePrivateEvent(eventId: event.id, eventData: try patch.converted())
         } else {
-            _ = try await client.updateEvent(eventId: event.id, eventData: try JSONValue(encoding: patch))
+            _ = try await client.updateEvent(eventId: event.id, eventData: try patch.converted())
         }
     }
 
