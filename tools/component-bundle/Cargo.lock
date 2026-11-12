@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
 dependencies = [
  "calimero-bundle",
  "eyre",
@@ -125,19 +125,30 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
 dependencies = [
  "calimero-app-abi",
+ "calimero-build-utils",
  "eyre",
  "serde_json",
  "sha2 0.11.1",
+ "toml 1.2.1+spec-1.1.0",
  "wasmparser",
+]
+
+[[package]]
+name = "calimero-build-utils"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
+dependencies = [
+ "rustc_version",
+ "toml 1.2.1+spec-1.1.0",
 ]
 
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
 dependencies = [
  "base64 0.23.1",
  "bs58",
@@ -158,7 +169,7 @@ dependencies = [
 [[package]]
 name = "calimero-utils-fs"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
 dependencies = [
  "windows-sys",
 ]
@@ -538,13 +549,13 @@ dependencies = [
  "sha2 0.10.9",
  "tar",
  "tempfile",
- "toml",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "mero-sign"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.19#a4756175d72209502e754e3a3d06469cb8254c56"
 dependencies = [
  "base64 0.23.1",
  "calimero-app-abi",
@@ -725,6 +736,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_spanned"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -852,9 +872,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
 dependencies = [
  "serde",
- "serde_spanned",
- "toml_datetime",
+ "serde_spanned 0.6.9",
+ "toml_datetime 0.6.11",
  "toml_edit",
+]
+
+[[package]]
+name = "toml"
+version = "1.2.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5755c51863cdac711f1956baf8eb9588e060755f7d3c4c979e70ea1e1f32cd7"
+dependencies = [
+ "indexmap",
+ "serde_core",
+ "serde_spanned 1.1.3",
+ "toml_datetime 1.1.3+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.5",
 ]
 
 [[package]]
@@ -867,6 +902,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_datetime"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "173f25c883cd2176a2d8212155638c0a60d484a9d84546d270866f40f56b6e49"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "toml_edit"
 version = "0.22.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,10 +918,19 @@ checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
 dependencies = [
  "indexmap",
  "serde",
- "serde_spanned",
- "toml_datetime",
+ "serde_spanned 0.6.9",
+ "toml_datetime 0.6.11",
  "toml_write",
- "winnow",
+ "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+dependencies = [
+ "winnow 1.0.5",
 ]
 
 [[package]]
@@ -885,6 +938,12 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "toml_writer"
+version = "1.2.0+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a"
 
 [[package]]
 name = "tracing"
@@ -977,6 +1036,12 @@ checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "winnow"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 
 [[package]]
 name = "xattr"
