@@ -57,30 +57,28 @@ with tempfile.TemporaryDirectory() as t:
         return cs.scope(list(paths), root)
 
     print("── what must NOT select an app")
-    none = {"app_paths": [], "logic_paths": [], "frontend_dirs": []}
+    none = {"app_paths": [], "frontend_dirs": []}
     check("a dev script beside the app", s("apps/mero-design/scripts/dev-node.sh"), none)
     check("an app README", s("apps/mero-chat/README.md"), none)
     check("markdown inside app/", s("apps/mero-chat/app/docs/notes.md"), none)
     check("a root-level app file", s("apps/mero-chat/permissions-testing.sh", "apps/mero-chat/Makefile"), none)
-    check("repo-level scripts are not apps", s("scripts/merobox-coverage-baseline.json"), none)
+    check("repo-level scripts are not apps", s("scripts/check-app-icons.py"), none)
 
     print("── what must")
     check("a frontend file", s("apps/mero-chat/app/src/x.ts"),
-          {"app_paths": ["apps/mero-chat/"], "logic_paths": [], "frontend_dirs": ["apps/mero-chat/app"]})
-    check("a contract file reaches merobox AND the codegen check", s("apps/mero-chat/logic/res/abi.json"),
-          {"app_paths": ["apps/mero-chat/"], "logic_paths": ["apps/mero-chat/"], "frontend_dirs": ["apps/mero-chat/app"]})
+          {"app_paths": ["apps/mero-chat/"], "frontend_dirs": ["apps/mero-chat/app"]})
+    check("a contract file reaches the wasm build AND the codegen check", s("apps/mero-chat/logic/res/abi.json"),
+          {"app_paths": ["apps/mero-chat/"], "frontend_dirs": ["apps/mero-chat/app"]})
     check("a contract with no frontend dir", s("apps/kv-only/logic/src/lib.rs"),
-          {"app_paths": ["apps/kv-only/"], "logic_paths": ["apps/kv-only/"], "frontend_dirs": []})
+          {"app_paths": ["apps/kv-only/"], "frontend_dirs": []})
     check("the rig the rich browser job boots", s("apps/mero-docs/scripts/local-rig.sh"),
-          {"app_paths": ["apps/mero-docs/"], "logic_paths": [], "frontend_dirs": []})
+          {"app_paths": ["apps/mero-docs/"], "frontend_dirs": []})
 
     print("── shared packages reach their dependents, transitively")
     check("invite → forum", s("packages/invite/src/index.ts"),
-          {"app_paths": ["apps/mero-forum/"], "logic_paths": [],
-           "frontend_dirs": ["apps/mero-forum/app", "packages/invite"]})
+          {"app_paths": ["apps/mero-forum/"], "frontend_dirs": ["apps/mero-forum/app", "packages/invite"]})
     check("join-sync → invite → forum, and pass via devDependencies", s("packages/join-sync/src/a.ts"),
-          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "logic_paths": [],
-           "frontend_dirs": ["apps/mero-forum/app", "apps/mero-pass/app",
+          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "frontend_dirs": ["apps/mero-forum/app", "apps/mero-pass/app",
                              "packages/invite", "packages/join-sync"]})
     check("an app that imports no package is not reached", "apps/mero-chat/" in s("packages/invite/x.ts")["app_paths"], False)
 

@@ -32,9 +32,6 @@ Nothing in CI ever compared an app's outgoing body to core's schema:
   * The Playwright suites `page.route` the node and answer from a fixture. A
     mock cannot reject an unknown field — only a real `deny_unknown_fields`
     deserializer can — so a route-mocked suite is green by construction.
-  * The merobox legs DO run a real merod, but merobox drives the node with its
-    own Python client. The app's TypeScript request body is never on the wire
-    in those runs.
   * `executorPublicKey` was spread in CONDITIONALLY
     (`...(target.executorPublicKey ? { executorPublicKey } : {})`), so a
     session without an identity — which is every unit test and every mocked

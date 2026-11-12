@@ -21,7 +21,6 @@ The rule here:
 Reads changed paths (whitespace-separated) on stdin and prints JSON:
 
   {"app_paths":     ["apps/<a>/", ...],   # for app-packages.sh from-paths
-   "logic_paths":   ["apps/<a>/", ...],   # a CONTRACT changed: merobox scope
    "frontend_dirs": ["apps/<a>/app", "packages/<p>", ...]}  # pnpm --filter
 
 Run the tests: python3 scripts/tests/ci-scope-test.py
@@ -77,7 +76,6 @@ def dependents(members: dict[str, dict], seeds: set[str]) -> set[str]:
 
 def scope(paths: list[str], root: pathlib.Path = ROOT) -> dict[str, list[str]]:
     apps: set[str] = set()
-    logic: set[str] = set()
     frontend: set[str] = set()
     pkg_seeds: set[str] = set()
 
@@ -90,7 +88,6 @@ def scope(paths: list[str], root: pathlib.Path = ROOT) -> dict[str, list[str]]:
             app, rest = m["app"], m["rest"]
             if rest.startswith("logic/"):
                 apps.add(app)
-                logic.add(app)
                 # The frontend job regenerates the client from the committed
                 # ABI (logic/res/abi.json), so a contract change is its business.
                 if (root / "apps" / app / "app").is_dir():
@@ -114,7 +111,6 @@ def scope(paths: list[str], root: pathlib.Path = ROOT) -> dict[str, list[str]]:
 
     return {
         "app_paths": sorted(f"apps/{a}/" for a in apps),
-        "logic_paths": sorted(f"apps/{a}/" for a in logic),
         "frontend_dirs": sorted(frontend),
     }
 

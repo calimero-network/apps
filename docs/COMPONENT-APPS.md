@@ -533,11 +533,11 @@ per app, branched off `main` once this groundwork has merged.
 12. Delete `logic/workflows/`, `tests/converge.rs` and other CRDT-merge tests,
     `res/state-schema.json`, `src/generated/`, the Playwright e2e that drove
     merobox or merod 0.x, the v1 invitation / deep-link / desktop-SSO code and
-    helper scripts, and every reference to them (`merobox-coverage-baseline.json`
-    entries, README tables). `grep -rn merobox apps/<app>` comes back empty.
+    helper scripts, and every reference to them (README tables).
+    `grep -rn merobox apps/<app>` comes back empty.
 13. Run the repo's guards (`python3 scripts/check-component-pins.py`, the v1
-    `metadata` job's scripts: the coverage check skips an app with no
-    `workflows/`, the desktop-SSO check one with no `MeroProvider`),
+    `metadata` job's scripts: the desktop-SSO check skips an app with no
+    `MeroProvider`),
     `pnpm -F <app> lint typecheck test build`, and `pnpm -r typecheck test`
     when the lockfile moved.
 14. `pnpm dev:local <app>`: sign up in the browser, exercise every method and

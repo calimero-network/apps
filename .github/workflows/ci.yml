@@ -1,7 +1,7 @@
 # Per-app CI, path-filtered.
 #
-# The filter is the point. A frontend-only change must not pay for a WASM build
-# or spin up merobox containers, and a change to the workspace root must fan out
+# The filter is the point. A frontend-only change must not pay for a WASM build,
+# and a change to the workspace root must fan out
 # to EVERY app — because bumping the SDK changes every contract's bytes. The
 # per-repo setup this replaces could not express the second half at all.
 
@@ -44,17 +44,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.set.outputs.apps }}
-      # The merobox matrix is driven STRICTLY by what can change a contract.
-      # `apps` is a union that a JS-only change can widen, and e2e does not gate
-      # on js_deps — so sharing one matrix ran a 40-minute two-node e2e for
-      # every app whenever a lockfile moved. These two must stay separate.
-      #
-      # ⚠️ Only `e2e` uses this. `wasm` must stay on `apps` because it is the
-      # producer of the artifacts BOTH it and `browser` download, and `browser`
-      # runs over `apps` — see the note on the wasm job's matrix.
-      contract_apps: ${{ steps.set.outputs.contract_apps }}
-      # `contract_apps` as one entry per scenario, with its time budget.
-      contract_workflows: ${{ steps.set.outputs.contract_workflows }}
       # `apps` as {app, shard} pairs: an app in BROWSER_SHARDS runs its browser
       # e2e split across that many runners.
       browser_matrix: ${{ steps.set.outputs.browser_matrix }}
@@ -89,8 +78,7 @@ jobs:
           list-files: shell
           filters: |
             # A workspace-level change is one that can change a CONTRACT's
-            # bytes, which is what justifies fanning out to every app AND
-            # running the 40-minute merobox matrix.
+            # bytes, which is what justifies fanning out to every app.
             #
             # It used to include `.github/**`, `scripts/**` and the JS
             # workspace files, so editing a COMMENT in this very file triggered
@@ -108,22 +96,19 @@ jobs:
               - 'Cargo.toml'
             cargo_lock:
               - 'Cargo.lock'
-            # The pipeline itself changed, so the pipeline has to be exercised —
-            # including the e2e, since these are what drive it.
+            # The pipeline itself changed, so the pipeline has to be exercised.
             #
             # NOT `.github/**` and NOT `scripts/**`. release.yml and
-            # publish-bundle.yml drive nothing here, and the `check-*.py` guards,
-            # their tests and `merobox-coverage-baseline.json` run ONLY in the
-            # `metadata` job, which always runs. Listing them here meant a
-            # mero-design PR that moved the coverage baseline (#204) rebuilt and
-            # browser-tested all 17 apps.
+            # publish-bundle.yml drive nothing here, and the `check-*.py` guards
+            # and their tests run ONLY in the `metadata` job, which always runs.
+            # Listing them here meant a mero-design PR that moved a guard's
+            # baseline (#204) rebuilt and browser-tested all 17 apps.
             tooling:
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
               - 'scripts/app-packages.sh'
               - 'scripts/ci-scope.py'
               - 'scripts/lockfile-fanout.py'
-              - 'requirements-e2e.txt'
             # Runs only in the frontend job, over every app's build output.
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
@@ -131,7 +116,7 @@ jobs:
               # The generator every app's `codegen` runs, at its pinned tag.
               - 'scripts/install-mero-app-build.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
-            # contract, so it must not start merod containers.
+            # contract.
             #
             # Same split as above. The catalog and the shared tsconfig are
             # everyone's; `pnpm-lock.yaml` is per-importer, so adding an app
@@ -174,7 +159,7 @@ jobs:
       # `Cargo.lock` and `pnpm-lock.yaml` are rewritten whenever an app is
       # added, renamed or removed, and both used to be plain booleans that
       # fanned out to every app. So every migration PR paid for the full WASM +
-      # browser + merobox matrix to prove that nine untouched apps still built.
+      # browser matrix to prove that nine untouched apps still built.
       #
       # scripts/lockfile-fanout.py answers the narrower question the fan-out
       # actually needs — see its docstring for the rules, and
@@ -274,8 +259,8 @@ jobs:
       #
       # This used to be `cargo metadata | .name` — every app in the workspace —
       # while the filters above are repo-wide booleans. So touching ONE
-      # contract set `logic=true` and then built wasm and ran a two-node merobox
-      # e2e for EVERY app: cost O(apps) per PR, and the per-app filtering this
+      # contract set `logic=true` and then built wasm and ran the node e2e for
+      # EVERY app: cost O(apps) per PR, and the per-app filtering this
       # file's header claims as the monorepo's new capability was never actually
       # expressed. Found by a reviewer, not by CI, because with one app in the
       # repo the two are indistinguishable.
@@ -305,7 +290,7 @@ jobs:
           if ! scope=$(printf '%s\n%s\n' "$APP_FILES" "$importers" | python3 scripts/ci-scope.py); then
             echo "::warning::ci-scope.py failed — covering every app"
             SHARED=true
-            scope='{"app_paths":[],"logic_paths":[],"frontend_dirs":[]}'
+            scope='{"app_paths":[],"frontend_dirs":[]}'
           fi
           echo "scope: $scope"
 
@@ -325,19 +310,6 @@ jobs:
           echo "browser_matrix=$browser_matrix" >> "$GITHUB_OUTPUT"
           echo "frontend_dirs=$frontend_dirs" >> "$GITHUB_OUTPUT"
           echo "::notice::frontend dirs: $frontend_dirs"
-
-          # Contracts only. A frontend edit or a lockfile importer cannot alter
-          # what a two-node merobox run does, so neither belongs in the matrix
-          # that starts merod containers.
-          if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ]; then
-            contract_apps=$(bash scripts/app-packages.sh all)
-            echo "::notice::contract-level change — merobox covers every app: $contract_apps"
-          else
-            contract_apps=$(jq -r '.logic_paths[]' <<<"$scope" | bash scripts/app-packages.sh from-paths)
-            echo "::notice::merobox apps: $contract_apps"
-          fi
-          echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
-          echo "contract_workflows=$(python3 scripts/e2e-matrix.py <<<"$contract_apps")" >> "$GITHUB_OUTPUT"
 
       - name: Resolve the journey matrix
         id: journey
@@ -412,24 +384,10 @@ jobs:
       # `executorPublicKey` on the JSON-RPC envelope (dropped in #2116). Nothing
       # here could catch either — the vitest wire tests assert the keys that
       # should be present and never that nothing else is, the Playwright suites
-      # `page.route` the node so no deserializer ever sees the body, and the
-      # merobox legs drive merod with their own client rather than the app's.
-      # This reads the bodies out of the source and compares them to core's
+      # `page.route` the node so no deserializer ever sees the body. This reads the bodies out of the source and compares them to core's
       # schema, which is the only check in this file that does.
       - name: Assert no app sends a body key the node refuses
         run: python3 scripts/check-admin-wire.py
-
-      # `Build WASM` proves a contract compiles; `Rust (fmt, clippy, test)`
-      # proves its unit tests pass in-process with no node, no peer and no
-      # replication. merobox is the only tier here that calls a method over the
-      # wire against a real merod — so a method no scenario names has never been
-      # executed against a node at all.
-      #
-      # Cheap, Docker-free, and baselined: the 93 methods that were already
-      # uncovered when this landed are recorded, so the gap can shrink and can
-      # never grow.
-      - name: Assert every contract method is exercised by merobox
-        run: python3 scripts/check-merobox-coverage.py
 
       # The checker's own tests. Its first version matched routes as LITERAL
       # strings, so every `` `/namespaces/${id}/groups` `` call site was
@@ -483,8 +441,8 @@ jobs:
         run: python3 scripts/tests/cluster-min-release-test.py
 
       # The vitest copy-lint suite only scans string literals and JSX text in a
-      # handful of files, so an em dash in a comment, a test name, a Rust doc
-      # comment or a merobox YAML step slips past review every time. This scans
+      # handful of files, so an em dash in a comment, a test name or a Rust doc
+      # comment slips past review every time. This scans
       # every tracked file under apps/mero-docs instead. The landing page is a
       # generated copy of scripts/landing/template, so it is fixed there.
       - name: Assert no em dash in apps/mero-docs
@@ -517,20 +475,6 @@ jobs:
       # says. That failure is silent, so the gates are asserted here.
       - name: Assert artifact producers are not gated more narrowly than consumers
         run: python3 scripts/tests/producer-gate-test.py
-
-      # `create_mesh` joins internally and has no step boundary to retry at, so
-      # an unsettled one loses the whole scenario to a KeyDelivery race. The
-      # symptom is a flake, which is why six scenarios shipped without a settle.
-      - name: Assert every create_mesh is preceded by a settle
-        run: python3 scripts/tests/mesh-settle-test.py
-
-      # Retrying anything but a joining-step failure hides real defects and can
-      # burn the whole job budget on a deterministic one.
-      - name: Assert the e2e retry only covers joining-step failures
-        run: python3 scripts/tests/e2e-retry-decision-test.py
-
-      - name: Assert the e2e matrix lists every scenario the job globs
-        run: python3 scripts/tests/e2e-matrix-test.py
 
       # A filter that stops matching skips the rig with nothing to notice.
       - name: Assert the conformance rig is gated on the paths it depends on
@@ -577,7 +521,7 @@ jobs:
           #
           # GitHub's cache is write-once per key: the first job to finish saves
           # and every other save is REJECTED with a warning, not a failure. With
-          # one key across `rust`, `wasm`, `e2e` and publish-bundle, the stored
+          # one key across `rust`, `wasm` and publish-bundle, the stored
           # tree was whichever job won the race — a native tree from
           # `cargo test --workspace`, or a wasm32 `app-release` tree from
           # `cargo mero build`, never both — so every later run restored the
@@ -619,9 +563,7 @@ jobs:
     #
     # The extra cost is small: the cargo cache below is keyed on `Cargo.lock`,
     # which a frontend-only change does not move, so this is a warm no-op
-    # rebuild plus the bundling step, not a cold fat-LTO build. `e2e` keeps its
-    # own contract-only gate, so the expensive two-node merobox legs are
-    # unaffected.
+    # rebuild plus the bundling step, not a cold fat-LTO build.
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
@@ -630,15 +572,13 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # ⚠️ `apps`, and it CANNOT be narrowed to `contract_apps`.
+      # ⚠️ `apps`, and it CANNOT be narrowed to the apps whose contract changed.
       #
-      # This job is the only producer of `mpk-<app>` and `wasm-<app>`, and the
-      # jobs that consume them do not agree on a matrix: `browser` runs over
-      # `apps` (a frontend or lockfile change can break the UI), while `e2e`
-      # runs over `contract_apps`. So this must cover the UNION, which is
-      # `apps`.
+      # This job is the only producer of `mpk-<app>` and `wasm-<app>`, and
+      # `browser` and `journey` consume them over `apps` (a frontend or lockfile
+      # change can break the UI).
       #
-      # Narrowing it to `contract_apps` looks right — a pnpm resolution cannot
+      # Narrowing it to contract changes looks right — a pnpm resolution cannot
       # change a byte of wasm — and it is what this comment used to say. It
       # fails in the consumer instead, and not as a build error:
       #
@@ -666,8 +606,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          # Separate from the native key — see the `rust` job. Shared between the
-          # wasm and e2e jobs on purpose: both build the same wasm32 tree.
+          # Separate from the native key — see the `rust` job.
           key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-wasm-${{ runner.os }}-
 
@@ -747,12 +686,10 @@ jobs:
           fi
           echo "committed ABIs match the built contracts"
 
-      # An app may ship a hand-rolled bundle FIXTURE its scenarios install —
-      # scaffolding-e2e's two-service .mpk, which exists to exercise merod's
-      # multi-service install and `service_name` selection. It has to be built
-      # HERE: this is the only job with a Rust toolchain, and the e2e job
-      # deliberately downloads the contract rather than rebuilding it. Without
-      # this the scenario fails at `Application path not found`.
+      # An app may ship a hand-rolled bundle FIXTURE its tests install — e.g.
+      # the Mero CRM bundle mero-forms' journey sends a response to. It has to
+      # be built HERE: this is the only job with a Rust toolchain, and the jobs
+      # that use it download the `wasm-<app>` artifact rather than rebuilding.
       - name: Build any bundle fixtures this app ships
         run: |
           script="apps/${{ matrix.app }}/logic/build-multi-service-bundle.sh"
@@ -767,7 +704,7 @@ jobs:
       # least-common-ancestor is `apps/`, which is what makes `path: apps`
       # correct on the download side — adding a repo-root path like `dist/`
       # here would move that ancestor to `.` and silently break the layout the
-      # e2e job depends on (see the note on that download step).
+      # `browser` and `journey` downloads (`path: apps`) depend on.
       - name: Upload the dev bundle
         if: always()
         uses: actions/upload-artifact@v4
@@ -906,13 +843,11 @@ jobs:
 
   browser:
     name: Browser E2E (${{ matrix.app }}${{ matrix.shard != '1/1' && format(' {0}', matrix.shard) || '' }})
-    # `needs: wasm` for the same reason the merobox e2e does: run the bundle
-    # that job already built and the ABI gate already validated, rather than
+    # `needs: wasm`: run the bundle that job already built and the ABI gate already validated, rather than
     # paying for a second fat-LTO wasm build.
     needs: [changes, wasm]
     # Frontend OR contract: this drives the UI against a real node, so either
-    # side can break it — unlike the merobox e2e, which a frontend-only change
-    # cannot affect.
+    # side can break it.
     if: needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -947,7 +882,8 @@ jobs:
       # Any bundle fixture the wasm job built for this app
       # (logic/build-multi-service-bundle.sh) lands in its logic/res/ — e.g.
       # the Mero CRM bundle mero-forms' journey sends a response to. `path:
-      # apps` for the same reason as the merobox job's download of it.
+      # apps` because the upload globs `apps/*/logic/res/*`, so the archive is
+      # rooted at `apps/`.
       - uses: actions/download-artifact@v4
         with:
           name: wasm-${{ matrix.app }}-${{ github.sha }}
@@ -1075,321 +1011,6 @@ jobs:
             ${{ runner.temp }}/journey/rig.json
           retention-days: 7
           if-no-files-found: ignore
-
-  e2e:
-    name: E2E (${{ matrix.app }} / ${{ matrix.workflow }})
-    # BLOCKING again. It was made advisory when the namespace joins looked like
-    # an unfixable core-side race; they were not. Every scenario now sets
-    # `e2e_mode: true`, which clears `merod init`'s default `bootstrap.nodes` —
-    # the PUBLIC calimero devnet boot-node. Without that, each container spent
-    # its startup dialing unreachable public addresses until the relay client
-    # hit capacity, the peers never found each other, and the join died on
-    # `KeyDelivery timed out`. See the comment at the top of any scenario.
-    # `needs: wasm` so the contract is DOWNLOADED, not rebuilt. This job used to
-    # run `cargo mero build -p` itself, duplicating a fat-LTO wasm build the
-    # `wasm` job had already done and uploaded — and it needed a Rust toolchain,
-    # a cargo cache and cargo-mero to do it.
-    needs: [changes, wasm]
-    # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
-    # alter what a two-node merobox run does, and each of these pulls an image
-    # and starts two merod containers.
-    if: needs.changes.outputs.contract_workflows != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.timeout_minutes }} # one scenario, sized by scripts/e2e-matrix.py
-    strategy:
-      fail-fast: false
-      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
-      # so GitHub prints the raw template as a skipped check. Falling back to
-      # `none` keeps the name resolvable; this job's `if` gates on the same
-      # `!= '[]'`, so the leg is skipped and simply reads "… (none / none)".
-      matrix:
-        include: ${{ fromJSON(needs.changes.outputs.contract_workflows != '[]' && needs.changes.outputs.contract_workflows || '[{"app":"none","workflow":"none","attempt_minutes":1,"timeout_minutes":5}]') }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # The exact artifact the wasm job built and the ABI gate validated, so the
-      # e2e runs the same bytes rather than a second independent build.
-      #
-      # `path: apps`, and that is not a guess — it is what the archive layout
-      # actually is, established by getting it wrong twice.
-      #
-      # The upload uses GLOB paths (`apps/*/logic/res/*.wasm`). upload-artifact
-      # takes the least-common-ancestor of the pattern's literal prefix, which is
-      # `apps/`, so the archive contains `<app-dir>/logic/res/<name>.wasm`.
-      # Therefore:
-      #
-      #   path: .                    -> ./kv-store/logic/res/…   (wrong: no apps/)
-      #   path: apps/<app>/logic/res -> apps/<app>/logic/res/<app>/logic/res/…
-      #   path: apps                 -> apps/<app>/logic/res/…   ✓
-      #
-      # Both wrong versions were caught in one line by the verification step
-      # below rather than by merobox failing inside `install_application`, which
-      # is the whole reason that step exists.
-      - uses: actions/download-artifact@v4
-        with:
-          name: wasm-${{ matrix.app }}-${{ github.sha }}
-          path: apps
-
-      - name: Verify the contract arrived
-        run: |
-          set -euo pipefail
-          res="apps/${{ matrix.app }}/logic/res"
-          # ⚠️ This job — and publish-bundle.yml — index a DIRECTORY by cargo
-          # PACKAGE name. That holds while every app directory is named like its
-          # crate, which scripts/app-packages.sh no longer assumes for the
-          # path->app mapping. Assert it here so the first app where they differ
-          # says so, rather than failing as "no wasm".
-          if [ ! -d "apps/${{ matrix.app }}/logic" ]; then
-            echo "::error::no apps/${{ matrix.app }}/logic — this app's directory is not named after its cargo package, which this job assumes"
-            exit 1
-          fi
-          wasm=$(find "$res" -name '*.wasm' -print -quit)
-          if [ -z "$wasm" ]; then
-            echo "::error::no wasm in the downloaded artifact — the e2e would run against nothing"
-            ls -la "$res" || true
-            exit 1
-          fi
-          echo "using $wasm ($(wc -c <"$wasm") bytes)"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # ── the app's own dev bundle ────────────────────────────────────────────
-      #
-      # A scenario that passes `service_name` cannot install a bare .wasm — it
-      # has to install a BUNDLE, because that is the only thing carrying the
-      # services list the name selects from. Those scenarios were unrunnable
-      # here: the wasm job uploads the bundle as a separate `mpk-` artifact and
-      # only the BROWSER job downloaded it, so fifteen scenarios sat parked in
-      # `logic/workflows/probes/` (one level below the `workflows/*.yml` glob)
-      # rather than gating anything.
-      #
-      # Strict on purpose: this job `needs: wasm`, and the bundle dry-run runs
-      # unconditionally there, so a missing artifact means something upstream is
-      # wrong and should be loud rather than a scenario failing later with
-      # `Application path not found`.
-      - uses: actions/download-artifact@v4
-        with:
-          name: mpk-${{ matrix.app }}-${{ github.sha }}
-          path: apps/${{ matrix.app }}/logic/dist
-
-      # The artifact is named after the DIRECTORY (`dry-run-<app>.mpk`), but a
-      # scenario refers to the bundle by its PACKAGE ID — `dist/<package>.mpk`,
-      # the same name `cargo mero bundle` writes locally, which is what makes a
-      # scenario runnable by hand as well as in CI. Read the id out of the
-      # manifest rather than assuming it equals the directory name; the two are
-      # deliberately allowed to differ (mero-design/mero-pixart already do).
-      #
-      # tomllib is stdlib from 3.11, which the step above just installed.
-      - name: Name the bundle after its package id
-        working-directory: apps/${{ matrix.app }}/logic
-        run: |
-          set -euo pipefail
-          pkg=$(python3 -c "import tomllib;print(tomllib.load(open('Cargo.toml','rb'))['package']['metadata']['calimero']['package'])")
-          src="dist/dry-run-${{ matrix.app }}.mpk"
-          if [ ! -f "$src" ]; then
-            echo "::error::$src missing from the mpk artifact — a service_name scenario would fail as 'Application path not found'"
-            ls -la dist || true
-            exit 1
-          fi
-          cp "$src" "dist/${pkg}.mpk"
-          echo "bundle available as dist/${pkg}.mpk ($(wc -c <"$src") bytes)"
-
-      # calimero-client-py ships an sdist ONLY, so an uncached job compiles a
-      # Rust wheel (~70s measured).
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
-
-      # Both pins come from ONE file. Pinning merobox alone pins nothing:
-      # calimero-client-py is a transitive dep that tracks core master.
-      - run: pip install -r requirements-e2e.txt && merobox --version
-
-      # Free schema gate. Catches a YAML mistake before fourteen containers
-      # start, instead of after.
-      - name: Validate the workflow
-        working-directory: apps/${{ matrix.app }}/logic
-        run: merobox bootstrap validate "workflows/${{ matrix.workflow }}.yml"
-
-      # ⚠️ Tear the containers down BETWEEN attempts, not just at the end.
-      # `nuke_on_start` in a scenario clears DATA, not a previous scenario's
-      # running containers, and scenarios pick their own node prefix while
-      # sharing the default host ports. So the second scenario to want 2428
-      # dies at:
-      #
-      #     Bind for 0.0.0.0:2428 failed: port is already allocated
-      #
-      # which reads like a runner problem rather than a missing teardown. Any
-      # app with ONE scenario — kv-store, mero-design, merraria — never sees it;
-      # scaffolding-e2e has 18.
-      - name: Run the workflow
-        working-directory: apps/${{ matrix.app }}/logic
-        env:
-          WORKFLOW: workflows/${{ matrix.workflow }}.yml
-          ATTEMPT_TIMEOUT: ${{ matrix.attempt_minutes }}m
-        run: |
-          log=$(mktemp)
-
-          # Run one scenario; always tear the containers down afterwards so a
-          # retry starts from a clean host.
-          # ⚠️ THE DATA DIRECTORIES SURVIVE EVERY TEARDOWN WE HAD, and a scenario
-          # that inherits one dies at its FIRST admin call for a reason that
-          # names nothing.
-          #
-          # Observed on this job, seconds apart, in the same working directory:
-          #
-          #   --- teardown after attempt (exit 0) ---      # access-control.yml, passed
-          #   No Calimero node data directories found.     # ← merobox nuke sees ZERO
-          #   ##[group]workflows/authored-shared.yml
-          #   Found 2 Calimero node data directory(ies)    # ← nuke_on_start sees TWO
-          #   Deleting 2 data directory(ies)...
-          #   No data directories were deleted.            # ← and removes NEITHER
-          #
-          # So `merobox nuke --force` and the in-scenario `nuke_on_start` disagree
-          # about what exists, and the one that finds the directories cannot
-          # delete them — merod writes them from inside the container as root, so
-          # the runner user owns nothing under ./data.
-          #
-          # The 3-node scenario then "initialized" node-1 on top of the 2-node
-          # scenario's home, and `create_namespace` — its first admin call —
-          # answered HTTP 500 on all SIX attempts with, in the node log:
-          #
-          #   failed to mint this node's account credential: join credential:
-          #   could not resolve this node's account root
-          #     at crates/context/src/handlers/create_group.rs:93
-          #
-          # An account root is provisioned by `merod init` and never lazily
-          # (governance-store `provision_account_root` vs `require_account_root`),
-          # so a home that init skipped has none for the rest of its life. That is
-          # why the first scenario in a job always passes and the next 3-node one
-          # always fails, and why it is deterministic rather than flaky —
-          # widening the settle in front of the call cannot touch it.
-          #
-          # Not silenced and not best-effort: a scenario starting on inherited
-          # state produces a failure that points nowhere near its cause, so if the
-          # directory cannot be removed we stop instead of running blind.
-          cold_host() {
-            sudo rm -rf ./data 2>/dev/null || rm -rf ./data 2>/dev/null || true
-            if [ -d ./data ] && [ -n "$(ls -A ./data 2>/dev/null)" ]; then
-              echo "::error::./data survived cleanup — a scenario starting here would inherit another node home and fail at its first admin call"
-              ls -la ./data
-              return 1
-            fi
-          }
-
-          run_one() {
-            # Cold BEFORE, not only after: the prep steps run once, ahead of attempt 1.
-            cold_host || return 1
-            # Wide terminal so rich never wraps the step name the retry decision parses.
-            COLUMNS=1000 timeout --kill-after=30s "$ATTEMPT_TIMEOUT" \
-              merobox bootstrap run "$1" --log-level info 2>&1 | tee "$log"
-            local s=${PIPESTATUS[0]}
-            # ⚠️ `stop` alone is not enough between attempts, which made the
-            # retry loop actively misleading.
-            #
-            # Observed on main: kv-store's attempt 1 lost the join race
-            # (`join_namespace … 500`), then attempts 2-5 all failed EARLIER, at
-            # `create_namespace … 500` — a step that had just succeeded.
-            # Stopping a container leaves its data folder behind, so each retry
-            # started on a host still holding the previous attempt's state and
-            # failed for a different reason than the one being retried.
-            #
-            # `merobox nuke` deletes the node data folders, which is what makes a
-            # retry an actual retry. `nuke_on_start: true` covers this for the
-            # scenarios that set it; 39 of them do not.
-            # NOT silenced. Suppressing this hid the very thing that needed
-            # reading: after any failed attempt, every later attempt failed
-            # EARLIER (at `create_namespace`), which means the teardown is the
-            # suspect — and with the output thrown away there was no way to tell
-            # whether `nuke` even ran.
-            # ⚠️ `stop --all` and `nuke` are BOTH insufficient, and the
-            # diagnostics above are what showed it:
-            #
-            #   --- teardown after attempt (exit 0) ---
-            #   No Calimero nodes are currently running
-            #   No Calimero node data directories found.
-            #   kvc-node-3-init Exited (0) About a minute ago
-            #   kvc-node-2-init Exited (0) About a minute ago
-            #   kvc-node-1-init Exited (0) About a minute ago
-            #
-            # `stop` does not see the `*-init` containers, and `nuke` finds no
-            # host data directories at all because the state lives in Docker. So
-            # the next scenario started on a host still holding the previous
-            # one's containers and network, and its join then hung ~50s and
-            # 500d: kv-store's `converge.yml` passed, and `simple-store.yml`
-            # failed at `Create mesh with node-2` on all SIX attempts, always at
-            # the same step. Deterministic, not flaky.
-            #
-            # A CI runner is disposable and only ever holds merobox containers
-            # here, so removing all of them plus the networks is both safe and
-            # the only thing that actually makes the next attempt cold.
-            echo "--- teardown after attempt (exit $s) ---"
-            # Keep this attempt's node logs before the teardown below wipes
-            # ./data: merobox exports them to ./data/container-logs/, and the
-            # upload step runs after every attempt has been cleaned up.
-            if [ -d ./data/container-logs ]; then
-              attempt_logs="../node-logs/$(basename "$1" .yml)-$(date +%s)"
-              mkdir -p "$attempt_logs"
-              cp -r ./data/container-logs/. "$attempt_logs"/ 2>/dev/null || true
-            fi
-            merobox stop --all 2>&1 | tail -3 || true
-            merobox nuke --force 2>&1 | tail -3 || true
-            leftover=$(docker ps -aq 2>/dev/null || true)
-            if [ -n "$leftover" ]; then
-              echo "removing $(echo "$leftover" | wc -l | tr -d ' ') leftover container(s)"
-              docker rm -f $leftover >/dev/null 2>&1 || true
-            fi
-            docker network prune -f >/dev/null 2>&1 || true
-            docker volume prune -f >/dev/null 2>&1 || true
-            # The containers are gone, so nothing holds the directories open and
-            # ./data can go. `merobox nuke` above has already claimed to have
-            # done this; it has not (see cold_host).
-            cold_host || true
-            echo "remaining: $(docker ps -aq 2>/dev/null | wc -l | tr -d ' ') container(s)"
-            return "$s"
-          }
-
-          # Retry only a failure at a joining step: that is the cold-join
-          # KeyDelivery race, core-side and provoked by CI load. Anything else,
-          # and any timeout, is deterministic and fails at once.
-          # `create_mesh` joins its nodes back to back, so only the whole
-          # scenario can be retried; 6 attempts because 4 still lost on busy runners.
-          ok=0
-          for attempt in 1 2 3 4 5 6; do
-            rc=0; run_one "$WORKFLOW" || rc=$?
-            if [ "$rc" -eq 0 ]; then ok=1; break; fi
-            if ! why=$(python3 "$GITHUB_WORKSPACE/scripts/e2e-retry-decision.py" "$WORKFLOW" "$log" "$rc"); then
-              echo "::error file=$WORKFLOW::$why"
-              break
-            fi
-            if [ "$attempt" -lt 6 ]; then
-              # escalating gap: a retry right after teardown races the same cold state
-              gap=$(( attempt * 15 )); [ "$gap" -gt 45 ] && gap=45
-              echo "::warning file=$WORKFLOW::attempt $attempt failed - $why - retrying in ${gap}s"
-              sleep "$gap"
-            else
-              echo "::error file=$WORKFLOW::lost the cold-join race on all 6 attempts - $why - check the node-logs artifact"
-            fi
-          done
-          [ "$ok" -eq 1 ]
-
-      # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
-      # `Error: Missing argument 'NODE_NAME'`, so the first version of this step
-      # produced no diagnostics at all on the failure it existed to explain.
-      # `merobox bootstrap run` already exports each node's log to
-      # data/container-logs/, so upload that instead of re-deriving it.
-      - name: Collect node logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-logs-${{ matrix.app }}-${{ matrix.workflow }}-${{ github.run_attempt }}
-          # Copied out of ./data by `run_one` per attempt: the teardown
-          # deletes ./data, so the export itself is gone by the time this runs.
-          path: apps/${{ matrix.app }}/node-logs/
-          if-no-files-found: ignore
-          retention-days: 3
 
   # The conformance rig: every admin and RPC call, on a node and on an account,
   # against the newest core release built with mock attestation. Its own
