@@ -70,12 +70,6 @@ export interface InitArgs {
   now?: string | null;
 }
 
-/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
-export interface InitArgs {
-  title?: string | null;
-  now?: string | null;
-}
-
 /** The arguments of `acceptDraw`. */
 export interface AcceptDrawArgs {
   now: string;
