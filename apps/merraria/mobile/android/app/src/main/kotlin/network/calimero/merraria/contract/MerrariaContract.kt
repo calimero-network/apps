@@ -6,9 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.put
 import network.calimero.merraria.generated.MerrariaClient
 
 // The world contract's component ABI (`logic/res/abi.json`). The calls are
