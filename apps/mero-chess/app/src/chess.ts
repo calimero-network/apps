@@ -1,30 +1,10 @@
 import { AppError } from "@calimero-network/mero-js";
-import { describeError, type ClientRoutes } from "@calimero-apps/connect";
+import { describeError } from "@calimero-apps/connect";
+
+import type { AppTransport } from "./generated/client";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-chess";
-
-/**
- * The contract's methods by their ABI names, split the way the node runs them:
- * a call goes through the app's log, a view is answered by a node without
- * writing. `chess.test.ts` asserts these lists are exactly the committed
- * `logic/res/abi.json`'s, so a method the contract drops or renames fails a
- * test rather than a request.
- */
-export const CALLS = [
-  "join",
-  "heartbeat",
-  "sit",
-  "stand",
-  "play",
-  "resign",
-  "offerDraw",
-  "acceptDraw",
-  "declineDraw",
-  "claimDraw",
-  "rematch",
-] as const;
-export const VIEWS = ["table", "history"] as const;
 
 // ── The shapes the screens use ───────────────────────────────────────────────
 //
@@ -175,77 +155,43 @@ export function toGameSummary(w: WireGameSummary): GameSummary {
   };
 }
 
-// ── The typed contract ───────────────────────────────────────────────────────
+// ── Calling the contract ─────────────────────────────────────────────────────
+//
+// The contract is called through `MeroChessClient`, which `mero-app-build
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). Its
+// records come out `unknown` (the ABI names `TableView` and `GameSummary`
+// without their shapes), so the answers are typed and converted here, at the
+// call site, by `toTableView` / `toGameSummary`.
 
-/** The table, typed from the contract (no client is generated from a component ABI yet). */
-export interface Chess {
-  table(): Promise<TableView>;
-  history(): Promise<GameSummary[]>;
-  join(name: string): Promise<null>;
-  heartbeat(): Promise<null>;
-  sit(seat: "white" | "black", name: string): Promise<null>;
-  stand(): Promise<null>;
-  /** The move's SAN. */
-  play(uci: string): Promise<string>;
-  resign(): Promise<null>;
-  offerDraw(): Promise<null>;
-  acceptDraw(): Promise<null>;
-  declineDraw(): Promise<null>;
-  claimDraw(): Promise<null>;
-  /** The new game's index. */
-  rematch(): Promise<number>;
-  /** The highest log index any answer through this wrapper has reflected (0 before the first). */
+/** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
+export const now = (clock: () => number = Date.now): string => String(Math.floor(clock()));
+
+/** A transport that keeps the highest log index its answers reflected (0 before the first). */
+export interface Indexed<T> {
+  transport: T;
   index(): number;
 }
 
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
-
-/** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
-const now = (clock: () => number) => String(Math.floor(clock()));
-
 /**
- * The table at instance `app` through `client`. `after` runs after every
- * request (the session store syncs a refreshed session there).
+ * `client`, watched for the log index each answer carries: the generated
+ * client returns a method's result alone, and the event stream is resumed
+ * just past what the table already reflects.
  */
-export function chess(
-  client: Transport,
-  app: string,
-  after: () => void = () => {},
-  clock: () => number = Date.now,
-): Chess {
+export function indexed<T extends AppTransport>(client: T): Indexed<AppTransport> {
   let seen = 0;
-  const saw = <R extends { index: number }>(r: R): R => {
-    if (typeof r.index === "number" && r.index > seen) seen = r.index;
+  const saw = <R extends { result: unknown }>(r: R): R => {
+    const index = (r as { index?: unknown }).index;
+    if (typeof index === "number" && index > seen) seen = index;
     return r;
   };
-  const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return saw(await client.apps.call({ app, method, args: { ...args, now: now(clock) } })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return saw(await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
   return {
-    table: async () => toTableView(await view<WireTableView>("table", { now: now(clock) })),
-    history: async () => (await view<WireGameSummary[]>("history")).map(toGameSummary),
-    join: (name) => call("join", { name }),
-    heartbeat: () => call("heartbeat"),
-    sit: (seat, name) => call("sit", { seat, name }),
-    stand: () => call("stand"),
-    play: (uci) => call("play", { uci }),
-    resign: () => call("resign"),
-    offerDraw: () => call("offerDraw"),
-    acceptDraw: () => call("acceptDraw"),
-    declineDraw: () => call("declineDraw"),
-    claimDraw: () => call("claimDraw"),
-    rematch: () => call("rematch"),
+    transport: {
+      apps: {
+        call: async (args, options) => saw(await client.apps.call(args, options)),
+        view: async (args, options) => saw(await client.apps.view(args, options)),
+      },
+      events: (app, from, signal) => client.events(app, from, signal),
+    },
     index: () => seen,
   };
 }

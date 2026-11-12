@@ -1,37 +1,10 @@
 import { AppError } from '@calimero-network/mero-js';
-import { describeError, type ClientRoutes } from '@calimero-apps/connect';
+import { describeError } from '@calimero-apps/connect';
+
+import { BattleshipsClient, type AppTransport } from './generated/client';
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = 'com.calimero.battleships';
-
-/**
- * The contract's methods by their ABI names (camelCase), split the way the
- * node runs them: a call goes through the app's log, a view is answered by a
- * node without writing. `battleships.test.ts` asserts these lists, and every
- * method's parameter names, are exactly the committed `logic/res/abi.json`'s,
- * so a method the contract drops or renames fails a test rather than a request.
- */
-export const CALLS = [
-  'registerPlayer',
-  'createMatch',
-  'commitBoard',
-  'proposeShot',
-  'acknowledgeShot',
-  'revealBoard',
-] as const;
-export const VIEWS = [
-  'getPlayers',
-  'getMatches',
-  'getPlayerStats',
-  'getHistory',
-  'getShots',
-  'getIncomingShots',
-  'getMatchState',
-  'getActiveMatchId',
-  'getCurrentTurn',
-  'getWinner',
-  'getCurrentUser',
-] as const;
 
 // ── What the screens use ─────────────────────────────────────────────────────
 //
@@ -133,87 +106,42 @@ export function base64url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// ── The typed contract ───────────────────────────────────────────────────────
+// ── Calling the contract ─────────────────────────────────────────────────────
+//
+// The lobby's contract is called through `BattleshipsClient`, which
+// `mero-app-build codegen` writes from logic/res/abi.json
+// (`src/generated/client.ts`): camelCase arguments, bytes as base64url
+// (`base64url` above). The ABI names its records without their shapes, so the
+// generated types are `unknown`: the shapes above type them, and the `to*`
+// functions convert them, where they are read.
 
-/**
- * A lobby, typed from the contract (no client is generated from a component
- * ABI yet). The argument objects keep v1's snake_case names; each method sends
- * the camelCase ones the contract takes.
- */
-export interface Battleships {
-  registerPlayer(): Promise<string>;
-  getPlayers(): Promise<PlayerEntry[]>;
-  createMatch(args: { player2: string }): Promise<string>;
-  getMatches(): Promise<MatchSummary[]>;
-  getPlayerStats(args: { player: string }): Promise<PlayerStatsView | null>;
-  getHistory(): Promise<MatchRecord[]>;
-  commitBoard(args: { match_id: string; commitment: string }): Promise<null>;
-  proposeShot(args: { match_id: string; x: number; y: number }): Promise<null>;
-  /** `"hit"` or `"miss"`. */
-  acknowledgeShot(args: { match_id: string; shot_id: number; hit: boolean }): Promise<string>;
-  revealBoard(args: { match_id: string; board_bytes: Uint8Array; salt: Uint8Array }): Promise<null>;
-  getShots(args: { match_id: string }): Promise<ShotsView>;
-  getIncomingShots(args: { match_id: string }): Promise<ShotsView>;
-  getMatchState(args: { match_id: string }): Promise<MatchStateView>;
-  getActiveMatchId(): Promise<string | null>;
-  getCurrentTurn(args: { match_id: string }): Promise<string | null>;
-  getWinner(args: { match_id: string }): Promise<string | null>;
-  getCurrentUser(): Promise<string>;
-  /** The highest log index any answer through this wrapper has reflected (0 before the first). */
+/** A lobby's contract, and the highest log index its answers reflected (0 before the first). */
+export interface Lobby {
+  contract: BattleshipsClient;
   index(): number;
 }
 
-type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
-
 /**
  * The lobby at instance `app` through `client`. `after` runs after every
- * request (the session store syncs a refreshed session there).
+ * request (the session store syncs a refreshed session there). The generated
+ * client returns a method's result alone, so the transport under it notes the
+ * log index each answer carries: the event stream resumes just past it.
  */
-export function battleships(client: Transport, app: string, after: () => void = () => {}): Battleships {
+export function lobby(client: AppTransport, app: string, after: () => void = () => {}): Lobby {
   let seen = 0;
-  const saw = <R extends { index: number }>(r: R): R => {
-    if (typeof r.index === 'number' && r.index > seen) seen = r.index;
+  const saw = <R extends { result: unknown }>(r: R): R => {
+    const index = (r as { index?: unknown }).index;
+    if (typeof index === 'number' && index > seen) seen = index;
     return r;
   };
-  const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return saw(await client.apps.call({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return saw(await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  return {
-    registerPlayer: () => call('registerPlayer'),
-    getPlayers: () => view('getPlayers'),
-    createMatch: ({ player2 }) => call('createMatch', { player2 }),
-    getMatches: async () => (await view<WireMatchSummary[]>('getMatches')).map(toMatchSummary),
-    getPlayerStats: async ({ player }) => {
-      const w = await view<WirePlayerStats | null>('getPlayerStats', { player });
-      return w ? toPlayerStats(w) : null;
+  const watched: AppTransport = {
+    apps: {
+      call: async (args, options) => saw(await client.apps.call(args, options)),
+      view: async (args, options) => saw(await client.apps.view(args, options)),
     },
-    getHistory: async () => (await view<WireMatchRecord[]>('getHistory')).map(toMatchRecord),
-    commitBoard: ({ match_id, commitment }) => call('commitBoard', { matchId: match_id, commitment }),
-    proposeShot: ({ match_id, x, y }) => call('proposeShot', { matchId: match_id, x, y }),
-    acknowledgeShot: ({ match_id, shot_id, hit }) =>
-      call('acknowledgeShot', { matchId: match_id, shotId: shot_id, hit }),
-    revealBoard: ({ match_id, board_bytes, salt }) =>
-      call('revealBoard', { matchId: match_id, boardBytes: base64url(board_bytes), salt: base64url(salt) }),
-    getShots: ({ match_id }) => view('getShots', { matchId: match_id }),
-    getIncomingShots: ({ match_id }) => view('getIncomingShots', { matchId: match_id }),
-    getMatchState: ({ match_id }) => view('getMatchState', { matchId: match_id }),
-    getActiveMatchId: () => view('getActiveMatchId'),
-    getCurrentTurn: ({ match_id }) => view('getCurrentTurn', { matchId: match_id }),
-    getWinner: ({ match_id }) => view('getWinner', { matchId: match_id }),
-    getCurrentUser: () => view('getCurrentUser'),
-    index: () => seen,
+    events: (a, from, signal) => client.events(a, from, signal),
   };
+  return { contract: new BattleshipsClient(watched, app, { after }), index: () => seen };
 }
 
 /** The contract's refusals in words, by error code (v1's messages where it had them). */

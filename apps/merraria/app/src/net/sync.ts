@@ -3,7 +3,7 @@
 
 import { Edit, TileStore, tileKey } from "../engine/world";
 import { GameEvent } from "./events";
-import { readAllOverrides, type MethodName } from "./merraria";
+import { readAllOverrides, type WorldCalls } from "./merraria";
 
 export const FLUSH_MS = 150;
 /** active players save their location every 500ms so the map tracks them live */
@@ -28,8 +28,6 @@ export interface RemotePlayer extends Transform {
   online: boolean;
 }
 
-export type ExecFn = <T = unknown>(method: MethodName, args: Record<string, unknown>) => Promise<T>;
-
 export interface SyncCallbacks {
   onRemoteEdits?: (applied: number) => void;
   onPlayers?: (players: RemotePlayer[]) => void;
@@ -48,7 +46,7 @@ export class SyncEngine {
   private flushing = false;
 
   constructor(
-    private exec: ExecFn,
+    private calls: WorldCalls,
     private world: TileStore,
     private myId: () => string | null,
     private cb: SyncCallbacks = {},
@@ -65,7 +63,7 @@ export class SyncEngine {
     this.pending.clear();
     this.flushing = true;
     try {
-      await this.exec("setTiles", { edits: batch, now: nowSecs() });
+      await this.calls.setTiles({ edits: batch, now: nowSecs() });
     } catch (err) {
       for (let i = 0; i < batch.length; i++) {
         if (!this.pending.has(keys[i])) this.pending.set(keys[i], batch[i]);
@@ -112,7 +110,7 @@ export class SyncEngine {
 
   /** `pullOverrides` that throws, for callers that must know the read happened. */
   private async readOverrides(): Promise<number> {
-    const entries = await readAllOverrides(this.exec);
+    const entries = await readAllOverrides(this.calls);
     let applied = 0;
     for (const { k, t } of entries ?? []) {
       if (this.pending.has(k)) continue;
@@ -125,7 +123,7 @@ export class SyncEngine {
 
   async pullPlayers(): Promise<void> {
     try {
-      const players = await this.exec<RemotePlayer[]>("getPlayers", { now: nowSecs() });
+      const players = (await this.calls.getPlayers({ now: nowSecs() })) as RemotePlayer[];
       const me = this.myId();
       this.cb.onPlayers?.((players ?? []).filter((p) => p.id !== me && p.online));
     } catch (err) {
@@ -134,12 +132,12 @@ export class SyncEngine {
   }
 
   async join(name: string): Promise<void> {
-    await this.exec("join", { name, now: nowSecs() });
+    await this.calls.join({ name, now: nowSecs() });
   }
 
   async leave(): Promise<void> {
     try {
-      await this.exec("leave", { now: nowSecs() });
+      await this.calls.leave({ now: nowSecs() });
     } catch {
       /* best-effort — we age out of the presence TTL anyway */
     }
@@ -189,7 +187,7 @@ export class SyncEngine {
     const hbInterval = moving ? HEARTBEAT_MOVING_MS : HEARTBEAT_IDLE_MS;
     if (transform && this.heartbeatClock >= hbInterval) {
       this.heartbeatClock = 0;
-      void this.exec("heartbeat", { t: quantize(transform), now: nowSecs() }).catch((err) =>
+      void this.calls.heartbeat({ t: quantize(transform), now: nowSecs() }).catch((err) =>
         this.cb.onError?.(err),
       );
     }

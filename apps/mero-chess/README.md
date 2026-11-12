@@ -25,7 +25,8 @@ apps/mero-chess/
 │   ├── scenarios/           play-a-game, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-│   └── src/chess.ts         the contract's methods, typed (tested against res/abi.json)
+│   ├── src/generated/       MeroChessClient: `mero-app-build codegen` from res/abi.json (committed)
+│   └── src/chess.ts         the screens' shapes and the adapter from the contract's answers
 ├── docs/trust-model.md      the v1 trust model, kept as a worked example (see below)
 └── mobile/                  native iOS / Android apps (moved to 1.0 in #686: see below)
 ```
@@ -113,7 +114,7 @@ away before the first move; `stand` is allowed until then). There is no clock.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-chess/logic/Cargo.toml` | the rules (`board`/`movegen`/`notation`/`game` unit tests and perft), v1's `TestHost` tests method for method (seats, turns, mate, stalemate, promotion, resignation, draw offers, threefold and fivefold, rematches, pass-and-play, spectators, presence, events), the permission checks that replace v1's owner stamps and forged-row tests, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F mero-chess test` | the board helpers; the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter from the new answers to the screens' shapes; sign-in, the lobby, tables, seats, moves, refusals, invitations, session restore (mocked client) | no |
+| `pnpm -F mero-chess test` | the board helpers; the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the adapter from the new answers to the screens' shapes; sign-in, the lobby, tables, seats, moves, refusals, invitations, session restore (mocked client) | no |
 | `pnpm merod-local e2e mero-chess` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 **`src/perft.rs` is the one worth knowing about.** Counting the leaf nodes of
@@ -179,10 +180,10 @@ have), invites an opponent with an **org invite link** that also names the
 table, its org and the inviter (making it is approved with your passkey; the
 shared invite store in `@calimero-apps/connect` keeps the token; a signed-in
 player is asked before it is redeemed, then the table opens), re-reads the table on the table's **event
-stream** (and a 6-second poll for presence), and calls the contract by method
-name through `src/chess.ts`, whose method list a test checks against
-`logic/res/abi.json` and which converts the answers back to the shapes the
-screens were written against, so the board, the seats, the game card and the
+stream** (and a 6-second poll for presence), and calls the contract through
+`MeroChessClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+writes from `logic/res/abi.json`; `src/chess.ts` converts its answers back to the
+shapes the screens were written against, so the board, the seats, the game card and the
 scoresheet are unchanged. A seat with no name given shows a short account id
 (v1 fell back to the name its holder set for the namespace; an org has no such
 record yet). A refused call's message now stays on screen until dismissed (v1's
@@ -191,6 +192,24 @@ re-read after every call cleared it at once).
 The v1 contract's storage migrations: there were none in this app, and the
 component SDK has none (`#[app::migrate]` is not in this version), so a v1
 table's state does not carry over: a component table starts empty.
+
+## The generated client
+
+```bash
+scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+pnpm -F mero-chess codegen            # logic/res/abi.json -> app/src/generated/
+```
+
+`useChess.ts` builds `new MeroChessClient(client, appId, { after })`, where
+`after` syncs the stored session after every call and view, over a transport
+that notes the log index of each answer (the event stream resumes just past
+it; the generated methods return the result alone). Every method takes the
+caller's clock as `now` (`now()` in `src/chess.ts`). The ABI names `TableView`
+and `GameSummary` without their shapes (it predates `#[derive(AbiType)]`), so
+the generated types are `unknown` and `toTableView` / `toGameSummary` type and
+convert them where they are read. The directory is committed and CI
+regenerates it and fails when it is stale (see
+[docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
 
 ## Mobile
 

@@ -3,20 +3,15 @@ import { resolve } from "node:path";
 import { AppError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
-import { CALLS, VIEWS, chess, messageOf, toGameSummary, toTableView, type WireTableView } from "./chess";
+import { indexed, messageOf, now, toGameSummary, toTableView, type WireTableView } from "./chess";
+import { MeroChessClient } from "./generated/client";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
-  methods: Record<string, { kind: string; params: Array<[string, string]> }>;
   errors: Record<string, unknown>;
 };
 
-const byKind = (kind: string) =>
-  Object.entries(abi.methods)
-    .filter(([, m]) => m.kind === kind)
-    .map(([name]) => name)
-    .sort();
 
 const SEAT = { seat: "white", member: "acct-a", name: "Alice", online: true };
 
@@ -43,42 +38,7 @@ const WIRE: WireTableView = {
   gamesPlayed: 2,
 };
 
-describe("the client covers the contract", () => {
-  it("calls exactly the contract's calls, and views exactly its views", () => {
-    expect([...CALLS].sort()).toEqual(byKind("call"));
-    expect([...VIEWS].sort()).toEqual(byKind("view"));
-    expect(byKind("init")).toEqual(["init"]);
-  });
-
-  it("sends each method the parameter names the ABI declares", async () => {
-    const sent = new Map<string, string[]>();
-    const record = (_app: string, method: string, args: unknown = {}) => {
-      sent.set(method, Object.keys(args as object).sort());
-      const result = method === "table" ? WIRE : method === "history" ? [] : null;
-      return Promise.resolve({ index: 1, result, events: [] });
-    };
-    const c = chess(withRoutes({ call: vi.fn(record), view: vi.fn(record) }), "app-1");
-    await Promise.all([
-      c.table(),
-      c.history(),
-      c.join("n"),
-      c.heartbeat(),
-      c.sit("white", "n"),
-      c.stand(),
-      c.play("e2e4"),
-      c.resign(),
-      c.offerDraw(),
-      c.acceptDraw(),
-      c.declineDraw(),
-      c.claimDraw(),
-      c.rematch(),
-    ]);
-    for (const [name, method] of Object.entries(abi.methods)) {
-      if (method.kind === "init") continue;
-      expect(sent.get(name), name).toEqual(method.params.map(([p]) => p).sort());
-    }
-  });
-
+describe("the contract's refusals", () => {
   it("has words for every refusal the contract can answer", () => {
     for (const code of Object.keys(abi.errors)) {
       const e = new AppError("refused", { code, fields: {} });
@@ -87,27 +47,30 @@ describe("the client covers the contract", () => {
   });
 });
 
-describe("chess", () => {
-  it("sends play's arguments as the contract names them, now as a decimal string", async () => {
+describe("calling the table", () => {
+  it("sends `now` as a decimal string and notes the log index of every answer", async () => {
     const call = vi.fn().mockResolvedValue({ index: 7, result: "e4", events: [] });
     const view = vi.fn().mockResolvedValue({ index: 9, result: WIRE });
     const after = vi.fn();
-    const c = chess(withRoutes({ call, view }), "app-1", after, () => 1_700_000_000_123.7);
+    const watched = indexed(withRoutes({ call, view }));
+    const c = new MeroChessClient(watched.transport, "app-1", { after });
+    const clock = () => 1_700_000_000_123.7;
 
-    expect(await c.play("e2e4")).toBe("e4");
+    expect(watched.index()).toBe(0);
+    expect(await c.play({ uci: "e2e4", now: now(clock) })).toBe("e4");
     expect(call).toHaveBeenCalledWith("app-1", "play", { uci: "e2e4", now: "1700000000123" });
-    expect(c.index()).toBe(7);
-    await c.table();
+    expect(watched.index()).toBe(7);
+    expect(toTableView((await c.table({ now: now(clock) })) as WireTableView).my_color).toBe("white");
     expect(view).toHaveBeenCalledWith("app-1", "table", { now: "1700000000123" });
-    expect(c.index()).toBe(9);
+    expect(watched.index()).toBe(9);
     expect(after).toHaveBeenCalledTimes(2);
   });
 
   it("runs `after` when a request fails too, and words the refusal like v1", async () => {
     const after = vi.fn();
     const refusal = new AppError("refused", { code: "NotYourMove", fields: {} });
-    const c = chess(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), "a", after);
-    await expect(c.play("e2e4")).rejects.toBe(refusal);
+    const c = new MeroChessClient(withRoutes({ call: vi.fn().mockRejectedValue(refusal), view: vi.fn() }), "a", { after });
+    await expect(c.play({ uci: "e2e4", now: now() })).rejects.toBe(refusal);
     expect(after).toHaveBeenCalledTimes(1);
     expect(messageOf(refusal)).toBe("it is not your move");
     expect(messageOf(new Error("boom"))).toBe("boom");

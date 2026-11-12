@@ -10,7 +10,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "lint": "eslint .",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name battleships -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

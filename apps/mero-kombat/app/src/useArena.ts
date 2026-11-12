@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
-import { kombat, messageOf, type ArenaView, type Kombat, type MatchSummary } from "./kombat";
+import { MeroKombatClient } from "./generated/client";
+import { indexed, messageOf, now, type ArenaView, type MatchSummary } from "./kombat";
 import { presencePublisher, subscribePresence } from "./presence";
 import type { ArenaState, Slice } from "./game/controller";
 import type { MoveKind } from "./game/sim";
@@ -37,10 +38,22 @@ export interface ArenaConn {
   after?: () => void;
 }
 
-/** The typed contract, bound to this arena. */
-export function useKombatClient(conn: ArenaConn): Kombat {
+/** The arena's contract, and the highest log index its answers reflected. */
+export interface KombatClient {
+  kombat: MeroKombatClient;
+  index(): number;
+}
+
+/**
+ * The typed contract, bound to this arena: `MeroKombatClient`, which
+ * `mero-app-build codegen` writes from the committed `logic/res/abi.json`.
+ */
+export function useKombatClient(conn: ArenaConn): KombatClient {
   const { client, appId, after } = conn;
-  return useMemo(() => kombat(client, appId, after), [client, appId, after]);
+  return useMemo(() => {
+    const watched = indexed(client);
+    return { kombat: new MeroKombatClient(watched.transport, appId, { after }), index: watched.index };
+  }, [client, appId, after]);
 }
 
 /**
@@ -227,7 +240,7 @@ export function useArena(conn: ArenaConn) {
       do {
         again.current = false;
         const started = performance.now();
-        const next = await client.arena();
+        const next = (await client.kombat.arena({ now: now() })) as ArenaView;
         setView(next);
         setError(null);
         // At most ~6 reads a second. The fight itself never waits on a read —
@@ -258,11 +271,11 @@ export function useArena(conn: ArenaConn) {
   }, [raw, appId, client, refresh, loaded]);
 
   const run = useCallback(
-    async (fn: (c: Kombat) => Promise<unknown>) => {
+    async (fn: (c: MeroKombatClient) => Promise<unknown>) => {
       setBusy(true);
       setError(null);
       try {
-        await fn(client);
+        await fn(client.kombat);
       } catch (e) {
         setError(messageOf(e));
       } finally {
@@ -279,7 +292,15 @@ export function useArena(conn: ArenaConn) {
       const start = performance.now();
       meter.sent();
       try {
-        await client.act(a);
+        await client.kombat.act({
+          matchIndex: a.match,
+          round: a.round,
+          id: a.id,
+          kind: a.kind,
+          hit: a.hit,
+          blocked: a.blocked,
+          now: now(),
+        });
         const ms = Math.round(performance.now() - start);
         meter.record({ ...a, ok: true, ms, at: Date.now() });
         return ms;
@@ -318,12 +339,12 @@ export function useArena(conn: ArenaConn) {
     publish,
     subscribe,
     sit: useCallback(
-      (seat: "p1" | "p2", name: string, fighter: FighterId) => run((c) => c.sit(seat, name, fighter)),
+      (seat: "p1" | "p2", name: string, fighter: FighterId) => run((c) => c.sit({ seat, name, fighter, now: now() })),
       [run],
     ),
-    stand: useCallback(() => run((c) => c.stand()), [run]),
-    pick: useCallback((fighter: FighterId) => run((c) => c.pick(fighter)), [run]),
-    rematch: useCallback(() => run((c) => c.rematch()), [run]),
+    stand: useCallback(() => run((c) => c.stand({ now: now() })), [run]),
+    pick: useCallback((fighter: FighterId) => run((c) => c.pick({ fighter, now: now() })), [run]),
+    rematch: useCallback(() => run((c) => c.rematch({ now: now() })), [run]),
   };
 }
 
@@ -332,10 +353,10 @@ export function usePastMatches(conn: ArenaConn, signature: string): MatchSummary
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   useEffect(() => {
     let live = true;
-    void client
+    void client.kombat
       .history()
       .then((rows) => {
-        if (live) setMatches(rows);
+        if (live) setMatches(rows as MatchSummary[]);
       })
       .catch(() => {
         /* the record is a nicety beside the fight */
@@ -355,7 +376,7 @@ export function useAnnounce(conn: ArenaConn, name: string, fighter: FighterId) {
     const key = `${conn.appId}:${name}`;
     if (done.current === key) return;
     done.current = key;
-    void client.join(name || "Fighter", fighter).catch(() => {
+    void client.kombat.join({ name: name || "Fighter", fighter, now: now() }).catch(() => {
       /* presence is a nicety */
     });
     // `fighter` deliberately not a dependency: picking one is its own call.
