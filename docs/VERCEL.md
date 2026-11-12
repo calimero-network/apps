@@ -53,7 +53,7 @@ directory, a workspace package it imports, its resolution in `pnpm-lock.yaml`
 or the catalog, the root `package.json` (anything but scripts that no install runs),
 `tsconfig.base.json`, `.npmrc`, `.pnpmfile.*` or `patches/` changed. It uses the same rules as CI's frontend scope
 (`scripts/ci-scope.py`, `scripts/lockfile-fanout.py`), except that
-`packages/e2e-node`, the test harness only tests and Playwright configs import,
+`packages/test-setup`, the vitest setup only tests load,
 reaches no app.
 Editing the ignore and scope scripts themselves rebuilds nothing: after fixing a
 wrongly skipped app, redeploy it from the dashboard. A skipped deploy shows as *Canceled* in the

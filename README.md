@@ -185,7 +185,6 @@ scripts/
   ci-scope.py               which apps / jobs a change reaches (both CI workflows)
   check-app-metadata.sh     registry manifest vs the workspace pins
   check-app-icons.py        real icons, not cargo-mero's "default" placeholder
-  check-desktop-sso.py      every app anchors node trust for the desktop hand-off
   check-live-frontends.py   the deployed <title> matches the committed one
   check-lockfile.py         pnpm-lock.yaml has no duplicated keys
   check-vercel-output.sh    vercel.json names the directory the build wrote
@@ -267,7 +266,6 @@ The gates CI runs, all runnable locally — the first five are in the always-on
 ```bash
 bash   scripts/check-app-metadata.sh      # manifest vs the workspace pins
 python3 scripts/check-app-icons.py        # a real icon, square, opaque, >=512²
-python3 scripts/check-desktop-sso.py      # node trust anchored for the hand-off
 python3 scripts/check-live-frontends.py   # deployed <title> vs the committed one
 python3 scripts/check-lockfile.py         # no duplicated keys in pnpm-lock.yaml
 bash   scripts/check-vercel-output.sh --build   # vercel.json vs the real output

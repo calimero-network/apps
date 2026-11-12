@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import os
 import pathlib
 import subprocess
@@ -47,12 +48,12 @@ def workspace(tmp: pathlib.Path) -> pathlib.Path:
     pj("packages/join-sync", {"name": "@calimero-apps/join-sync"})
     pj("packages/invite", {"name": "@calimero-apps/invite",
                            "dependencies": {"@calimero-apps/join-sync": "workspace:*"}})
-    pj("packages/e2e-node", {"name": "@calimero-apps/e2e-node"})
+    pj("packages/test-setup", {"name": "@calimero-apps/test-setup"})
     pj("apps/mero-forum/app", {"name": "mero-forum",
                                "dependencies": {"@calimero-apps/invite": "workspace:*"},
-                               "devDependencies": {"@calimero-apps/e2e-node": "workspace:*"}})
+                               "devDependencies": {"@calimero-apps/test-setup": "workspace:*"}})
     pj("apps/mero-chat/app", {"name": "mero-chat", "dependencies": {"react": "catalog:"},
-                              "devDependencies": {"@calimero-apps/e2e-node": "workspace:*"}})
+                              "devDependencies": {"@calimero-apps/test-setup": "workspace:*"}})
     (tmp / "package.json").write_text(json.dumps(
         {"name": "root", "scripts": {"build": "pnpm -r build"}, "packageManager": "pnpm@9.6.0"}))
     return tmp
@@ -80,9 +81,9 @@ with tempfile.TemporaryDirectory() as t:
     check("a lockfile change to a package this app does not import",
           builds(CHAT, "pnpm-lock.yaml", lock=["packages/invite"]), False)
     check("a catalog addition (fan-out empty)", builds(FORUM, "pnpm-workspace.yaml", catalog=[]), False)
-    check("the e2e harness package", builds(FORUM, "packages/e2e-node/src/journey.ts"), False)
-    check("the e2e harness package's lockfile importer",
-          builds(FORUM, "pnpm-lock.yaml", lock=["packages/e2e-node"]), False)
+    check("the test setup package", builds(FORUM, "packages/test-setup/src/index.ts"), False)
+    check("the test setup package's lockfile importer",
+          builds(FORUM, "pnpm-lock.yaml", lock=["packages/test-setup"]), False)
     check("the CI scope scripts", builds(FORUM, "scripts/ci-scope.py",
                                          "scripts/lockfile-fanout.py",
                                          "scripts/vercel-ignore-build.py"), False)
@@ -126,6 +127,8 @@ for pj in sorted(REPO.glob("apps/*/app/package.json")) + sorted(REPO.glob("packa
     check(f"{member} lists no test-only package where it ships", listed, [])
 
 needles = list(TEST_ONLY) + sorted(vib.TEST_ONLY_PACKAGES)
+SETUP_FILES_RE = re.compile(r"setupFiles\s*:\s*\[[^\]]*\]", re.S)
+COMMENT_RE = re.compile(r"^\s*//[^\n]*", re.M)
 for app in sorted(REPO.glob("apps/*/app")):
     hits = []
     for f in app.rglob("*"):
@@ -136,7 +139,12 @@ for app in sorted(REPO.glob("apps/*/app")):
                 or f.suffix not in (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx",
                                     ".mjs", ".cjs", ".html", ".json")):
             continue
-        if any(n in f.read_text(errors="replace") for n in needles):
+        text = f.read_text(errors="replace")
+        if f.name.startswith(("vite.config.", "vitest.config.")):
+            # A vitest `setupFiles` entry and line comments name the setup
+            # package; neither is an import, so neither can change the bundle.
+            text = SETUP_FILES_RE.sub("", COMMENT_RE.sub("", text))
+        if any(n in text for n in needles):
             hits.append(str(rel))
     check(f"{app.parent.name} ships nothing that imports a test-only package", sorted(hits), [])
 

@@ -12,7 +12,7 @@ const config = readConfig();
  * The node a desktop hand-over names in the URL fragment (`#node_url=…`), read
  * once before the provider mounts. Passing it as `allowedNodeUrls` is what lets
  * MeroProvider accept that handed-over session instead of default-denying a node
- * it has never seen; see the apps repo's `scripts/check-desktop-sso.py`. Trust
+ * it has never seen. Trust
  * is compared by origin, so only the origin is kept.
  */
 function hashNodeUrl(): string | undefined {
