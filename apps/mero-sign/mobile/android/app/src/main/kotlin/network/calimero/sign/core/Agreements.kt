@@ -3,7 +3,10 @@ package network.calimero.sign.core
 import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.delay
-import network.calimero.sign.generated.SignClient
+import network.calimero.sign.generated.ContextDetails
+import network.calimero.sign.generated.ContractBytes
+import network.calimero.sign.generated.SignContract
+import network.calimero.sign.generated.client.SignClient
 
 /** An agreement: an app instance in a workspace (a Calimero organization). (Swift `AgreementRef`.) */
 data class AgreementRef(
@@ -64,7 +67,7 @@ class AgreementDirectory(
 
     /** Whether the account is on the agreement's roster (the web's `joined`). */
     suspend fun isJoined(contextId: String): Boolean =
-        attempt { client(contextId).listParticipants() }.getOrNull()?.any { SignIds.same(it, backend.account) } ?: false
+        attempt { client(contextId).listParticipants() }.getOrNull()?.any { SignIds.same(ContractBytes.Text(it), backend.account) } ?: false
 
     /** Check the account reaches the agreement: on Calimero 1.0 every workspace member does; nothing to join. */
     suspend fun enter(contextId: String) {
@@ -95,7 +98,7 @@ class AgreementDirectory(
     internal suspend fun waitForState(contextId: String): String? {
         repeat(maxOf(timing.stateAttempts, 1)) { attemptIndex ->
             if (attemptIndex > 0) delay(timing.delayMs)
-            val result = attempt { client(contextId).getContextDetails(contextId).contextName }
+            val result = attempt { SignContract.read<ContextDetails>(client(contextId).getContextDetails(contextId)).contextName }
             result.onSuccess { return it }
             if (!SignErrorText.isSyncing(result.exceptionOrNull()!!)) return null
         }
