@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DecisionView, MemberView } from "./standup";
+import { decodeDecisionPage, decodeMembers, decodeTags, decodeText, type DecisionView, type MemberView } from "./standup";
 import { describeDay, relativeTime } from "./lib/days";
 import { PersonName } from "./names";
 import { parseTags } from "./lib/tags";
@@ -44,18 +44,20 @@ export function DecisionLog({
     client,
     version,
     (c) =>
-      c.listDecisions({
-        search: search.trim() || null,
-        tag,
-        from_day: null,
-        standing_only: standingOnly,
-        cursor: null,
-        limit: PAGE * pages,
-      }),
+      c
+        .listDecisions({
+          search: search.trim() || null,
+          tag,
+          fromDay: null,
+          standingOnly,
+          cursor: null,
+          limit: PAGE * pages,
+        })
+        .then(decodeDecisionPage),
     [search, tag, standingOnly, pages],
   );
-  const tags = useRead(client, version, (c) => c.tags(), []);
-  const members = useRead(client, version, (c) => c.members(), []);
+  const tags = useRead(client, version, (c) => c.tags().then(decodeTags), []);
+  const members = useRead(client, version, (c) => c.members().then(decodeMembers), []);
   const items = log.data?.items ?? [];
   const filtered = Boolean(search.trim() || tag || standingOnly);
 
@@ -350,8 +352,8 @@ function DecisionForm({
           supersedes: superseding?.id ?? null,
           tags,
           with: [...withSet],
-          from_day: origin,
-        }),
+          fromDay: origin,
+        }).then(decodeText),
       );
       setTitle("");
       setDecision("");

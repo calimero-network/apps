@@ -68,7 +68,7 @@ export default function FeedPage() {
       ),
     );
     try {
-      await client.vote({ post_id: postId, value });
+      await client.vote({ postId, value });
     } catch {
       reset();
     }
@@ -81,7 +81,7 @@ export default function FeedPage() {
     // the reset restores the row rather than leaving a hole.
     setItems((prev) => prev.filter((p) => p.id !== postId));
     try {
-      await client.deletePost({ post_id: postId });
+      await client.deletePost({ postId });
     } finally {
       reset();
     }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Member } from "./meroVote";
+import { decode, u64Arg, type Member } from "./meroVote";
 import { errText, short, useMeroVote } from "./useMeroVote";
 import { BarChartIcon, CheckIcon, PlusIcon, XIcon } from "./icons";
 import { Callout, IconTile } from "./ui";
@@ -66,17 +66,19 @@ export function CreatePoll({
     setBusy(true);
     setErr(null);
     try {
-      const id = await client.createPoll({
-        title: title.trim(),
-        description: description.trim(),
-        options: filled,
-        min_choices: mode === "single" ? 1 : 0,
-        max_choices: mode === "single" ? 1 : maxC,
-        trustees: [...trustees],
-        threshold,
-        voters: everyone ? [] : [...voters],
-        closes_at: closesAt ? new Date(closesAt).getTime() : null,
-      });
+      const id = decode<string>(
+        await client.createPoll({
+          title: title.trim(),
+          description: description.trim(),
+          options: filled,
+          minChoices: mode === "single" ? 1 : 0,
+          maxChoices: mode === "single" ? 1 : maxC,
+          trustees: [...trustees],
+          threshold,
+          voters: everyone ? [] : [...voters],
+          closesAt: u64Arg(closesAt ? new Date(closesAt).getTime() : null),
+        }),
+      );
       onCreated(id);
     } catch (e) {
       setErr(errText(e));

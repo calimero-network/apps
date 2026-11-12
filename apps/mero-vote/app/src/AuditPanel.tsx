@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { AuditReport, MeroVoteClient } from "./meroVote";
+import type { MeroVoteClient } from "./generated/client";
+import { decode, type AuditReport, type Transcript } from "./meroVote";
 import { verifyTranscript, type LocalAudit } from "./crypto/verify";
 import { errText, short } from "./useMeroVote";
 import {
@@ -66,7 +67,7 @@ export function AuditPanel({
     setBusy("verify");
     setErr(null);
     try {
-      const t = await client.getTranscript({ poll_id: pollId });
+      const t = decode<Transcript>(await client.getTranscript({ pollId }));
       // Yield so the button can repaint before a few thousand scalar mults.
       await new Promise((r) => setTimeout(r, 0));
       setLocal(verifyTranscript(t));
@@ -80,7 +81,7 @@ export function AuditPanel({
   async function saveTranscript() {
     if (!client) return;
     try {
-      const t = await client.getTranscript({ poll_id: pollId });
+      const t = decode<Transcript>(await client.getTranscript({ pollId }));
       download(`mero-vote-transcript-${pollId.slice(0, 12)}.json`, JSON.stringify(t, null, 2));
     } catch (e) {
       setErr(errText(e));
@@ -92,7 +93,7 @@ export function AuditPanel({
     setBusy("anchor");
     setErr(null);
     try {
-      await client.anchorResult({ poll_id: pollId, network: network.trim(), reference: reference.trim() });
+      await client.anchorResult({ pollId, network: network.trim(), reference: reference.trim() });
       onChanged();
     } catch (e) {
       setErr(errText(e));

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { UpdateView } from "./standup";
+import { decodeDayAnswer, decodeDays, decodeDecisionPage, decodeMembers, decodeUpdates, type UpdateView } from "./standup";
 import { carryForward, type Draft } from "./lib/carry";
 import {
   describeDay,
@@ -33,21 +33,23 @@ export function StandupBoard({
   const [day, setDay] = useState(() => today());
   const isToday = day === today();
 
-  const board = useRead(client, version, (c) => c.getDay({ day }), [day]);
-  const members = useRead(client, version, (c) => c.members(), []);
-  const blockers = useRead(client, version, (c) => c.currentBlockers(), []);
+  const board = useRead(client, version, (c) => c.getDay({ day }).then(decodeDayAnswer), [day]);
+  const members = useRead(client, version, (c) => c.members().then(decodeMembers), []);
+  const blockers = useRead(client, version, (c) => c.currentBlockers().then(decodeUpdates), []);
   const decided = useRead(
     client,
     version,
     (c) =>
-      c.listDecisions({
-        search: null,
-        tag: null,
-        from_day: day,
-        standing_only: false,
-        cursor: null,
-        limit: 10,
-      }),
+      c
+        .listDecisions({
+          search: null,
+          tag: null,
+          fromDay: day,
+          standingOnly: false,
+          cursor: null,
+          limit: 10,
+        })
+        .then(decodeDecisionPage),
     [day],
   );
 
@@ -177,7 +179,7 @@ function WeekStrip({
   setDay: (d: string) => void;
 }) {
   const start = weekStart(day);
-  const week = useRead(team.client, team.version, (c) => c.getWeek({ start }), [start]);
+  const week = useRead(team.client, team.version, (c) => c.getWeek({ start }).then(decodeDays), [start]);
   const t = today();
   return (
     <div className="week-strip card">
@@ -416,7 +418,7 @@ function MyUpdate({
   const previous = useRead(
     team.client,
     0,
-    (c) => (lastDay && !mine ? c.getDay({ day: lastDay }) : Promise.resolve(null)),
+    (c) => (lastDay && !mine ? c.getDay({ day: lastDay }).then(decodeDayAnswer) : Promise.resolve(null)),
     [lastDay, mine === null],
   );
   const last = previous.data?.updates.find((u) => u.author === me) ?? null;

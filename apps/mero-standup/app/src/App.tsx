@@ -18,7 +18,7 @@ import { InviteCard } from "./InviteCard";
 import { PersonName } from "./names";
 import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { StandupBoard } from "./StandupBoard";
-import { PACKAGE } from "./standup";
+import { PACKAGE, decodeText } from "./standup";
 import { TeamPicker } from "./TeamPicker";
 import { instanceIn, invites as appInvites, listTeams, selectionKey } from "./teams";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
@@ -354,12 +354,12 @@ function TeamView({
   const [decisionDraft, setDecisionDraft] = useState<DecisionDraft | null>(null);
   // Read once from the contract: it is the same string every view's `author`
   // carries, so "which update is mine" is a plain equality.
-  const me = useRead(team.client, 0, (c) => c.whoami(), []);
+  const me = useRead(team.client, 0, (c) => c.whoami().then(decodeText), []);
   const myName = useRead(
     team.client,
     team.version,
     // null until `me` is known: "" would read as "no name" and ask.
-    (c): Promise<string | null> => (me.data ? c.getName({ account: me.data }) : Promise.resolve(null)),
+    (c): Promise<string | null> => (me.data ? c.getName({ account: me.data }).then(decodeText) : Promise.resolve(null)),
     [me.data],
   );
 
@@ -485,7 +485,7 @@ function TeamView({
 
 /** The team's name in the top bar; click to rename. Any member may. */
 function TeamName({ team }: { team: Team }) {
-  const name = useRead(team.client, team.version, (c) => c.teamName(), []);
+  const name = useRead(team.client, team.version, (c) => c.teamName().then(decodeText), []);
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

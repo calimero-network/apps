@@ -7,40 +7,16 @@ import type {
   SenderStats,
   StreamStats,
 } from "../types";
-import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** The package a production instance is created from. */
 export const PACKAGE = "com.calimero.mero-stream";
 
-/**
- * Every contract method this client calls, with its parameters in ABI order.
- * meroStream.test.ts asserts this is exactly the committed `res/abi.json`.
- */
-export const METHODS: Record<string, readonly string[]> = {
-  join: ["username", "now"],
-  getMembers: [],
-  encodeFrame: ["raw", "width", "height", "track", "now"],
-  getFrame: ["afterSeq"],
-  frameChecksum: ["seq"],
-  pruneFrames: ["beforeSeq"],
-  getStats: [],
-  postChunk: [
-    "dataB64",
-    "track",
-    "isKeyframe",
-    "codec",
-    "width",
-    "height",
-    "timestampUs",
-    "now",
-  ],
-  getChunks: ["cursors"],
-  keyframeCursors: [],
-  getLiveStats: [],
-  pruneChunks: ["beforeSeq"],
-  renameStream: ["name"],
-  isMemberAdmin: ["member"],
-};
+// The contract is called through `MeroStreamClient`, which `mero-app-build
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`): u64
+// arguments as decimal strings (`u64`), bytes as base64url (`toBase64Url`).
+// The ABI names its records without their shapes, so the generated types are
+// `unknown`: each answer goes through the `to*` conversion for its shape below,
+// back to the shapes the screens were written against.
 
 // ── Wire shapes (D20: u64 as a decimal string, bytes as base64url) ───────────
 
@@ -193,9 +169,26 @@ const liveStats = (s: WireLiveStats): LiveStats => ({
   senders: s.senders.map(sender),
 });
 
-// ── The client ───────────────────────────────────────────────────────────────
+// ── Answers, in the screens' shapes ──────────────────────────────────────────
 
-export type StreamClient = ClientRoutes<{ apps: "call" | "view" }>;
+/** `join`'s answer. */
+export const toMember = (v: unknown): Member => member(v as WireMember);
+/** `getMembers`'s answer. */
+export const toMembers = (v: unknown): Member[] => (v as WireMember[]).map(member);
+/** `getFrame`'s answer: `pixels` as a byte array. */
+export const toFrames = (v: unknown): DecodedFrame[] => (v as WireFrame[]).map(frame);
+/** `getStats`'s answer. */
+export const toStats = (v: unknown): StreamStats => stats(v as WireStats);
+/** `getChunks`'s answer. */
+export const toChunks = (v: unknown): ChunkView[] => (v as WireChunk[]).map(chunk);
+/** `keyframeCursors`'s answer. */
+export const toCursors = (v: unknown): SenderCursor[] =>
+  (v as WireCursor[]).map((k) => ({ from: k.from, afterSeq: num(k.afterSeq) }));
+/** `getLiveStats`'s answer. */
+export const toLiveStats = (v: unknown): LiveStats => liveStats(v as WireLiveStats);
+/** `getChunks`'s argument: each cursor's sequence as a u64. */
+export const wireCursors = (cursors: SenderCursor[]): WireCursor[] =>
+  cursors.map((k) => ({ from: k.from, afterSeq: u64(k.afterSeq) }));
 
 export interface ChunkInput {
   dataB64: string;
@@ -206,92 +199,3 @@ export interface ChunkInput {
   height: number;
   timestampUs: number;
 }
-
-/**
- * The contract, bound to one room (an app instance), in v1's shapes: numbers
- * where the wire has decimal strings, `pixels` as a byte array. `after` runs
- * after each request (keeps the stored session current).
- */
-export function meroStream(client: StreamClient, app: string, after: () => void = () => {}) {
-  const call = async <T>(method: string, args: Record<string, unknown>): Promise<T> => {
-    try {
-      return (await client.apps.call({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: string, args: Record<string, unknown>): Promise<T> => {
-    try {
-      return (await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-
-  return {
-    join: async (username: string, nowSecs: number) =>
-      member(await call<WireMember>("join", { username, now: u64(nowSecs) })),
-    getMembers: async () => (await view<WireMember[]>("getMembers", {})).map(member),
-
-    encodeFrame: async (
-      raw: ArrayLike<number>,
-      width: number,
-      height: number,
-      track: number,
-      nowMs: number,
-    ) =>
-      num(
-        await call<U64>("encodeFrame", {
-          raw: toBase64Url(raw),
-          width,
-          height,
-          track,
-          now: u64(nowMs),
-        }),
-      ),
-    getFrame: async (afterSeq: number) =>
-      (await view<WireFrame[]>("getFrame", { afterSeq: u64(afterSeq) })).map(frame),
-    /** FNV-1a 64 of a frame's pixels, a decimal string (it does not fit a JS number), or null. */
-    frameChecksum: (seq: number) => view<U64 | null>("frameChecksum", { seq: u64(seq) }),
-    pruneFrames: async (beforeSeq: number) => {
-      await call<null>("pruneFrames", { beforeSeq: u64(beforeSeq) });
-    },
-    getStats: async () => stats(await view<WireStats>("getStats", {})),
-
-    postChunk: async (c: ChunkInput, nowMs: number) =>
-      num(
-        await call<U64>("postChunk", {
-          dataB64: c.dataB64,
-          track: c.track,
-          isKeyframe: c.isKeyframe,
-          codec: c.codec,
-          width: c.width,
-          height: c.height,
-          timestampUs: u64(c.timestampUs),
-          now: u64(nowMs),
-        }),
-      ),
-    getChunks: async (cursors: SenderCursor[]) =>
-      (
-        await view<WireChunk[]>("getChunks", {
-          cursors: cursors.map((k) => ({ from: k.from, afterSeq: u64(k.afterSeq) })),
-        })
-      ).map(chunk),
-    keyframeCursors: async (): Promise<SenderCursor[]> =>
-      (await view<WireCursor[]>("keyframeCursors", {})).map((k) => ({
-        from: k.from,
-        afterSeq: num(k.afterSeq),
-      })),
-    getLiveStats: async () => liveStats(await view<WireLiveStats>("getLiveStats", {})),
-    pruneChunks: async (beforeSeq: number) => {
-      await call<null>("pruneChunks", { beforeSeq: u64(beforeSeq) });
-    },
-
-    renameStream: async (name: string) => {
-      await call<null>("renameStream", { name });
-    },
-    isMemberAdmin: (memberId: string) => view<boolean>("isMemberAdmin", { member: memberId }),
-  };
-}
-
-export type MeroStreamClient = ReturnType<typeof meroStream>;

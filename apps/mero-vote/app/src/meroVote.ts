@@ -1,38 +1,5 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
-
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-vote";
-
-/**
- * The contract's methods by their ABI names (camelCase), split the way the node
- * runs them: a call goes through the app's log, a view is answered by a node
- * without writing. `meroVote.test.ts` asserts these lists, and every method's
- * parameter names, are exactly the committed `logic/res/abi.json`'s, so a
- * method the contract drops or renames fails a test rather than a request.
- */
-export const CALLS = [
-  "setName",
-  "createPoll",
-  "publishTransportKey",
-  "publishDealing",
-  "fileComplaint",
-  "openVoting",
-  "castBallot",
-  "closePoll",
-  "sealPoll",
-  "publishPartial",
-  "anchorResult",
-] as const;
-export const VIEWS = [
-  "whoami",
-  "roster",
-  "listPolls",
-  "getPoll",
-  "ceremony",
-  "tallyInputs",
-  "getResult",
-  "getTranscript",
-] as const;
 
 // ── What the screens use ────────────────────────────────────────────────────
 //
@@ -328,40 +295,17 @@ export interface WirePartial {
   proof: WireBranch;
 }
 
-// ── The client ──────────────────────────────────────────────────────────────
+// ── Calling the contract ────────────────────────────────────────────────────
+//
+// The contract is called through `MeroVoteClient`, which `mero-app-build
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`): camelCase
+// arguments (`pollId`, `minChoices`, ...) and 64-bit ones as decimal strings
+// (`closesAt`). The ABI names its records without their shapes, so the
+// generated types are `unknown`: every answer the screens read goes through
+// `decode<T>` into the shapes above.
 
-/** v1's generated client's surface: same methods, same snake_case params. */
-export interface MeroVoteClient {
-  whoami(): Promise<Identity>;
-  setName(params: { name: string }): Promise<void>;
-  roster(): Promise<Member[]>;
-  createPoll(params: {
-    title: string;
-    description: string;
-    options: string[];
-    min_choices: number;
-    max_choices: number;
-    trustees: string[];
-    threshold: number;
-    voters: string[];
-    closes_at: number | null;
-  }): Promise<string>;
-  listPolls(): Promise<PollSummary[]>;
-  getPoll(params: { poll_id: string }): Promise<PollView>;
-  ceremony(params: { poll_id: string }): Promise<Ceremony>;
-  publishTransportKey(params: { poll_id: string; key: string; proof: WireBranch }): Promise<void>;
-  publishDealing(params: { poll_id: string; dealing: WireDealing }): Promise<void>;
-  fileComplaint(params: { poll_id: string; dealer: string; secret: string; proof: WireBranch }): Promise<void>;
-  openVoting(params: { poll_id: string }): Promise<string>;
-  castBallot(params: { poll_id: string; ballot: WireBallot }): Promise<string>;
-  closePoll(params: { poll_id: string }): Promise<void>;
-  sealPoll(params: { poll_id: string }): Promise<number>;
-  tallyInputs(params: { poll_id: string }): Promise<TallyInputs>;
-  publishPartial(params: { poll_id: string; partials: WirePartial[] }): Promise<void>;
-  getResult(params: { poll_id: string }): Promise<AuditReport>;
-  getTranscript(params: { poll_id: string }): Promise<Transcript>;
-  anchorResult(params: { poll_id: string; network: string; reference: string }): Promise<string>;
-}
+/** A 64-bit argument (a deadline in ms) as the contract takes it: a decimal string (D20), or `null`. */
+export const u64Arg = (ms: number | null): string | null => (ms === null ? null : String(Math.trunc(ms)));
 
 /** Every 64-bit field the contract answers, as a decimal string, in any answer. */
 const U64_FIELDS = new Set([
@@ -388,62 +332,4 @@ export function decode<T>(value: unknown): T {
     return v;
   };
   return walk(value) as T;
-}
-
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
-
-/**
- * The contract at instance `app` through `client`. `after` runs after every
- * request (the session store syncs a refreshed session there).
- */
-export function meroVote(client: Transport, app: string, after: () => void = () => {}): MeroVoteClient {
-  const call = async <T>(method: (typeof CALLS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return decode<T>((await client.apps.call({ app, method, args })).result);
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return decode<T>((await client.apps.view({ app, method, args })).result);
-    } finally {
-      after();
-    }
-  };
-  const poll = (p: { poll_id: string }) => ({ pollId: p.poll_id });
-  return {
-    whoami: () => view("whoami"),
-    setName: ({ name }) => call("setName", { name }),
-    roster: () => view("roster"),
-    createPoll: (p) =>
-      call("createPoll", {
-        title: p.title,
-        description: p.description,
-        options: p.options,
-        minChoices: p.min_choices,
-        maxChoices: p.max_choices,
-        trustees: p.trustees,
-        threshold: p.threshold,
-        voters: p.voters,
-        // A u64 argument: a decimal string (D20).
-        closesAt: p.closes_at === null ? null : String(Math.trunc(p.closes_at)),
-      }),
-    listPolls: () => view("listPolls"),
-    getPoll: (p) => view("getPoll", poll(p)),
-    ceremony: (p) => view("ceremony", poll(p)),
-    publishTransportKey: (p) => call("publishTransportKey", { ...poll(p), key: p.key, proof: p.proof }),
-    publishDealing: (p) => call("publishDealing", { ...poll(p), dealing: p.dealing }),
-    fileComplaint: (p) =>
-      call("fileComplaint", { ...poll(p), dealer: p.dealer, secret: p.secret, proof: p.proof }),
-    openVoting: (p) => call("openVoting", poll(p)),
-    castBallot: (p) => call("castBallot", { ...poll(p), ballot: p.ballot }),
-    closePoll: (p) => call("closePoll", poll(p)),
-    sealPoll: (p) => call("sealPoll", poll(p)),
-    tallyInputs: (p) => view("tallyInputs", poll(p)),
-    publishPartial: (p) => call("publishPartial", { ...poll(p), partials: p.partials }),
-    getResult: (p) => view("getResult", poll(p)),
-    getTranscript: (p) => view("getTranscript", poll(p)),
-    anchorResult: (p) => call("anchorResult", { ...poll(p), network: p.network, reference: p.reference }),
-  };
 }

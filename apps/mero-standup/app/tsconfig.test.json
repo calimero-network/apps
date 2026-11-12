@@ -1,5 +1,5 @@
 {
-  "// note": "Unit tests. Node types on purpose: standup.test.ts reads logic/res/abi.json off disk to assert the client covers the contract.",
+  "// note": "Unit tests. Node types on purpose: client.test.ts reads logic/res/abi.json off disk to assert the generated client covers the contract.",
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist-types/test",
@@ -15,6 +15,7 @@
     "src/test",
     "src/*.ts",
     "src/*.tsx",
-    "src/lib"
+    "src/lib",
+    "src/generated/*.ts"
   ]
 }

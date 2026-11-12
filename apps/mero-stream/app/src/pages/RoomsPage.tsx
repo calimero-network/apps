@@ -14,7 +14,8 @@ import {
   streamInfo,
   type RoomRow,
 } from "../lib/streams";
-import { meroStream } from "../lib/meroStream";
+import { MeroStreamClient } from "../generated/client";
+import { toMembers } from "../lib/meroStream";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
@@ -135,7 +136,7 @@ export default function RoomsPage() {
     void Promise.all(
       rooms.map(async (room) => {
         try {
-          const members = await meroStream(conn.client, room.appId).getMembers();
+          const members = toMembers(await new MeroStreamClient(conn.client, room.appId).getMembers());
           return [room.appId, members] as const;
         } catch {
           return null;

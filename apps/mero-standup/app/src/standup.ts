@@ -1,37 +1,5 @@
-import { type ClientRoutes } from "@calimero-apps/connect";
-
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-standup";
-
-/**
- * The contract's methods by their ABI names (camelCase), split the way the node
- * runs them: a call goes through the app's log, a view is answered by a node
- * without writing. `standup.test.ts` asserts these lists are exactly the
- * committed `logic/res/abi.json`'s, so a method the contract drops or renames
- * fails a test rather than a request.
- */
-export const CALLS = [
-  "postUpdate",
-  "clearUpdate",
-  "logDecision",
-  "offerHelp",
-  "withdrawHelp",
-  "setTeamName",
-  "setName",
-] as const;
-export const VIEWS = [
-  "whoami",
-  "getDay",
-  "listDays",
-  "currentBlockers",
-  "members",
-  "getDecision",
-  "listDecisions",
-  "tags",
-  "getWeek",
-  "teamName",
-  "getName",
-] as const;
 
 // ── What the screens use ────────────────────────────────────────────────────
 //
@@ -39,6 +7,11 @@ export const VIEWS = [
 // snake_case fields and timestamps as numbers (ms). The contract answers
 // camelCase with 64-bit integers as decimal strings; `decode*` below is the one
 // place that converts.
+//
+// The contract is called through `MeroStandupClient`, which `mero-app-build
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). The ABI
+// names its records without their shapes, so the generated types are
+// `unknown`: each read passes its answer through the `decode*` for its shape.
 
 export interface HelpView {
   account: string;
@@ -161,102 +134,42 @@ export function decodeDecision(w: Wire): DecisionView {
   };
 }
 
-/** The team, typed from the contract (no client is generated from a component ABI yet). */
-export interface StandupClient {
-  whoami(): Promise<string>;
-  postUpdate(p: { day: string; done: string; next: string; blockers: string }): Promise<void>;
-  clearUpdate(p: { day: string }): Promise<void>;
-  getDay(p: { day: string }): Promise<DayView>;
-  listDays(p: { before: string | null; limit: number }): Promise<DayPage>;
-  currentBlockers(): Promise<UpdateView[]>;
-  members(): Promise<MemberView[]>;
-  logDecision(p: {
-    title: string;
-    decision: string;
-    rationale: string;
-    supersedes: string | null;
-    tags: string[];
-    with: string[];
-    from_day: string | null;
-  }): Promise<string>;
-  getDecision(p: { id: string }): Promise<DecisionView>;
-  listDecisions(p: {
-    search: string | null;
-    tag: string | null;
-    from_day: string | null;
-    standing_only: boolean;
-    cursor: string | null;
-    limit: number;
-  }): Promise<DecisionPage>;
-  tags(): Promise<TagCount[]>;
-  offerHelp(p: { day: string; author: string; note: string }): Promise<void>;
-  withdrawHelp(p: { day: string; author: string }): Promise<void>;
-  getWeek(p: { start: string }): Promise<DayView[]>;
-  setTeamName(p: { name: string }): Promise<void>;
-  teamName(): Promise<string>;
-  setName(p: { name: string }): Promise<void>;
-  getName(p: { account: string }): Promise<string>;
-}
+/** `getDay`'s answer. */
+export const decodeDayAnswer = (v: unknown): DayView => decodeDay(obj(v));
 
-type Transport = ClientRoutes<{ apps: "call" | "view" }>;
+/** `getWeek`'s answer. */
+export const decodeDays = (v: unknown): DayView[] => list(v).map(decodeDay);
 
-/**
- * The team at app instance `app` through `client`. `after` runs after every
- * request (the session store syncs a refreshed session there).
- */
-export function standup(client: Transport, app: string, after: () => void = () => {}): StandupClient {
-  const call = async (method: (typeof CALLS)[number], args: Wire = {}): Promise<unknown> => {
-    try {
-      return (await client.apps.call({ app, method, args })).result;
-    } finally {
-      after();
-    }
-  };
-  const view = async (method: (typeof VIEWS)[number], args: Wire = {}): Promise<unknown> => {
-    try {
-      return (await client.apps.view({ app, method, args })).result;
-    } finally {
-      after();
-    }
-  };
-  const done = async (p: Promise<unknown>) => {
-    await p;
-  };
+/** `currentBlockers`'s answer. */
+export const decodeUpdates = (v: unknown): UpdateView[] => list(v).map(decodeUpdate);
+
+/** `listDays`'s answer. */
+export function decodeDayPage(v: unknown): DayPage {
+  const w = obj(v);
   return {
-    whoami: async () => str(await view("whoami")),
-    postUpdate: (p) => done(call("postUpdate", { ...p })),
-    clearUpdate: (p) => done(call("clearUpdate", { ...p })),
-    getDay: async (p) => decodeDay(obj(await view("getDay", { ...p }))),
-    listDays: async (p) => {
-      const w = obj(await view("listDays", { ...p }));
-      return {
-        days: list(w.days).map((d) => ({ day: str(d.day), updates: num(d.updates), blocked: num(d.blocked) })),
-        next_cursor: typeof w.nextCursor === "string" ? w.nextCursor : null,
-      };
-    },
-    currentBlockers: async () => list(await view("currentBlockers")).map(decodeUpdate),
-    members: async () =>
-      list(await view("members")).map((m) => ({
-        account: str(m.account),
-        name: str(m.name),
-        last_day: str(m.lastDay),
-      })),
-    logDecision: async ({ from_day, ...p }) => str(await call("logDecision", { ...p, fromDay: from_day })),
-    getDecision: async (p) => decodeDecision(obj(await view("getDecision", { ...p }))),
-    listDecisions: async ({ from_day, standing_only, ...p }) => {
-      const w = obj(await view("listDecisions", { ...p, fromDay: from_day, standingOnly: standing_only }));
-      return {
-        items: list(w.items).map(decodeDecision),
-        next_cursor: typeof w.nextCursor === "string" ? w.nextCursor : null,
-      };
-    },
-    tags: async () => list(await view("tags")).map((t) => ({ tag: str(t.tag), count: num(t.count) })),
-    offerHelp: (p) => done(call("offerHelp", { ...p })),
-    withdrawHelp: (p) => done(call("withdrawHelp", { ...p })),
-    getWeek: async (p) => list(await view("getWeek", { ...p })).map(decodeDay),
-    setTeamName: (p) => done(call("setTeamName", { ...p })),
-    teamName: async () => str(await view("teamName")),
-    setName: (p) => done(call("setName", { ...p })),
-    getName: async (p) => str(await view("getName", { ...p })),
+    days: list(w.days).map((d) => ({ day: str(d.day), updates: num(d.updates), blocked: num(d.blocked) })),
+    next_cursor: typeof w.nextCursor === "string" ? w.nextCursor : null,
   };
 }
+
+/** `members`'s answer. */
+export const decodeMembers = (v: unknown): MemberView[] =>
+  list(v).map((m) => ({ account: str(m.account), name: str(m.name), last_day: str(m.lastDay) }));
+
+/** `getDecision`'s answer. */
+export const decodeDecisionAnswer = (v: unknown): DecisionView => decodeDecision(obj(v));
+
+/** `listDecisions`'s answer. */
+export function decodeDecisionPage(v: unknown): DecisionPage {
+  const w = obj(v);
+  return {
+    items: list(w.items).map(decodeDecision),
+    next_cursor: typeof w.nextCursor === "string" ? w.nextCursor : null,
+  };
+}
+
+/** `tags`'s answer. */
+export const decodeTags = (v: unknown): TagCount[] => list(v).map((t) => ({ tag: str(t.tag), count: num(t.count) }));
+
+/** A string answer (`whoami`, `teamName`, `getName`, `logDecision`): anything else as `""`. */
+export const decodeText = (v: unknown): string => str(v);
