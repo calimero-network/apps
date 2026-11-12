@@ -1,4 +1,5 @@
-import { asError, int, type Transport } from "./formsApi";
+import { asError, int } from "./formsApi";
+import type { AppCallTransport as Transport } from "./generated/client";
 
 /**
  * The few Mero CRM methods the hand-off uses, on a Mero CRM app instance (a

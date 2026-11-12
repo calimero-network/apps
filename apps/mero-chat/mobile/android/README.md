@@ -8,7 +8,7 @@ and messages. It is built on the Calimero Kotlin SDK (`mero-core` + `mero-compos
 ## On Calimero 1.0
 
 The phone runs no node. It signs in with a passkey on a Calimero 1.0 cluster and talks to it over
-the SDK's sealed channel (kotlin-sdk `2.0.0`). Contract calls use the component ABI that the web port
+the SDK's sealed channel (kotlin-sdk `4.0.0`). Contract calls use the component ABI that the web port
 (#730) ships in `../../logic/res/abi.json`.
 
 | What | How | SDK |
@@ -62,8 +62,8 @@ The gates CI runs (`.github/workflows/mero-chat-android.yml`):
 
 ### The SDK pin
 
-The Calimero 1.0 layer the app uses is kotlin-sdk `2.0.0` (`kotlin-sdk.ref` pins its release commit,
-`ce7b540`). That release is not on Maven Central,
+The Calimero 1.0 layer the app uses is kotlin-sdk `4.0.0` (`kotlin-sdk.ref` pins its release commit,
+`e18ef8a`). That release is not on Maven Central,
 so the SDK is built from source as a Gradle composite build: `settings.gradle.kts` includes the
 checkout and substitutes it for the `network.calimero:mero-core` / `mero-compose` /
 `mero-testkit` coordinates the app declares. Which checkout:

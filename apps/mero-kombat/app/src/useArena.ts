@@ -240,7 +240,7 @@ export function useArena(conn: ArenaConn) {
       do {
         again.current = false;
         const started = performance.now();
-        const next = (await client.kombat.arena({ now: now() })) as ArenaView;
+        const next = await client.kombat.arena({ now: now() });
         setView(next);
         setError(null);
         // At most ~6 reads a second. The fight itself never waits on a read —
@@ -356,7 +356,7 @@ export function usePastMatches(conn: ArenaConn, signature: string): MatchSummary
     void client.kombat
       .history()
       .then((rows) => {
-        if (live) setMatches(rows as MatchSummary[]);
+        if (live) setMatches(rows);
       })
       .catch(() => {
         /* the record is a nicety beside the fight */

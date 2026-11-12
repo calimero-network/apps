@@ -222,7 +222,7 @@ struct Action {
 // decimal strings (D20), like every component app's.
 
 /// One corner, as the reader sees it.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FighterView {
     /// `p1` or `p2`.
@@ -241,7 +241,7 @@ pub struct FighterView {
 }
 
 /// One blow of the current round.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct HitView {
     /// The corner that threw it.
@@ -256,7 +256,7 @@ pub struct HitView {
 }
 
 /// Everything a client needs to draw the arena, in one call.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ArenaView {
     pub title: String,
@@ -291,7 +291,7 @@ pub struct ArenaView {
 }
 
 /// One match of the arena's record.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MatchSummary {
     pub index: u32,

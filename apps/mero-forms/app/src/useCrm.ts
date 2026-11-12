@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CrmClient } from "./crmApi";
-import type { FormView, ResponseView } from "./formsApi";
+import { type FormView, type ResponseView, toResponse } from "./formsApi";
 import { crmPayload, existingContact } from "./lib/crm";
 import { findPipelines, type Pipeline } from "./lib/pipelines";
 import { useSignedIn } from "./sessionContext";
@@ -87,7 +87,7 @@ export function useSendToCrm(workspace: Workspace) {
     try {
       await crm.addNote({ deal_id: dealId, body: p.note });
       await workspace.act((c) =>
-        c.recordCrmDeal({ id: response.id, crm_context: link.context_id, crm_deal: dealId }),
+        c.recordCrmDeal({ id: response.id, crmContext: link.context_id, crmDeal: dealId }).then(toResponse),
       );
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);

@@ -35,7 +35,7 @@
 // array, which `world.getOverrides` hands back as a single last page.
 
 import type { GameEvent } from "../net/events";
-import type { WorldCalls } from "../net/merraria";
+import type { OverridesPage, PlayerView, WorldCalls, WorldMeta } from "../net/merraria";
 
 /** The bridge's (v1) name for each of the engine's methods: what the apps' bridge dispatchers answer. */
 export const V1_METHOD: Readonly<Record<keyof WorldCalls, string>> = {
@@ -216,11 +216,11 @@ export class NativeGameClient {
    * `createWorld`: the app creates worlds itself.
    */
   readonly world: WorldCalls = {
-    worldMeta: () => this.send("worldMeta", {}),
+    worldMeta: () => this.send("worldMeta", {}) as Promise<WorldMeta>,
     setTiles: (args) => this.send("setTiles", { ...args }) as Promise<number>,
-    getOverrides: (args) => this.send("getOverrides", { ...args }),
-    getPlayers: (args) => this.send("getPlayers", { ...args }) as Promise<unknown[]>,
-    join: (args) => this.send("join", { ...args }),
+    getOverrides: (args) => this.send("getOverrides", { ...args }) as Promise<OverridesPage>,
+    getPlayers: (args) => this.send("getPlayers", { ...args }) as Promise<PlayerView[]>,
+    join: (args) => this.send("join", { ...args }) as Promise<PlayerView>,
     heartbeat: (args) => this.send("heartbeat", { ...args }) as Promise<null>,
     leave: (args) => this.send("leave", { ...args }) as Promise<null>,
   };

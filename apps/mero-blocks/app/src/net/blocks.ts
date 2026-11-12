@@ -5,12 +5,12 @@
 //
 // Wire conversions live here and nowhere else: a `u64` (`now`, `seed`,
 // `createdAt`, the counts in `worldStats`) travels as a decimal string; the
-// game keeps numbers. The ABI names its records (`WorldMeta`, `PlayersPage`,
-// ...) without their shapes, so the generated types are `unknown` and the
-// shapes below type them where they are read.
+// game keeps numbers. The ABI describes its records (`WorldMeta`, `PlayersPage`,
+// ...), so the generated client types what the contract answers, and the
+// shapes below are what the game reads after the conversion.
 
 import type { Edit } from "../engine/world";
-import { MeroBlocksClient, type AppTransport } from "../generated/client";
+import { MeroBlocksClient, type AppTransport, type PlayerView } from "../generated/client";
 import type { BlockEntry, RemotePlayer, Transform, WorldApi } from "./sync";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
@@ -31,14 +31,6 @@ export interface WorldStats {
   players: number;
 }
 
-/** What the contract answers for a player (`PlayerView`). */
-interface PlayerView extends Transform {
-  id: string;
-  account: string;
-  device: string;
-  online: boolean;
-}
-
 /** The world at instance `app`, as one device of the signed-in account. */
 export interface Blocks extends WorldApi {
   /** The world's meta, and the log index it was read at (where the event stream picks up). */
@@ -49,7 +41,7 @@ export interface Blocks extends WorldApi {
   myAccount(): Promise<string>;
 }
 
-/** One page of a paged view (`getOverrides`, `getPlayers`). */
+/** One page of a paged view (`OverridesPage`, `PlayersPage`). */
 interface Page<T> {
   items: T[];
   next: string | null;
@@ -96,11 +88,11 @@ export function blocks(client: AppTransport, app: string, device: string, after:
    * Every row of a paged view: the contract answers at most 1,000 per call
    * (its collections only grow), so follow `next` until it is `null`.
    */
-  const allPages = async <T>(read: (cursor: string | null) => Promise<unknown>, method: string): Promise<T[]> => {
+  const allPages = async <T>(read: (cursor: string | null) => Promise<Page<T> | null>, method: string): Promise<T[]> => {
     const rows: T[] = [];
     let cursor: string | null = null;
     for (let n = 0; n < MAX_PAGES; n++) {
-      const result = (await read(cursor)) as Page<T> | null;
+      const result = await read(cursor);
       rows.push(...(result?.items ?? []));
       cursor = result?.next ?? null;
       if (cursor === null) return rows;
@@ -125,12 +117,12 @@ export function blocks(client: AppTransport, app: string, device: string, after:
       // The index of this one answer, not of whatever else is in flight.
       let index = 0;
       const read = new MeroBlocksClient(indexed(client, (i) => (index = i)), app, { after });
-      const result = (await read.worldMeta()) as { name: string; seed: string; createdAt: string };
+      const result = await read.worldMeta();
       return { meta: { name: result.name, seed: Number(result.seed), createdAt: Number(result.createdAt) }, index };
     },
     overrideCount: () => world.overrideCount(),
     worldStats: async () => {
-      const result = (await world.worldStats()) as { overrides: string; players: string };
+      const result = await world.worldStats();
       return { overrides: Number(result.overrides), players: Number(result.players) };
     },
     myAccount: () => world.myAccount(),
