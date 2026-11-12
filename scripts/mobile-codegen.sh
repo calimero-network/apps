@@ -51,6 +51,8 @@ CLIENTS=(
   "mero-vote|kotlin|apps/mero-vote/mobile/android/app/src/main/kotlin/network/calimero/vote/generated/client|vote|network.calimero.vote.generated.client"
   "mero-sheets|swift|apps/mero-sheets/mobile/ios/Core/Sources/SheetsCore/Generated|sheets|"
   "mero-sheets|kotlin|apps/mero-sheets/mobile/android/app/src/main/kotlin/network/calimero/sheets/generated/client|sheets|network.calimero.sheets.generated.client"
+  "mero-stream|swift|apps/mero-stream/mobile/ios/Core/Sources/StreamCore/Generated|stream|"
+  "mero-stream|kotlin|apps/mero-stream/mobile/android/app/src/main/kotlin/network/calimero/stream/generated|stream|network.calimero.stream.generated"
 )
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

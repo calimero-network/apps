@@ -34,7 +34,7 @@ import network.calimero.stream.app.ApprovalItem
 import network.calimero.stream.app.ApprovalsModel
 import network.calimero.stream.core.CalimeroMediaChannel
 import network.calimero.stream.core.ErrorText
-import network.calimero.stream.core.StreamClient
+import network.calimero.stream.core.StreamContract
 import network.calimero.stream.core.StreamInvitation
 import network.calimero.stream.core.streamClient
 import org.junit.Assert.assertArrayEquals
@@ -150,7 +150,7 @@ class Calimero10Test {
     /** The methods the phone calls, as the component ABI (`logic/res/abi.json`) names them. */
     @Test fun `the client calls the component surface`() =
         runTest {
-            assertEquals(mapOf("join" to listOf("username", "now"), "getMembers" to emptyList()), StreamClient.METHODS)
+            assertEquals(mapOf("join" to listOf("username", "now"), "getMembers" to emptyList()), StreamContract.METHODS)
             val backend = InMemoryAppBackend()
             backend.recording.handler = {
                 if (it.method == "join") {
