@@ -1,5 +1,5 @@
 import type { FeedItem } from "./hyperfeedTypes";
-import { HyperfeedClient } from "./hyperfeed";
+import { HyperfeedClient } from "./generated/client";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Waiting for you",
@@ -85,7 +85,8 @@ function bareMethod(item: FeedItem): string {
 /** Hyperfeed's own methods, as the contract names them: `set_policy`, `say` … */
 const HYPERFEED_METHODS = new Set(
   Object.getOwnPropertyNames(HyperfeedClient.prototype)
-    .filter((n) => n !== "constructor")
+    // The generated class's own methods: the contract's, plus its event stream.
+    .filter((n) => n !== "constructor" && n !== "events")
     .map((n) => n.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)),
 );
 

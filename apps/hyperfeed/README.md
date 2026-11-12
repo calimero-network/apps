@@ -612,8 +612,10 @@ component SDK. What a client sees differently:
 
 Removed: the merobox workflow (`logic/workflows/feed.yml`, now `scenarios/`), the CRDT merge
 tests (each turned into what it means under one log), `res/state-schema.json`, the abi-codegen
-client (`src/generated/`, now the hand-kept adapter `src/hyperfeed.ts` with its types in
-`src/hyperfeedTypes.ts`, pinned to `res/abi.json` by `hyperfeed.test.ts`), mero-react's provider and
+client (`src/generated/` again, now core's `mero-app-build codegen` from `res/abi.json`:
+`HyperfeedClient`, called by `clusterBackend` in `src/backend.ts` with the records typed by
+`src/hyperfeedTypes.ts`; `pnpm -F hyperfeed codegen` after a contract change, and
+`src/client.test.ts` checks it against the ABI), mero-react's provider and
 login popup (now a passkey sign-in), Calimero Desktop's session hand-off, the node-admin calls
 (namespaces, contexts, registry installs), and the Playwright suites (`e2e/` drove merod 0.x;
 `tests/` drove the landing and `/demo`, both still covered by vitest).
