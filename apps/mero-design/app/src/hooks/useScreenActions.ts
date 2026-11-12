@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { v4 as uuid } from "uuid";
-import { rpcCall } from "../api/rpc";
+import { design, wireElement } from "../api/rpc";
 import { useCanvasStore } from "../store/canvasStore";
 import { useToast } from "../contexts/ToastContext";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -95,7 +95,7 @@ export function useScreenActions(contextId: string, readOnly = false) {
 
     store.snapshot();
     store.upsertElement(backdrop);
-    await rpcCall(contextId, "add_element", { element: backdrop })
+    await design(contextId).addElement({ element: wireElement(backdrop) })
       .catch((e) => report.current("add_element", e));
     if (back === 0) {
       // Every other layer moves up one — mirror what the contract does, so the
@@ -105,7 +105,7 @@ export function useScreenActions(contextId: string, readOnly = false) {
           e.id === backdrop.id ? { ...e, layerIndex: 0 } : { ...e, layerIndex: e.layerIndex + 1 },
         ),
       );
-      await rpcCall(contextId, "send_to_back", { id: backdrop.id })
+      await design(contextId).sendToBack({ id: backdrop.id })
         .catch((e) => report.current("send_to_back", e));
     }
     useCanvasStore.getState().selectElement(backdrop.id);
