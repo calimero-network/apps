@@ -1,8 +1,9 @@
 import Foundation
 import MeroKit
 
-// The vault's types, as the contract (`../../../logic/res/abi.json`) answers them. The calls are the
-// generated `PassClient` (`Sources/PassGenerated`, `scripts/mobile-codegen.sh` at the repo root);
+// The vault's types, as the contract (`../../../logic/res/abi.json`) answers them, kept by hand in
+// the generated client's module (PassCore has a `Secret` and a `Revision` of its own). The calls are
+// the generated `PassClient` (`PassClient.swift`, `scripts/mobile-codegen.sh` at the repo root);
 // until the logic derives `AbiType` the ABI names these types without their shape, so the client
 // takes and answers their JSON and these read it (`JSONValue.decoded(as:)`, through
 // `PassWireDecoding` for the u64 fields).

@@ -200,7 +200,7 @@ the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: 
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). Until the logic derives `AbiType`, the ABI names the vault's types without
 their shape, so the client takes and answers their JSON and the kept types read it
-(`PassCore/Vault/Records.swift`, `generated/PassRecords.kt`), in step with the web app's
+(`PassGenerated/Records.swift`, `generated/PassRecords.kt`), in step with the web app's
 `app/src/lib/meroPass.ts` and `vaultApi.ts`:
 
 - methods, arguments and answer fields are camelCase (`addSecret`, `publicKey`, `createdAt`);
