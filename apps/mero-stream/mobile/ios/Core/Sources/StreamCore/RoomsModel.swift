@@ -52,7 +52,7 @@ public final class RoomsModel: ObservableObject {
         let ids = rooms.map(\.id)
         rosters = await withTaskGroup(of: (String, [Member]?).self) { group in
             for id in ids {
-                group.addTask { (id, try? await StreamClient(backend: backend, contextId: id).getMembers().map({ try $0.decoded(as: Member.self) })) }
+                group.addTask { (id, try? await StreamClient(backend: backend, contextId: id).getMembers()) }
             }
             var out: [String: [Member]] = [:]
             for await (id, members) in group { if let members { out[id] = members } }

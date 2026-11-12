@@ -163,14 +163,14 @@ enum ForumDemo {
             PostView(
                 id: post.id, author: post.author, authorName: names[post.author] ?? "", title: post.title, body: post.body,
                 createdAt: post.createdAt, editedAt: post.editedAt, score: post.others + Int64(post.myVote),
-                commentCount: UInt64(forum.replies.filter { $0.postId == post.id }.count), myVote: post.myVote)
+                commentCount: UInt64(forum.replies.filter { $0.postId == post.id }.count), myVote: Int8(post.myVote))
         }
 
         private func view(_ reply: Reply) -> CommentView {
             CommentView(
                 id: reply.id, postId: reply.postId, author: reply.author, authorName: names[reply.author] ?? "",
                 body: reply.body, createdAt: reply.createdAt, editedAt: reply.editedAt,
-                score: reply.others + Int64(reply.myVote), myVote: reply.myVote)
+                score: reply.others + Int64(reply.myVote), myVote: Int8(reply.myVote))
         }
 
         private func mint(_ kind: String) -> String {

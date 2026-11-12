@@ -44,7 +44,7 @@ public final class WeekModel: ObservableObject {
         defer { isLoading = false }
         let start = start
         do {
-            let week = try await team.client.getWeek(start: start).map({ try $0.decoded(as: DayView.self) })
+            let week = try await team.client.getWeek(start: start)
             guard start == self.start else { return }
             self.week = week
             error = nil

@@ -40,8 +40,8 @@ public final class ThreadModel: ObservableObject {
     public func load() async {
         if post == nil { phase = .loading }
         do {
-            async let fetchedPost = client.getPost(postId: postId).decoded(as: PostView.self)
-            async let firstPage = client.listComments(postId: postId, cursor: nil, limit: ForumConstants.pageSize).decoded(as: CommentPage.self)
+            async let fetchedPost = client.getPost(postId: postId)
+            async let firstPage = client.listComments(postId: postId, cursor: nil, limit: ForumConstants.pageSize)
             let (loadedPost, page) = try await (fetchedPost, firstPage)
             post = loadedPost
             comments = page.items
@@ -63,7 +63,7 @@ public final class ThreadModel: ObservableObject {
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            let page = try await client.listComments(postId: postId, cursor: cursor, limit: ForumConstants.pageSize).decoded(as: CommentPage.self)
+            let page = try await client.listComments(postId: postId, cursor: cursor, limit: ForumConstants.pageSize)
             let seen = Set(comments.map(\.id))
             comments += page.items.filter { !seen.contains($0.id) }
             self.cursor = page.nextCursor
@@ -94,7 +94,7 @@ public final class ThreadModel: ObservableObject {
         guard var current = post else { return }
         let before = current
         current.score = current.score - Int64(current.myVote) + Int64(value)
-        current.myVote = value
+        current.myVote = Int8(value)
         post = current
         do {
             try await client.vote(postId: postId, value: Int8(value))
@@ -165,7 +165,7 @@ public final class ThreadModel: ObservableObject {
 
     public func voteComment(_ comment: CommentView, value: Int32) async {
         let before = comments
-        replace(comment.id) { $0.score = $0.score - Int64($0.myVote) + Int64(value); $0.myVote = value }
+        replace(comment.id) { $0.score = $0.score - Int64($0.myVote) + Int64(value); $0.myVote = Int8(value) }
         do {
             try await client.voteComment(commentId: comment.id, value: Int8(value))
         } catch {

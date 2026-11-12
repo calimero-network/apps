@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
-import network.calimero.issues.contract.IssueTrackerContract
-import network.calimero.issues.contract.RepoInfo
 import network.calimero.issues.generated.IssueTrackerClient
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -125,7 +123,7 @@ class WorkspaceModel(
                                 async {
                                     id to
                                         try {
-                                            IssueTrackerContract.read<RepoInfo>(client(id).getRepoInfo()).repoUrl
+                                            client(id).getRepoInfo().repoUrl
                                         } catch (e: CancellationException) {
                                             throw e
                                         } catch (_: Exception) {

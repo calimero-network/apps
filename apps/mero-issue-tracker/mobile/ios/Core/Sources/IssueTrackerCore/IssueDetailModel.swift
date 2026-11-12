@@ -54,7 +54,7 @@ public final class IssueDetailModel: ObservableObject {
     public func load() async {
         if issue == nil { phase = .loading }
         do {
-            let detail = try await client.getIssue(issueId: issueId).decoded(as: IssueDetail.self)
+            let detail = try await client.getIssue(issueId: issueId)
             issue = detail.issue
             comments = detail.comments.sorted { $0.createdAt < $1.createdAt }
             phase = .loaded

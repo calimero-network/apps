@@ -25,7 +25,7 @@ fun post(
     author: String = BOB,
     name: String = "Bob",
     score: Long = 0,
-    myVote: Int = 0,
+    myVote: Byte = 0,
     comments: ULong = 0u,
 ) = PostView(id, author, name, "Title $id", "Body $id", 1_761_000_000_000_000_000uL, 1_761_000_000_000_000_000uL, score, comments, myVote)
 
@@ -33,7 +33,7 @@ fun comment(
     id: String,
     author: String = BOB,
     score: Long = 0,
-    myVote: Int = 0,
+    myVote: Byte = 0,
 ) = CommentView(id, "p1", author, "Bob", "Reply $id", 1_761_000_000_000_000_000uL, 1_761_000_000_000_000_000uL, score, myVote)
 
 val testJson = Json { encodeDefaults = true }

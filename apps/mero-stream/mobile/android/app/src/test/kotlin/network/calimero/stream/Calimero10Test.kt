@@ -34,7 +34,6 @@ import network.calimero.stream.app.ApprovalItem
 import network.calimero.stream.app.ApprovalsModel
 import network.calimero.stream.core.CalimeroMediaChannel
 import network.calimero.stream.core.ErrorText
-import network.calimero.stream.core.Member
 import network.calimero.stream.core.StreamContract
 import network.calimero.stream.core.StreamInvitation
 import network.calimero.stream.core.streamClient
@@ -165,9 +164,9 @@ class Calimero10Test {
                     JsonArray(emptyList())
                 }
             }
-            val member = Member.from(streamClient(backend, "c1").join("Ana", 1_700_000_000uL))
-            assertEquals(1_700_000_000L, member.joinedAt)
-            assertEquals(1_700_000_001L, member.updatedAt)
+            val member = streamClient(backend, "c1").join("Ana", 1_700_000_000uL)
+            assertEquals(1_700_000_000uL, member.joinedAt)
+            assertEquals(1_700_000_001uL, member.updatedAt)
             assertEquals(
                 JsonPrimitive("1700000000"),
                 backend.recording

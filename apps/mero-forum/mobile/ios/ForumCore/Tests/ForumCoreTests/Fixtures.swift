@@ -12,14 +12,14 @@ func forumRef(contextId: String = ctx) -> ForumRef {
     ForumRef(namespaceId: ns, spaceName: "Design", forumId: String(repeating: "bb", count: 32), forumName: "General", contextId: contextId)
 }
 
-func post(_ id: String, author: String = bob, name: String = "Bob", score: Int64 = 0, myVote: Int32 = 0, comments: UInt64 = 0) -> PostView {
+func post(_ id: String, author: String = bob, name: String = "Bob", score: Int64 = 0, myVote: Int8 = 0, comments: UInt64 = 0) -> PostView {
     PostView(
         id: id, author: author, authorName: name, title: "Title \(id)", body: "Body \(id)",
         createdAt: 1_761_000_000_000_000_000, editedAt: 1_761_000_000_000_000_000, score: score,
         commentCount: comments, myVote: myVote)
 }
 
-func comment(_ id: String, author: String = bob, score: Int64 = 0, myVote: Int32 = 0) -> CommentView {
+func comment(_ id: String, author: String = bob, score: Int64 = 0, myVote: Int8 = 0) -> CommentView {
     CommentView(
         id: id, postId: "p1", author: author, authorName: "Bob", body: "Reply \(id)",
         createdAt: 1_761_000_000_000_000_000, editedAt: 1_761_000_000_000_000_000, score: score, myVote: myVote)

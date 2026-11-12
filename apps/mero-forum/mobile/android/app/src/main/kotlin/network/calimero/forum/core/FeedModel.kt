@@ -7,8 +7,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import network.calimero.forum.contract.ForumContract
-import network.calimero.forum.contract.PostPage
 import network.calimero.forum.contract.PostView
 import network.calimero.forum.generated.ForumClient
 
@@ -58,7 +56,7 @@ class FeedModel(
     suspend fun refresh() {
         val mine = ++generation
         if (_posts.value.isEmpty()) _phase.value = LoadPhase.Loading
-        attempt { ForumContract.read<PostPage>(client.listPosts(_sort.value.wire, null, ForumConstants.PAGE_SIZE)) }
+        attempt { client.listPosts(_sort.value.wire, null, ForumConstants.PAGE_SIZE) }
             .onSuccess { page ->
                 if (mine != generation) return
                 _posts.value = page.items
@@ -78,7 +76,7 @@ class FeedModel(
         _isLoadingMore.value = true
         val mine = generation
         try {
-            attempt { ForumContract.read<PostPage>(client.listPosts(_sort.value.wire, next, ForumConstants.PAGE_SIZE)) }
+            attempt { client.listPosts(_sort.value.wire, next, ForumConstants.PAGE_SIZE) }
                 .onSuccess { page ->
                     if (mine != generation) return
                     val seen = _posts.value.map { it.id }.toSet()
@@ -157,7 +155,7 @@ class FeedModel(
         value: Int,
     ) {
         val before = _posts.value
-        replace(post.id) { it.copy(score = it.score - it.myVote + value, myVote = value) }
+        replace(post.id) { it.copy(score = it.score - it.myVote + value, myVote = value.toByte()) }
         attempt { client.vote(post.id, value.toByte()) }.onFailure {
             _posts.value = before
             _notice.value = ForumErrorText.describe(it)

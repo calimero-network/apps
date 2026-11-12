@@ -177,7 +177,7 @@ enum CalendarDemo {
                 let stamp = nowMillis()
                 if let i = members[context]?.firstIndex(where: { $0.id == CalendarDemo.me }) {
                     members[context]![i].username = name
-                    members[context]![i].usernameUpdatedAt = U64(stamp)
+                    members[context]![i].usernameUpdatedAt = stamp
                 } else {
                     members[context, default: []].append(
                         Member(id: CalendarDemo.me, username: name, joinedAt: stamp, usernameUpdatedAt: stamp))

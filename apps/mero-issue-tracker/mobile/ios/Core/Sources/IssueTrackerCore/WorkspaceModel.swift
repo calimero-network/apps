@@ -111,7 +111,7 @@ public final class WorkspaceModel: ObservableObject {
             let urls = await withTaskGroup(of: (String, String).self) { group -> [String: String] in
                 for id in ids {
                     group.addTask {
-                        let url = (try? await IssueTrackerClient(contract: contract, contextId: id).getRepoInfo().decoded(as: RepoInfo.self).repoUrl) ?? ""
+                        let url = (try? await IssueTrackerClient(contract: contract, contextId: id).getRepoInfo().repoUrl) ?? ""
                         return (id, url)
                     }
                 }

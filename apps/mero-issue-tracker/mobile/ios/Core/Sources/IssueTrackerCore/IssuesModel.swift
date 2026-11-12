@@ -102,7 +102,7 @@ public final class IssuesModel: ObservableObject {
     public func load() async {
         if issues.isEmpty, phase != .loaded { phase = .loading }
         do {
-            let list = try await client.listIssues().map { try $0.decoded(as: IssueView.self) }
+            let list = try await client.listIssues()
             issues = list.sorted { $0.createdAt > $1.createdAt }
             phase = .loaded
             notice = nil

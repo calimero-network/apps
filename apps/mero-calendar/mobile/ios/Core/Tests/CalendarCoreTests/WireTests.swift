@@ -53,22 +53,29 @@ final class CalendarContractTests: XCTestCase {
         let events = try JSONDecoder().decode([CalendarEvent].self, from: Data(json.utf8))
         XCTAssertEqual(events.first?.owner, Fixture.me)
         XCTAssertEqual(events.first?.peers, [Fixture.bob])
-        XCTAssertEqual(events.first?.eventType, "event")
+        XCTAssertEqual(events.first?.event_type, "event")
     }
 
     func testU64sAreDecimalStringsBothWays() throws {
         let members = try JSONDecoder().decode(
             [Member].self,
             from: Data(#"[{"id":"x","username":"a","joinedAt":"1761650000000000001","usernameUpdatedAt":2}]"#.utf8))
-        XCTAssertEqual(members.first?.joinedAt.value, 1_761_650_000_000_000_001)
-        XCTAssertEqual(members.first?.usernameUpdatedAt.value, 2)
-        let sent = String(decoding: try JSONEncoder().encode(U64(1_783_296_000_000)), as: UTF8.self)
-        XCTAssertEqual(sent, #""1783296000000""#)
+        XCTAssertEqual(members.first?.joinedAt, 1_761_650_000_000_000_001)
+        XCTAssertEqual(members.first?.usernameUpdatedAt, 2)
+        let member = Member(id: "x", username: "a", joinedAt: 1_783_296_000_000, usernameUpdatedAt: 6)
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(member)) as? [String: Any]
+        XCTAssertEqual(sent?["joinedAt"] as? String, "1783296000000")
+        XCTAssertEqual(sent?["usernameUpdatedAt"] as? String, "6")
     }
 
-    func testAnUpdateSendsOnlyTheFieldsItNames() throws {
-        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(UpdateCalendarEvent(title: "New")))
-        XCTAssertEqual(sent as? [String: String], ["title": "New"])
+    /// The fields an update does not name go as `null`, which the contract leaves alone.
+    func testAnUpdateChangesOnlyTheFieldsItNames() throws {
+        let sent = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(UpdateCalendarEvent(title: "New"))) as? [String: Any])
+        XCTAssertEqual(sent["title"] as? String, "New")
+        XCTAssertEqual(
+            Set(sent.keys), ["title", "description", "start", "end", "event_type", "color", "peers"])
+        XCTAssertTrue(sent.filter { $0.key != "title" }.values.allSatisfy { $0 is NSNull })
     }
 }
 

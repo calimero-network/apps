@@ -41,7 +41,7 @@ public struct CalendarItem: Identifiable, Hashable, Sendable, Codable {
         let end = EventTime.parse(event.end) ?? start
         self.init(
             id: event.id, title: event.title, description: event.description, owner: event.owner,
-            start: start, end: max(end, start), isAllDay: event.eventType == CalendarConstants.allDayType,
+            start: start, end: max(end, start), isAllDay: event.event_type == CalendarConstants.allDayType,
             color: event.color.isEmpty ? CalendarConstants.defaultColor : event.color,
             peers: event.peers, isPrivate: isPrivate)
     }

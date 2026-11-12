@@ -88,10 +88,10 @@ public final class BoardModel: ObservableObject {
         let day = day
         let start = weekStart
         do {
-            async let dayView = client.getDay(day: day).decoded(as: DayView.self)
-            async let week = client.getWeek(start: start).map({ try $0.decoded(as: DayView.self) })
-            async let blockers = client.currentBlockers().map({ try $0.decoded(as: UpdateView.self) })
-            async let decided = client.listDecisions(fromDay: day, standingOnly: false, limit: 10).decoded(as: DecisionPage.self)
+            async let dayView = client.getDay(day: day)
+            async let week = client.getWeek(start: start)
+            async let blockers = client.currentBlockers()
+            async let decided = client.listDecisions(fromDay: day, standingOnly: false, limit: 10)
             let (d, w, b, dec) = try await (dayView, week, blockers, decided)
             guard day == self.day else { return }
             self.dayView = d
@@ -115,7 +115,7 @@ public final class BoardModel: ObservableObject {
             previous = nil
             return
         }
-        let view = try? await team.client.getDay(day: last).decoded(as: DayView.self)
+        let view = try? await team.client.getDay(day: last)
         previous = view?.updates.first { $0.author == me }
     }
 

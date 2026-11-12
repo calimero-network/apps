@@ -295,7 +295,7 @@ class CallModel(
     }
 
     suspend fun refreshMembers() {
-        runCatching { client.getMembers().map(Member::from) }.getOrNull()?.let { _members.value = it }
+        runCatching { client.getMembers() }.getOrNull()?.let { _members.value = it }
     }
 
     private suspend fun membersLoop() {

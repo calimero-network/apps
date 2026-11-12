@@ -278,7 +278,7 @@ private fun PostDetail(
         Hairline()
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             ActionCount(Icons.Outlined.ChatBubbleOutline, null, "Reply", reply)
-            VoteControl(post.score, post.myVote, size = 19.dp, vote = vote)
+            VoteControl(post.score, post.myVote.toInt(), size = 19.dp, vote = vote)
             ActionCount(Icons.Outlined.Share, null, "Share") { share(context, "${post.title}\n\n${post.body}") }
         }
     }
@@ -326,7 +326,7 @@ private fun ReplyRow(
             )
             SelectionContainer { Text(comment.body, fontSize = 15.sp, color = Palette.Ink) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                VoteControl(comment.score, comment.myVote, size = 15.dp, vote = vote)
+                VoteControl(comment.score, comment.myVote.toInt(), size = 15.dp, vote = vote)
             }
         }
     }
