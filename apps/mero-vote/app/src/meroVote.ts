@@ -1,3 +1,5 @@
+import type { WireBallot, WireCiphertext, WireDealing, WirePartial } from "./generated/client";
+
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-vote";
 
@@ -249,60 +251,26 @@ export interface Turnout {
   cast_at: number;
 }
 
-export interface WireBallot {
-  choices: WireChoice[];
-  sum_proof: WireBranch[];
-}
-
-export interface WireBranch {
-  c: string;
-  z: string;
-}
-
-export interface WireChoice {
-  a: string;
-  b: string;
-  proof: WireBranch[];
-}
-
-export interface WireCiphertext {
-  a: string;
-  b: string;
-}
-
-export interface WireDealing {
-  /**
-   * `t` Feldman commitments, constant term first.
-   */
-  commitments: string[];
-  /**
-   * Proof of knowledge of the constant term.
-   */
-  proof: WireBranch;
-  /**
-   * One per trustee, in the poll's trustee order.
-   */
-  shares: WireEncShare[];
-}
-
-export interface WireEncShare {
-  r: string;
-  v: string;
-}
-
-export interface WirePartial {
-  d: string;
-  proof: WireBranch;
-}
+// The ballot and ceremony shapes the screens send, as the generated client
+// types them from the ABI.
+export type {
+  WireBallot,
+  WireBranch,
+  WireChoice,
+  WireCiphertext,
+  WireDealing,
+  WireEncShare,
+  WirePartial,
+} from "./generated/client";
 
 // ── Calling the contract ────────────────────────────────────────────────────
 //
 // The contract is called through `MeroVoteClient`, which `mero-app-build
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`): camelCase
 // arguments (`pollId`, `minChoices`, ...) and 64-bit ones as decimal strings
-// (`closesAt`). The ABI names its records without their shapes, so the
-// generated types are `unknown`: every answer the screens read goes through
-// `decode<T>` into the shapes above.
+// (`closesAt`). The generated client types the records from the ABI (64-bit
+// fields as decimal strings); every answer the screens read goes through
+// `decode<T>` into the shapes above, with those fields as numbers.
 
 /** A 64-bit argument (a deadline in ms) as the contract takes it: a decimal string (D20), or `null`. */
 export const u64Arg = (ms: number | null): string | null => (ms === null ? null : String(Math.trunc(ms)));

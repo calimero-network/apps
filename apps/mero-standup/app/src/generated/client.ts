@@ -4,26 +4,86 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `DayPage`: the ABI names it without its shape. */
-export type DayPage = unknown;
+/** The app type `DayPage`. */
+export interface DayPage {
+  days: DaySummary[];
+  nextCursor: string | null;
+}
 
-/** The app type `DayView`: the ABI names it without its shape. */
-export type DayView = unknown;
+/** The app type `DaySummary`. */
+export interface DaySummary {
+  day: string;
+  updates: number;
+  blocked: number;
+}
 
-/** The app type `DecisionPage`: the ABI names it without its shape. */
-export type DecisionPage = unknown;
+/** The app type `DayView`. */
+export interface DayView {
+  day: string;
+  updates: UpdateView[];
+}
 
-/** The app type `DecisionView`: the ABI names it without its shape. */
-export type DecisionView = unknown;
+/** The app type `DecisionPage`. */
+export interface DecisionPage {
+  items: DecisionView[];
+  nextCursor: string | null;
+}
 
-/** The app type `MemberView`: the ABI names it without its shape. */
-export type MemberView = unknown;
+/** The app type `DecisionView`. */
+export interface DecisionView {
+  id: string;
+  author: string;
+  authorName: string;
+  title: string;
+  decision: string;
+  rationale: string;
+  supersedes: string;
+  supersededBy: string;
+  createdAt: string;
+  tags: string[];
+  with: PersonView[];
+  fromDay: string;
+}
 
-/** The app type `TagCount`: the ABI names it without its shape. */
-export type TagCount = unknown;
+/** The app type `HelpView`. */
+export interface HelpView {
+  account: string;
+  name: string;
+  note: string;
+  at: string;
+}
 
-/** The app type `UpdateView`: the ABI names it without its shape. */
-export type UpdateView = unknown;
+/** The app type `MemberView`. */
+export interface MemberView {
+  account: string;
+  name: string;
+  lastDay: string;
+}
+
+/** The app type `PersonView`. */
+export interface PersonView {
+  account: string;
+  name: string;
+}
+
+/** The app type `TagCount`. */
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+/** The app type `UpdateView`. */
+export interface UpdateView {
+  day: string;
+  author: string;
+  authorName: string;
+  done: string;
+  next: string;
+  blockers: string;
+  createdAt: string;
+  editedAt: string;
+  helpers: HelpView[];
+}
 
 /** The arguments of `clearUpdate`. */
 export interface ClearUpdateArgs {

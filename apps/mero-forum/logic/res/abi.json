@@ -337,5 +337,119 @@
     },
     "version": 1
   },
+  "types": {
+    "CommentPage": {
+      "fields": [
+        [
+          "items",
+          "list<CommentView>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CommentView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "postId",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "u64"
+        ],
+        [
+          "score",
+          "i64"
+        ],
+        [
+          "myVote",
+          "i8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PostPage": {
+      "fields": [
+        [
+          "items",
+          "list<PostView>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PostView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "u64"
+        ],
+        [
+          "score",
+          "i64"
+        ],
+        [
+          "commentCount",
+          "u64"
+        ],
+        [
+          "myVote",
+          "i8"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

@@ -166,7 +166,7 @@ struct MemberRow {
 // (D20), as in every component app.
 
 /// A member of the stream. `memberId` is the account.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub member_id: String,
@@ -179,7 +179,7 @@ pub struct Member {
 
 /// A frame reconstructed in the component. `pixels` is raw luma,
 /// `width * height` bytes, base64url.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodedFrame {
     #[serde(with = "calimero_sdk::json::u64_str")]
@@ -197,7 +197,7 @@ pub struct DecodedFrame {
 }
 
 /// Approach-3 instrumentation.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamStats {
     pub name: String,
@@ -216,7 +216,7 @@ pub struct StreamStats {
 }
 
 /// One sender's read cursor: input to `getChunks`, output of `keyframeCursors`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SenderCursor {
     pub from: String,
@@ -225,7 +225,7 @@ pub struct SenderCursor {
 }
 
 /// What a peer needs to feed its decoder. `dataB64` is standard base64, as v1.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkView {
     #[serde(with = "calimero_sdk::json::u64_str")]
@@ -244,7 +244,7 @@ pub struct ChunkView {
 }
 
 /// One sender's slice of [`LiveStats`].
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SenderStats {
     pub from: String,
@@ -264,7 +264,7 @@ pub struct SenderStats {
 }
 
 /// Approach-2 instrumentation.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveStats {
     pub live_chunks: u32,

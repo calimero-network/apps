@@ -4,41 +4,243 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `AuditReport`: the ABI names it without its shape. */
-export type AuditReport = unknown;
+/** The app type `Anchor`. */
+export interface Anchor {
+  digest: string;
+  network: string;
+  reference: string;
+  anchored_at: string;
+}
 
-/** The app type `Ceremony`: the ABI names it without its shape. */
-export type Ceremony = unknown;
+/** The app type `AuditReport`. */
+export interface AuditReport {
+  poll_id: string;
+  phase: Phase;
+  verified: boolean;
+  checks: Check[];
+  counts: number[] | null;
+  counted_ballots: number;
+  decrypted_by: string[];
+  transcript_digest: string | null;
+  anchor: Anchor | null;
+  uncounted: string[];
+}
 
-/** The app type `Identity`: the ABI names it without its shape. */
-export type Identity = unknown;
+/** The app type `Ceremony`. */
+export interface Ceremony {
+  threshold: number;
+  trustees: CeremonyTrustee[];
+  complaints: ComplaintView[];
+}
 
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
+/** The app type `CeremonyTrustee`. */
+export interface CeremonyTrustee {
+  account: string;
+  index: number;
+  transport: string | null;
+  dealing: WireDealing | null;
+}
 
-/** The app type `PollSummary`: the ABI names it without its shape. */
-export type PollSummary = unknown;
+/** The app type `Check`. */
+export interface Check {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
 
-/** The app type `PollView`: the ABI names it without its shape. */
-export type PollView = unknown;
+/** The app type `Closure`. */
+export interface Closure {
+  counted: CountedBallot[];
+  aggregate: WireCiphertext[];
+  closed_at: string;
+}
 
-/** The app type `TallyInputs`: the ABI names it without its shape. */
-export type TallyInputs = unknown;
+/** The app type `ComplaintView`. */
+export interface ComplaintView {
+  recipient: string;
+  dealer: string;
+  valid: boolean;
+}
 
-/** The app type `Transcript`: the ABI names it without its shape. */
-export type Transcript = unknown;
+/** The app type `CountedBallot`. */
+export interface CountedBallot {
+  voter: string;
+  digest: string;
+  frozen: string;
+}
 
-/** The app type `WireBallot`: the ABI names it without its shape. */
-export type WireBallot = unknown;
+/** The app type `Election`. */
+export interface Election {
+  key: string;
+  threshold: number;
+  transport: string[];
+  qualified: QualifiedDealing[];
+  disqualified: string[];
+  opened_at: string;
+}
 
-/** The app type `WireBranch`: the ABI names it without its shape. */
-export type WireBranch = unknown;
+/** The app type `Identity`. */
+export interface Identity {
+  account: string;
+}
 
-/** The app type `WireDealing`: the ABI names it without its shape. */
-export type WireDealing = unknown;
+/** The app type `Member`. */
+export interface Member {
+  account: string;
+  name: string;
+}
 
-/** The app type `WirePartial`: the ABI names it without its shape. */
-export type WirePartial = unknown;
+/** The app type `Phase`. */
+export type Phase =
+  | 'KeyCeremony'
+  | 'Voting'
+  | 'Closing'
+  | 'Closed';
+
+/** The app type `PollDefinition`. */
+export interface PollDefinition {
+  title: string;
+  description: string;
+  options: string[];
+  min_choices: number;
+  max_choices: number;
+  trustees: string[];
+  threshold: number;
+  voters: string[];
+  creator: string;
+  created_at: string;
+  closes_at: string | null;
+}
+
+/** The app type `PollState`. */
+export interface PollState {
+  phase: Phase;
+  election: Election | null;
+  closing_at: string | null;
+  closure: Closure | null;
+  anchor: Anchor | null;
+}
+
+/** The app type `PollSummary`. */
+export interface PollSummary {
+  poll_id: string;
+  title: string;
+  creator: string;
+  phase: Phase;
+  created_at: string;
+  ballots: number;
+}
+
+/** The app type `PollView`. */
+export interface PollView {
+  poll_id: string;
+  definition: PollDefinition;
+  state: PollState;
+  trustees: TrusteeStatus[];
+  turnout: Turnout[];
+  my_digest: string | null;
+  can_vote: boolean;
+}
+
+/** The app type `QualifiedDealing`. */
+export interface QualifiedDealing {
+  dealer: string;
+  dealing: WireDealing;
+}
+
+/** The app type `TallyInputs`. */
+export interface TallyInputs {
+  aggregate: WireCiphertext[];
+  counted: number;
+}
+
+/** The app type `Transcript`. */
+export interface Transcript {
+  protocol: string;
+  poll_id: string;
+  definition: PollDefinition;
+  state: PollState;
+  ballots: TranscriptBallot[];
+  partials: TranscriptPartial[];
+  report: AuditReport;
+}
+
+/** The app type `TranscriptBallot`. */
+export interface TranscriptBallot {
+  voter: string;
+  digest: string;
+  ballot: WireBallot;
+  endorsed: boolean;
+}
+
+/** The app type `TranscriptPartial`. */
+export interface TranscriptPartial {
+  trustee: string;
+  index: number;
+  options: WirePartial[];
+}
+
+/** The app type `TrusteeStatus`. */
+export interface TrusteeStatus {
+  account: string;
+  index: number;
+  transport_published: boolean;
+  dealing_published: boolean;
+  complaints_against: number;
+  qualified: boolean | null;
+  partial_published: boolean;
+}
+
+/** The app type `Turnout`. */
+export interface Turnout {
+  voter: string;
+  digest: string;
+  cast_at: string;
+}
+
+/** The app type `WireBallot`. */
+export interface WireBallot {
+  choices: WireChoice[];
+  sum_proof: WireBranch[];
+}
+
+/** The app type `WireBranch`. */
+export interface WireBranch {
+  c: string;
+  z: string;
+}
+
+/** The app type `WireChoice`. */
+export interface WireChoice {
+  a: string;
+  b: string;
+  proof: WireBranch[];
+}
+
+/** The app type `WireCiphertext`. */
+export interface WireCiphertext {
+  a: string;
+  b: string;
+}
+
+/** The app type `WireDealing`. */
+export interface WireDealing {
+  commitments: string[];
+  proof: WireBranch;
+  shares: WireEncShare[];
+}
+
+/** The app type `WireEncShare`. */
+export interface WireEncShare {
+  r: string;
+  v: string;
+}
+
+/** The app type `WirePartial`. */
+export interface WirePartial {
+  d: string;
+  proof: WireBranch;
+}
 
 /** The arguments of `anchorResult`. */
 export interface AnchorResultArgs {

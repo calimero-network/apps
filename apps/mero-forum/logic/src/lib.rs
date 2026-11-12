@@ -102,7 +102,7 @@ pub struct Comment {
 // ── results ──────────────────────────────────────────────────────────────────
 
 /// A post as callers see it.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PostView {
     pub id: String,
@@ -128,7 +128,7 @@ pub struct PostView {
 }
 
 /// A comment as callers see it.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentView {
     pub id: String,
@@ -150,7 +150,7 @@ pub struct CommentView {
 }
 
 /// One page of the feed, and the cursor of the next (`null` at the end).
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PostPage {
     pub items: Vec<PostView>,
@@ -158,7 +158,7 @@ pub struct PostPage {
 }
 
 /// One page of a thread, and the cursor of the next (`null` at the end).
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentPage {
     pub items: Vec<CommentView>,
