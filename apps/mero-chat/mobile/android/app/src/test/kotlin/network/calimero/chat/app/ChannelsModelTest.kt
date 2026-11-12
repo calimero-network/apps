@@ -38,7 +38,7 @@ class ChannelsModelTest {
             model.open(general) { ready = it }.join()
 
             assertEquals(general, ready)
-            assertEquals(listOf("get_profiles", "set_profile"), chat.methods())
+            assertEquals(listOf("getProfiles", "setProfile"), chat.methods())
             assertEquals(
                 "Bob",
                 chat.calls
@@ -52,7 +52,7 @@ class ChannelsModelTest {
     fun `opening a joined channel where you have a name writes nothing`() =
         runBlocking {
             model.open(general) {}.join()
-            assertEquals(listOf("get_profiles"), chat.methods())
+            assertEquals(listOf("getProfiles"), chat.methods())
         }
 
     @Test
@@ -62,6 +62,6 @@ class ChannelsModelTest {
             var ready: Channel? = null
             model.open(general) { ready = it }.join()
             assertEquals(general, ready)
-            assertTrue(chat.methods().none { it == "set_profile" })
+            assertTrue(chat.methods().none { it == "setProfile" })
         }
 }

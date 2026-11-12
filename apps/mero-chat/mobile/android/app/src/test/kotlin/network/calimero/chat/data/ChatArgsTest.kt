@@ -1,71 +1,114 @@
 package network.calimero.chat.data
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Argument objects, key for key against what the web app sends (clientApiDataSource.ts,
- * ChatContainer.tsx, createChannel.ts) and the contract's parameter names (lib.rs). An optional
- * argument the web leaves `undefined` is absent here too.
+ * What [ChatRepository] sends through the generated client, key for key against the component ABI
+ * (`logic/res/abi.json`) and what the web app sends (`src/api/meroChat.ts`): camelCase names, `u64`s
+ * as decimal strings, an optional the app leaves unset as `null` (the contract reads it as `None`).
  */
 class ChatArgsTest {
+    private val contract = RecordingChatContract()
+    private val repo = ChatRepository(TestChatBackend(contract), nowSecs = { 1_760_900_000 })
+
     private fun assertJson(
         expected: String,
         actual: JsonObject,
     ) = assertEquals(Json.parseToJsonElement(expected), actual)
 
-    @Test
-    fun `get_messages asks for the newest page the way the web app does`() {
-        assertJson("""{"limit":20,"offset":0}""", ChatArgs.getMessages())
-        assertJson("""{"limit":20,"offset":40}""", ChatArgs.getMessages(offset = 40))
+    private fun answering(block: (String) -> JsonElement) {
+        contract.answer = { method, _ -> block(method) }
     }
 
     @Test
-    fun `get_messages carries a thread parent and a search term only when given`() {
-        assertJson(
-            """{"parent_message":"m_1","limit":10,"offset":0,"search_term":"cat"}""",
-            ChatArgs.getMessages(limit = 10, parentMessage = "m_1", searchTerm = "cat"),
-        )
-        assertJson("""{"limit":20,"offset":0}""", ChatArgs.getMessages(searchTerm = ""))
-    }
+    fun `getMessages asks for the newest page the way the web app does`() =
+        runBlocking {
+            answering { ChatAbi.page(ChatMessagePage()) }
+            repo.newestMessages("ctx")
+            assertJson("""{"parentMessage":null,"limit":20,"offset":0,"searchTerm":null}""", contract.last("getMessages"))
+            repo.newestMessages("ctx", limit = 10)
+            assertJson("""{"parentMessage":null,"limit":10,"offset":0,"searchTerm":null}""", contract.last("getMessages"))
+            assertTrue(contract.calls.all { it.isView })
+        }
 
     @Test
-    fun `get_messages_from takes an absolute start and a limit`() {
-        assertJson("""{"start":20,"limit":20}""", ChatArgs.getMessagesFrom(20, 20))
-    }
+    fun `getMessagesFrom takes an absolute start as a u64 and a limit`() =
+        runBlocking {
+            answering { ChatAbi.page(ChatMessagePage()) }
+            repo.messagesFrom("ctx", 20, 20)
+            assertJson("""{"start":"20","limit":20}""", contract.last("getMessagesFrom"))
+            repo.messagesFrom("ctx", -1, 5)
+            assertJson("""{"start":"0","limit":5}""", contract.last("getMessagesFrom"))
+        }
 
     @Test
-    fun `send_message has the required vectors and a timestamp in seconds, and nothing else`() {
-        assertJson(
-            """{"message":"hi","mentions":[],"mentions_usernames":[],"timestamp":1760900000}""",
-            ChatArgs.sendMessage("hi", 1_760_900_000),
-        )
-        assertJson(
-            """{"message":"hi @alice","mentions":["9xQe"],"mentions_usernames":["alice"],"parent_message":"p_1","timestamp":1}""",
-            ChatArgs.sendMessage("hi @alice", 1, mentions = listOf("9xQe"), mentionUsernames = listOf("alice"), parentMessage = "p_1"),
-        )
-    }
+    fun `sendMessage has the required vectors and a timestamp in seconds, the rest unset`() =
+        runBlocking {
+            answering { ChatAbi.messageJson(ChatMessage(id = "m_1", text = "hi")) }
+            val sent = repo.send("ctx", "hi")
+            assertJson(
+                """{"message":"hi","mentions":[],"mentionsUsernames":[],"parentMessage":null,"timestamp":"1760900000","files":null,"images":null}""",
+                contract.last("sendMessage"),
+            )
+            assertEquals("m_1", sent?.id)
+            assertTrue(contract.calls.none { it.isView })
+        }
 
     @Test
-    fun `edit, delete and react name the message the way the contract does`() {
-        assertJson("""{"message_id":"m_1","new_message":"fixed","timestamp":5}""", ChatArgs.editMessage("m_1", "fixed", 5))
-        assertJson("""{"message_id":"m_1","new_message":"fixed","timestamp":5,"parent_id":"p"}""", ChatArgs.editMessage("m_1", "fixed", 5, "p"))
-        assertJson("""{"message_id":"m_1"}""", ChatArgs.deleteMessage("m_1"))
-        assertJson("""{"message_id":"m_1","parent_id":"p"}""", ChatArgs.deleteMessage("m_1", "p"))
-        assertJson("""{"message_id":"m_1","emoji":"👍","add":true}""", ChatArgs.updateReaction("m_1", "👍", true))
-        assertJson("""{"message_id":"m_1","emoji":"👍","add":false}""", ChatArgs.updateReaction("m_1", "👍", false))
-    }
+    fun `a sent message whose answer cannot be read still counts as sent`() =
+        runBlocking {
+            answering { JsonPrimitive("ok") }
+            assertNull(repo.send("ctx", "hi"))
+            assertEquals(listOf("sendMessage"), contract.methods())
+        }
 
     @Test
-    fun `set_profile sends an explicit null avatar, mark_as_read a timestamp`() {
-        assertJson("""{"username":"droid","avatar":null}""", ChatArgs.setProfile("droid"))
-        assertJson("""{"timestamp":1760900000}""", ChatArgs.markAsRead(1_760_900_000))
-        assertJson("{}", ChatArgs.none())
-    }
+    fun `edit, delete and react name the message the way the contract does`() =
+        runBlocking {
+            answering { if (it == "editMessage") ChatAbi.messageJson(ChatMessage(id = "m_1", text = "fixed")) else JsonPrimitive("ok") }
+            repo.edit("ctx", "m_1", "fixed")
+            assertJson("""{"messageId":"m_1","newMessage":"fixed","timestamp":"1760900000","parentId":null}""", contract.last("editMessage"))
+            repo.delete("ctx", "m_1")
+            assertJson("""{"messageId":"m_1","parentId":null}""", contract.last("deleteMessage"))
+            repo.react("ctx", "m_1", "👍", add = true)
+            assertJson("""{"messageId":"m_1","emoji":"👍","add":true}""", contract.last("updateReaction"))
+            repo.react("ctx", "m_1", "👍", add = false)
+            assertJson("""{"messageId":"m_1","emoji":"👍","add":false}""", contract.last("updateReaction"))
+        }
+
+    @Test
+    fun `setProfile sends an explicit null avatar, markAsRead a timestamp`() =
+        runBlocking {
+            repo.setProfile("ctx", " droid ")
+            assertJson("""{"username":"droid","avatar":null}""", contract.last("setProfile"))
+            repo.markRead("ctx")
+            assertJson("""{"timestamp":"1760900000"}""", contract.last("markAsRead"))
+        }
+
+    @Test
+    fun `the argument-less views send an empty object`() =
+        runBlocking {
+            answering { method ->
+                when (method) {
+                    "getUnreadCount" -> JsonPrimitive(3)
+                    "getProfiles" -> ChatAbi.profiles(emptyList())
+                    else -> error(method)
+                }
+            }
+            assertEquals(3, repo.unreadCount("ctx"))
+            assertEquals(emptyList<ChatProfile>(), repo.profiles("ctx"))
+            assertEquals(listOf("getUnreadCount", "getProfiles"), contract.methods())
+            assertTrue(contract.calls.all { it.args.isEmpty() && it.isView })
+        }
 
     /** The component `init`'s names, as the web's `initArgsFrom` sends them. */
     @Test
@@ -90,4 +133,12 @@ class ChatArgsTest {
         assertNotNull(ChatValidation.emojiError("a\u001fb"))
         assertNull(ChatValidation.emojiError("🎉"))
     }
+
+    @Test
+    fun `a refused input is not sent`() =
+        runBlocking {
+            assertTrue(runCatching { repo.send("ctx", "   ") }.isFailure)
+            assertTrue(runCatching { repo.react("ctx", "m_1", "", add = true) }.isFailure)
+            assertTrue(contract.calls.isEmpty())
+        }
 }

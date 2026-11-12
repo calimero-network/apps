@@ -6,7 +6,6 @@ import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.app.OrgInvitation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -14,6 +13,7 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import network.calimero.chat.data.ChatAbi
 import network.calimero.chat.data.ChatBackend
 import network.calimero.chat.data.ChatIdentity
 import network.calimero.chat.data.ChatMessage
@@ -21,13 +21,15 @@ import network.calimero.chat.data.ChatMessagePage
 import network.calimero.chat.data.ChatProfile
 import network.calimero.chat.data.FoundWorkspace
 import network.calimero.chat.data.JoinedWorkspace
-import network.calimero.chat.data.chatJson
+import network.calimero.chat.data.RecordingChatContract
+import network.calimero.chat.generated.client.ChatClient
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * One channel's contract, in memory, behind [ChatBackend] — `get_messages` with the contract's
- * end-counted `page_window`, `get_messages_from` by absolute index — for the view-model logic
- * (paging, catch-up, live/poll switching). The wire path itself is covered in `CloudBackendTest`.
+ * One channel's contract, in memory, behind the generated `ChatClient` — `getMessages` with the
+ * contract's end-counted `page_window`, `getMessagesFrom` by absolute index — for the view-model
+ * logic (paging, catch-up, live/poll switching). Every view and call is recorded in the ABI's names
+ * ([calls], [methods]); the wire path through the SDK is covered in `CloudBackendTest`.
  */
 class InMemoryChat(
     accountHex: String = "ab".repeat(32),
@@ -37,10 +39,19 @@ class InMemoryChat(
     override val accountId: String = accountHex
     val me: String = ChatIdentity.userIdOf(accountHex)!!
     val messages = CopyOnWriteArrayList<ChatMessage>()
-    val calls = CopyOnWriteArrayList<Pair<String, JsonObject>>()
-    var failNext: Exception? = null
+    private val contract = RecordingChatContract { method, args -> answer(method, args) }
 
-    /** What `get_profiles` answers; by default someone else and this account. */
+    /** Each view and call, as (ABI method name, ABI arguments). */
+    val calls: List<Pair<String, JsonObject>> get() = contract.calls.map { it.method to it.args }
+
+    /** Thrown by the next view or call instead of answering. */
+    var failNext: Exception?
+        get() = contract.failNext
+        set(value) {
+            contract.failNext = value
+        }
+
+    /** What `getProfiles` answers; by default someone else and this account. */
     var profiles: List<ChatProfile>? = null
 
     fun post(
@@ -51,39 +62,33 @@ class InMemoryChat(
         messages += ChatMessage(index = index, id = "id$index", text = text, sender = sender, timestamp = 1_000 + index)
     }
 
-    override suspend fun view(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement? {
-        calls += method to args
-        failNext?.let {
-            failNext = null
-            throw it
-        }
-        return when (method) {
-            "get_messages" -> page(args["limit"]!!.jsonPrimitive.int, args["offset"]!!.jsonPrimitive.int)
-            "get_messages_from" -> from(args["start"]!!.jsonPrimitive.long, args["limit"]!!.jsonPrimitive.int)
-            "get_profiles" ->
-                chatJson.encodeToJsonElement(ListSerializer(ChatProfile.serializer()), profiles ?: listOf(ChatProfile(OTHER, "alice"), ChatProfile(me, "droid")))
-            else -> error("unexpected view $method")
-        }
-    }
+    override fun chat(contextId: String): ChatClient = contract.client
 
-    override suspend fun write(
-        contextId: String,
+    private fun answer(
         method: String,
         args: JsonObject,
-    ): JsonElement? {
-        calls += method to args
+    ): JsonElement =
         when (method) {
-            "send_message" -> post(args["message"]!!.jsonPrimitive.content, sender = me)
-            "update_reaction" -> react(args["message_id"]!!.jsonPrimitive.content, args["emoji"]!!.jsonPrimitive.content, args["add"]!!.jsonPrimitive.boolean)
-            "edit_message" -> replace(args["message_id"]!!.jsonPrimitive.content) { it.copy(text = args["new_message"]!!.jsonPrimitive.content, editedOn = 1) }
-            "delete_message" -> replace(args["message_id"]!!.jsonPrimitive.content) { it.copy(text = "", deleted = true, reactions = null) }
-            "mark_as_read", "set_profile" -> Unit
-            else -> error("unexpected write $method")
+            "getMessages" -> page(args["limit"]!!.jsonPrimitive.int, args["offset"]!!.jsonPrimitive.int)
+            "getMessagesFrom" -> from(args["start"]!!.jsonPrimitive.long, args["limit"]!!.jsonPrimitive.int)
+            "getProfiles" -> ChatAbi.profiles(profiles ?: listOf(ChatProfile(OTHER, "alice"), ChatProfile(me, "droid")))
+            "sendMessage" -> {
+                post(args["message"]!!.jsonPrimitive.content, sender = me)
+                ChatAbi.messageJson(messages.last())
+            }
+            "updateReaction" -> ok { react(args["messageId"]!!.jsonPrimitive.content, args["emoji"]!!.jsonPrimitive.content, args["add"]!!.jsonPrimitive.boolean) }
+            "editMessage" -> {
+                val id = args["messageId"]!!.jsonPrimitive.content
+                replace(id) { it.copy(text = args["newMessage"]!!.jsonPrimitive.content, editedOn = 1) }
+                ChatAbi.messageJson(messages.first { it.id == id })
+            }
+            "deleteMessage" -> ok { replace(args["messageId"]!!.jsonPrimitive.content) { it.copy(text = "", deleted = true, reactions = null) } }
+            "markAsRead", "setProfile" -> ok {}
+            else -> error("unexpected method $method")
         }
+
+    private fun ok(change: () -> Unit): JsonElement {
+        change()
         return JsonPrimitive("ok")
     }
 
@@ -132,7 +137,7 @@ class InMemoryChat(
         return encode(ChatMessagePage(total.toLong(), messages.subList(s, e).toList(), start))
     }
 
-    private fun encode(page: ChatMessagePage) = chatJson.encodeToJsonElement(ChatMessagePage.serializer(), page)
+    private fun encode(page: ChatMessagePage) = ChatAbi.page(page)
 
     override fun changes(contextId: String): Flow<Unit>? = live
 

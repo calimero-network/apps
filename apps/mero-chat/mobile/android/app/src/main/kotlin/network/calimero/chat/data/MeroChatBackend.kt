@@ -7,15 +7,15 @@ import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.OrgInvitation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import network.calimero.chat.generated.client.ChatClient
 
 /**
  * [ChatBackend] over kotlin-sdk's app layer ([MeroAppBackend]: in the app `CalimeroAppBackend` over a
  * `CalimeroClient`, in tests mero-testkit's `InMemoryAppBackend`). (Swift `CloudChatBackend`.)
  *
- * - contract calls: [ComponentChatContract] over the backend's contract (views and calls on
- *   `/apps/{app}`, sealed), so the rest of the app keeps v1's names and shapes;
+ * - contract calls: the generated [ChatClient] over the backend's contract, bound to the app
+ *   instance (views and calls on `/apps/{app}`, sealed);
  * - workspaces: `listNamespaces` / `foundNamespace` (orgs whose metadata names chat);
  * - channels: the org's own app instances (open channels and DMs, as the web makes them) and its
  *   teams' (private channels);
@@ -25,21 +25,9 @@ import kotlinx.serialization.json.JsonObject
 class MeroChatBackend(
     private val app: MeroAppBackend,
 ) : ChatBackend {
-    private val contract = ComponentChatContract(app.contract)
-
     override val accountId: String? get() = app.account
 
-    override suspend fun view(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement? = contract.query(contextId, method, args)
-
-    override suspend fun write(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement? = contract.execute(contextId, method, args)
+    override fun chat(contextId: String): ChatClient = ChatClient(app, contextId)
 
     override suspend fun listWorkspaces(): List<AppNamespace> = app.listNamespaces()
 

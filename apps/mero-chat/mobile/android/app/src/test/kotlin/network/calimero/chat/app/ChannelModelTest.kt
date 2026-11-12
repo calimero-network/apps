@@ -50,7 +50,7 @@ class ChannelModelTest {
             assertEquals((25..44).map { "m$it" }, s.messages.map { it.message.text })
             assertTrue(s.hasOlder)
             assertEquals("alice", s.messages.first().author)
-            assertEquals(listOf("get_messages", "get_profiles", "mark_as_read"), chat.methods())
+            assertEquals(listOf("getMessages", "getProfiles", "markAsRead"), chat.methods())
             assertEquals(
                 20,
                 chat.calls[0]
@@ -74,13 +74,14 @@ class ChannelModelTest {
             m.stop()
 
             m.loadOlder().join()
-            val older = chat.calls.last { it.first == "get_messages_from" }.second
+            val older = chat.calls.last { it.first == "getMessagesFrom" }.second
             assertEquals(5L, older["start"]!!.jsonPrimitive.long)
+            assertTrue("a u64 goes out as a decimal string", older["start"]!!.jsonPrimitive.isString)
             assertEquals(20, older["limit"]!!.jsonPrimitive.int)
             assertEquals(40, m.state.value.messages.size)
 
             m.loadOlder().join()
-            val first = chat.calls.last { it.first == "get_messages_from" }.second
+            val first = chat.calls.last { it.first == "getMessagesFrom" }.second
             assertEquals(0L, first["start"]!!.jsonPrimitive.long)
             assertEquals(5, first["limit"]!!.jsonPrimitive.int)
             assertEquals(
@@ -105,7 +106,7 @@ class ChannelModelTest {
             repeat(30) { chat.post("n$it") } // 10..39 arrive while away; the newest page is 20..39
 
             m.refreshNow()
-            val gap = chat.calls.last { it.first == "get_messages_from" }.second
+            val gap = chat.calls.last { it.first == "getMessagesFrom" }.second
             assertEquals(10L, gap["start"]!!.jsonPrimitive.long)
             assertEquals(10, gap["limit"]!!.jsonPrimitive.int)
             assertEquals(40, m.state.value.messages.size)
@@ -126,7 +127,7 @@ class ChannelModelTest {
             repeat(ChannelModel.MAX_CATCH_UP + 50) { chat.post("n$it") }
 
             m.refreshNow()
-            assertTrue(chat.calls.none { it.first == "get_messages_from" })
+            assertTrue(chat.calls.none { it.first == "getMessagesFrom" })
             assertEquals(20, m.state.value.messages.size)
             assertTrue(m.state.value.hasOlder)
         }
@@ -150,7 +151,7 @@ class ChannelModelTest {
                 m.state.value.pending
                     .isEmpty(),
             )
-            assertTrue("send_message" in chat.methods())
+            assertTrue("sendMessage" in chat.methods())
 
             val writes = chat.calls.size
             m.send("   ").join()
@@ -188,7 +189,7 @@ class ChannelModelTest {
             )
             assertTrue(
                 chat.calls
-                    .last { it.first == "update_reaction" }
+                    .last { it.first == "updateReaction" }
                     .second["add"]!!
                     .jsonPrimitive.content == "true",
             )
@@ -196,7 +197,7 @@ class ChannelModelTest {
             m.toggleReaction(id, "🎉").join()
             assertTrue(
                 chat.calls
-                    .last { it.first == "update_reaction" }
+                    .last { it.first == "updateReaction" }
                     .second["add"]!!
                     .jsonPrimitive.content == "false",
             )
@@ -220,7 +221,7 @@ class ChannelModelTest {
 
             m.edit(theirs.id, "hijack").join()
             assertNotNull(m.state.value.error)
-            assertTrue(chat.methods().none { it == "edit_message" })
+            assertTrue(chat.methods().none { it == "editMessage" })
 
             m.edit(mine.id, "mine, fixed").join()
             assertEquals(

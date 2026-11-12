@@ -5,11 +5,11 @@ package network.calimero.chat.data
  * index (lib.rs `MessageWithReactions::index` — appends land at the end, a delete keeps its slot).
  * Pure, so the paging rules are testable on their own:
  *
- * - open and refresh read the newest page (`get_messages`, offset 0);
- * - scrolling back reads the window that ends where this one begins (`get_messages_from`,
+ * - open and refresh read the newest page (`getMessages`, offset 0);
+ * - scrolling back reads the window that ends where this one begins (`getMessagesFrom`,
  *   the web app's `MessageSync.loadOlder`);
  * - a refresh that lands past the newest message held reads the gap in between
- *   (`get_messages_from`, the web app's catch-up), so nothing is skipped after time away.
+ *   (`getMessagesFrom`, the web app's catch-up), so nothing is skipped after time away.
  */
 data class MessageWindow(
     /** Ascending by index; one entry per message id. */
@@ -39,7 +39,7 @@ data class MessageWindow(
         return MessageWindow(merged, maxOf(total ?: totalCount, (merged.last().index + 1)))
     }
 
-    /** The `get_messages_from(start, limit)` that reads the [pageSize] messages before this window, or null at the start. */
+    /** The `getMessagesFrom(start, limit)` that reads the [pageSize] messages before this window, or null at the start. */
     fun olderRequest(pageSize: Int = ChatArgs.PAGE_SIZE): RangeRequest? {
         val oldest = oldestIndex ?: return null
         if (oldest <= 0L) return null
@@ -48,7 +48,7 @@ data class MessageWindow(
     }
 
     /**
-     * The `get_messages_from(start, limit)` that fills the gap between this window and a fresher
+     * The `getMessagesFrom(start, limit)` that fills the gap between this window and a fresher
      * [page] starting further on, or null when the two touch (or nothing is held yet).
      */
     fun gapBefore(page: List<ChatMessage>): RangeRequest? {
@@ -60,7 +60,7 @@ data class MessageWindow(
     }
 }
 
-/** Arguments for one `get_messages_from` call. */
+/** Arguments for one `getMessagesFrom` call. */
 data class RangeRequest(
     val start: Long,
     val limit: Int,

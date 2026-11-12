@@ -19,9 +19,11 @@ channel. They call the component contract the web port (#730) ships in `../logic
 - **Sign in:** **Calimero Cloud** opens Mero Chat's sign-in page in the system sheet (the web
   app's own sign-in), where the person signs in or creates an account with their passkey. **Development node** takes a
   `merod local` URL and trusts its mock attestation, with a software passkey kept per node.
-- **Contract:** `ComponentChatContract` (both platforms) is the one place that maps v1's method
-  names and shapes to the ABI's: camelCase names and fields, `u64`s as decimal strings, as the
-  web's `src/api/meroChat.ts` does. Errors are `422 APP_ERROR` (`Invalid`, `Forbidden`,
+- **Contract:** Android calls it through `ChatClient`, generated from the ABI by
+  `scripts/mobile-codegen.sh`. iOS keeps `ComponentChatContract`, the one place that maps v1's
+  method names and shapes to the ABI's (camelCase names and fields, `u64`s as decimal strings, as
+  the web's `src/api/meroChat.ts` does), until it moves to a swift-sdk release with the generated
+  Swift client. Errors are `422 APP_ERROR` (`Invalid`, `Forbidden`,
   `NotFound`, `Banned`), shown with the contract's own message.
 - **Workspaces** are orgs. **Channels** are app instances of chat: open ones in the org itself (as
   the web makes them), private ones in a team that admits by invitation. Accounts are the node's
