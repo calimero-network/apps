@@ -67,7 +67,7 @@ class FeedModelTest {
             model.refresh()
             model.vote(model.posts.value[0], 1)
             assertEquals(4L, model.posts.value[0].score)
-            assertEquals(1, model.posts.value[0].myVote)
+            assertEquals(1, model.posts.value[0].myVote.toInt())
             val call = backend.recording.calls("vote").first()
             assertEquals(RecordedContractCall.Path.EXECUTE, call.path)
             assertEquals(1, ((call.args as JsonObject)["value"] as JsonPrimitive).int)
@@ -75,7 +75,7 @@ class FeedModelTest {
             script.fail("vote")
             model.vote(model.posts.value[0], -1)
             assertEquals(4L, model.posts.value[0].score)
-            assertEquals(1, model.posts.value[0].myVote)
+            assertEquals(1, model.posts.value[0].myVote.toInt())
             assertNotNull(model.notice.value)
         }
 
@@ -329,6 +329,6 @@ class ThreadModelTest {
             model.load()
             model.votePost(1)
             assertEquals(1L, model.post.value?.score)
-            assertEquals(0, model.post.value?.myVote)
+            assertEquals(0, model.post.value?.myVote?.toInt())
         }
 }
