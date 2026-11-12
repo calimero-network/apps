@@ -4,38 +4,120 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `Applied`: the ABI names it without its shape. */
-export type Applied = unknown;
+/** The app type `Applied`. */
+export interface Applied {
+  applied: boolean;
+  token: string | null;
+  spans: Span[];
+  anchor: string | null;
+  anchorPos: number | null;
+  ids: Run[];
+}
 
-/** The app type `Block`: the ABI names it without its shape. */
-export type Block = unknown;
+/** The app type `Block`. */
+export interface Block {
+  id: string;
+  kind: string;
+  depth: number;
+  attrs: Record<string, string>;
+  spans: Span[];
+  ids: Run[];
+}
 
-/** The app type `Change`: the ABI names it without its shape. */
-export type Change = unknown;
+/** The app type `Change`. */
+export type Change =
+  | { retain: number; attributes: AttrDelta | null }
+  | { insert: string; attributes: AttrDelta | null }
+  | { delete: number };
 
-/** The app type `CommentView`: the ABI names it without its shape. */
-export type CommentView = unknown;
+/** The app type `CommentView`. */
+export interface CommentView {
+  id: string;
+  author: string;
+  docId: string;
+  body: string;
+  createdAt: string;
+}
 
-/** The app type `DocSearchPage`: the ABI names it without its shape. */
-export type DocSearchPage = unknown;
+/** The app type `DocSearchHit`. */
+export interface DocSearchHit {
+  id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  archived: boolean;
+}
 
-/** The app type `DocView`: the ABI names it without its shape. */
-export type DocView = unknown;
+/** The app type `DocSearchPage`. */
+export interface DocSearchPage {
+  hits: DocSearchHit[];
+  total: string;
+  nextCursor: number | null;
+}
 
-/** The app type `Span`: the ABI names it without its shape. */
-export type Span = unknown;
+/** The app type `DocView`. */
+export interface DocView {
+  id: string;
+  title: string;
+  tags: string[];
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+  canDelete: boolean;
+}
 
-/** The app type `TagView`: the ABI names it without its shape. */
-export type TagView = unknown;
+/** The app type `Run`. */
+export interface Run {
+  replica: string;
+  counter: number;
+  len: number;
+}
 
-/** The app type `TitleApplied`: the ABI names it without its shape. */
-export type TitleApplied = unknown;
+/** The app type `Span`. */
+export interface Span {
+  text: string;
+  attributes: Attrs;
+}
 
-/** The app type `TitleState`: the ABI names it without its shape. */
-export type TitleState = unknown;
+/** The app type `TagView`. */
+export interface TagView {
+  key: string;
+  name: string;
+  color: string;
+  deleted: boolean;
+}
 
-/** The app type `ViewView`: the ABI names it without its shape. */
-export type ViewView = unknown;
+/** The app type `TitleApplied`. */
+export interface TitleApplied {
+  applied: boolean;
+  token: string | null;
+  text: string;
+  anchor: string | null;
+  anchorPos: number | null;
+  ids: Run[];
+}
+
+/** The app type `TitleState`. */
+export interface TitleState {
+  text: string;
+  ids: Run[];
+}
+
+/** The app type `ViewView`. */
+export interface ViewView {
+  id: string;
+  name: string;
+  query: string;
+  createdBy: string;
+}
+
+/** The app type `AttrDelta`: the ABI names it without its shape. */
+export type AttrDelta = unknown;
+
+/** The app type `Attrs`: the ABI names it without its shape. */
+export type Attrs = unknown;
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

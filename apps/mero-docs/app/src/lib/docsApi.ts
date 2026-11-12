@@ -18,7 +18,7 @@
 //
 // `client.test.ts` checks the generated class against the committed ABI.
 
-import { MeroDocsClient } from '@/generated/client';
+import { MeroDocsClient, type Change as WireChange } from '@/generated/client';
 
 export { MeroDocsClient };
 
@@ -245,4 +245,6 @@ export const toSpans = (raw: unknown): Span[] => raw as Span[];
 export const toTitleState = (raw: unknown): TitleState => raw as TitleState;
 
 /** Change steps as the contract takes them (`applyDelta*`, `titleApplyDelta*`). */
-export const wireOps = (ops: Change[]): unknown[] => opsOf(ops);
+export const wireOps = (ops: Change[]): WireChange[] =>
+  // The ABI types `attributes` as required; serde reads a missing Option as None.
+  opsOf(ops) as WireChange[];

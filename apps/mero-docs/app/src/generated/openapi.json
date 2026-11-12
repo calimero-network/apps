@@ -477,7 +477,65 @@
         "type": "object"
       },
       "Applied": {
-        "description": "The app type `Applied`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anchorPos": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "ids": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            },
+            "type": "array"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "applied",
+          "token",
+          "spans",
+          "anchor",
+          "anchorPos",
+          "ids"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Applied"
       },
       "ApplyDeltaArgs": {
@@ -684,8 +742,56 @@
         ],
         "type": "object"
       },
+      "AttrDelta": {
+        "description": "The app type `AttrDelta`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AttrDelta"
+      },
+      "Attrs": {
+        "description": "The app type `Attrs`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "Attrs"
+      },
       "Block": {
-        "description": "The app type `Block`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "depth": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "depth",
+          "attrs",
+          "spans",
+          "ids"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Block"
       },
       "BlockChangedEvent": {
@@ -1053,7 +1159,69 @@
         ]
       },
       "Change": {
-        "description": "The app type `Change`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "oneOf": [
+          {
+            "properties": {
+              "attributes": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AttrDelta"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "retain": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              }
+            },
+            "required": [
+              "retain",
+              "attributes"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "attributes": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AttrDelta"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "insert": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "insert",
+              "attributes"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "delete": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              }
+            },
+            "required": [
+              "delete"
+            ],
+            "type": "object"
+          }
+        ],
         "x-calimero-abi-type": "Change"
       },
       "CommentAddedEvent": {
@@ -1211,7 +1379,34 @@
         "type": "object"
       },
       "CommentView": {
-        "description": "The app type `CommentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "docId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "docId",
+          "body",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CommentView"
       },
       "Confirm": {
@@ -1677,8 +1872,69 @@
         ],
         "type": "object"
       },
+      "DocSearchHit": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "score": {
+            "format": "float",
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "snippet",
+          "score",
+          "archived"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "DocSearchHit"
+      },
       "DocSearchPage": {
-        "description": "The app type `DocSearchPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/DocSearchHit"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "hits",
+          "total",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocSearchPage"
       },
       "DocTagsChangedEvent": {
@@ -1704,7 +1960,56 @@
         "type": "object"
       },
       "DocView": {
-        "description": "The app type `DocView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "tags",
+          "archived",
+          "createdAt",
+          "updatedAt",
+          "createdBy",
+          "updatedBy",
+          "canDelete"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DocView"
       },
       "EditCommentArgs": {
@@ -3851,6 +4156,32 @@
         ],
         "type": "object"
       },
+      "Run": {
+        "properties": {
+          "counter": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "len": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "replica": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "replica",
+          "counter",
+          "len"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Run"
+      },
       "SaveViewArgs": {
         "description": "The arguments of `saveView`, by name.",
         "properties": {
@@ -4273,7 +4604,19 @@
         "type": "object"
       },
       "Span": {
-        "description": "The app type `Span`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "attributes": {
+            "$ref": "#/components/schemas/Attrs"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "attributes"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Span"
       },
       "SplitBlockArgs": {
@@ -4355,7 +4698,27 @@
         "type": "object"
       },
       "TagView": {
-        "description": "The app type `TagView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "color",
+          "deleted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TagView"
       },
       "TextChangedEvent": {
@@ -4443,7 +4806,62 @@
         "type": "object"
       },
       "TitleApplied": {
-        "description": "The app type `TitleApplied`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anchorPos": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "ids": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
+          "text": {
+            "type": "string"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "applied",
+          "token",
+          "text",
+          "anchor",
+          "anchorPos",
+          "ids"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TitleApplied"
       },
       "TitleApplyDeltaArgs": {
@@ -4676,7 +5094,22 @@
         "type": "object"
       },
       "TitleState": {
-        "description": "The app type `TitleState`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "ids": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "ids"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TitleState"
       },
       "TitleUndoArgs": {
@@ -4899,7 +5332,27 @@
         "type": "object"
       },
       "ViewView": {
-        "description": "The app type `ViewView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "query",
+          "createdBy"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ViewView"
       }
     },
