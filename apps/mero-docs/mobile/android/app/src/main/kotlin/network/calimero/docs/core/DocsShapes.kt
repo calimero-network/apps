@@ -1,22 +1,19 @@
 package network.calimero.docs.core
 
-import com.calimero.mero.app.ContextContractCalling
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.put
 
-// The contract's methods the phone calls, typed: the read and comment half of the web's adapter
-// (`app/src/lib/docsApi.ts`), over the component ABI in `../logic/res/abi.json`.
-// (Swift `DocsClient.swift`.)
+// The shapes of the contract's answers the phone reads: the read and comment half of the web's
+// adapter (`app/src/lib/docsApi.ts`), over the component ABI in `../logic/res/abi.json`. The calls
+// are [network.calimero.docs.generated.DocsClient], generated from the ABI
+// (`scripts/mobile-codegen.sh` at the repo root); until the logic derives `AbiType` it answers these
+// shapes' JSON, which `from` reads. (Swift `DocsShapes.swift`.)
 //
 // - Method and argument names are camelCase (`listDocs { includeArchived }`), results' fields too.
 // - 64-bit integers arrive as decimal strings, timestamps in milliseconds. Like the web adapter,
@@ -139,69 +136,9 @@ private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)
 
 private fun JsonObject.bool(key: String): Boolean = (this[key] as? JsonPrimitive)?.booleanOrNull ?: false
 
-/** The methods of one folder's docs instance the phone calls, by their ABI names. (Swift `DocsClient`.) */
-class DocsClient(
-    private val transport: ContextContractCalling,
-) {
-    suspend fun listDocs(includeArchived: Boolean): List<DocDto> =
-        rows(view("listDocs", buildJsonObject { put("includeArchived", includeArchived) }), "documents").map(DocDto::from)
-
-    suspend fun getDoc(id: String): DocDto = DocDto.from(view("getDoc", buildJsonObject { put("id", id) }))
-
-    suspend fun searchDocs(
-        query: String,
-        includeArchived: Boolean,
-        cursor: UInt? = null,
-        limit: UInt? = null,
-    ): DocSearchPage =
-        DocSearchPage.from(
-            view(
-                "searchDocs",
-                buildJsonObject {
-                    put("query", query)
-                    put("includeArchived", includeArchived)
-                    put("cursor", cursor?.let { JsonPrimitive(it.toLong()) } ?: JsonNull)
-                    put("limit", limit?.let { JsonPrimitive(it.toLong()) } ?: JsonNull)
-                },
-            ),
-        )
-
-    suspend fun listComments(docId: String): List<CommentDto> =
-        rows(view("listComments", buildJsonObject { put("docId", docId) }), "comments").map(CommentDto::from)
-
-    /** Comment on [docId]; answers the comment's id. */
-    suspend fun addComment(
-        docId: String,
-        body: String,
-    ): String {
-        val args =
-            buildJsonObject {
-                put("docId", docId)
-                put("body", body)
-            }
-        val answer = Json.parseToJsonElement(transport.execute("addComment", args.toString()))
-        return (answer as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw WireException("a comment id")
-    }
-
-    /** The answer of [method] as JSON. */
-    suspend fun view(
-        method: String,
-        args: JsonObject,
-    ): JsonElement = Json.parseToJsonElement(transport.query(method, args.toString()))
-
-    /** A list answer: `null` is none, anything but an array is not the contract's. */
-    private fun rows(
-        element: JsonElement,
-        what: String,
-    ): List<JsonElement> =
-        when (element) {
-            is JsonArray -> element
-            is JsonNull -> emptyList()
-            else -> throw WireException(what)
-        }
-
-    companion object {
-        /** Every method this client calls: the ABI test checks each against `abi.json`. */
-        val METHODS = listOf("listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment")
-    }
+/** What the app keeps of the contract beside the generated [network.calimero.docs.generated.DocsClient]. */
+object DocsContract {
+    /** Every method the app calls: the ABI test checks each against `abi.json`. */
+    val METHODS = listOf("listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment")
 }
+

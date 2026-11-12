@@ -20,13 +20,10 @@ import com.calimero.mero.app.SignedOutException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.put
 import network.calimero.docs.app.Folder
+import network.calimero.docs.generated.DocsClient
 import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
@@ -53,9 +50,7 @@ class DocsApi(
      * mark the node writes as a JSON boolean, or a span without `attributes`, is read the same way.
      */
     suspend fun readDocument(docId: String): List<WireBlock> {
-        val element = client.view("getDocument", buildJsonObject { put("doc", docId) })
-        if (element !is JsonArray) return emptyList()
-        return element.jsonArray.map { WireBlock.from(it) }
+        return client.getDocument(docId).map { WireBlock.from(it) }
     }
 }
 

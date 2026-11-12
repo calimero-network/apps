@@ -1,9 +1,10 @@
 import Foundation
 import MeroKit
 
-// The contract's methods the phone calls, typed: the read and comment half of
+// The shapes of the contract's answers the phone reads: the read and comment half of
 // the web's adapter (`app/src/lib/docsApi.ts`), over the component ABI in
-// `../logic/res/abi.json`. (== Kotlin `DocsClient.kt`.)
+// `../logic/res/abi.json`. The calls are `DocsClient`, generated from the ABI into
+// `Generated/` (`scripts/mobile-codegen.sh` at the repo root). (== Kotlin `DocsShapes.kt`.)
 //
 // - Method and argument names are camelCase (`listDocs { includeArchived }`),
 //   results' fields too.
@@ -231,63 +232,16 @@ enum Wire {
 
 // MARK: - Client
 
-/// The methods of one folder's docs instance the phone calls, by their ABI names.
-public struct DocsClient: Sendable {
-    let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    /// Every method this client calls: the ABI test checks each against `abi.json`.
+extension DocsClient {
+    /// Every method the app calls: the ABI test checks each against `abi.json`.
     public static let methods = ["listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment"]
+}
 
-    public func listDocs(includeArchived: Bool) async throws -> [DocDto] {
-        try await view("listDocs", ["includeArchived": .bool(includeArchived)]) ?? []
-    }
-
-    public func getDoc(id: String) async throws -> DocDto {
-        guard let doc: DocDto = try await view("getDoc", ["id": .string(id)]) else {
-            throw DocsError.missingResult("getDoc")
-        }
-        return doc
-    }
-
-    public func searchDocs(
-        query: String, includeArchived: Bool, cursor: UInt32? = nil, limit: UInt32? = nil
-    ) async throws -> DocSearchPage {
-        let args: [String: JSONValue] = [
-            "query": .string(query), "includeArchived": .bool(includeArchived),
-            "cursor": cursor.map { .number(Double($0)) } ?? .null, "limit": limit.map { .number(Double($0)) } ?? .null,
-        ]
-        return try await view("searchDocs", args) ?? DocSearchPage(hits: [], total: 0)
-    }
-
-    public func listComments(docId: String) async throws -> [CommentDto] {
-        try await view("listComments", ["docId": .string(docId)]) ?? []
-    }
-
-    /// Comment on `docId`; answers the comment's id.
-    public func addComment(docId: String, body: String) async throws -> String {
-        let data = try await transport.execute(
-            method: "addComment", argsJSON: try Self.encode(["docId": .string(docId), "body": .string(body)]))
-        guard let id = try? JSONDecoder().decode(String.self, from: data) else {
-            throw DocsError.missingResult("addComment")
-        }
-        return id
-    }
-
-    /// The raw answer of `method`, for a lenient decoder (`getDocument`).
-    func viewRaw(_ method: String, _ args: [String: JSONValue]) async throws -> Data {
-        try await transport.query(method: method, argsJSON: try Self.encode(args))
-    }
-
-    private func view<T: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> T? {
-        let data = try await viewRaw(method, args)
-        return try JSONDecoder().decode(T?.self, from: data)
-    }
-
-    static func encode(_ args: [String: JSONValue]) throws -> Data {
-        try JSONEncoder().encode(JSONValue.object(args))
+extension JSONValue {
+    /// This answer as the app type `T` (one of the shapes above). The ABI names them without their
+    /// shape until the logic derives `AbiType`, so the generated `DocsClient` (`Generated/`) answers
+    /// their JSON.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }

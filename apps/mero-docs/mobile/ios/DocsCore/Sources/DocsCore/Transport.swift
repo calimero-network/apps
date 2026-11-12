@@ -8,7 +8,7 @@ public struct DocsAPI: Sendable {
     public let client: DocsClient
 
     public init(transport: any ContextContractCalling) {
-        self.client = DocsClient(transport: transport)
+        self.client = DocsClient(contract: transport)
     }
 
     /// The document's body as blocks, in order.
@@ -18,8 +18,8 @@ public struct DocsAPI: Sendable {
     /// the web's `canonicalAttrs` reads them). A mark the node writes as a JSON
     /// boolean, or a span without `attributes`, is read the same way.
     public func readDocument(_ docId: String) async throws -> [WireBlock] {
-        let data = try await client.viewRaw("getDocument", ["doc": .string(docId)])
-        return try JSONDecoder().decode([WireBlock]?.self, from: data) ?? []
+        let blocks = try await client.getDocument(doc: docId)
+        return try JSONDecoder().decode([WireBlock].self, from: MeroJSON.encode(blocks))
     }
 }
 
