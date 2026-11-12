@@ -1,5 +1,8 @@
-// Mero Vote's contract on Calimero 1.0 (the component ABI, `logic/res/abi.json`), typed. Kept by
-// hand, in step with the web app's adapter (`app/src/meroVote.ts`) and iOS `VoteClient.swift`:
+// Mero Vote's types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), kept by hand in step
+// with the web app's adapter (`app/src/meroVote.ts`) and iOS `Records.swift`. The calls are the
+// generated [network.calimero.vote.generated.client.VoteClient] (`scripts/mobile-codegen.sh` at the
+// repo root); until the logic derives `AbiType` the ABI names these types without their shape, so
+// the client takes and answers their JSON and [toVote] / [VoteWireDecoding.encode] convert it.
 //
 // - methods and their arguments are camelCase (`castBallot`, `pollId`, `minChoices`);
 // - answers keep their snake_case fields, but every u64 (`created_at`, `cast_at`…) is a decimal
@@ -9,380 +12,15 @@
 
 package network.calimero.vote.generated
 
-import com.calimero.mero.app.ContextContractCalling
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
-
-/** Typed calls to the contract. Views go through `query`, writes through `execute`. */
-class VoteClient(private val transport: ContextContractCalling) {
-    /**
-     * anchor_result
-     *
-     * Record where the transcript digest was published. Only for a fully
-     * verified result, and only with the digest this node computes.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun anchorResult(pollId: String, network: String, reference: String): String {
-        val args = json.encodeToString(AnchorResultArgs.serializer(), AnchorResultArgs(pollId, network, reference))
-        val response = transport.execute("anchorResult", args)
-        return VoteWireDecoding.decode(serializer<String>(), response)
-    }
-
-    /**
-     * cast_ballot
-     *
-     * Submit a ballot the browser encrypted. Verified here before it is
-     * stored — and again by every reader, on every audit.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun castBallot(pollId: String, ballot: WireBallot): String {
-        val args = json.encodeToString(CastBallotArgs.serializer(), CastBallotArgs(pollId, ballot))
-        val response = transport.execute("castBallot", args)
-        return VoteWireDecoding.decode(serializer<String>(), response)
-    }
-
-    /**
-     * ceremony
-     *
-     * Transport keys, dealings and complaints as they stand.
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun ceremony(pollId: String): Ceremony {
-        val args = json.encodeToString(CeremonyArgs.serializer(), CeremonyArgs(pollId))
-        val response = transport.query("ceremony", args)
-        return VoteWireDecoding.decode(serializer<Ceremony>(), response)
-    }
-
-    /**
-     * close_poll
-     *
-     * Step one of closing: stop accepting ballots. Each node refuses new
-     * ballots once it sees this; ballots cast before that keep syncing in,
-     * and the seal is what freezes the count.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun closePoll(pollId: String) {
-        val args = json.encodeToString(ClosePollArgs.serializer(), ClosePollArgs(pollId))
-        transport.execute("closePoll", args)
-    }
-
-    /**
-     * create_poll
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun createPoll(title: String, description: String, options: List<String>, minChoices: UInt, maxChoices: UInt, trustees: List<String>, threshold: UInt, voters: List<String>, closesAt: ULong? = null): String {
-        val args = json.encodeToString(CreatePollArgs.serializer(), CreatePollArgs(title, description, options, minChoices, maxChoices, trustees, threshold, voters, closesAt?.toString()))
-        val response = transport.execute("createPoll", args)
-        return VoteWireDecoding.decode(serializer<String>(), response)
-    }
-
-    /**
-     * file_complaint
-     *
-     * A trustee proves `dealer` sent it a share that does not match the
-     * dealer's commitments. Refused unless the proof holds AND the share is
-     * really bad — so a complaint can never frame an honest dealer.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun fileComplaint(pollId: String, dealer: String, secret: String, proof: WireBranch) {
-        val args = json.encodeToString(FileComplaintArgs.serializer(), FileComplaintArgs(pollId, dealer, secret, proof))
-        transport.execute("fileComplaint", args)
-    }
-
-    /**
-     * get_poll
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun getPoll(pollId: String): PollView {
-        val args = json.encodeToString(GetPollArgs.serializer(), GetPollArgs(pollId))
-        val response = transport.query("getPoll", args)
-        return VoteWireDecoding.decode(serializer<PollView>(), response)
-    }
-
-    /**
-     * get_result
-     *
-     * Re-verify everything and, once `t` trustees have published, the counts.
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun getResult(pollId: String): AuditReport {
-        val args = json.encodeToString(GetResultArgs.serializer(), GetResultArgs(pollId))
-        val response = transport.query("getResult", args)
-        return VoteWireDecoding.decode(serializer<AuditReport>(), response)
-    }
-
-    /**
-     * get_transcript
-     *
-     * Every input of the tally plus this node's audit of it.
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun getTranscript(pollId: String): Transcript {
-        val args = json.encodeToString(GetTranscriptArgs.serializer(), GetTranscriptArgs(pollId))
-        val response = transport.query("getTranscript", args)
-        return VoteWireDecoding.decode(serializer<Transcript>(), response)
-    }
-
-    /**
-     * list_polls
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun listPolls(): List<PollSummary> {
-        val response = transport.query("listPolls", "{}")
-        return VoteWireDecoding.decode(serializer<List<PollSummary>>(), response)
-    }
-
-    /**
-     * open_voting
-     *
-     * Freeze the election key and open voting. The qualified set is every
-     * verified dealing with no valid complaint against it, and it must hold
-     * at least `t` dealers — otherwise fewer than `t` colluders could know
-     * the whole key.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun openVoting(pollId: String): String {
-        val args = json.encodeToString(OpenVotingArgs.serializer(), OpenVotingArgs(pollId))
-        val response = transport.execute("openVoting", args)
-        return VoteWireDecoding.decode(serializer<String>(), response)
-    }
-
-    /**
-     * publish_dealing
-     *
-     * Round 2: a trustee deals shares of its polynomial to every trustee.
-     * The contract checks the shape and the proof of knowledge; whether each
-     * encrypted share matches the commitments only its recipient can tell,
-     * which is what complaints are for. Write-once.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun publishDealing(pollId: String, dealing: WireDealing) {
-        val args = json.encodeToString(PublishDealingArgs.serializer(), PublishDealingArgs(pollId, dealing))
-        transport.execute("publishDealing", args)
-    }
-
-    /**
-     * publish_partial
-     *
-     * A trustee publishes `Dⱼ = xⱼ·Aⱼ` for every option's aggregate, each
-     * with a DLEQ proof against its verification key `hⱼ`, which anyone can
-     * derive from the qualified commitments.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun publishPartial(pollId: String, partials: List<WirePartial>) {
-        val args = json.encodeToString(PublishPartialArgs.serializer(), PublishPartialArgs(pollId, partials))
-        transport.execute("publishPartial", args)
-    }
-
-    /**
-     * publish_transport_key
-     *
-     * Round 1: a trustee publishes the key dealers will encrypt its shares
-     * to. Write-once — dealings are addressed to it.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun publishTransportKey(pollId: String, key: String, proof: WireBranch) {
-        val args = json.encodeToString(PublishTransportKeyArgs.serializer(), PublishTransportKeyArgs(pollId, key, proof))
-        transport.execute("publishTransportKey", args)
-    }
-
-    /**
-     * roster
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun roster(): List<Member> {
-        val response = transport.query("roster", "{}")
-        return VoteWireDecoding.decode(serializer<List<Member>>(), response)
-    }
-
-    /**
-     * seal_poll
-     *
-     * Step two: freeze the ballots to count — every eligible voter's
-     * current, re-verified ballot as this node sees it now.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun sealPoll(pollId: String): UInt {
-        val args = json.encodeToString(SealPollArgs.serializer(), SealPollArgs(pollId))
-        val response = transport.execute("sealPoll", args)
-        return VoteWireDecoding.decode(serializer<UInt>(), response)
-    }
-
-    /**
-     * set_name
-     *
-     * Put a display name in your slot. Doubles as "I'm here": the roster is
-     * how a creator finds the accounts to name as trustees or voters.
-     *
-     * Write (`mutating`): sent with `execute`.
-     */
-    suspend fun setName(name: String) {
-        val args = json.encodeToString(SetNameArgs.serializer(), SetNameArgs(name))
-        transport.execute("setName", args)
-    }
-
-    /**
-     * tally_inputs
-     *
-     * The per-option aggregates a trustee decrypts. Recomputed from the
-     * frozen ballots every call; nothing stored is trusted.
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun tallyInputs(pollId: String): TallyInputs {
-        val args = json.encodeToString(TallyInputsArgs.serializer(), TallyInputsArgs(pollId))
-        val response = transport.query("tallyInputs", args)
-        return VoteWireDecoding.decode(serializer<TallyInputs>(), response)
-    }
-
-    /**
-     * whoami
-     *
-     * The caller's ACCOUNT — the id trustees and voter rolls are written in.
-     *
-     * View (`read_only`): sent with `query`.
-     */
-    suspend fun whoami(): Identity {
-        val response = transport.query("whoami", "{}")
-        return VoteWireDecoding.decode(serializer<Identity>(), response)
-    }
-
-    @Serializable
-    private data class AnchorResultArgs(
-        val pollId: String,
-        val network: String,
-        val reference: String,
-    )
-
-    @Serializable
-    private data class CastBallotArgs(
-        val pollId: String,
-        val ballot: WireBallot,
-    )
-
-    @Serializable
-    private data class CeremonyArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class ClosePollArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class CreatePollArgs(
-        val title: String,
-        val description: String,
-        val options: List<String>,
-        val minChoices: UInt,
-        val maxChoices: UInt,
-        val trustees: List<String>,
-        val threshold: UInt,
-        val voters: List<String>,
-        /** A u64: a decimal string, or `null` (always sent). */
-        val closesAt: String?,
-    )
-
-    @Serializable
-    private data class FileComplaintArgs(
-        val pollId: String,
-        val dealer: String,
-        val secret: String,
-        val proof: WireBranch,
-    )
-
-    @Serializable
-    private data class GetPollArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class GetResultArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class GetTranscriptArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class OpenVotingArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class PublishDealingArgs(
-        val pollId: String,
-        val dealing: WireDealing,
-    )
-
-    @Serializable
-    private data class PublishPartialArgs(
-        val pollId: String,
-        val partials: List<WirePartial>,
-    )
-
-    @Serializable
-    private data class PublishTransportKeyArgs(
-        val pollId: String,
-        val key: String,
-        val proof: WireBranch,
-    )
-
-    @Serializable
-    private data class SealPollArgs(
-        val pollId: String,
-    )
-
-    @Serializable
-    private data class SetNameArgs(
-        val name: String,
-    )
-
-    @Serializable
-    private data class TallyInputsArgs(
-        val pollId: String,
-    )
-
-    private companion object {
-        val json = Json { ignoreUnknownKeys = true }
-    }
-}
 
 /** A pointer from the context to a public record of the transcript digest. */
 @Serializable
@@ -868,7 +506,19 @@ object VoteWireDecoding {
     fun <T> decode(
         serializer: KSerializer<T>,
         response: String,
-    ): T = json.decodeFromJsonElement(serializer, normalized(json.parseToJsonElement(response)))
+    ): T = decode(serializer, json.parseToJsonElement(response))
+
+    /** An answer of the generated client as the app type [serializer] reads. */
+    fun <T> decode(
+        serializer: KSerializer<T>,
+        answer: JsonElement,
+    ): T = json.decodeFromJsonElement(serializer, normalized(answer))
+
+    /** [value] as the JSON the generated client takes. */
+    fun <T> encode(
+        serializer: KSerializer<T>,
+        value: T,
+    ): JsonElement = json.encodeToJsonElement(serializer, value)
 
     /** [element] with every u64 field's decimal string as a JSON number. */
     fun normalized(
@@ -888,3 +538,9 @@ object VoteWireDecoding {
             else -> element
         }
 }
+
+/** An answer of the generated client as the vote type [T], its u64 fields read from their decimal strings. */
+inline fun <reified T> JsonElement.toVote(): T = VoteWireDecoding.decode(serializer<T>(), this)
+
+/** [this] as the JSON the generated client takes. */
+inline fun <reified T> T.toVoteJson(): JsonElement = VoteWireDecoding.encode(serializer<T>(), this)

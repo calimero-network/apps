@@ -20,7 +20,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import network.calimero.vote.generated.Phase
 import network.calimero.vote.generated.PollDefinition
-import network.calimero.vote.generated.VoteClient
+import network.calimero.vote.generated.client.VoteClient
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException

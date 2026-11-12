@@ -20,7 +20,7 @@ public enum VoteConstants {
 extension VoteClient {
     /// The vote client for one context, over the account's node session.
     public static func make(contract: any ContextContract, contextId: String) -> VoteClient {
-        VoteClient(transport: contract.bound(to: contextId))
+        VoteClient(contract: contract.bound(to: contextId))
     }
 }
 
