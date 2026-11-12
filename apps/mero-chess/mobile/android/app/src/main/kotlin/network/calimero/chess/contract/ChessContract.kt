@@ -1,9 +1,7 @@
 package network.calimero.chess.contract
 
-import com.calimero.mero.app.ContextContractCalling
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -13,15 +11,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * The table's contract on Calimero 1.0, typed by hand from `logic/res/abi.json` (no client is
- * generated from a component ABI yet). The port of the web app's `src/chess.ts`; Swift
- * `ChessContract`:
+ * The table's contract on Calimero 1.0, as `logic/res/abi.json` declares it. The calls are the
+ * generated [network.calimero.chess.generated.MeroChessClient] (`scripts/mobile-codegen.sh`); this
+ * file keeps the method lists, the refusal sentences and the answer types of the web app's
+ * `src/chess.ts` (Swift `ChessContract`):
  *
  * - method names are the ABI's camelCase ones (`offerDraw`, not v1's `offer_draw`);
  * - every `now` argument and every `u64` in an answer is a decimal string on the wire
@@ -68,6 +66,17 @@ object ChessContract {
             "GameLimit" to "this table has played all the games it counts",
         )
 
+    private val JSON = Json { ignoreUnknownKeys = true }
+
+    /**
+     * The `table` answer as a [TableView]. The ABI names `TableView` and `GameSummary` without
+     * their shape until the app derives `AbiType`, so the generated client answers their JSON.
+     */
+    fun tableView(answer: JsonElement): TableView = JSON.decodeFromJsonElement(TableView.serializer(), answer)
+
+    /** The `history` answer as [GameSummary] rows. */
+    fun gameSummaries(answer: List<JsonElement>): List<GameSummary> = answer.map { JSON.decodeFromJsonElement(GameSummary.serializer(), it) }
+
     /** The sentence for a contract refusal, or null for a code the app does not know. */
     fun message(appCode: String): String? = MESSAGES[appCode]
 
@@ -80,96 +89,6 @@ object ChessContract {
             put("title", title)
             put("now", now.toString())
         }
-}
-
-/** Typed calls to one table's contract. Views go through `query`, everything else through `execute`. (Swift `MeroChessClient`.) */
-@Suppress("TooManyFunctions")
-class MeroChessClient(
-    private val transport: ContextContractCalling,
-) {
-    // ---- views ----
-
-    /** The whole table in one read. */
-    suspend fun table(now: ULong): TableView = view("table", TableView.serializer(), mapOf("now" to JsonPrimitive(now.toString())))
-
-    /** Every game this table has played, oldest first. */
-    suspend fun history(): List<GameSummary> = view("history", ListSerializer(GameSummary.serializer()), emptyMap())
-
-    // ---- calls ----
-
-    suspend fun join(
-        name: String,
-        now: ULong,
-    ) {
-        execute("join", now, "name" to JsonPrimitive(name))
-    }
-
-    suspend fun heartbeat(now: ULong) {
-        execute("heartbeat", now)
-    }
-
-    suspend fun sit(
-        seat: String,
-        name: String,
-        now: ULong,
-    ) {
-        execute("sit", now, "seat" to JsonPrimitive(seat), "name" to JsonPrimitive(name))
-    }
-
-    suspend fun stand(now: ULong) {
-        execute("stand", now)
-    }
-
-    /** Play a move in UCI (`e2e4`, `e7e8q`). Returns its SAN. */
-    suspend fun play(
-        uci: String,
-        now: ULong,
-    ): String = JSON.parseToJsonElement(execute("play", now, "uci" to JsonPrimitive(uci))).jsonPrimitive.content
-
-    suspend fun resign(now: ULong) {
-        execute("resign", now)
-    }
-
-    suspend fun offerDraw(now: ULong) {
-        execute("offerDraw", now)
-    }
-
-    suspend fun acceptDraw(now: ULong) {
-        execute("acceptDraw", now)
-    }
-
-    suspend fun declineDraw(now: ULong) {
-        execute("declineDraw", now)
-    }
-
-    suspend fun claimDraw(now: ULong) {
-        execute("claimDraw", now)
-    }
-
-    /** Start the next game (colours swap). Returns its index. */
-    suspend fun rematch(now: ULong): UInt =
-        JSON
-            .parseToJsonElement(execute("rematch", now))
-            .jsonPrimitive.content
-            .toUInt()
-
-    // ---- wire ----
-
-    private suspend fun <T> view(
-        method: String,
-        serializer: KSerializer<T>,
-        args: Map<String, JsonElement>,
-    ): T = JSON.decodeFromString(serializer, transport.query(method, JsonObject(args).toString()))
-
-    private suspend fun execute(
-        method: String,
-        now: ULong,
-        vararg args: Pair<String, JsonElement>,
-    ): String = transport.execute(method, JsonObject(mapOf(*args) + ("now" to JsonPrimitive(now.toString()))).toString())
-
-    companion object {
-        val JSON = Json { ignoreUnknownKeys = true }
-    }
 }
 
 /** A `u64` off the wire: a decimal string (the component ABI), or a plain number. Written as a string. */
