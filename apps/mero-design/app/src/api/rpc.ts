@@ -22,8 +22,8 @@ import {
   type OtherOrg,
 } from "@calimero-apps/connect";
 import { setOrgName } from "@calimero-apps/names";
-import { getApi } from "./client";
-import { toWire } from "./meroDesign";
+import { getApi, peekApi } from "./client";
+import { MeroDesignClient, type AppTransport } from "../generated/client";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire as elementToWire } from "../utils/elementMeta";
 import { useCanvasStore } from "../store/canvasStore";
@@ -57,52 +57,66 @@ import type { Element } from "../types";
 export const PRODUCT_NAME = "Mero Design";
 
 // ── Contract calls ───────────────────────────────────────────────────────────
+//
+// The board's contract is called through `MeroDesignClient`
+// (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+// `logic/res/abi.json`): `design(board).updateElement({ id, strokeWidth,
+// updatedAt: i64(now) })`. Its arguments are the ABI's (camelCase, 64-bit
+// integers as decimal strings, `i64` below). Its answers are v1's shapes
+// unchanged: the element, member, comment and cursor types are plain serde
+// structs, whose 64-bit fields stay JSON numbers. The ABI names those records
+// without their shapes, so the generated types are `unknown` and the callers
+// cast them to `types/`.
+//
+// What the wire still needs around the class lives here: the element extras
+// folded into `label` (`wireElement`, `wireLabel`, `wireLabels`, and
+// `readElements` / `readElementsByIds` unfolding them), the whole board read
+// page by page (`readElements`), and a refusal in the contract's own words
+// (`callFailure`).
 
 /**
- * Fold the client-side element extras into `label` on the way out.
- *
- * Only the methods that write a label carry them (see `utils/elementMeta.ts`).
- * A label rename looks the element up in the store so a rename never strips
- * its dash style or sticky-ness; a caller that is changing the extras
- * themselves passes the updated element as `__element`, because the store
- * write it just made may not be the one this reads.
+ * A 64-bit integer argument as the contract takes it: a decimal string. A
+ * value that is not a whole number is an error here rather than a `BadArgs`
+ * from the node.
  */
-export function packArgs(method: string, args: Record<string, unknown>): Record<string, unknown> {
-  if (method === "add_element" && args.element && typeof args.element === "object") {
-    return { ...args, element: elementToWire(args.element as Element) };
-  }
-  if (method === "add_elements" && Array.isArray(args.elements)) {
-    return { ...args, elements: (args.elements as Element[]).map(elementToWire) };
-  }
-  if (method === "update_element_label") {
-    const { __element, ...rest } = args as { __element?: Element } & Record<string, unknown>;
-    const source = __element
-      ?? useCanvasStore.getState().elements.find((e) => e.id === rest.id);
-    const label = (rest.label as string | null | undefined) ?? null;
-    return { ...rest, label: source ? packLabel(label, metaOf(source)) : label };
-  }
-  if (method === "update_element_labels" && Array.isArray(args.labels)) {
-    // Same packing as the single rename, one lookup table for the whole batch.
-    const byId = new Map(useCanvasStore.getState().elements.map((e) => [e.id, e] as const));
-    const labels = (args.labels as { id: string; label?: string | null }[]).map(({ id, label }) => {
-      const source = byId.get(id);
-      const plain = label ?? null;
-      return { id, label: source ? packLabel(plain, metaOf(source)) : plain };
-    });
-    return { ...args, labels };
-  }
-  return args;
+export function i64(value: number | bigint | string): string {
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value).toString();
+  if (typeof value === "string" && /^-?\d+$/.test(value)) return value;
+  throw new Error(`must be an integer, got ${JSON.stringify(value)}`);
 }
 
-/** Unpack every element a read returns: the inverse of `packArgs`. */
-export function unpackResult<T>(method: string, value: T): T {
-  if ((method === "get_elements" || method === "get_elements_by_ids") && Array.isArray(value)) {
-    return value.map((el) => fromWire(el as Element)) as T;
-  }
-  if (method === "get_element" && value && typeof value === "object") {
-    return fromWire(value as unknown as Element) as T;
-  }
-  return value;
+/** {@link i64}, keeping "not given" (`null`). */
+export function optI64(value: number | bigint | string | null | undefined): string | null {
+  return value === null || value === undefined ? null : i64(value);
+}
+
+/** An element as the contract stores it: the client-side extras folded into `label`. */
+export function wireElement(element: Element): Element {
+  return elementToWire(element);
+}
+
+/**
+ * A label as `updateElementLabel` takes it: with the element's extras folded
+ * in, so a rename never strips its dash style or sticky-ness. The element is
+ * looked up in the store; a caller that is changing the extras themselves
+ * passes the updated element, because the store write it just made may not be
+ * the one this reads.
+ */
+export function wireLabel(id: string, label: string | null | undefined, element?: Element): string | null {
+  const source = element ?? useCanvasStore.getState().elements.find((e) => e.id === id);
+  const plain = label ?? null;
+  return source ? packLabel(plain, metaOf(source)) : plain;
+}
+
+/** Labels as `updateElementLabels` takes them: {@link wireLabel} for each, one store lookup. */
+export function wireLabels(labels: readonly { id: string; label?: string | null }[]): { id: string; label: string | null }[] {
+  const byId = new Map(useCanvasStore.getState().elements.map((e) => [e.id, e] as const));
+  return labels.map(({ id, label }) => {
+    const source = byId.get(id);
+    const plain = label ?? null;
+    return { id, label: source ? packLabel(plain, metaOf(source)) : plain };
+  });
 }
 
 /**
@@ -119,57 +133,55 @@ export function callFailure(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-/** Pages `getElementsPage` reads at a time when `get_elements` wants the whole board. */
-const ELEMENT_PAGE = 1000;
-
-type Contract = ClientRoutes<{ apps: "call" | "view" }>;
-
-async function send(client: Contract, app: string, method: string, args: Record<string, unknown>): Promise<unknown> {
-  const req = toWire(method, args);
-  const res = req.kind === "call"
-    ? await client.apps.call({ app, method: req.name, args: req.args })
-    : await client.apps.view({ app, method: req.name, args: req.args });
-  return res.result;
+/** Rethrows a failed request as {@link callFailure}. */
+function rethrow(err: unknown): never {
+  throw callFailure(err);
 }
 
 /**
- * Every element on the board in paint order. The component contract answers
- * `getElements` with at most a page (1,000), so a larger board is read page
- * by page through `getElementsPage`, as v1's single read returned it whole.
+ * The session's client, read when a request is made (most of this app's calls
+ * are fired from plain functions: fabric handlers, the batch helpers, the
+ * project importer), with every failure as {@link callFailure}.
  */
-async function allElements(client: Contract, app: string): Promise<Element[]> {
+const transport: AppTransport = {
+  apps: {
+    call: async (args, options) => getApi().client.apps.call(args, options).catch(rethrow),
+    view: async (args, options) => getApi().client.apps.view(args, options).catch(rethrow),
+  },
+  events: (app, from, signal) => getApi().client.events(app, from, signal),
+};
+
+/** The contract of the board `app` (an app instance id), through the signed-in client. */
+export function design(app: string): MeroDesignClient {
+  return new MeroDesignClient(transport, app, { after: () => peekApi()?.after() });
+}
+
+/** Pages `getElementsPage` reads at a time when the whole board is wanted. */
+const ELEMENT_PAGE = 1000;
+
+/**
+ * Every element on the board in paint order, unpacked. The contract answers
+ * `getElements` with at most a page (1,000), so the board is read page by page
+ * through `getElementsPage`, as v1's single read returned it whole.
+ */
+export async function readElements(board: MeroDesignClient): Promise<Element[]> {
   const out: Element[] = [];
   let cursor: string | null = null;
   for (;;) {
-    const page = (await send(client, app, "get_elements_page", { cursor, limit: ELEMENT_PAGE })) as {
+    const page = (await board.getElementsPage({ cursor, limit: ELEMENT_PAGE })) as {
       items?: Element[];
       nextCursor?: string | null;
     };
-    out.push(...(page.items ?? []));
+    out.push(...(page.items ?? []).map(fromWire));
     if (!page.nextCursor) return out;
     cursor = page.nextCursor;
   }
 }
 
-/**
- * Call a contract method of the board `app` (an app instance id) by its v1 name
- * with v1's arguments; `meroDesign.ts` maps them onto the component's wire.
- */
-export async function rpcCall<T>(
-  app: string,
-  method: string,
-  args: Record<string, unknown>,
-): Promise<T> {
-  const { client, after } = getApi();
-  try {
-    const packed = packArgs(method, args);
-    const out = method === "get_elements" ? await allElements(client, app) : await send(client, app, method, packed);
-    return unpackResult(method, out as T);
-  } catch (err) {
-    throw callFailure(err);
-  } finally {
-    after();
-  }
+/** The current copy of each id that still exists, unpacked; `null` when the contract answered none. */
+export async function readElementsByIds(board: MeroDesignClient, ids: string[]): Promise<Element[] | null> {
+  const got = (await board.getElementsByIds({ ids })) as Element[] | null;
+  return Array.isArray(got) ? got.map(fromWire) : got;
 }
 
 // ── Who am I ─────────────────────────────────────────────────────────────────
@@ -498,7 +510,7 @@ export async function createBoard(org: string, name: string): Promise<string> {
     after();
   }
   // Best-effort: the instance's own name is what the list shows until then.
-  await rpcCall(app, "update_board", { name, description: "" }).catch(() => {});
+  await design(app).updateBoard({ name, description: "" }).catch(() => {});
   return app;
 }
 
@@ -514,12 +526,12 @@ export async function deleteBoard(app: string): Promise<void> {
 
 /** Renames the board for everyone: the contract's name, which every reader prefers. Its owner only. */
 export async function renameBoard(app: string, name: string): Promise<void> {
-  await rpcCall(app, "update_board", { name, description: null });
+  await design(app).updateBoard({ name, description: null });
 }
 
 /** The board's current name on the contract, or "" until its owner set one. */
 export async function boardName(app: string): Promise<string> {
-  const board = await rpcCall<{ name?: string }>(app, "get_board", {});
+  const board = await (design(app).getBoard() as Promise<{ name?: string }>);
   return board?.name?.trim() ?? "";
 }
 

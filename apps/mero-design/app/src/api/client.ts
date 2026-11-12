@@ -6,7 +6,7 @@ import type { AppSource } from "@calimero-apps/connect";
 // Everything this app says to the cluster goes through one mero-js
 // `CalimeroClient`: contract calls and views, the org (team) and app instance
 // (board) API, blobs and the event stream. Most of this app's calls are made
-// from plain functions, not components (`rpcCall` is fired from fabric event
+// from plain functions, not components (the contract is called from fabric event
 // handlers, the batch helpers, the project file importer), so the session
 // provider publishes the signed-in client here once (`sessionContext.tsx`) and
 // `getApi()` reads it back from anywhere. There is exactly one session per

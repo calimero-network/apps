@@ -23,6 +23,7 @@ vi.hoisted(() => {
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { withRoutes } from "@calimero-apps/connect/testing";
+import { boardAnswering } from "../test/board";
 
 const self = "f".repeat(64);
 
@@ -30,7 +31,7 @@ vi.mock("../api/rpc", () =>
   withRoutes({
     getNodeIdentity: vi.fn().mockResolvedValue({ accountId: "f".repeat(64) }),
     listGroupMembers: vi.fn().mockResolvedValue({ members: [], teeMembers: [] }),
-    rpcCall: vi.fn().mockResolvedValue([]),
+    design: boardAnswering([]),
     updateMemberRole: vi.fn(),
     removeTeamMember: vi.fn(),
     // The team's names are still loading: nothing re-renders the section while

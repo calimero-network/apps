@@ -261,10 +261,15 @@ because a release with #4815 forgets a blob nothing references after an hour.
   (`src/session.ts`, `src/sessionContext.tsx`): passkey sign-in and sign-up, the
   session stored per app and per target. The rest of the app reaches the client
   through `src/api/client.ts`, as it reached v1's.
-- `src/api/meroDesign.ts` is the **one adapter**: the screens still call
-  `rpcCall(board, "update_element", { …, updated_at })` with v1's names, and it
-  renames methods and arguments and turns 64-bit arguments into strings.
-  `meroDesign.test.ts` checks it against the committed `logic/res/abi.json`.
+- The contract is called through `MeroDesignClient` (`src/generated/client.ts`),
+  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  `pnpm -F mero-design codegen` after a contract change, and CI fails when it
+  is stale): `design(board).updateElement({ …, updatedAt: i64(now) })`.
+  `src/api/rpc.ts` builds it over the signed-in client (`design`), folds the
+  element extras into `label` on the way out (`wireElement`, `wireLabel`) and
+  back on the way in (`readElements`, which also reads a large board page by
+  page), and turns a refusal into the contract's own message. `src/client.test.ts`
+  checks the generated client against the ABI.
 - `src/api/rpc.ts` maps teams to orgs (`/me`, `createOrg` + member defaults,
   `deleteOrg`, `removeMember`, `setMember`, `invite` / `redeemInvite`, all but
   `/me` and `redeemInvite` passkey step-ups), boards to instances (`listApps` by
