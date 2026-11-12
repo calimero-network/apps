@@ -15,9 +15,8 @@ Issues use a structured format built for handing bugs to a coding agent:
 - **Resolution criteria** - what "fixed" must satisfy.
 
 Plus status, priority, assignee, labels, and a per-issue comment thread.
-Two surfaces make it agent-friendly: a **Copy fix prompt** button on each
-issue, and an **MCP server** (`mcp/`) that lets an agent create, list, read,
-comment on, triage and assign issues.
+A **Copy fix prompt** button on each issue renders it as a prompt for a
+coding agent, with its context attached.
 
 ```
 apps/mero-issue-tracker/
@@ -29,7 +28,6 @@ apps/mero-issue-tracker/
 │   ├── res/abi.json         the component's ABI (committed, diffed in CI)
 │   └── GUIDE.md             the agent guide the bundle carries
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-├── mcp/                     the stdio MCP server (mero-js CalimeroClient + an API key)
 ├── recipes/                 reference modules for other patterns (1.0 client + component SDK)
 └── mobile/                  native iOS/Android apps (ported in #691; see below)
 ```
@@ -91,36 +89,12 @@ pnpm dev:local mero-issue-tracker         # merod local + build + deploy + http:
 file issues. **Invite** someone from the Members page; a second browser profile
 with its own passkey opening that link is a second member.
 
-## Use it from Claude Code (MCP)
-
-1. In the app, open **Members -> Agent key** and create a key (your passkey
-   approves it). It shows the environment the server needs, once.
-2. Register the server with those values:
-
-   ```bash
-   claude mcp add issue-tracker --scope user \
-     --env CALIMERO_TARGET=cloud --env CALIMERO_CLUSTER=<cluster> \
-     --env CALIMERO_MIN_RELEASE=<release> --env CALIMERO_API_KEY=<key> \
-     --env TRACKER_WORKSPACE=<workspace id> --env TRACKER_REPO=<repo name> \
-     -- npx -y @calimero-network/mero-issue-tracker-mcp
-   ```
-
-   (Against `pnpm dev:local`, the key's environment says `CALIMERO_TARGET=local`
-   and names the dev bundle.)
-3. Talk to it: "list the repos in the tracker", "file an issue in repo core:
-   ...", "move ISS-3 to In progress", "get the fix prompt for ISS-3".
-
-`mcp/README.md` has every tool and variable. The key acts for your account:
-issues and comments the agent files are yours, and it may delete only what
-you may.
-
 ## Test it
 
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-issue-tracker/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules (`Authored`) as the same calls made by other accounts; v1's convergence test under one log; access, API keys, wire checks, list sizes; and every `scenarios/*.json` | no |
 | `pnpm -F mero-issue-tracker test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the wire-to-view mapping; sign-in, the remembered workspace and its repos, the invitation prompt (mocked client); roles, names, search, fix prompt | no |
-| `cd mcp && npm test` | the MCP tools' requests (method names, call vs view, arguments), workspace/repo resolution, config | no |
 | `pnpm merod-local e2e mero-issue-tracker` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios are ported from the v1 smoke workflow (`logic/workflows/smoke.yml`, removed):
@@ -178,8 +152,7 @@ light/dark theme. Behind them:
   stale), `src/tracker.ts` (its answers mapped onto the shapes the screens
   render: the ABI names its records without their shapes, so the generated
   types are `unknown`), a passkey sign-in dialog as the landing page's
-  connect action, the invitation prompt after sign-in, and **Members -> Agent
-  key** for the MCP server;
+  connect action, and the invitation prompt after sign-in;
 - **URLs**: the app still lives at `/issue-tracker` (`/issue-tracker/board`,
   `/issue-tracker/issues/:id`, `/issue-tracker/members`); an invitation is
   `/?invite=<token>`.
@@ -201,8 +174,7 @@ VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
 An operator's own attested node is reached by URL instead:
 `VITE_CALIMERO_TARGET=node`, `VITE_CALIMERO_NODES=<its https URLs>` and the same
 release floor. The target is fixed by the build: nobody picks a node or a
-cluster at sign-in. The Agent key's environment follows the build's target
-(`CALIMERO_TARGET=local`, `cloud` or `node`).
+cluster at sign-in.
 
 The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
 which the cluster serves from the package's own origin: a Cloud node trusts

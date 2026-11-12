@@ -693,16 +693,15 @@ export const APPS = {
     themeStorageKey: 'mero-issue-tracker:theme',
     // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
     availability: 'web',
-    trust: ['Structured issues', 'MCP server included', 'Private to your team'],
+    trust: ['Structured issues', 'Copy fix prompt', 'Private to your team'],
     explainer: [
       'A real-time issue board for a small engineering team. Issues are structured around what actually makes a bug actionable — a summary, who it affects, how to reproduce it, and what "fixed" has to satisfy — rather than a free-text box and a pile of labels.',
-      'It also ships an MCP server, so an AI coding agent can pull an issue with its full context and hand you back a fix. The board is private to your workspace, held on attested Calimero nodes, not a tenant in someone else’s SaaS.',
+      'Any issue copies out as a prompt for an AI coding agent, with its full context, so the agent can hand you back a fix. The board is private to your workspace, held on attested Calimero nodes, not a tenant in someone else’s SaaS.',
     ],
     features: [
       { icon: 'FileCheck', title: 'Structured issues', body: 'Summary, impact, reproduction steps and resolution criteria — the four things that make a bug fixable.' },
       { icon: 'Refresh', title: 'Real-time board', body: 'Triage together. Status moves and comments reach every member’s screen as they happen.' },
       { icon: 'Zap', title: 'Copy fix prompt', body: 'Render any issue as a prompt for a coding agent, with its context attached, in one click.' },
-      { icon: 'Package', title: 'MCP server', body: 'Expose the board to an AI agent over Model Context Protocol, so it can read issues directly.' },
       { icon: 'Shield', title: 'Private to your team', body: 'A workspace you own, on attested nodes, not a product that reserves the right to read it.' },
     ],
   },

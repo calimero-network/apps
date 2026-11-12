@@ -18,10 +18,6 @@ packages:
   - "packages/*"
   # Suites that span several apps (e2e/cross-app: Chat, Home and KV Store on one org).
   - "e2e/*"
-  # mero-issue-tracker's stdio MCP server, published to npm on its own. Outside
-  # every glob until the per-app repos were folded in, so it was never
-  # installed, typechecked or tested here and its mero-js pin drifted by hand.
-  - "apps/*/mcp"
 
 catalog:
   # ── Calimero ───────────────────────────────────────────────────────────────

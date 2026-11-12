@@ -896,8 +896,7 @@ fn who_reaches_the_board() {
     assert_eq!(list(&mut t, json!(null), json!(null), json!(null)), [id]);
 }
 
-/// An API key acting for an account files and comments as that account (what
-/// the MCP server uses).
+/// An API key acting for an account files and comments as that account.
 #[test]
 fn an_api_key_acts_as_its_account() {
     let mut t = app();
