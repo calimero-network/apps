@@ -66,7 +66,7 @@ class WireTest {
             client.setDefaultRole("viewer")
             client.registerDevice("f", "pk", "l", "mobile")
             client.revokeDevice("f")
-            client.addKeyWraps(listOf(KeyWrapInput("k", "r", "w", "e")))
+            client.addKeyWraps(listOf(PassWireDecoding.encode(KeyWrapInput.serializer(), KeyWrapInput("k", "r", "w", "e"))))
             client.rotateKey("k")
             client.addSecret("s", "login", "n", "", emptyMap())
             client.updateSecret("s", null, null, emptyMap(), false)

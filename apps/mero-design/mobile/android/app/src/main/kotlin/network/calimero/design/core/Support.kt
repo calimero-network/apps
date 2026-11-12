@@ -10,21 +10,17 @@ import com.calimero.mero.PasskeyCancelled
 import com.calimero.mero.ReleaseDeadlineError
 import com.calimero.mero.UnavailableError
 import com.calimero.mero.WrongNode
-import com.calimero.mero.app.ContextContract
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.app.SignedOutException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.put
-import network.calimero.design.generated.ContextContractCalling
-import network.calimero.design.generated.DesignClient
+import kotlinx.serialization.json.decodeFromJsonElement
+import network.calimero.design.generated.Element
+import network.calimero.design.generated.client.DesignClient
 import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
@@ -35,106 +31,37 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * The generated client (from v1's ABI) still types every element, member, comment and cursor: the
- * component contract answers those shapes unchanged. Only the request differs, so this is the ONE
- * place v1's wire is mapped onto the component's (the web app's `src/api/meroDesign.ts`; Swift
- * `ComponentTransport`):
- *
- * - method and argument names are camelCase (`add_comment` -> `addComment`, `comment_id` -> `commentId`);
- * - 64-bit integer ARGUMENTS travel as decimal strings (`timestamp`, `updatedAt`, `createdAt`, and
- *   `x`/`y` of `addComment`, `updateElement`, `updateCursor`);
- * - `get_elements` answers at most 1,000 elements, so it is read page by page through
- *   `getElementsPage` and handed back whole, as v1 answered it.
+ * The board's contract is [DesignClient], generated from the component ABI by core's
+ * `mero-app-build codegen` (`scripts/mobile-codegen.sh`): camelCase methods and arguments, 64-bit
+ * integers as decimal strings. `getElements` answers at most 1,000 elements, so the board is read
+ * page by page through `getElementsPage` ([allElements]), as the web app's `src/api/meroDesign.ts`
+ * does. (Swift `Transport.swift`.)
  */
-class ComponentTransport(
-    private val contract: ContextContract,
-    private val appId: String,
-) : ContextContractCalling {
-    override suspend fun query(
-        method: String,
-        argsJson: String,
-    ): String {
-        if (method == "get_elements") return allElements()
-        val (name, args) = wire(method, argsJson)
-        return (contract.query(appId, name, args) ?: JsonNull).toString()
-    }
+fun MeroAppBackend.designClient(contextId: String): DesignClient = DesignClient(this, contextId)
 
-    override suspend fun execute(
-        method: String,
-        argsJson: String,
-    ): String {
-        val (name, args) = wire(method, argsJson)
-        return (contract.execute(appId, name, args) ?: JsonNull).toString()
-    }
+/** Elements per `getElementsPage` read (the contract's largest page). */
+const val ELEMENT_PAGE = 1_000u
 
-    /** Every element in paint order, read a page at a time. */
-    private suspend fun allElements(): String {
-        val items = mutableListOf<JsonElement>()
-        var cursor: String? = null
-        do {
-            val args =
-                buildJsonObject {
-                    put("cursor", cursor)
-                    put("limit", ELEMENT_PAGE)
-                }
-            val page = contract.query(appId, "getElementsPage", args) as? JsonObject
-            (page?.get("items") as? JsonArray)?.let { items.addAll(it) }
-            cursor = (page?.get("nextCursor") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotEmpty() }
-        } while (cursor != null)
-        return JsonArray(items).toString()
-    }
+/** The JSON the contract speaks. */
+val designJson = Json { ignoreUnknownKeys = true }
 
-    companion object {
-        /** Elements per `getElementsPage` read (the contract's largest page). */
-        const val ELEMENT_PAGE = 1_000
+/**
+ * An answer of the generated client as the board type [T]. The ABI names the board's types without
+ * their shape until the logic derives `AbiType`, so the client answers their JSON.
+ */
+inline fun <reified T> JsonElement.toDesign(): T = designJson.decodeFromJsonElement(this)
 
-        /** Arguments that are 64-bit integers on every method that takes them. */
-        private val INT64_ARGS = setOf("timestamp", "updated_at", "created_at")
-
-        /** Methods whose `x` / `y` are 64-bit (`i64`) too. */
-        private val INT64_POINTS = setOf("add_comment", "update_element", "update_cursor")
-
-        /** Optional arguments the generated client may leave out: the contract is sent `null`. */
-        private val OPTIONAL_ARGS =
-            mapOf("join" to listOf("avatar"), "update_board" to listOf("name", "description"), "get_elements_page" to listOf("cursor"))
-
-        private val json = Json { ignoreUnknownKeys = true }
-
-        /** The component's method name and arguments for a v1 call. */
-        fun wire(
-            method: String,
-            argsJson: String,
-        ): Pair<String, JsonObject> {
-            val decoded = if (argsJson.isBlank()) JsonObject(emptyMap()) else json.parseToJsonElement(argsJson) as? JsonObject
-            val out = mutableMapOf<String, JsonElement>()
-            decoded?.forEach { (key, value) ->
-                val int64 = key in INT64_ARGS || (method in INT64_POINTS && (key == "x" || key == "y"))
-                out[camel(key)] = if (int64) decimal(value) else value
-            }
-            OPTIONAL_ARGS[method].orEmpty().forEach { out.putIfAbsent(camel(it), JsonNull) }
-            return camel(method) to JsonObject(out)
-        }
-
-        /** `add_comment` -> `addComment`. */
-        fun camel(snake: String): String {
-            val parts = snake.split('_').filter { it.isNotEmpty() }
-            if (parts.isEmpty()) return snake
-            return parts.first() + parts.drop(1).joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
-        }
-
-        /** A 64-bit integer as the contract takes it: a decimal string (`null` stays `null`). */
-        private fun decimal(value: JsonElement): JsonElement {
-            val primitive = value as? JsonPrimitive ?: return value
-            if (primitive.isString) return value
-            return primitive.longOrNull?.let { JsonPrimitive(it.toString()) }
-                ?: primitive.contentOrNull?.toDoubleOrNull()?.let { JsonPrimitive(it.toLong().toString()) }
-                ?: value
-        }
-    }
+/** Every element in paint order, read a page at a time. */
+suspend fun DesignClient.allElements(): List<Element> {
+    val items = mutableListOf<Element>()
+    var cursor: String? = null
+    do {
+        val page = getElementsPage(cursor, ELEMENT_PAGE) as? JsonObject
+        (page?.get("items") as? JsonArray)?.forEach { items += it.toDesign<Element>() }
+        cursor = (page?.get("nextCursor") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotEmpty() }
+    } while (cursor != null)
+    return items
 }
-
-/** The generated client over this backend's contract, bound to the board's app instance. */
-fun MeroAppBackend.designClient(contextId: String): DesignClient = DesignClient(ComponentTransport(contract, contextId))
 
 /** Image bytes stored as blobs on the board's app instance (`GET /apps/{app}/blobs/{id}`). */
 fun interface BlobLoading {

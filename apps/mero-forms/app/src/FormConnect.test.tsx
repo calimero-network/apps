@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormView } from "./formsApi";
-import type { Workspace } from "./useWorkspace";
+import { fakeWorkspace as fakeContract } from "./test/workspace";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 const APP = "app-forms-1";
@@ -40,23 +40,23 @@ const { FormKeys } = await import("./FormConnect");
 function fakeWorkspace(keys: unknown[] = [], refuse = false) {
   const registered: unknown[] = [];
   const forgotten: unknown[] = [];
-  const client = {
-    listFormKeys: vi.fn(async () => keys),
-    registerFormKey: vi.fn(async (p: unknown) => {
-      calls.push("register");
-      if (refuse) throw new Error("only an admin may do this");
-      registered.push(p);
-    }),
-    forgetFormKey: vi.fn(async (p: unknown) => {
-      calls.push("forget");
-      forgotten.push(p);
-    }),
-  };
-  const workspace = {
-    client: client as unknown as Workspace["client"],
-    version: 0,
-    act: (async (fn: (c: typeof client) => Promise<unknown>) => fn(client)) as unknown as Workspace["act"],
-  } as Workspace;
+  const { workspace } = fakeContract(
+    {
+      listFormKeys: () => keys,
+      registerFormKey: (p) => {
+        calls.push("register");
+        if (refuse) throw Object.assign(new Error("APP_ERROR"), { appCode: "Forbidden", fields: { message: "only an admin may do this" } });
+        registered.push(p);
+        return null;
+      },
+      forgetFormKey: (p) => {
+        calls.push("forget");
+        forgotten.push(p);
+        return null;
+      },
+    },
+    APP,
+  );
   return { workspace, registered, forgotten };
 }
 
@@ -79,7 +79,7 @@ describe("FormKeys", () => {
       expect.objectContaining({ apps: [APP], methods: ["submitResponse", "getForm"] }),
       expect.objectContaining({ confirm: expect.any(Function) }),
     );
-    expect(registered).toEqual([{ account: "key-1", form_id: FORM.id, label: "Contact page" }]);
+    expect(registered).toEqual([{ account: "key-1", formId: FORM.id, label: "Contact page" }]);
     const env = issued.querySelector("pre")!.textContent!;
     expect(env).toContain(`CALIMERO_APP_ID=${APP}`);
     expect(env).toContain(`CALIMERO_FORM_ID=${FORM.id}`);
@@ -99,8 +99,8 @@ describe("FormKeys", () => {
   it("revokes a key's API key, then its registration", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const { workspace, forgotten } = fakeWorkspace([
-      { account: "key-9", label: "Old site", form_id: FORM.id, created_at: 0, created_by: "", responses: 3, last_response_at: 0 },
-      { account: "key-8", label: "Another form's key", form_id: "other", created_at: 0, created_by: "", responses: 0, last_response_at: 0 },
+      { account: "key-9", label: "Old site", formId: FORM.id, createdAt: "0", createdBy: "", responses: "3", lastResponseAt: "0" },
+      { account: "key-8", label: "Another form's key", formId: "other", createdAt: "0", createdBy: "", responses: "0", lastResponseAt: "0" },
     ]);
     render(<FormKeys form={FORM} workspace={workspace} appId={APP} />);
     // Only this form's keys are listed.

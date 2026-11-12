@@ -213,5 +213,179 @@
     },
     "version": 1
   },
+  "types": {
+    "BlockEntry": {
+      "fields": [
+        [
+          "k",
+          "string"
+        ],
+        [
+          "b",
+          "u8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Edit": {
+      "fields": [
+        [
+          "x",
+          "i32"
+        ],
+        [
+          "y",
+          "i32"
+        ],
+        [
+          "z",
+          "i32"
+        ],
+        [
+          "b",
+          "u8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "OverridesPage": {
+      "fields": [
+        [
+          "items",
+          "list<BlockEntry>"
+        ],
+        [
+          "next",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayerView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "device",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "z",
+          "f64"
+        ],
+        [
+          "yaw",
+          "f64"
+        ],
+        [
+          "pitch",
+          "f64"
+        ],
+        [
+          "sel",
+          "u8"
+        ],
+        [
+          "online",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayersPage": {
+      "fields": [
+        [
+          "items",
+          "list<PlayerView>"
+        ],
+        [
+          "next",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Transform": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "z",
+          "f64"
+        ],
+        [
+          "yaw",
+          "f64"
+        ],
+        [
+          "pitch",
+          "f64"
+        ],
+        [
+          "sel",
+          "u8"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WorldMeta": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "seed",
+          "u64"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WorldStats": {
+      "fields": [
+        [
+          "overrides",
+          "u64"
+        ],
+        [
+          "players",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

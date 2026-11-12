@@ -4,10 +4,11 @@ export const PACKAGE = "com.calimero.mero-models";
 /**
  * The contract is called through `MeroModelsClient`, which `mero-app-build
  * codegen` writes from logic/res/abi.json (`src/generated/client.ts`): the
- * ABI's camelCase arguments, u64s as decimal strings (`u64` below). The ABI
- * names its records without their shapes, so the generated types are
- * `unknown`: the shapes below (v1's, snake_case) type each answer where it is
- * read.
+ * ABI's camelCase arguments, u64s as decimal strings (`u64` below). Most of
+ * the records keep their u64 fields as JSON numbers, which the ABI cannot
+ * describe, so the generated types are `unknown` for them (and for
+ * `SceneInfo`'s `environment`): the shapes below (v1's, snake_case) type each
+ * answer where it is read.
  */
 
 export interface Vec3 {

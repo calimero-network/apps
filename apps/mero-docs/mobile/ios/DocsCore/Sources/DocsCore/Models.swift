@@ -228,6 +228,7 @@ public final class WorkspaceModel: ObservableObject {
                     }
                     do {
                         let list = try await backend.docs(ctx).client.listDocs(includeArchived: false)
+                            .map { try $0.decoded(as: DocDto.self) }
                         return (
                             folder.id,
                             .success(
@@ -276,8 +277,10 @@ public final class WorkspaceModel: ObservableObject {
         let hits = await withTaskGroup(of: [(DocRow, String, Float)].self) { group in
             for (folder, ctx) in targets {
                 group.addTask {
-                    guard let page = try? await backend.docs(ctx).client.searchDocs(
-                        query: q, includeArchived: false, cursor: nil, limit: 20)
+                    guard
+                        let page = try? await backend.docs(ctx).client.searchDocs(
+                            query: q, includeArchived: false, cursor: nil, limit: 20
+                        ).decoded(as: DocSearchPage.self)
                     else { return [] }
                     return page.hits.compactMap { hit in
                         let row =
@@ -488,7 +491,7 @@ public final class DocumentModel: ObservableObject {
 
     private func read(_ ctx: String) async throws {
         let api = backend.docs(ctx)
-        async let info = api.client.getDoc(id: docId)
+        async let info = api.client.getDoc(id: docId).decoded(as: DocDto.self)
         async let rows = api.readDocument(docId)
         let (d, r) = try await (info, rows)
         doc = d
@@ -498,7 +501,7 @@ public final class DocumentModel: ObservableObject {
     }
 
     private func readComments(_ api: DocsAPI) async {
-        let read = try? await api.client.listComments(docId: docId)
+        let read = try? await api.client.listComments(docId: docId).map({ try $0.decoded(as: CommentDto.self) })
         var list = read.map { $0.map(DocComment.init) } ?? threads.flatMap { [$0.root] + $0.replies }
         if read != nil {
             let ids = Set(list.map(\.id))

@@ -17,9 +17,9 @@ import network.calimero.design.app.BoardsModel
 import network.calimero.design.app.LoadState
 import network.calimero.design.app.TeamsModel
 import network.calimero.design.core.BlobLoading
-import network.calimero.design.core.ComponentTransport
 import network.calimero.design.core.DesignFormat
 import network.calimero.design.core.Point
+import network.calimero.design.core.allElements
 import network.calimero.design.core.designClient
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -224,19 +224,26 @@ class ModelTest {
                     """{"items":[$el],"nextCursor":${if (first) "\"c1\"" else "null"}}""",
                 )
             }
-            val elements = backend.designClient("board").getElements()
+            val elements = backend.designClient("board").allElements()
             assertEquals(2, elements.size)
             assertEquals(listOf(JsonNull, JsonPrimitive("c1")), backend.recording.calls("getElementsPage").map { it.arg("cursor") })
         }
 
     @Test
-    fun `v1 names map onto the component wire`() {
-        assertEquals("updateMemberUsername", ComponentTransport.camel("update_member_username"))
-        val (name, args) = ComponentTransport.wire("update_cursor", """{"x":-3,"y":4,"updated_at":1700000000000}""")
-        assertEquals("updateCursor", name)
-        assertEquals("""{"x":"-3","y":"4","updatedAt":"1700000000000"}""", args.toString())
-        assertEquals("""{"member":"ab"}""", ComponentTransport.wire("get_role", """{"member":"ab"}""").second.toString())
-    }
+    fun `calls go out on the component wire`() =
+        runTest {
+            val backend =
+                com.calimero.mero.testkit
+                    .InMemoryAppBackend()
+            backend.recording.handler = { call -> if (call.method == "getRole") JsonPrimitive("viewer") else JsonNull }
+            val client = backend.designClient("board")
+            client.updateCursor(-3, 4, 1_700_000_000_000uL)
+            val cursor = backend.recording.calls("updateCursor").first()
+            assertEquals("""{"x":"-3","y":"4","updatedAt":"1700000000000"}""", cursor.args.toString())
+            client.getRole("ab")
+            val role = backend.recording.calls("getRole").first()
+            assertEquals("""{"member":"ab"}""", role.args.toString())
+        }
 
     @Test
     fun `refusals in words`() {

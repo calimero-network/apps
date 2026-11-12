@@ -40,8 +40,8 @@ public final class DecisionsModel: ObservableObject {
         let limit = Self.page * pages
         do {
             async let page = team.client.listDecisions(
-                search: query.isEmpty ? nil : query, tag: tag, standingOnly: standingOnly, limit: limit)
-            async let tags = team.client.tags()
+                search: query.isEmpty ? nil : query, tag: tag, standingOnly: standingOnly, limit: limit).decoded(as: DecisionPage.self)
+            async let tags = team.client.tags().map({ try $0.decoded(as: TagCount.self) })
             let (p, t) = try await (page, tags)
             guard query == search.trimmingCharacters(in: .whitespaces), tag == self.tag,
                 standingOnly == self.standingOnly
@@ -98,7 +98,7 @@ public final class DecisionsModel: ObservableObject {
     /// A decision in the list, or read on its own (a link to one filtered out).
     public func decision(_ id: String) async -> DecisionView? {
         if let found = items.first(where: { $0.id == id }) { return found }
-        return try? await team.client.getDecision(id: id)
+        return try? await team.client.getDecision(id: id).decoded(as: DecisionView.self)
     }
 
     public func title(of id: String) -> String? { items.first { $0.id == id }?.title }

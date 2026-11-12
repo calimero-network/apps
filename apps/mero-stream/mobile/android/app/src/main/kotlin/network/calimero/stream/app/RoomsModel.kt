@@ -67,7 +67,7 @@ class RoomsModel(
         _rosters.value =
             coroutineScope {
                 _rooms.value
-                    .map { room -> async { room.id to runCatching { streamClient(backend, room.id).getMembers() }.getOrNull() } }
+                    .map { room -> async { room.id to runCatching { streamClient(backend, room.id).getMembers().map(Member::from) }.getOrNull() } }
                     .awaitAll()
                     .mapNotNull { (id, members) -> members?.let { id to it } }
                     .toMap()

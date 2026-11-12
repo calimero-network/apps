@@ -2,27 +2,10 @@ import Foundation
 import MeroKit
 import PassGenerated
 
-/// MeroKit's bound contract as the generated client's transport. The two
-/// protocols have the same requirements (JSON bytes in and out); they are
-/// separate types only because the generated file declares its own.
-public struct PassTransport: PassGenerated.ContextContractCalling {
-    public let bound: BoundContextContract
-
-    public init(_ bound: BoundContextContract) { self.bound = bound }
-
-    public func query(method: String, argsJSON: Data) async throws -> Data {
-        try await bound.query(method: method, argsJSON: argsJSON)
-    }
-
-    public func execute(method: String, argsJSON: Data) async throws -> Data {
-        try await bound.execute(method: method, argsJSON: argsJSON)
-    }
-}
-
 extension PassClient {
     /// The vault client for one context, over the account's node session.
     public static func make(contract: any ContextContract, contextId: String) -> PassClient {
-        PassClient(transport: PassTransport(contract.bound(to: contextId)))
+        PassClient(contract: contract.bound(to: contextId))
     }
 }
 
@@ -38,7 +21,7 @@ public struct PassVaultAPI: VaultScreenAPI {
     }
 
     public func vaultInfo() async throws -> VaultInfoRecord {
-        let i = try await client.vaultInfo()
+        let i = try await client.vaultInfo().decoded(as: VaultInfo.self)
         return VaultInfoRecord(
             name: i.name, currentKey: i.currentKey, defaultRole: i.defaultRole, myAccount: i.myAccount,
             myRole: Role(rawValue: i.myRole) ?? .pending)
@@ -51,7 +34,7 @@ public struct PassVaultAPI: VaultScreenAPI {
     public func revokeDevice(fingerprint: String) async throws { try await client.revokeDevice(fingerprint: fingerprint) }
 
     public func listDevices() async throws -> [DeviceRecord] {
-        try await client.listDevices().map {
+        try await client.listDevices().map { try $0.decoded(as: DeviceView.self) }.map {
             DeviceRecord(
                 fingerprint: $0.fingerprint, publicKey: $0.publicKey, label: $0.label, kind: $0.kind,
                 account: $0.account, addedAt: $0.addedAt, revoked: $0.revoked)
@@ -59,13 +42,13 @@ public struct PassVaultAPI: VaultScreenAPI {
     }
 
     public func listMembers() async throws -> [MemberRecord] {
-        try await client.listMembers().map {
+        try await client.listMembers().map { try $0.decoded(as: MemberView.self) }.map {
             MemberRecord(account: $0.account, role: Role(rawValue: $0.role) ?? .pending, devices: Int($0.devices))
         }
     }
 
     public func keyWrapsFor(recipient: String) async throws -> [WrapRecord] {
-        try await client.keyWrapsFor(recipient: recipient).map {
+        try await client.keyWrapsFor(recipient: recipient).map { try $0.decoded(as: KeyWrapView.self) }.map {
             WrapRecord(keyId: $0.keyId, recipient: $0.recipient, wrapper: $0.wrapper, envelope: $0.envelope)
         }
     }
@@ -77,7 +60,9 @@ public struct PassVaultAPI: VaultScreenAPI {
         Int(
             try await client.addKeyWraps(
                 wraps: wraps.map {
-                    KeyWrapInput(keyId: $0.keyId, recipient: $0.recipient, wrapper: $0.wrapper, envelope: $0.envelope)
+                    try JSONValue(
+                        encoding: KeyWrapInput(
+                            keyId: $0.keyId, recipient: $0.recipient, wrapper: $0.wrapper, envelope: $0.envelope))
                 }))
     }
 
@@ -90,7 +75,7 @@ public struct PassVaultAPI: VaultScreenAPI {
     public func removeMember(account: String) async throws { try await client.removeMember(account: account) }
 
     public func listSecrets() async throws -> [SecretRecord] {
-        try await client.listSecrets().map {
+        try await client.listSecrets().map { try $0.decoded(as: SecretView.self) }.map {
             SecretRecord(
                 id: $0.id, kind: $0.kind, name: $0.name, tags: $0.tags, fields: $0.fields, createdAt: $0.createdAt,
                 createdBy: $0.createdBy, updatedAt: $0.updatedAt, updatedBy: $0.updatedBy, trashed: $0.trashed,
@@ -112,7 +97,7 @@ public struct PassVaultAPI: VaultScreenAPI {
     }
 
     public func secretHistory(id: String) async throws -> [RevisionRecord] {
-        try await client.secretHistory(id: id).map {
+        try await client.secretHistory(id: id).map { try $0.decoded(as: RevisionView.self) }.map {
             RevisionRecord(field: $0.field, previous: $0.previous, replacedAt: $0.replacedAt, replacedBy: $0.replacedBy)
         }
     }
@@ -122,7 +107,7 @@ public struct PassVaultAPI: VaultScreenAPI {
     public func purgeSecret(id: String) async throws { try await client.purgeSecret(id: id) }
 
     public func auditLogs() async throws -> [AuditRecord] {
-        try await client.getAuditLogs().map {
+        try await client.getAuditLogs().map { try $0.decoded(as: AuditView.self) }.map {
             AuditRecord(
                 action: $0.action, target: $0.target, account: $0.account, device: $0.device, timestamp: $0.timestamp,
                 redacted: $0.redacted)

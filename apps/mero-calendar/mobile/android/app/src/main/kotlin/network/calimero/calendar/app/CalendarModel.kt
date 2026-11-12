@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import network.calimero.calendar.contract.CalendarClient
 import network.calimero.calendar.data.CalEvent
 import network.calimero.calendar.data.CalMember
 import network.calimero.calendar.data.CalendarRepository
@@ -14,6 +13,7 @@ import network.calimero.calendar.data.ErrorText
 import network.calimero.calendar.data.EventDraft
 import network.calimero.calendar.data.LocalNames
 import network.calimero.calendar.data.shortId
+import network.calimero.calendar.generated.CalendarClient
 import java.time.LocalDate
 import java.time.ZoneId
 

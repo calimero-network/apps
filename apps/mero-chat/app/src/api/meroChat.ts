@@ -9,15 +9,16 @@
  * is the one place that knows both: `execute(app, "send_message", {...})`
  * answers exactly what v1 answered, so nothing above it changes.
  *
- * The ABI names its records without their shapes, so the generated types are
- * `unknown`; the `result` of each entry turns an answer back into v1's.
+ * The generated client types the ABI's records, but the v1 arguments this file
+ * takes are untyped, so each entry reads them defensively; the `result` of each
+ * entry turns an answer back into v1's.
  * `client.test.ts` checks the generated client against the committed ABI, and
  * `meroChat.test.ts` that this table covers it.
  */
 import { AppError } from "@calimero-network/mero-js";
 
 import { after, getClient } from "./calimero";
-import { MeroChatClient, type AppTransport } from "../generated/client";
+import { MeroChatClient, type AppTransport, type Role } from "../generated/client";
 
 type Args = Record<string, unknown>;
 type Out = unknown;
@@ -203,7 +204,7 @@ export const METHODS: Record<string, MethodSpec> = {
   },
   list_roles: { run: (c) => c.listRoles(), result: same },
   set_member_role: {
-    run: (c, a) => c.setMemberRole({ target: String(a.target ?? ""), role: a.role }),
+    run: (c, a) => c.setMemberRole({ target: String(a.target ?? ""), role: a.role as Role }),
     result: same,
   },
   send_message: {

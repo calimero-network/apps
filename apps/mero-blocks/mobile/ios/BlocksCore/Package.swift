@@ -11,12 +11,12 @@ let package = Package(
         .library(name: "BlocksCore", targets: ["BlocksCore"]),
     ],
     dependencies: [
-        // swift-sdk release v2.0.0; keep it equal to the version in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "2.0.0"),
+        // swift-sdk release v4.1.0; keep it equal to the version in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
     ],
     targets: [
-        // Generated/BlocksClient.swift comes from ../../../logic/res/abi.json
-        // (../../scripts/regenerate.sh); never edit it by hand.
+        // Sources/BlocksCore/Generated/BlocksClient.swift comes from ../../../logic/res/abi.json
+        // (scripts/mobile-codegen.sh at the repo root); never edit it by hand.
         .target(
             name: "BlocksCore",
             dependencies: [.product(name: "MeroKit", package: "swift-sdk")]

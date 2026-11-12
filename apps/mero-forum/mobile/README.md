@@ -29,9 +29,12 @@ over the sealed channel to an attested node:
   methods and arguments (`createPost`, `postId`, `commentId`), camelCase answers with
   `createdAt` / `editedAt` / `score` / `commentCount` as decimal strings. Refusals are
   `APP_ERROR` `NotFound {what, id}`, `Forbidden {message}`, `Invalid {message}`, shown in plain
-  words. The typed client (`ForumContract.swift` / `contract/ForumClient.kt`) is written by hand
-  from the ABI, as the web app's `src/lib/forumApi.ts` is (no client is generated from a
-  component ABI yet); `ContractTests` checks its method lists against the committed ABI.
+  words. The typed client, `ForumClient` (`ForumCore/Sources/ForumCore/Generated/` /
+  `forum/generated/`), is generated from the ABI by core's `mero-app-build codegen`
+  (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale
+  one). Until the logic derives `AbiType`, the ABI names the answer types without their shape, so
+  `ForumContract.swift` / `contract/ForumContract.kt` keep them, with the method lists
+  `ContractTests` checks against the committed ABI.
 - **Invitations** are org invite links: the SDK's payload
   (`{invitation: "inv_…", namespaceId, contextId?, name, kind, forumId, forumName}`, in
   `https://links.calimero.network/com.calimero.mero-forum/join?invitation=…` or `calimero://`),

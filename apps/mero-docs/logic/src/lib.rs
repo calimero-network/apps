@@ -128,7 +128,7 @@ pub struct ViewRow {
 
 /// A document's header as callers see it. The body is read through
 /// `getDocument` / `getBlockDelta`.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocView {
     pub id: String,
@@ -149,14 +149,14 @@ pub struct DocView {
 }
 
 /// The title with the id of each of its characters.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct TitleState {
     pub text: String,
     pub ids: Vec<Run>,
 }
 
 /// What `titleApplyDeltaOn` did; the title comes back either way.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct TitleApplied {
     /// Whether the steps were written.
@@ -173,7 +173,7 @@ pub struct TitleApplied {
 }
 
 /// What `applyDeltaOn` did; the block's spans come back either way.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Applied {
     pub applied: bool,
@@ -185,7 +185,7 @@ pub struct Applied {
 }
 
 /// One rendered block.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct Block {
     /// The block id every method takes as `block`. Opaque.
     pub id: String,
@@ -198,7 +198,7 @@ pub struct Block {
 }
 
 /// One document `searchDocs` found.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct DocSearchHit {
     pub id: String,
     pub title: String,
@@ -210,7 +210,7 @@ pub struct DocSearchHit {
 }
 
 /// A page of `searchDocs`.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DocSearchPage {
     pub hits: Vec<DocSearchHit>,
@@ -222,7 +222,7 @@ pub struct DocSearchPage {
 }
 
 /// A comment as callers see it.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentView {
     pub id: String,
@@ -235,7 +235,7 @@ pub struct CommentView {
 }
 
 /// A workspace tag.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 pub struct TagView {
     pub key: String,
     pub name: String,
@@ -244,7 +244,7 @@ pub struct TagView {
 }
 
 /// A saved view.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewView {
     pub id: String,

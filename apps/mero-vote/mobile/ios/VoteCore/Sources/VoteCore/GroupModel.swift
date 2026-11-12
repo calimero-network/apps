@@ -87,9 +87,9 @@ public final class GroupModel: ObservableObject {
     public func refresh() async {
         if me == nil && polls.isEmpty { phase = .loading }
         do {
-            async let who = client.whoami()
-            async let members = client.roster()
-            async let list = client.listPolls()
+            async let who = client.whoami().decoded(as: Identity.self)
+            async let members = client.roster().map({ try $0.decoded(as: Member.self) })
+            async let list = client.listPolls().map({ try $0.decoded(as: PollSummary.self) })
             let (w, r, p) = try await (who, members, list)
             me = w.account
             roster = r

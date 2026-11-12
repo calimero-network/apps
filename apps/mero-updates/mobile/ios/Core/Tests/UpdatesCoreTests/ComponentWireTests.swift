@@ -4,11 +4,12 @@ import XCTest
 
 @testable import UpdatesCore
 
-/// The v1 client's calls reach the contract as its component ABI takes them.
+/// The generated client's calls reach the contract as its component ABI takes them, and its
+/// answers read back into the v1 types.
 final class ComponentWireTests: XCTestCase {
     func testEveryClientMethodIsInTheABI() async throws {
         let wire = Recorder()
-        let client = UpdatesClient(transport: ComponentWire(wire))
+        let client = UpdatesClient(contract: wire)
         let input = UpdateInput(
             title: "Oct", summary: "s", categoryId: "c", sections: [], metrics: [],
             asks: [AskInput(kind: "intro", title: "t", detail: "d")])
@@ -35,10 +36,10 @@ final class ComponentWireTests: XCTestCase {
         try? await client.deletePost(postId: "p")
         try? await client.editCategory(categoryId: "c", name: "n", emoji: "e", color: "c")
         try? await client.editComment(commentId: "c", body: "b")
-        try? await client.editUpdate(postId: "p", input: input)
+        try? await client.editUpdate(postId: "p", input: try .wire(input))
         try? await client.markRead(postId: "p")
         try? await client.offerHelp(askId: "a", note: "n")
-        _ = try? await client.publishUpdate(input: input)
+        _ = try? await client.publishUpdate(input: try .wire(input))
         try? await client.react(postId: "p", emoji: "e", on: true)
         try? await client.removeTeammate(account: "a")
         _ = try? await client.saveDraft(title: "t", payload: "{}")
@@ -86,7 +87,7 @@ final class ComponentWireTests: XCTestCase {
     }
 }
 
-private final class Recorder: UpdatesCore.ContextContractCalling, @unchecked Sendable {
+private final class Recorder: MeroKit.ContextContractCalling, @unchecked Sendable {
     struct Sent {
         let method: String
         let view: Bool

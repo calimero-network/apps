@@ -64,7 +64,7 @@ public final class TeamModel: ObservableObject {
             }
             async let name = client.getName(account: me)
             async let teamName = client.teamName()
-            async let members = client.members()
+            async let members = client.members().map({ try $0.decoded(as: MemberView.self) })
             let (n, t, m) = try await (name, teamName, members)
             self.me = me
             self.myName = n

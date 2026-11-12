@@ -170,7 +170,7 @@ public actor BlobStore {
 extension MeroAppBackend {
     /// The generated client over this backend's contract, bound to `contextId`.
     public func pixartClient(_ contextId: String) -> PixartClient {
-        PixartClient(transport: contract.bound(to: contextId))
+        PixartClient(backend: self, app: contextId)
     }
 }
 

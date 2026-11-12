@@ -63,7 +63,7 @@ public final class GroupsModel: ObservableObject {
 
     private func summary(_ ref: GroupRef) async -> GroupRow {
         let client = VoteClient.make(contract: backend.contract, contextId: ref.contextId)
-        guard let polls = try? await client.listPolls() else { return GroupRow(ref: ref, polls: nil, open: 0, latest: nil) }
+        guard let polls = try? await client.listPolls().map({ try $0.decoded(as: PollSummary.self) }) else { return GroupRow(ref: ref, polls: nil, open: 0, latest: nil) }
         let newest = polls.max { $0.createdAt < $1.createdAt }
         return GroupRow(
             ref: ref, polls: polls.count, open: polls.filter { $0.phase == .voting }.count, latest: newest?.title)

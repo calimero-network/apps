@@ -504,19 +504,261 @@
         "type": "object"
       },
       "BookingLinkView": {
-        "description": "The app type `BookingLinkView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAtMs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "expiresAtMs": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "horizonDays": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "linkId": {
+            "type": "string"
+          },
+          "minNoticeMinutes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "utcOffsetMinutes": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "weeklyHours": {
+            "items": {
+              "$ref": "#/components/schemas/WeeklyWindow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "linkId",
+          "grantId",
+          "title",
+          "description",
+          "durationMinutes",
+          "weeklyHours",
+          "utcOffsetMinutes",
+          "horizonDays",
+          "minNoticeMinutes",
+          "createdAtMs",
+          "expiresAtMs",
+          "status",
+          "booking"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "BookingLinkView"
       },
       "BookingPage": {
-        "description": "The app type `BookingPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "expiresAtMs": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ownerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "ownerName",
+          "durationMinutes",
+          "status",
+          "expiresAtMs",
+          "booking"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "BookingPage"
       },
       "BookingView": {
-        "description": "The app type `BookingView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "bookedAtMs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "endMs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "guestEmail": {
+            "type": "string"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "guestNote": {
+            "type": "string"
+          },
+          "rescheduledCount": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "startMs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "startMs",
+          "endMs",
+          "guestName",
+          "guestEmail",
+          "guestNote",
+          "bookedAtMs",
+          "rescheduledCount"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "BookingView"
       },
       "CalendarEvent": {
-        "description": "The app type `CalendarEvent`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "private": {
+            "type": "boolean"
+          },
+          "start": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "owner",
+          "start",
+          "end",
+          "event_type",
+          "color",
+          "peers",
+          "private"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CalendarEvent"
       },
       "CalendarEventCreatedEvent": {
@@ -767,7 +1009,77 @@
         "type": "object"
       },
       "CreateBookingLink": {
-        "description": "The app type `CreateBookingLink`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "expiresAtMs": {
+            "anyOf": [
+              {
+                "description": "A u64 as a decimal string (0..=18446744073709551615).",
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string",
+                "x-calimero-type": "u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "horizonDays": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "minNoticeMinutes": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tokenHash": {
+            "type": "string"
+          },
+          "utcOffsetMinutes": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "weeklyHours": {
+            "items": {
+              "$ref": "#/components/schemas/WeeklyWindow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokenHash",
+          "grantId",
+          "title",
+          "description",
+          "durationMinutes",
+          "weeklyHours",
+          "utcOffsetMinutes",
+          "horizonDays",
+          "minNoticeMinutes",
+          "expiresAtMs"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CreateBookingLink"
       },
       "CreateBookingLinkArgs": {
@@ -827,7 +1139,42 @@
         "type": "object"
       },
       "CreateCalendarEvent": {
-        "description": "The app type `CreateCalendarEvent`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "start": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "start",
+          "end",
+          "event_type",
+          "color",
+          "peers"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CreateCalendarEvent"
       },
       "CreateEventArgs": {
@@ -1512,7 +1859,23 @@
         "type": "object"
       },
       "GuestDetails": {
-        "description": "The app type `GuestDetails`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "note"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "GuestDetails"
       },
       "InvalidError": {
@@ -1595,7 +1958,33 @@
         "type": "object"
       },
       "Member": {
-        "description": "The app type `Member`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "usernameUpdatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "joinedAt",
+          "usernameUpdatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Member"
       },
       "MemberJoinedEvent": {
@@ -1823,7 +2212,91 @@
         "type": "object"
       },
       "UpdateCalendarEvent": {
-        "description": "The app type `UpdateCalendarEvent`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "peers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "start",
+          "end",
+          "event_type",
+          "color",
+          "peers"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "UpdateCalendarEvent"
       },
       "UpdateEventArgs": {
@@ -1945,6 +2418,35 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "WeeklyWindow": {
+        "properties": {
+          "endMinute": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          },
+          "startMinute": {
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u16"
+          },
+          "weekday": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          }
+        },
+        "required": [
+          "weekday",
+          "startMinute",
+          "endMinute"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "WeeklyWindow"
       }
     },
     "securitySchemes": {

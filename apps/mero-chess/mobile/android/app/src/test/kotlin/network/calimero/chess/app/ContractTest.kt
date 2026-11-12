@@ -128,7 +128,7 @@ class ContractTest {
                 }
             }
             val client = chessClient(backend, "app1")
-            val view = client.table(9uL)
+            val view = ChessContract.tableView(client.table(9uL))
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 backend.recording
@@ -148,7 +148,7 @@ class ContractTest {
             assertEquals(listOf("e7e5"), view.legalMoves)
             assertTrue(view.myTurn)
             assertEquals("black", view.myColor)
-            val past = client.history()
+            val past = ChessContract.gameSummaries(client.history())
             assertEquals(1_700_000_000_000uL, past.first().startedAt)
             assertEquals(12u, past.first().plies)
         }

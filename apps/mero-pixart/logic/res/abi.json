@@ -677,5 +677,57 @@
     },
     "version": 1
   },
+  "types": {
+    "DocumentInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "background",
+          "string"
+        ],
+        [
+          "layerCount",
+          "u32"
+        ],
+        [
+          "memberCount",
+          "u32"
+        ],
+        [
+          "owner",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberRole": {
+      "fields": [
+        [
+          "member",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

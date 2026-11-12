@@ -303,5 +303,341 @@
     },
     "version": 1
   },
+  "types": {
+    "BookingLinkView": {
+      "fields": [
+        [
+          "linkId",
+          "string"
+        ],
+        [
+          "grantId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "durationMinutes",
+          "u32"
+        ],
+        [
+          "weeklyHours",
+          "list<WeeklyWindow>"
+        ],
+        [
+          "utcOffsetMinutes",
+          "i32"
+        ],
+        [
+          "horizonDays",
+          "u32"
+        ],
+        [
+          "minNoticeMinutes",
+          "u32"
+        ],
+        [
+          "createdAtMs",
+          "u64"
+        ],
+        [
+          "expiresAtMs",
+          "option<u64>"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "booking",
+          "option<BookingView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "BookingPage": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "ownerName",
+          "option<string>"
+        ],
+        [
+          "durationMinutes",
+          "u32"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "expiresAtMs",
+          "option<u64>"
+        ],
+        [
+          "booking",
+          "option<BookingView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "BookingView": {
+      "fields": [
+        [
+          "startMs",
+          "u64"
+        ],
+        [
+          "endMs",
+          "u64"
+        ],
+        [
+          "guestName",
+          "string"
+        ],
+        [
+          "guestEmail",
+          "string"
+        ],
+        [
+          "guestNote",
+          "string"
+        ],
+        [
+          "bookedAtMs",
+          "u64"
+        ],
+        [
+          "rescheduledCount",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CalendarEvent": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "owner",
+          "string"
+        ],
+        [
+          "start",
+          "string"
+        ],
+        [
+          "end",
+          "string"
+        ],
+        [
+          "event_type",
+          "string"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "peers",
+          "list<string>"
+        ],
+        [
+          "private",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CreateBookingLink": {
+      "fields": [
+        [
+          "tokenHash",
+          "string"
+        ],
+        [
+          "grantId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "durationMinutes",
+          "u32"
+        ],
+        [
+          "weeklyHours",
+          "list<WeeklyWindow>"
+        ],
+        [
+          "utcOffsetMinutes",
+          "i32"
+        ],
+        [
+          "horizonDays",
+          "u32"
+        ],
+        [
+          "minNoticeMinutes",
+          "u32"
+        ],
+        [
+          "expiresAtMs",
+          "option<u64>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CreateCalendarEvent": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "start",
+          "string"
+        ],
+        [
+          "end",
+          "string"
+        ],
+        [
+          "event_type",
+          "string"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "peers",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "GuestDetails": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "email",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "joinedAt",
+          "u64"
+        ],
+        [
+          "usernameUpdatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "UpdateCalendarEvent": {
+      "fields": [
+        [
+          "title",
+          "option<string>"
+        ],
+        [
+          "description",
+          "option<string>"
+        ],
+        [
+          "start",
+          "option<string>"
+        ],
+        [
+          "end",
+          "option<string>"
+        ],
+        [
+          "event_type",
+          "option<string>"
+        ],
+        [
+          "color",
+          "option<string>"
+        ],
+        [
+          "peers",
+          "option<list<string>>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WeeklyWindow": {
+      "fields": [
+        [
+          "weekday",
+          "u8"
+        ],
+        [
+          "startMinute",
+          "u16"
+        ],
+        [
+          "endMinute",
+          "u16"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

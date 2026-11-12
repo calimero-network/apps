@@ -89,7 +89,7 @@ const KEY_SEP: char = '\u{1f}';
 // ── stored values ────────────────────────────────────────────────────────────
 
 /// "channel" or "dm", fixed when the conversation is created.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, AbiType)]
 pub enum ContextType {
     #[default]
     Channel,
@@ -97,7 +97,7 @@ pub enum ContextType {
 }
 
 /// In-conversation role. `User` is everyone without another one.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, AbiType)]
 pub enum Role {
     #[default]
     User,
@@ -202,7 +202,7 @@ pub struct AttachmentInput {
 }
 
 /// An attachment as reads return it.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentView {
     pub name: String,
@@ -217,7 +217,7 @@ pub struct AttachmentView {
 }
 
 /// A message as reads return it.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageView {
     /// A top-level message's position in the channel (a stable cursor: appends
@@ -249,7 +249,7 @@ pub struct MessageView {
 }
 
 /// A page of messages.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FullMessageResponse {
     pub total_count: u32,
@@ -258,7 +258,7 @@ pub struct FullMessageResponse {
 }
 
 /// One message a search found: enough to list and open it.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     pub id: String,
@@ -281,7 +281,7 @@ pub struct SearchHit {
 }
 
 /// A page of a search.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchPage {
     pub hits: Vec<SearchHit>,
@@ -294,7 +294,7 @@ pub struct SearchPage {
 }
 
 /// The conversation's metadata.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextInfo {
     pub name: String,
@@ -307,7 +307,7 @@ pub struct ContextInfo {
 }
 
 /// A member's profile.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct UserProfile {
     pub identity: String,

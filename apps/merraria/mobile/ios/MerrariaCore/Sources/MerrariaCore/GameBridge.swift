@@ -224,23 +224,23 @@ public struct BridgeDispatcher: Sendable {
             return try encode(try await client.allOverrides())
         case "get_players":
             let args = try decode(NowArgs.self, argsJSON)
-            return try encode(try await client.getPlayers(now: args.seconds))
+            return try encode(try await client.getPlayers(now: args.seconds).map { try $0.decoded(as: PlayerView.self) })
         case "world_meta":
-            return try encode(try await client.worldMeta())
+            return try encode(try await client.worldMeta().decoded(as: WorldMeta.self))
         case "heartbeat":
             let args = try decode(HeartbeatArgs.self, argsJSON)
-            try await client.heartbeat(t: args.t, now: u32(args.now))
+            try await client.heartbeat(t: try JSONValue(encoding: args.t), now: u32(args.now))
             return "null"
         case "join":
             let args = try decode(JoinArgs.self, argsJSON)
-            return try encode(try await client.join(name: args.name, now: u32(args.now)))
+            return try encode(try await client.join(name: args.name, now: u32(args.now)).decoded(as: PlayerView.self))
         case "leave":
             let args = try decode(NowArgs.self, argsJSON)
             try await client.leave(now: args.seconds)
             return "null"
         default:  // set_tiles
             let args = try decode(SetTilesArgs.self, argsJSON)
-            return try encode(try await client.setTiles(edits: args.edits, now: u32(args.now)))
+            return try encode(try await client.setTiles(edits: args.edits.map { try JSONValue(encoding: $0) }, now: u32(args.now)))
         }
     }
 

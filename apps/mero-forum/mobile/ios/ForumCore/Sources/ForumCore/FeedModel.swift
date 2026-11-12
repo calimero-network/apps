@@ -46,7 +46,7 @@ public final class FeedModel: ObservableObject {
         let mine = generation
         if posts.isEmpty { phase = .loading }
         do {
-            let page = try await client.listPosts(sort: sort.rawValue, cursor: nil, limit: ForumConstants.pageSize)
+            let page = try await client.listPosts(sort: sort.rawValue, cursor: nil, limit: ForumConstants.pageSize).decoded(as: PostPage.self)
             guard mine == generation else { return }
             posts = page.items
             cursor = page.nextCursor
@@ -65,7 +65,7 @@ public final class FeedModel: ObservableObject {
         defer { isLoadingMore = false }
         let mine = generation
         do {
-            let page = try await client.listPosts(sort: sort.rawValue, cursor: cursor, limit: ForumConstants.pageSize)
+            let page = try await client.listPosts(sort: sort.rawValue, cursor: cursor, limit: ForumConstants.pageSize).decoded(as: PostPage.self)
             guard mine == generation else { return }
             let seen = Set(posts.map(\.id))
             posts += page.items.filter { !seen.contains($0.id) }
@@ -150,7 +150,7 @@ public final class FeedModel: ObservableObject {
         let before = posts
         replace(post.id) { $0.score = $0.score - Int64($0.myVote) + Int64(value); $0.myVote = value }
         do {
-            try await client.vote(postId: post.id, value: value)
+            try await client.vote(postId: post.id, value: Int8(value))
         } catch {
             posts = before
             notice = ForumErrorText.describe(error)

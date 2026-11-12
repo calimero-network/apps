@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import network.calimero.battleships.generated.BattleshipsClient
 
 /** Runs [block], rethrowing cancellation and turning every other failure into null. */
 internal suspend fun <T> attempt(block: suspend () -> T): T? =
@@ -77,7 +78,7 @@ object MatchMaker {
     ): MatchRef {
         val key = opponent.trim()
         if (!LobbyInvitation.isKey(key)) throw BattleshipsException("That is not a valid player.")
-        val matchId = BattleshipsContract(backend.contract, appId).createMatch(key)
+        val matchId = BattleshipsClient(backend, appId).createMatch(key)
         return MatchRef(namespace.id, appId, matchId, key)
     }
 }
@@ -174,7 +175,7 @@ class LobbyModel(
         }
         val app = _appId.value
         if (!registered && app != null) {
-            val key = attempt { BattleshipsContract(backend.contract, app).registerPlayer() }
+            val key = attempt { BattleshipsClient(backend, app).registerPlayer() }
             if (key != null && LobbyInvitation.isKey(key)) {
                 _me.value = key
                 registered = true
@@ -186,9 +187,9 @@ class LobbyModel(
     /** Re-read the lobby's matches, players, your record and the history. */
     suspend fun refresh() {
         val app = _appId.value ?: return
-        val lobby = BattleshipsContract(backend.contract, app)
+        val lobby = BattleshipsClient(backend, app)
         try {
-            _matches.value = lobby.getMatches()
+            _matches.value = lobby.getMatches().map { it.toAppType<MatchSummary>() }
             _phase.value = LoadPhase.Loaded
         } catch (e: CancellationException) {
             throw e
@@ -196,9 +197,9 @@ class LobbyModel(
             if (_phase.value != LoadPhase.Loaded) _phase.value = LoadPhase.Failed(ErrorText.describe(e))
             return
         }
-        attempt { lobby.getPlayers() }?.let { _players.value = it }
-        attempt { lobby.getPlayerStats(_me.value) }?.let { _stats.value = it }
-        attempt { lobby.getHistory() }?.let { _history.value = it }
+        attempt { lobby.getPlayers().map { it.toAppType<PlayerEntry>() } }?.let { _players.value = it }
+        attempt { lobby.getPlayerStats(_me.value)?.toAppType<PlayerStatsView>() }?.let { _stats.value = it }
+        attempt { lobby.getHistory().map { it.toAppType<MatchRecord>() } }?.let { _history.value = it }
         attempt { backend.listMembers(namespace.id) }?.let { members ->
             _names.value = members.mapNotNull { m -> m.name?.let { m.identity to it } }.toMap()
         }
