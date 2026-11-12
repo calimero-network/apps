@@ -5,10 +5,8 @@
  *
  * The hooks call the generated class with the contract's arguments
  * (camelCase; 64-bit integers, `size` and `since`, as the decimal strings
- * `u64` makes). The ABI names its records without their shapes, so the
- * generated answers are `unknown` and the hooks read them as `./types`
- * declares them: v1's field names (snake_case, which the contract keeps) and
- * numbers. `workbook`'s transport turns the 64-bit fields of every answer back
+ * `u64` makes). The hooks read the answers as `./types` declares them (`read`):
+ * v1's field names (snake_case, which the contract keeps) and numbers. `workbook`'s transport turns the 64-bit fields of every answer back
  * into numbers on the way (`fromWire`).
  *
  * It also relays linked ranges. Core 1.0.0-rc.7 has no cross-app call
@@ -58,6 +56,15 @@ export function fromWire(value: unknown): unknown {
   return value;
 }
 
+/**
+ * An answer as `./types` declares it. The generated types are the wire's
+ * (64-bit integers as decimal strings); this workbook's transport has already
+ * turned those into numbers (`fromWire`), which is what the hooks read.
+ */
+export function read<T>(answer: Promise<unknown>): Promise<T> {
+  return answer as Promise<T>;
+}
+
 /** The methods whose writes can change a sheet a link reads from. */
 const EDITS = new Set(['setCell', 'setCellFormat', 'clearCell', 'applyCellOps', 'applyAxisOps']);
 
@@ -104,13 +111,13 @@ export function workbook(client: AppTransport, app: string, after?: () => void):
   const other = (target: string) => new MeroSheetsClient(client, target, options);
 
   async function getPublications(): Promise<Publication[]> {
-    const pubs = (await sheets.getPublications()) as Publication[];
+    const pubs = await read<Publication[]>(sheets.getPublications());
     publications = pubs;
     return pubs;
   }
 
   async function relay(id: string): Promise<void> {
-    const push = (await sheets.pushPublication({ id })) as LinkPush;
+    const push = await read<LinkPush>(sheets.pushPublication({ id }));
     await other(push.target_context).receiveLink({
       fromContext: app,
       publicationId: push.publication_id,

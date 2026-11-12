@@ -4,86 +4,282 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ActivityEntry`: the ABI names it without its shape. */
-export type ActivityEntry = unknown;
+/** The app type `ActivityEntry`. */
+export interface ActivityEntry {
+  id: string;
+  author: string;
+  at: string;
+  sheet_id: string;
+  kind: string;
+  summary: string;
+  count: number;
+  changes: CellChange[];
+}
 
-/** The app type `Attachment`: the ABI names it without its shape. */
-export type Attachment = unknown;
+/** The app type `Attachment`. */
+export interface Attachment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  blob_id: string;
+  name: string;
+  size: string;
+  mime: string;
+  created_by: string;
+  created_at: string;
+}
 
-/** The app type `AxisOp`: the ABI names it without its shape. */
-export type AxisOp = unknown;
+/** The app type `AxisEntryView`. */
+export interface AxisEntryView {
+  id: string;
+  pos: string;
+  deleted: boolean;
+}
 
-/** The app type `AxisSize`: the ABI names it without its shape. */
-export type AxisSize = unknown;
+/** The app type `AxisOp`. */
+export type AxisOp =
+  | { name: 'InsertRow'; payload: { id: string; pos: string } }
+  | { name: 'InsertCol'; payload: { id: string; pos: string } }
+  | { name: 'DeleteRow'; payload: { id: string } }
+  | { name: 'DeleteCol'; payload: { id: string } }
+  | { name: 'RestoreRow'; payload: { id: string } }
+  | { name: 'RestoreCol'; payload: { id: string } };
 
-/** The app type `Cell`: the ABI names it without its shape. */
-export type Cell = unknown;
+/** The app type `AxisSize`. */
+export interface AxisSize {
+  axis: string;
+  id: string;
+  size: number;
+}
 
-/** The app type `CellOp`: the ABI names it without its shape. */
-export type CellOp = unknown;
+/** The app type `Cell`. */
+export interface Cell {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  raw_value: string;
+  computed_value: string;
+  format: string;
+  updated_at: string;
+  last_editor: string;
+  last_edited_at: string;
+}
 
-/** The app type `CellStyle`: the ABI names it without its shape. */
-export type CellStyle = unknown;
+/** The app type `CellChange`. */
+export interface CellChange {
+  row_id: string;
+  col_id: string;
+  before_raw: string;
+  before_format: string;
+  after_raw: string;
+  after_format: string;
+}
 
-/** The app type `Chart`: the ABI names it without its shape. */
-export type Chart = unknown;
+/** The app type `CellOp`. */
+export type CellOp =
+  | { name: 'Set'; payload: { row_id: string; col_id: string; raw_value: string } }
+  | { name: 'Format'; payload: { row_id: string; col_id: string; format: string } }
+  | { name: 'Clear'; payload: { row_id: string; col_id: string } };
 
-/** The app type `ChartInput`: the ABI names it without its shape. */
-export type ChartInput = unknown;
+/** The app type `CellStyle`. */
+export interface CellStyle {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  style: Record<string, string>;
+}
 
-/** The app type `Comment`: the ABI names it without its shape. */
-export type Comment = unknown;
+/** The app type `Chart`. */
+export interface Chart {
+  id: string;
+  chart: ChartInput;
+  created_by: string;
+}
 
-/** The app type `FunctionDef`: the ABI names it without its shape. */
-export type FunctionDef = unknown;
+/** The app type `ChartInput`. */
+export interface ChartInput {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  title: string;
+}
 
-/** The app type `Link`: the ABI names it without its shape. */
-export type Link = unknown;
+/** The app type `Comment`. */
+export interface Comment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  author: string;
+  text: string;
+  mentions: string[];
+  parent: string;
+  resolved: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
-/** The app type `LinkPush`: the ABI names it without its shape. */
-export type LinkPush = unknown;
+/** The app type `FunctionDef`. */
+export interface FunctionDef {
+  name: string;
+  category: string;
+  syntax: string;
+  description: string;
+  example: string;
+}
 
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
+/** The app type `Link`. */
+export interface Link {
+  id: string;
+  source_context: string;
+  source_name: string;
+  name: string;
+  rows: number;
+  cols: number;
+  updated_at: string;
+}
 
-/** The app type `NamedRange`: the ABI names it without its shape. */
-export type NamedRange = unknown;
+/** The app type `LinkPush`. */
+export interface LinkPush {
+  publication_id: string;
+  target_context: string;
+  name: string;
+  source_name: string;
+  rows: number;
+  cols: number;
+  values: string[];
+}
 
-/** The app type `NoteChange`: the ABI names it without its shape. */
-export type NoteChange = unknown;
+/** The app type `Member`. */
+export interface Member {
+  id: string;
+  nickname: string;
+  joined_at: string;
+  updated_at: string;
+  account: string;
+  role: string;
+}
 
-/** The app type `NotedCell`: the ABI names it without its shape. */
-export type NotedCell = unknown;
+/** The app type `NamedRange`. */
+export interface NamedRange {
+  name: string;
+  target: string;
+}
 
-/** The app type `Project`: the ABI names it without its shape. */
-export type Project = unknown;
+/** The app type `NoteChange`. */
+export type NoteChange =
+  | { retain: number; attributes: Attrs | null }
+  | { insert: string; attributes: Attrs | null }
+  | { delete: number };
 
-/** The app type `Protection`: the ABI names it without its shape. */
-export type Protection = unknown;
+/** The app type `NotedCell`. */
+export interface NotedCell {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  preview: string;
+}
 
-/** The app type `Publication`: the ABI names it without its shape. */
-export type Publication = unknown;
+/** The app type `Project`. */
+export interface Project {
+  id: string;
+  name: string;
+  created_at: string;
+}
 
-/** The app type `Rule`: the ABI names it without its shape. */
-export type Rule = unknown;
+/** The app type `Protection`. */
+export interface Protection {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  description: string;
+  editors: string[];
+  created_by: string;
+}
 
-/** The app type `RuleInput`: the ABI names it without its shape. */
-export type RuleInput = unknown;
+/** The app type `Publication`. */
+export interface Publication {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  target_context: string;
+  name: string;
+  created_by: string;
+}
 
-/** The app type `Sheet`: the ABI names it without its shape. */
-export type Sheet = unknown;
+/** The app type `Rule`. */
+export interface Rule {
+  id: string;
+  rule: RuleInput;
+  created_by: string;
+}
 
-/** The app type `SheetLayout`: the ABI names it without its shape. */
-export type SheetLayout = unknown;
+/** The app type `RuleInput`. */
+export interface RuleInput {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  condition: string;
+  args: string[];
+  style: Record<string, string>;
+  strict: boolean;
+  recipients: string[];
+}
 
-/** The app type `SheetView`: the ABI names it without its shape. */
-export type SheetView = unknown;
+/** The app type `Sheet`. */
+export interface Sheet {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+  linked_from: string;
+}
 
-/** The app type `Span`: the ABI names it without its shape. */
-export type Span = unknown;
+/** The app type `SheetLayout`. */
+export interface SheetLayout {
+  sheet_id: string;
+  rows: AxisEntryView[];
+  cols: AxisEntryView[];
+}
 
-/** The app type `StyleOp`: the ABI names it without its shape. */
-export type StyleOp = unknown;
+/** The app type `SheetView`. */
+export interface SheetView {
+  sheet_id: string;
+  frozen_rows: number;
+  frozen_cols: number;
+  sizes: AxisSize[];
+}
+
+/** The app type `Span`. */
+export interface Span {
+  text: string;
+  attributes?: Record<string, string>;
+}
+
+/** The app type `StyleOp`. */
+export interface StyleOp {
+  row_id: string;
+  col_id: string;
+  field: string;
+  value: string;
+}
+
+/** The app type `Attrs`: the ABI names it without its shape. */
+export type Attrs = unknown;
 
 /** The arguments of `addAttachment`. */
 export interface AddAttachmentArgs {
