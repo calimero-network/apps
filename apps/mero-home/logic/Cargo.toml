@@ -20,11 +20,11 @@ crate-type = ["cdylib"]
 # Core at `component-core-tag` (root Cargo.toml); scripts/check-component-pins.py
 # asserts it. A standalone crate cannot inherit `[workspace.dependencies]`.
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.17" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.17", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.17" }
 serde_json = "1"
 
 [package.metadata.calimero]
@@ -41,7 +41,7 @@ github = "https://github.com/calimero-network/apps"
 # `component-min-runtime-version` in the root Cargo.toml. Home's screens need
 # core's app-team routes (core#4890, #4891); on an older node they fall back to
 # what the org routes alone tell (see apps/mero-home/README.md).
-min-runtime-version = "1.0.0-rc.14"
+min-runtime-version = "1.0.0-rc.17"
 # The listing's link: the copy Calimero Cloud serves, at the package's own
 # origin (`appUrl("com.calimero.mero-home")`, core's `app_host::label`). Home
 # has no static deployment: a Cloud node trusts passkey ceremonies only from
