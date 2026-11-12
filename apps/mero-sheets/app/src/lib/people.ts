@@ -8,7 +8,7 @@
 // module is the mapping from "what the contract has" to "what the UI renders",
 // kept pure so the fiddly parts are testable without a node.
 
-import type { Member } from '../api/spreadsheet/SpreadsheetClient';
+import type { Member } from '../api/spreadsheet/types';
 
 /**
  * Two-character avatar initials.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Rule } from '../api/spreadsheet/SpreadsheetClient';
+import type { Rule } from '../api/spreadsheet/types';
 import { mixColor, placeRules, ruleEffect, scaleBounds, styleCss } from './styling';
 
 const rule = (id: string, over: Partial<Rule['rule']>): Rule => ({

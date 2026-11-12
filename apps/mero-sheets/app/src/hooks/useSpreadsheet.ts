@@ -2,7 +2,7 @@
  * useSpreadsheet — live data hook for the mero-sheets spreadsheet app.
  *
  * Reads and writes the open workbook (an app instance) through the typed
- * SpreadsheetClient, and follows its events (`useAppEvents`) so everyone's
+ * generated client (`api/spreadsheet/workbook`), and follows its events (`useAppEvents`) so everyone's
  * changes show live.
  *
  * Pattern:
@@ -24,12 +24,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppEvents } from './useAppEvents';
 import { useMaybeSignedIn } from '../sessionContext';
-import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
+import { u64, workbook } from '../api/spreadsheet/workbook';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, ActivityEntry, Comment,
   NotedCell, NoteChange, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment, Publication,
-} from '../api/spreadsheet/SpreadsheetClient';
-import type { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
+} from '../api/spreadsheet/types';
+import type { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/types';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type Alert, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import type { NoteOp, Span } from '../spreadsheet/notes';
@@ -295,10 +295,12 @@ export function useSpreadsheet({
   }, []);
 
   // Memoized typed client — null until signed in with a workbook open.
-  const client = useMemo(
-    () => (calimero && contextId ? new SpreadsheetClient(calimero, contextId, after) : null),
+  // The workbook: its generated client (`MeroSheetsClient`) and the link relay.
+  const links = useMemo(
+    () => (calimero && contextId ? workbook(calimero, contextId, after) : null),
     [calimero, contextId, after],
   );
+  const client = links?.sheets ?? null;
 
   // Serialize state-changing rpc.execute calls. The node commits each mutation
   // as a full-state snapshot, so two mutations issued concurrently (e.g. a
@@ -412,7 +414,7 @@ export function useSpreadsheet({
   };
 
   const refresh = useCallback(async () => {
-    if (!client) return;
+    if (!client || !links) return;
     setLoading(true);
     setError(null);
     try {
@@ -421,24 +423,24 @@ export function useSpreadsheet({
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
         mine, privateCells, views, fetchedStyles, fetchedRules, fetchedCharts, files, pubs,
       ] = await Promise.all([
-        client.listSheets(),
-        client.getAllCells(),
-        client.getMembers(),
-        client.getProject(),
-        client.whoami(),
-        client.getLayouts(),
-        client.getNamedRanges(),
-        client.getComments(),
-        client.getNotedCells(),
-        client.getProtections(),
-        client.getPrivateSheets(),
-        client.getPrivateCells(),
-        client.getSheetViews(),
-        client.getStyles(),
-        client.getRules(),
-        client.getCharts(),
-        client.getAttachments(),
-        client.getPublications(),
+        (client.listSheets() as Promise<Sheet[]>),
+        (client.getAllCells() as Promise<Cell[]>),
+        (client.getMembers() as Promise<Member[]>),
+        (client.getProject() as Promise<Project>),
+        (client.whoami() as Promise<string>),
+        (client.getLayouts() as Promise<SheetLayout[]>),
+        (client.getNamedRanges() as Promise<NamedRange[]>),
+        (client.getComments() as Promise<Comment[]>),
+        (client.getNotedCells() as Promise<NotedCell[]>),
+        (client.getProtections() as Promise<Protection[]>),
+        (client.getPrivateSheets() as Promise<Sheet[]>),
+        (client.getPrivateCells() as Promise<Cell[]>),
+        (client.getSheetViews() as Promise<SheetView[]>),
+        (client.getStyles() as Promise<CellStyle[]>),
+        (client.getRules() as Promise<Rule[]>),
+        (client.getCharts() as Promise<Chart[]>),
+        (client.getAttachments() as Promise<Attachment[]>),
+        links.getPublications(),
       ]);
       setPublications(pubs);
       setCharts(fetchedCharts);
@@ -466,7 +468,7 @@ export function useSpreadsheet({
       setLoaded(true);
       setMembersLoaded(true);
     }
-  }, [client, deriveAndSet, applyStructureTo]);
+  }, [client, deriveAndSet, applyStructureTo, links]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
@@ -502,7 +504,7 @@ export function useSpreadsheet({
   // (the pre-engine paint, and the dev agreement check) stay current when a
   // sheet it references changes.
   const applyPlan = useCallback(async (plan: Extract<RefreshPlan, { full: false }>) => {
-    if (!client) return;
+    if (!client || !links) return;
     const sheetIds = new Set(plan.sheets);
     const active = activeSheetIdRef.current;
     // A private sheet is not on the node's shared list: re-reading it there
@@ -510,20 +512,20 @@ export function useSpreadsheet({
     if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
     const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules, fetchedCharts, files, pubs] = await Promise.all([
-      Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
-      plan.sheetList ? client.listSheets() : null,
-      plan.members ? client.getMembers() : null,
-      plan.layouts ? client.getLayouts() : null,
-      plan.names ? client.getNamedRanges() : null,
-      plan.comments ? client.getComments() : null,
-      plan.notes ? client.getNotedCells() : null,
-      plan.protections ? client.getProtections() : null,
-      plan.views ? client.getSheetViews() : null,
-      plan.styles ? client.getStyles() : null,
-      plan.rules ? client.getRules() : null,
-      plan.charts ? client.getCharts() : null,
-      plan.attachments ? client.getAttachments() : null,
-      plan.publications ? client.getPublications() : null,
+      Promise.all(ids.map((id) => (client.getCells({ sheetId: id }) as Promise<Cell[]>))),
+      plan.sheetList ? (client.listSheets() as Promise<Sheet[]>) : null,
+      plan.members ? (client.getMembers() as Promise<Member[]>) : null,
+      plan.layouts ? (client.getLayouts() as Promise<SheetLayout[]>) : null,
+      plan.names ? (client.getNamedRanges() as Promise<NamedRange[]>) : null,
+      plan.comments ? (client.getComments() as Promise<Comment[]>) : null,
+      plan.notes ? (client.getNotedCells() as Promise<NotedCell[]>) : null,
+      plan.protections ? (client.getProtections() as Promise<Protection[]>) : null,
+      plan.views ? (client.getSheetViews() as Promise<SheetView[]>) : null,
+      plan.styles ? (client.getStyles() as Promise<CellStyle[]>) : null,
+      plan.rules ? (client.getRules() as Promise<Rule[]>) : null,
+      plan.charts ? (client.getCharts() as Promise<Chart[]>) : null,
+      plan.attachments ? (client.getAttachments() as Promise<Attachment[]>) : null,
+      plan.publications ? links.getPublications() : null,
     ]);
     if (pubs) setPublications(pubs);
     if (files) setAttachments(files);
@@ -545,7 +547,7 @@ export function useSpreadsheet({
     if (fetchedSheets) setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
     if (fetchedMembers) setMembers(fetchedMembers);
     deriveAndSet();
-  }, [client, deriveAndSet, applyStructureTo]);
+  }, [client, deriveAndSet, applyStructureTo, links]);
 
   // Events are coalesced for a moment and read in one round; one round runs
   // at a time, and whatever arrives meanwhile is merged into the next.
@@ -606,8 +608,8 @@ export function useSpreadsheet({
     // it replicates to invited collaborators (the "default blank sheet within
     // 5s" contract).
     await enqueue(async () => {
-      await client.initProject({ name });
-      await client.createSheet({ name: 'Sheet 1' });
+      await (client.initProject({ name }) as Promise<string>);
+      await (client.createSheet({ name: 'Sheet 1' }) as Promise<string>);
     });
     await refresh();
   }, [client, refresh, enqueue]);
@@ -620,20 +622,20 @@ export function useSpreadsheet({
 
   const createSheet = useCallback(async (name: string): Promise<string | null> => {
     if (!client) return null;
-    const id = await enqueue(() => client.createSheet({ name }));
+    const id = await enqueue(() => (client.createSheet({ name }) as Promise<string>));
     await refresh();
     return id;
   }, [client, refresh, enqueue]);
 
   const renameSheet = useCallback(async (sheetId: string, newName: string) => {
     if (!client) return;
-    await enqueue(() => client.renameSheet({ sheet_id: sheetId, new_name: newName }));
+    await enqueue(() => client.renameSheet({ sheetId, newName }));
     await refresh();
   }, [client, refresh, enqueue]);
 
   const deleteSheet = useCallback(async (sheetId: string) => {
     if (!client) return;
-    await enqueue(() => client.deleteSheet({ sheet_id: sheetId }));
+    await enqueue(() => client.deleteSheet({ sheetId }));
     await refresh();
   }, [client, refresh, enqueue]);
 
@@ -668,7 +670,7 @@ export function useSpreadsheet({
   /** Re-read this node's private sheets and their cells into the store. */
   const reloadPrivate = useCallback(async () => {
     if (!client) return;
-    const [mine, cells] = await Promise.all([client.getPrivateSheets(), client.getPrivateCells()]);
+    const [mine, cells] = await Promise.all([(client.getPrivateSheets() as Promise<Sheet[]>), (client.getPrivateCells() as Promise<Cell[]>)]);
     const ids = new Set(mine.map((x) => x.id));
     const next = new Map(snapshotRef.current);
     for (const [key, c] of next) if (privateIdsRef.current.has(c.sheet_id) || ids.has(c.sheet_id)) next.delete(key);
@@ -721,8 +723,8 @@ export function useSpreadsheet({
       try {
         await enqueue(async () => {
           for (const chunk of chunkOps(wire)) {
-            if (isPrivate) await client.applyPrivateCellOps({ sheet_id: sheetId, ops: chunk });
-            else await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
+            if (isPrivate) await client.applyPrivateCellOps({ sheetId, ops: chunk });
+            else await client.applyCellOps({ sheetId, ops: chunk });
           }
         });
         // No event announces a private write: read the private cells back.
@@ -811,7 +813,7 @@ export function useSpreadsheet({
       try {
         await enqueue(async () => {
           for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
-            await client.applyAxisOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
+            await client.applyAxisOps({ sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
           }
         });
       } catch (err) {
@@ -946,7 +948,7 @@ export function useSpreadsheet({
 
   const exportAll = useCallback(async (): Promise<Sheet[]> => {
     if (!client) return sheets;
-    return client.exportAll();
+    return (client.exportAll() as Promise<Sheet[]>);
   }, [client, sheets]);
 
   const getSheetCells = useCallback((sheetId: string) => sheetCells(sheetId), [sheetCells]);
@@ -955,8 +957,8 @@ export function useSpreadsheet({
     async (sheetId: string, row: number, col: number, text: string, parent = '') => {
       const at = idsAt(sheetId, row, col);
       if (!client || !at) return;
-      await enqueue(() => client.addComment({ sheet_id: sheetId, ...at, text, parent }));
-      setComments(await client.getComments());
+      await enqueue(() => (client.addComment({ sheetId, rowId: at.row_id, colId: at.col_id, text, parent }) as Promise<string>));
+      setComments(await (client.getComments() as Promise<Comment[]>));
     },
     [client, enqueue],
   );
@@ -964,7 +966,7 @@ export function useSpreadsheet({
     async (write: () => Promise<unknown>) => {
       if (!client) return;
       await enqueue(write);
-      setComments(await client.getComments());
+      setComments(await (client.getComments() as Promise<Comment[]>));
     },
     [client, enqueue],
   );
@@ -988,7 +990,7 @@ export function useSpreadsheet({
   const loadNote = useCallback(
     async (sheetId: string, rowId: string, colId: string): Promise<Span[]> => {
       if (!client) return [];
-      const spans = await client.getNote({ sheet_id: sheetId, row_id: rowId, col_id: colId });
+      const spans = await (client.getNote({ sheetId, rowId, colId }) as Promise<Span[]>);
       // An unformatted run comes without `attributes` (the contract skips an
       // empty map), whatever the generated type says.
       return spans.map((s) => ({ text: s.text, attributes: s.attributes ?? {} }));
@@ -1001,8 +1003,8 @@ export function useSpreadsheet({
       // The editor's ops leave `attributes` out where the generated type sends
       // `null`; serde reads a missing Option as None, so they go as they are.
       const wire = ops as unknown as NoteChange[];
-      await enqueue(() => client.editNote({ sheet_id: sheetId, row_id: rowId, col_id: colId, ops: wire }));
-      setNotedCells(await client.getNotedCells());
+      await enqueue(() => client.editNote({ sheetId, rowId, colId, ops: wire }));
+      setNotedCells(await (client.getNotedCells() as Promise<NotedCell[]>));
     },
     [client, enqueue],
   );
@@ -1011,8 +1013,8 @@ export function useSpreadsheet({
   const setRole = useCallback(
     async (memberId: string, role: string) => {
       if (!client) return;
-      await enqueue(() => client.setRole({ member_id: memberId, role }));
-      setMembers(await client.getMembers());
+      await enqueue(() => client.setRole({ memberId, role }));
+      setMembers(await (client.getMembers() as Promise<Member[]>));
     },
     [client, enqueue],
   );
@@ -1020,7 +1022,7 @@ export function useSpreadsheet({
     async (write: () => Promise<unknown>) => {
       if (!client) return;
       await enqueue(write);
-      setProtections(await client.getProtections());
+      setProtections(await (client.getProtections() as Promise<Protection[]>));
     },
     [client, enqueue],
   );
@@ -1030,11 +1032,11 @@ export function useSpreadsheet({
       const br = rect ? idsAt(sheetId, rect.bottom, rect.right) : null;
       if (rect && (!tl || !br)) return;
       await protectionAction(() => client!.protectRange({
-        sheet_id: sheetId,
-        top_row_id: tl?.row_id ?? '',
-        left_col_id: tl?.col_id ?? '',
-        bottom_row_id: br?.row_id ?? '',
-        right_col_id: br?.col_id ?? '',
+        sheetId,
+        topRowId: tl?.row_id ?? '',
+        leftColId: tl?.col_id ?? '',
+        bottomRowId: br?.row_id ?? '',
+        rightColId: br?.col_id ?? '',
         description,
         editors,
       }));
@@ -1117,7 +1119,7 @@ export function useSpreadsheet({
       try {
         await enqueue(async () => {
           for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
-            await client.applyStyleOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
+            await client.applyStyleOps({ sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
           }
         });
       } catch (err) {
@@ -1156,15 +1158,15 @@ export function useSpreadsheet({
       const tl = idsAt(sheetId, rect.top, rect.left);
       const br = idsAt(sheetId, rect.bottom, rect.right);
       if (!client || !tl || !br) return;
-      await enqueue(() => client.addRule({
+      await enqueue(() => (client.addRule({
         rule: {
           sheet_id: sheetId,
           top_row_id: tl.row_id, left_col_id: tl.col_id,
           bottom_row_id: br.row_id, right_col_id: br.col_id,
           ...spec,
         },
-      }));
-      setRules(await client.getRules());
+      }) as Promise<string>));
+      setRules(await (client.getRules() as Promise<Rule[]>));
     },
     [client, enqueue],
   );
@@ -1172,7 +1174,7 @@ export function useSpreadsheet({
     async (id: string) => {
       if (!client) return;
       await enqueue(() => client.removeRule({ id }));
-      setRules(await client.getRules());
+      setRules(await (client.getRules() as Promise<Rule[]>));
     },
     [client, enqueue],
   );
@@ -1181,26 +1183,26 @@ export function useSpreadsheet({
     async (sheetId: string, rect: Rect, targetContext: string, name: string) => {
       const tl = idsAt(sheetId, rect.top, rect.left);
       const br = idsAt(sheetId, rect.bottom, rect.right);
-      if (!client || !tl || !br) return;
-      await enqueue(() => client.publishRange({
-        sheet_id: sheetId, top_row_id: tl.row_id, left_col_id: tl.col_id,
-        bottom_row_id: br.row_id, right_col_id: br.col_id, target_context: targetContext, name,
+      if (!links || !tl || !br) return;
+      await enqueue(() => links.publishRange({
+        sheetId, topRowId: tl.row_id, leftColId: tl.col_id,
+        bottomRowId: br.row_id, rightColId: br.col_id, targetContext, name,
       }));
-      setPublications(await client.getPublications());
+      setPublications(await links.getPublications());
     },
-    [client, enqueue],
+    [links, enqueue],
   );
   const pushPublication = useCallback(
-    async (id: string) => { if (client) await enqueue(() => client.pushPublication({ id })); },
-    [client, enqueue],
+    async (id: string) => { if (links) await enqueue(() => links.relay(id)); },
+    [links, enqueue],
   );
   const unpublish = useCallback(
     async (id: string) => {
-      if (!client) return;
-      await enqueue(() => client.unpublish({ id }));
-      setPublications(await client.getPublications());
+      if (!links) return;
+      await enqueue(() => links.unpublish(id));
+      setPublications(await links.getPublications());
     },
-    [client, enqueue],
+    [links, enqueue],
   );
   const unlink = useCallback(
     async (sheetId: string) => {
@@ -1224,9 +1226,9 @@ export function useSpreadsheet({
       });
       after?.();
       await enqueue(() => client.addAttachment({
-        sheet_id: sheetId, ...at, blob_id: blob.blobId, name: file.name, size: file.size, mime: file.type,
+        sheetId, rowId: at.row_id, colId: at.col_id, blobId: blob.blobId, name: file.name, size: u64(file.size), mime: file.type,
       }));
-      setAttachments(await client.getAttachments());
+      setAttachments(await (client.getAttachments() as Promise<Attachment[]>));
     },
     [client, calimero, contextId, enqueue, after],
   );
@@ -1234,7 +1236,7 @@ export function useSpreadsheet({
     async (id: string) => {
       if (!client) return;
       await enqueue(() => client.removeAttachment({ id }));
-      setAttachments(await client.getAttachments());
+      setAttachments(await (client.getAttachments() as Promise<Attachment[]>));
     },
     [client, enqueue],
   );
@@ -1256,13 +1258,13 @@ export function useSpreadsheet({
       const tl = idsAt(sheetId, rect.top, rect.left);
       const br = idsAt(sheetId, rect.bottom, rect.right);
       if (!client || !tl || !br) return;
-      await enqueue(() => client.addChart({
+      await enqueue(() => (client.addChart({
         chart: {
           sheet_id: sheetId, top_row_id: tl.row_id, left_col_id: tl.col_id,
           bottom_row_id: br.row_id, right_col_id: br.col_id, kind, title,
         },
-      }));
-      setCharts(await client.getCharts());
+      }) as Promise<string>));
+      setCharts(await (client.getCharts() as Promise<Chart[]>));
     },
     [client, enqueue],
   );
@@ -1270,7 +1272,7 @@ export function useSpreadsheet({
     async (id: string) => {
       if (!client) return;
       await enqueue(() => client.removeChart({ id }));
-      setCharts(await client.getCharts());
+      setCharts(await (client.getCharts() as Promise<Chart[]>));
     },
     [client, enqueue],
   );
@@ -1324,7 +1326,7 @@ export function useSpreadsheet({
         (v) => ({ ...v, sizes: [...v.sizes.filter((s) => !(s.axis === key && ids.includes(s.id))), ...sizes] }),
         async () => {
           for (let i = 0; i < sizes.length; i += MAX_OPS_PER_APPLY) {
-            await client!.setSizes({ sheet_id: sheetId, sizes: sizes.slice(i, i + MAX_OPS_PER_APPLY) });
+            await client!.setSizes({ sheetId, sizes: sizes.slice(i, i + MAX_OPS_PER_APPLY) });
           }
         },
       );
@@ -1334,24 +1336,24 @@ export function useSpreadsheet({
   const setFrozen = useCallback(
     (sheetId: string, rows: number, cols: number) =>
       changeView(sheetId, (v) => ({ ...v, frozen_rows: rows, frozen_cols: cols }),
-        () => client!.setFrozen({ sheet_id: sheetId, rows, cols })),
+        () => client!.setFrozen({ sheetId, rows, cols })),
     [client, changeView],
   );
 
   const createPrivateSheet = useCallback(async (name: string): Promise<string | null> => {
     if (!client) return null;
-    const id = await enqueue(() => client.createPrivateSheet({ name }));
+    const id = await enqueue(() => (client.createPrivateSheet({ name }) as Promise<string>));
     await reloadPrivate();
     return id;
   }, [client, enqueue, reloadPrivate]);
   const renamePrivateSheet = useCallback(async (sheetId: string, name: string) => {
     if (!client) return;
-    await enqueue(() => client.renamePrivateSheet({ sheet_id: sheetId, name }));
+    await enqueue(() => client.renamePrivateSheet({ sheetId, name }));
     await reloadPrivate();
   }, [client, enqueue, reloadPrivate]);
   const deletePrivateSheet = useCallback(async (sheetId: string) => {
     if (!client) return;
-    await enqueue(() => client.deletePrivateSheet({ sheet_id: sheetId }));
+    await enqueue(() => client.deletePrivateSheet({ sheetId }));
     await reloadPrivate();
   }, [client, enqueue, reloadPrivate]);
 
@@ -1359,7 +1361,7 @@ export function useSpreadsheet({
     if (!client) return [];
     // Nanoseconds; a float's precision loss here is well under a second.
     const since = (Date.now() - days * 86_400_000) * 1_000_000;
-    return client.getActivity({ since, limit: 300 });
+    return client.getActivity({ since: u64(since), limit: 300 }) as Promise<ActivityEntry[]>;
   }, [client]);
 
   const refOf = useCallback((sheetId: string, rowId: string, colId: string) => {

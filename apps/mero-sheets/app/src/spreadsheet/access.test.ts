@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Protection } from '../api/spreadsheet/SpreadsheetClient';
+import type { Protection } from '../api/spreadsheet/types';
 import { canComment, canEdit, lockedReason, placeProtections } from './access';
 
 const prot = (over: Partial<Protection>): Protection => ({
