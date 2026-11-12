@@ -10,7 +10,7 @@
  * (cells, sheets, styles, rules) are checked by the app a member runs: they
  * keep honest members to their role, not a member who modifies their node.
  */
-import type { Protection } from '../api/spreadsheet/SpreadsheetClient';
+import type { Protection } from '../api/spreadsheet/types';
 import type { Rect } from './refs';
 
 export const WORKBOOK_ROLES = ['owner', 'editor', 'commenter', 'viewer'] as const;

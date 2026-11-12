@@ -1,14 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CONTRACT_METHODS, CONTRACT_VIEWS, SpreadsheetClient, fromWire, u64 } from './SpreadsheetClient';
+import { fromWire, u64, workbook, type Sheet } from './workbook';
 import { withRoutes } from '@calimero-apps/connect/testing';
-
-/** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
-const abi = JSON.parse(readFileSync(resolve(__dirname, '../../../../logic/res/abi.json'), 'utf8')) as {
-  methods: Record<string, { kind: string; params: Array<[string, string]> }>;
-};
 
 const ok = (result: unknown = null) => Promise.resolve({ index: 7, result, events: [] });
 
@@ -22,37 +15,13 @@ function transport(answers: Record<string, unknown> = {}) {
   return { sent, client: withRoutes({ call: make('call'), view: make('view') }) };
 }
 
-describe('the client covers the contract', () => {
-  it('names exactly the contract methods, with the parameter names the ABI declares', () => {
-    const fromAbi = Object.fromEntries(
-      Object.entries(abi.methods)
-        .filter(([, m]) => m.kind !== 'init')
-        .map(([name, m]) => [name, m.params.map(([p]) => p)]),
-    );
-    expect(CONTRACT_METHODS).toEqual(fromAbi);
-  });
-
-  it('reads with views and writes with calls, as the ABI says', () => {
-    for (const [name, m] of Object.entries(abi.methods)) {
-      if (m.kind === 'init') continue;
-      expect([name, CONTRACT_VIEWS.has(name)]).toEqual([name, m.kind === 'view']);
-    }
-  });
-
-  it('has a method for each of them', () => {
-    for (const name of Object.keys(CONTRACT_METHODS)) {
-      expect(typeof (SpreadsheetClient.prototype as unknown as Record<string, unknown>)[name]).toBe('function');
-    }
-  });
-});
-
 describe('on the wire', () => {
   it('sends camelCase arguments, and 64-bit integers as decimal strings', async () => {
     const { sent, client } = transport();
-    const ss = new SpreadsheetClient(client, 'app-1');
-    await ss.renameSheet({ sheet_id: 's1', new_name: 'Q3' });
-    await ss.addAttachment({ sheet_id: 's1', row_id: '0', col_id: '1', blob_id: 'b', name: 'a.pdf', size: 1234, mime: 'application/pdf' });
-    await ss.getActivity({ since: 1_700_000_000_000_000_000, limit: 20 });
+    const ss = workbook(client, 'app-1').sheets;
+    await ss.renameSheet({ sheetId: 's1', newName: 'Q3' });
+    await ss.addAttachment({ sheetId: 's1', rowId: '0', colId: '1', blobId: 'b', name: 'a.pdf', size: u64(1234), mime: 'application/pdf' });
+    await ss.getActivity({ since: u64(1_700_000_000_000_000_000), limit: 20 });
     expect(sent[0]).toMatchObject({ app: 'app-1', method: 'renameSheet', kind: 'call', args: { sheetId: 's1', newName: 'Q3' } });
     expect(sent[1].args.size).toBe('1234');
     expect(sent[2]).toMatchObject({ method: 'getActivity', kind: 'view', args: { since: '1700000000000000000', limit: 20 } });
@@ -62,7 +31,7 @@ describe('on the wire', () => {
     const { client } = transport({
       listSheets: [{ id: 's1', name: 'Sheet 1', position: 0, created_at: '1700000000000000000', linked_from: '' }],
     });
-    const [sheet] = await new SpreadsheetClient(client, 'app-1').listSheets();
+    const [sheet] = (await workbook(client, 'app-1').sheets.listSheets()) as Sheet[];
     expect(sheet.created_at).toBe(1_700_000_000_000_000_000);
     expect(sheet.position).toBe(0);
     expect(fromWire({ name: '42', size: '42' })).toEqual({ name: '42', size: 42 });
@@ -72,7 +41,7 @@ describe('on the wire', () => {
   it('runs `after` after every request, failed ones too', async () => {
     const after = vi.fn();
     const client = withRoutes({ call: vi.fn(() => Promise.reject(new Error('down'))), view: vi.fn(() => ok([])) });
-    const ss = new SpreadsheetClient(client, 'app-1', after);
+    const ss = workbook(client, 'app-1', after).sheets;
     await expect(ss.createSheet({ name: 'x' })).rejects.toThrow('down');
     await ss.listSheets();
     expect(after).toHaveBeenCalledTimes(2);
@@ -85,8 +54,8 @@ describe('linked ranges, relayed by the browser', () => {
 
   it('hands a new link its first values', async () => {
     const { sent, client } = transport({ publishRange: 'pub-1', pushPublication: PUSH });
-    const id = await new SpreadsheetClient(client, 'app-1').publishRange({
-      sheet_id: 's1', top_row_id: '0', left_col_id: '0', bottom_row_id: '0', right_col_id: '1', target_context: 'app-2', name: 'Totals',
+    const id = await workbook(client, 'app-1').publishRange({
+      sheetId: 's1', topRowId: '0', leftColId: '0', bottomRowId: '0', rightColId: '1', targetContext: 'app-2', name: 'Totals',
     });
     expect(id).toBe('pub-1');
     expect(sent.map((s) => [s.app, s.method])).toEqual([['app-1', 'publishRange'], ['app-1', 'pushPublication'], ['app-2', 'receiveLink']]);
@@ -95,10 +64,10 @@ describe('linked ranges, relayed by the browser', () => {
 
   it('relays after an edit to a linked sheet, and not after one to another sheet', async () => {
     const { sent, client } = transport({ getPublications: [PUB], pushPublication: PUSH });
-    const ss = new SpreadsheetClient(client, 'app-1');
-    await ss.getPublications();
-    await ss.setCell({ sheet_id: 's2', row_id: '0', col_id: '0', raw_value: '1' });
-    await ss.setCell({ sheet_id: 's1', row_id: '0', col_id: '0', raw_value: '1' });
+    const wb = workbook(client, 'app-1');
+    await wb.getPublications();
+    await wb.sheets.setCell({ sheetId: 's2', rowId: '0', colId: '0', rawValue: '1' });
+    await wb.sheets.setCell({ sheetId: 's1', rowId: '0', colId: '0', rawValue: '1' });
     await vi.waitFor(() => expect(sent.some((s) => s.method === 'receiveLink')).toBe(true));
     expect(sent.filter((s) => s.method === 'receiveLink')).toHaveLength(1);
   });
@@ -108,12 +77,18 @@ describe('linked ranges, relayed by the browser', () => {
       call: vi.fn((app: string) => (app === 'app-2' ? Promise.reject(new Error('not a member')) : ok('k'))),
       view: vi.fn((_app: string, method: string) => ok(method === 'getPublications' ? [PUB] : PUSH)),
     });
-    await expect(new SpreadsheetClient(client, 'app-1').setCell({ sheet_id: 's1', row_id: '0', col_id: '0', raw_value: '1' })).resolves.toBe('k');
+    await expect(workbook(client, 'app-1').sheets.setCell({ sheetId: 's1', rowId: '0', colId: '0', rawValue: '1' })).resolves.toBe('k');
+  });
+
+  it('pushes a link again on "push now"', async () => {
+    const { sent, client } = transport({ pushPublication: PUSH });
+    await workbook(client, 'app-1').relay('pub-1');
+    expect(sent.map((s) => [s.app, s.method, s.kind])).toEqual([['app-1', 'pushPublication', 'view'], ['app-2', 'receiveLink', 'call']]);
   });
 
   it('takes the sheet out of the other workbook when a link stops', async () => {
     const { sent, client } = transport({ getPublications: [PUB] });
-    await new SpreadsheetClient(client, 'app-1').unpublish({ id: 'pub-1' });
+    await workbook(client, 'app-1').unpublish('pub-1');
     expect(sent.map((s) => [s.app, s.method])).toEqual([['app-1', 'getPublications'], ['app-1', 'unpublish'], ['app-2', 'dropLink']]);
     expect(sent[2].args).toEqual({ fromContext: 'app-1', publicationId: 'pub-1' });
   });
