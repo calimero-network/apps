@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { describeError } from "@calimero-apps/connect";
 
-import type { KvStore } from "./kvStore";
+import type { KvStoreClient } from "./generated/client";
 
 type Result = { ok: unknown } | { err: string } | null;
 
@@ -26,7 +26,7 @@ export function KvPanel({
   kv,
   subscribe,
 }: {
-  kv: KvStore;
+  kv: KvStoreClient;
   subscribe?: (onChange: () => void) => () => void;
 }) {
   const [entries, setEntries] = useState<Record<string, string>>({});
@@ -105,7 +105,7 @@ export function KvPanel({
         <div className="row" style={{ marginTop: 10 }}>
           <button
             disabled={busy || !key}
-            onClick={() => run("write", "set", () => kv.set(key, value))}
+            onClick={() => run("write", "set", () => kv.set({ key, value }))}
           >
             set
           </button>
@@ -117,7 +117,7 @@ export function KvPanel({
             className="ghost"
             disabled={busy || !key}
             onClick={() =>
-              run("write", "updateIfExists", () => kv.updateIfExists(key, value))
+              run("write", "updateIfExists", () => kv.updateIfExists({ key, value }))
             }
           >
             updateIfExists
@@ -126,7 +126,7 @@ export function KvPanel({
           <button
             className="ghost"
             disabled={busy || !key}
-            onClick={() => run("write", "getOrInsert", () => kv.getOrInsert(key, value))}
+            onClick={() => run("write", "getOrInsert", () => kv.getOrInsert({ key, value }))}
           >
             getOrInsert
           </button>
@@ -149,7 +149,7 @@ export function KvPanel({
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "get", () => kv.get(readKey))}
+            onClick={() => run("read", "get", () => kv.get({ key: readKey }))}
           >
             get
           </button>
@@ -157,7 +157,7 @@ export function KvPanel({
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "getResult", () => kv.getResult(readKey))}
+            onClick={() => run("read", "getResult", () => kv.getResult({ key: readKey }))}
           >
             getResult
           </button>
@@ -169,7 +169,7 @@ export function KvPanel({
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "getUnchecked", () => kv.getUnchecked(readKey))}
+            onClick={() => run("read", "getUnchecked", () => kv.getUnchecked({ key: readKey }))}
           >
             getUnchecked
           </button>
@@ -198,7 +198,7 @@ export function KvPanel({
           <button
             className="ghost"
             disabled={busy || !removeKey}
-            onClick={() => run("remove", "remove", () => kv.remove(removeKey))}
+            onClick={() => run("remove", "remove", () => kv.remove({ key: removeKey }))}
           >
             remove
           </button>

@@ -16,6 +16,7 @@ for the rest; [Porting an app](#porting-an-app-the-checklist) is the checklist.
 - [Build, test, bundle](#build-test-bundle)
 - [Local development on merod local](#local-development-on-merod-local)
 - [The frontend: local in dev, Cloud in production](#the-frontend-local-in-dev-cloud-in-production)
+- [The app's typed client](#the-apps-typed-client)
 - [CI](#ci)
 - [Moving to a new core release](#moving-to-a-new-core-release)
 - [Migration guide: v1 SDK to the component SDK](#migration-guide-v1-sdk-to-the-component-sdk)
@@ -159,6 +160,7 @@ elsewhere.
 
 ```ts
 import { appSource, connectTarget, createClient, SessionStore } from "@calimero-apps/connect";
+import { MyAppClient } from "./generated/client";      // see "The app's typed client"
 
 // local in `vite`, cloud in `vite build`; on a page the cluster serves, its own node list
 const target = await connectTarget(import.meta.env, { app: "my-app" });
@@ -169,7 +171,8 @@ sessions.restore(client);
 await client.signUp(browserPasskey(), name);            // or signIn(browserPasskey())
 sessions.sync(client);
 const app = await client.createApp("my-app", appSource(import.meta.env, "com.calimero.my-app"));
-await client.call(app, "set", { key: "a", value: "1" });
+const my = new MyAppClient(client, app, { after: () => sessions.sync(client) });
+await my.set({ key: "a", value: "1" });
 ```
 
 | env | local (dev server) | cloud (production build) |
@@ -215,11 +218,76 @@ await client.call(app, "set", { key: "a", value: "1" });
   so a dev session never reaches a cloud cluster. The client swaps the
   single-use refresh token on a `401`; `SessionStore.sync(client)` after a
   request keeps the stored copy current.
-- **Passkey step-ups**: a `confirm` method answers `412 CONFIRM_REQUIRED`; call
-  it with `client.callConfirmed(app, method, args, browserPasskey())`.
+- **Passkey step-ups**: a `confirm` method answers `412 CONFIRM_REQUIRED`; the
+  generated client's method takes the answer as `{ confirm: passkeyConfirm(passkey) }`
+  (mero-js's other step-ups, `orgs.inviteCreate` and the rest, take the same option).
 - **Errors** are typed (`AppError` with `appCode` and `fields`, `TrapError`,
   `LoginRequired`, `ConfirmRequired`, `NotFound`, …); `describeError(e)` is a
   one-line message for the UI.
+
+## The app's typed client
+
+A frontend calls its contract through the class core's `mero-app-build codegen`
+writes from the app's committed ABI, never through `client.apps.call` /
+`client.apps.view` with method names in strings. [`apps/kv-store`](../apps/kv-store)
+is the worked example; core's guide is `docs/src/content/docs/build/guides/typed-clients.mdx`
+at the generator's tag.
+
+```bash
+scripts/install-mero-app-build.sh     # once: mero-app-build at its pinned tag, into ~/.cargo/bin
+pnpm -F <app> codegen                 # logic/res/abi.json -> app/src/generated/{client.ts,openapi.json}
+```
+
+How an app adopts it:
+
+1. In `app/package.json`, a `codegen` script, with `--name` the app's directory
+   (it names the class: `kv-store` gives `KvStoreClient`):
+
+   ```json
+   "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name <app> -o src/generated"
+   ```
+
+   Run it and **commit** `src/generated/` (both files). It is generated from
+   the committed ABI, so every build, `tsc -b`, Vercel and a fresh clone work
+   without a Rust toolchain. Add `"src/generated/*.ts"` to `tsconfig.test.json`'s
+   `include` (the test project compiles what the tests import).
+2. Build the class where the app has a signed-in client and an instance, with
+   `after` syncing the stored session (mero-js refreshes it without an event):
+
+   ```ts
+   const kv = useMemo(
+     () => (client && opened ? new KvStoreClient(client, opened.appId, { after }) : null),
+     [client, opened, after],
+   );
+   ```
+
+   Components take the class (`kv: KvStoreClient`) and call its methods with
+   the ABI's argument records (`kv.set({ key, value })`); the event stream is
+   `kv.events(from, signal)`, typed by `AppEvent`. A `confirm` method takes
+   `{ confirm: passkeyConfirm(passkey) }` as its last argument.
+3. Delete the hand-written wrapper and its method lists. Its test becomes
+   `src/client.test.ts` (copy kv-store's): the class has exactly the ABI's
+   methods, sends each one as a call or a view with the ABI's parameter names,
+   runs `after` on failures too, and a `CalimeroClient` still satisfies the
+   generated `AppTransport` (a compile-time line, so a mero-js bump that breaks
+   it fails `tsc -b`).
+4. Screen tests build the real class over a fake transport
+   (`{ apps: { call, view }, async *events() {} }`, or `withRoutes(...)` from
+   `@calimero-apps/connect/testing`) rather than mocking the class: it has
+   private fields, so an object literal does not type as it.
+
+Kept fresh by CI: `ci.yml`'s `frontend` job installs `mero-app-build` with
+`scripts/install-mero-app-build.sh`, runs every app's `codegen`, and fails when
+`apps/*/app/src/generated` differs from what is committed; the `rust` job of
+`components.yml` already fails when `logic/res/abi.json` differs from the
+build. So a contract change is: build (`mero-component build`), `pnpm -F <app>
+codegen`, fix what `tsc -b` now reports, commit all three.
+
+The generator has its own pin (`TAG` in `scripts/install-mero-app-build.sh`),
+which may run ahead of `component-core-tag`: moving it regenerates every app's
+client in the same PR. A record or enum type in the ABI is an interface or a
+union only when the contract derives `Record` or `AbiType` and was built at
+`1.0.0-rc.18` or later; otherwise it is `unknown`, so cast it where it is used.
 
 ## CI
 
@@ -229,7 +297,7 @@ await client.call(app, "set", { key: "a", value: "1" });
 |---|---|---|
 | `checks` | always | `check-component-pins.py` (+ its test); `tools/component-bundle` fmt, clippy, test; `packages/connect` and `packages/merod-local` typecheck and test |
 | `rust` | per changed app | `cargo fmt --check`; `cargo clippy -D warnings` on the host (tests included) and on `wasm32-wasip2`; `cargo test` (TestApp harness + scenarios); release build; committed `res/abi.json` current; a dev-signed `.mpk` packed and verified |
-| `frontend` | per changed app | `pnpm lint`, `typecheck`, `test`, `build` |
+| `frontend` | per changed app | `pnpm lint`, `typecheck`, `test`, `build` (the generated client's freshness is `ci.yml`'s `frontend` job: [The app's typed client](#the-apps-typed-client)) |
 | `e2e` | per changed app | core's release `merod` at `component-core-tag` (checked against its `SHA256SUMS`), `merod local`, then `pnpm merod-local e2e <app>`: every `scenarios/*.json` as real accounts on three nodes |
 
 A change to anything every component app depends on (the root `Cargo.toml`,
@@ -381,7 +449,7 @@ that appends to it.
 | a node URL + auth frontend login | passkeys: `client.signUp(browserPasskey(), name)` / `signIn(browserPasskey())` |
 | application id + context | a **package** + an **app instance** (`createApp`, `listApps({ package })`) |
 | namespace / group, namespace invitations | an **org** (`createOrg`, `invite`, `redeemInvite`), instances created `{ org }` |
-| abi-codegen client from `res/abi.json` | `client.call(app, "method", args)` / `client.view(…)` with camelCase names; the frontend's tests check the method list against the committed `res/abi.json` |
+| abi-codegen client from `res/abi.json` | `mero-app-build codegen --lang ts` from `res/abi.json` into `src/generated/` (camelCase names, typed arguments, results, errors and events): [The app's typed client](#the-apps-typed-client) |
 | SSE subscriptions | `client.events(app, from, signal)`, an async generator of `{ id, kind, data }` |
 
 ## Porting an app: the checklist
@@ -438,8 +506,9 @@ per app, branched off `main` once this groundwork has merged.
    `"@calimero-network/mero-js": "catalog:component"` and
    `"@calimero-apps/connect": "workspace:*"` and
    `"@calimero-apps/passkey": "workspace:*"`; scripts `dev`, `build`,
-   `typecheck`, `test`, `lint` (an `eslint.config.js` like kv-store's), no
-   `codegen`. Keep `vercel.json` (the v1 guards still check it).
+   `typecheck`, `test`, `lint` (an `eslint.config.js` like kv-store's), and
+   `codegen` running `mero-app-build codegen` (not abi-codegen). Keep
+   `vercel.json` (the v1 guards still check it).
 9. Replace the provider, node login and context picker with kv-store's
     `session.ts` (a few lines over `@calimero-apps/passkey`'s
     `usePasskeySession`: target → client → passkey sign-in/up, `SessionStore`),
@@ -449,9 +518,10 @@ per app, branched off `main` once this groundwork has merged.
     namespaces are orgs, v1 invitations are org invites (`client.invite(org,
     role, passkey)` is a passkey step-up; the link carries the token and is
     redeemed after sign-in).
-10. Call methods through a small typed wrapper (kv-store's `kvStore.ts`), and a
-    test that its method list and parameter names are exactly the committed
-    `res/abi.json`'s. Test the screens with a mocked client (`App.test.tsx`).
+10. Call methods through the generated client (`src/generated/client.ts`,
+    committed; [The app's typed client](#the-apps-typed-client)), with kv-store's
+    `client.test.ts` checking it against the committed `res/abi.json`. Test the
+    screens with a mocked client (`App.test.tsx`).
 11. `.env.example` lists the `VITE_CALIMERO_*` variables; the production build
     needs `VITE_CALIMERO_MIN_RELEASE` where the bundle's frontend is built
     (publish-bundle passes the repository variable `CALIMERO_MIN_RELEASE`, or
@@ -505,5 +575,6 @@ ports without it and says so in its PR:
   Until core adds the mirror to that CSP (or the node proxies it), a production
   frontend needs `policy.fetchCollateral`/`verifyQuote` supplied some other way.
   `merod local` is unaffected (mock quotes, no fetch).
-- **A typed client** generated from the component ABI (frontends call methods
-  by name; `Option` results are `null`).
+- **Typed app types in an older ABI.** The generated client types a record or
+  enum only from an ABI built at `1.0.0-rc.18` or later (core#4997) whose type
+  derives `Record` or `AbiType`; anything else is `unknown`.
