@@ -19,6 +19,7 @@
     "styled-components": "^6.1.11"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "catalog:",

@@ -9,7 +9,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: [],
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ['@calimero-apps/test-setup'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: { include: [/src\/index\.css\?raw$/] }, // a test reads index.css as text to check the section wash
     exclude: ['node_modules/**', 'build/**', 'dist/**'],

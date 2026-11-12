@@ -5,6 +5,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ['@calimero-apps/test-setup'],
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 });

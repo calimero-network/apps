@@ -10,7 +10,9 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     // `tsc -b` writes declarations under dist-types/; without this vitest also
     // runs the compiled copies of the tests.
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],

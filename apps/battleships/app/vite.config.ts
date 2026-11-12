@@ -12,7 +12,9 @@ export default defineConfig({
   plugins: [react(), servedAssetsFallback()],
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     // `tsc -b` writes declarations under dist-types/. Without this, vitest
     // discovers the compiled copies of the test files and runs them a second
     // time, from a directory where their relative paths no longer resolve.

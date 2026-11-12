@@ -21,6 +21,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/react": "catalog:",

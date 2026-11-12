@@ -14,6 +14,9 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   test: {
     environment: "jsdom",
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ["@calimero-apps/test-setup"],
     // App.test.tsx waits on chains of mocked requests; a parallel run is slow.
     testTimeout: 20_000,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],

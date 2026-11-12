@@ -18,7 +18,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    // First, so it runs before anything imports Testing Library: CI's longer
+    // findBy*/waitFor wait (packages/test-setup).
+    setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     // `tsc -b` writes declarations under dist-types/; `e2e/` holds only the
     // generated landing spec (Playwright, not run here).
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "**/e2e/**"],

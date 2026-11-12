@@ -37,6 +37,7 @@
     "vite-plugin-environment": "^1.1.3"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/eslint__js": "^8.42.3",
