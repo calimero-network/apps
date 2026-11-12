@@ -20,8 +20,10 @@ import network.calimero.design.core.DesignFormat
 import network.calimero.design.core.MeasureFactory
 import network.calimero.design.core.NoBlobs
 import network.calimero.design.core.Point
+import network.calimero.design.core.allElements
 import network.calimero.design.core.designClient
 import network.calimero.design.core.estimateMeasure
+import network.calimero.design.core.toDesign
 import network.calimero.design.generated.BoardInfo
 import network.calimero.design.generated.Comment
 import network.calimero.design.generated.CommentReply
@@ -153,7 +155,7 @@ class BoardsModel(
             coroutineScope {
                 _boards.value
                     .map { b ->
-                        async { b.contextId to attempt { backend.designClient(b.contextId).getBoard() }.getOrNull() }
+                        async { b.contextId to attempt { backend.designClient(b.contextId).getBoard().toDesign<BoardInfo>() }.getOrNull() }
                     }.awaitAll()
             }.mapNotNull { (id, info) -> info?.let { id to it } }.toMap()
         _boards.update { list ->
@@ -342,7 +344,7 @@ class BoardModel(
     }
 
     private suspend fun loadElements() {
-        val els = client.getElements()
+        val els = client.allElements()
         if (els != _elements.value || _scene.value == BoardScene.EMPTY) {
             _elements.value = els
             _scene.value = BoardScene.of(els, measure)
@@ -352,10 +354,10 @@ class BoardModel(
 
     private suspend fun loadRest() {
         coroutineScope {
-            val info = async { attempt { client.getBoard() }.getOrNull() }
-            val members = async { attempt { client.getMembers() }.getOrNull() }
+            val info = async { attempt { client.getBoard().toDesign<BoardInfo>() }.getOrNull() }
+            val members = async { attempt { client.getMembers().map { it.toDesign<Member>() } }.getOrNull() }
             val role = async { attempt { client.myRole() }.getOrNull() }
-            val cursors = async { attempt { client.getCursors() }.getOrNull() }
+            val cursors = async { attempt { client.getCursors().map { it.toDesign<CursorState>() } }.getOrNull() }
             loadComments()
             info
                 .await()
@@ -371,7 +373,7 @@ class BoardModel(
 
     @Suppress("LoopWithTooManyJumpStatements")
     private suspend fun loadComments() {
-        val read = attempt { client.getComments() }.getOrNull()
+        val read = attempt { client.getComments().map { it.toDesign<Comment>() } }.getOrNull()
         val list = (read ?: _comments.value).toMutableList()
         if (read != null) {
             val ids = list.map { it.id }.toSet()
@@ -417,7 +419,7 @@ class BoardModel(
         if (myName != null) return
         val username = name?.trim()?.takeIf { it.isNotEmpty() } ?: return
         client.join(username, null, now().toULong())
-        attempt { client.getMembers() }.getOrNull()?.let { _members.value = it }
+        attempt { client.getMembers().map { it.toDesign<Member>() } }.getOrNull()?.let { _members.value = it }
         if (myName == null) {
             _members.update { it + Member(backend.account, username, null, now().toULong(), now().toULong()) }
         }

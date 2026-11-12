@@ -35,6 +35,8 @@ CLIENTS=(
   "battleships|kotlin|apps/battleships/mobile/android/app/src/main/kotlin/network/calimero/battleships/generated|battleships|network.calimero.battleships.generated"
   "mero-crm|swift|apps/mero-crm/mobile/ios/Core/Sources/CrmGenerated|crm|"
   "mero-crm|kotlin|apps/mero-crm/mobile/android/app/src/main/kotlin/network/calimero/crm/generated/client|crm|network.calimero.crm.generated.client"
+  "mero-design|swift|apps/mero-design/mobile/ios/DesignCore/Sources/DesignCore/Generated|design|"
+  "mero-design|kotlin|apps/mero-design/mobile/android/app/src/main/kotlin/network/calimero/design/generated/client|design|network.calimero.design.generated.client"
 )
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
