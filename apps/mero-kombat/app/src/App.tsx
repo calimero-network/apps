@@ -14,9 +14,8 @@ import {
   canCreateIn,
   type InviteStore,
   type KeyValueStorage,
-  type PendingInvite,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
@@ -154,16 +153,10 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // the invite already (`SessionProvider` sets `landing`): the arena opens
   // straight away.
   const { invites, landing, setLanding } = useInviteState();
-  const pending = usePendingInvite(invites);
   // The invitation a signed-in account is asked about stays on screen until it
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the page away with it.
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
-  const invite = client ? (pending ?? asked) : null;
+  const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
 
   // Where an invite landed: the arena its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
@@ -235,11 +228,11 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         drop={invites.drop}
         after={after}
         onJoined={({ org }) => {
-          setAsked(null);
+          closeInvite();
           setLanding({ org, arena: invitedArena(invite) });
         }}
         onClose={({ member }) => {
-          setAsked(null);
+          closeInvite();
           if (member) setLanding({ org: member, arena: invitedArena(invite) });
         }}
       />

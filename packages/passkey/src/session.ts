@@ -509,6 +509,35 @@ export function usePendingInvite(invites: InviteStore): PendingInvite | null {
   return useSyncExternalStore(invites.subscribe, invites.pending);
 }
 
+/** The invitation {@link useAskedInvite} holds on screen, and how to close it. */
+export interface AskedInvite {
+  /** The invite to ask about (`JoinInvitation`); `null` for none, and always when signed out. */
+  invite: PendingInvite | null;
+  /** The question is answered (joined, "Not now", "Continue"): stop holding it. */
+  close: () => void;
+}
+
+/**
+ * The invitation a signed-in account is asked about, held on screen until it
+ * closes: `JoinInvitation` drops the token before it says "already in" or
+ * "used up", and the store alone would take the question away with it.
+ *
+ * What is held follows the store during render, never from an effect: an
+ * effect that copies the pending invite runs after the commit that showed the
+ * prompt, so a "Not now" pressed before it (between the paint and the effects)
+ * is undone by the copy from before the drop, and the prompt stays for good.
+ */
+export function useAskedInvite(invites: InviteStore, signedIn: boolean): AskedInvite {
+  const pending = usePendingInvite(invites);
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
+  const invite = signedIn ? (pending ?? asked) : null;
+  // React's "adjusting state while rendering": settles in one extra pass,
+  // since `invite` is `asked` whenever the store holds nothing.
+  if (invite !== asked) setAsked(invite);
+  const close = useCallback(() => setAsked(null), []);
+  return { invite, close };
+}
+
 /** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1". */
 export function describeTarget(target: Target): string {
   return target.kind === "local"

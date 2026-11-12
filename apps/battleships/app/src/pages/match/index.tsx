@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appSource, targetKey } from '@calimero-apps/connect';
-import { AppListing, JoinInvitation, usePendingInvite } from '@calimero-apps/passkey';
-import type { PendingInvite } from '@calimero-apps/connect';
+import { AppListing, JoinInvitation, useAskedInvite } from '@calimero-apps/passkey';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -191,16 +190,10 @@ export default function MatchPage() {
   // it joined); a sign-up from the invitation page joined with the invite
   // already (`SessionProvider` sets `landing`), and its lobby opens.
   const { invites, landing, setLanding } = useInviteState();
-  const pending = usePendingInvite(invites);
   // The invitation a signed-in account is asked about stays on screen until it
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the question away with it.
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
-  const invite = client ? (pending ?? asked) : null;
+  const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
 
   useEffect(() => {
     if (!client || !landing) return;
@@ -828,11 +821,11 @@ export default function MatchPage() {
               drop={invites.drop}
               after={after}
               onJoined={({ org }) => {
-                setAsked(null);
+                closeInvite();
                 setLanding({ org, lobby: invitedLobby(invite) });
               }}
               onClose={({ member }) => {
-                setAsked(null);
+                closeInvite();
                 if (member) setLanding({ org: member, lobby: invitedLobby(invite), member: true });
               }}
             />

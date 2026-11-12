@@ -7,8 +7,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { appSource, type InviteStore, type KeyValueStorage, type PendingInvite } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, PasskeySignIn, useInstanceRelease, usePendingInvite } from "@calimero-apps/passkey";
+import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
+import { AppListing, JoinInvitation, PasskeySignIn, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -198,14 +198,9 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // The invitation a signed-in account is asked about stays on screen until it
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the question away with it.
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
+  const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
   // The token checked against the tables this account reaches already.
   const [checked, setChecked] = useState<string | null>(null);
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
-  const invite = client ? (pending ?? asked) : null;
 
   // ⚠️ Not asked of someone who already reaches the table the link names:
   // redeeming spends the link's single use, so the owner trying their own link
@@ -229,7 +224,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         if (!live) return;
         if (table) {
           invites.drop();
-          setAsked(null);
+          closeInvite();
           open({ appId: table.appId, name: table.name, org: table.org });
           setNotice(
             "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
@@ -241,7 +236,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return () => {
       live = false;
     };
-  }, [client, pendingToken, pendingTable, invites, open, after]);
+  }, [client, pendingToken, pendingTable, invites, open, after, closeInvite]);
 
   // Where an invite landed: the table its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
@@ -331,11 +326,11 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         drop={invites.drop}
         after={after}
         onJoined={({ org }) => {
-          setAsked(null);
+          closeInvite();
           setLanding({ org, table: invitedTable(invite) });
         }}
         onClose={({ member }) => {
-          setAsked(null);
+          closeInvite();
           if (member) setLanding({ org: member, table: invitedTable(invite) });
         }}
       />
