@@ -1,6 +1,8 @@
-Contract outputs of `com.calimero.chat` (apps/mero-chat/logic/src/lib.rs), in the exact JSON shape
-serde writes them: `get_messages` / `get_messages_from` return `FullMessageResponse` of
-`MessageWithReactions`, `send_message` returns the custom-serialized `Message` (no `index`, no
-reactions), `get_info` returns `ContextInfo`, `get_profiles` a `Vec<UserProfile>`.
+Answers of the `com.calimero.chat` component contract (`apps/mero-chat/logic`), in the JSON its
+ABI (`logic/res/abi.json`) puts on the wire: camelCase fields, `u64`s as decimal strings, `Option`
+as `null`. Each file is named for the method that answers it: `getMessages` / `getMessagesFrom`
+return a `FullMessageResponse` of `MessageView`s, `sendMessage` the `MessageView` it stored,
+`getInfo` a `ContextInfo`, `getProfiles` a list of `UserProfile`s. `ChatWireTest` hands them to the
+generated `ChatClient` as a contract's answers.
 
-`{{ME}}` stands for the signed-in account's base58 `UserId`; tests substitute it.
+`{{ME}}` stands for the signed-in account; tests substitute it.

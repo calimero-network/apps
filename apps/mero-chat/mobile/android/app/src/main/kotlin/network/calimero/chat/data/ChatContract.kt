@@ -1,36 +1,13 @@
 package network.calimero.chat.data
 
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** The `com.calimero.chat` methods this app calls (lib.rs `#[app::logic] impl MeroChat`). */
-object ChatMethods {
-    // Views: answered by a node without writing. ComponentChatContract sends the ABI's camelCase names.
-    const val GET_INFO = "get_info"
-    const val GET_MESSAGES = "get_messages"
-    const val GET_MESSAGES_FROM = "get_messages_from"
-    const val GET_PROFILES = "get_profiles"
-    const val GET_UNREAD_COUNT = "get_unread_count"
-
-    // Calls: through the app instance's log.
-    const val SEND_MESSAGE = "send_message"
-    const val EDIT_MESSAGE = "edit_message"
-    const val DELETE_MESSAGE = "delete_message"
-    const val UPDATE_REACTION = "update_reaction"
-    const val SET_PROFILE = "set_profile"
-    const val MARK_AS_READ = "mark_as_read"
-
-    val VIEWS: Set<String> = setOf(GET_INFO, GET_MESSAGES, GET_MESSAGES_FROM, GET_PROFILES, GET_UNREAD_COUNT)
-}
-
 /**
- * Argument objects, key for key what the web app sends (app/src/api/dataSource/clientApiDataSource.ts
- * and app/src/chat/ChatContainer.tsx). Where the web app leaves an optional argument `undefined` —
- * which `JSON.stringify` drops — the key is omitted here too, and the contract reads it as `None`.
+ * The contract's limits, and the init arguments of a new channel. Calls and views go through the
+ * generated `ChatClient` (`generated/client`, from `logic/res/abi.json`), which names the methods
+ * and their arguments; [ChatRepository] is the one place that calls it.
  */
 object ChatArgs {
     /** The web app's `MESSAGE_PAGE_SIZE`. */
@@ -49,106 +26,9 @@ object ChatArgs {
     const val MAX_CHANNEL_NAME_BYTES = 64
 
     /**
-     * `get_messages(parent_message, limit, offset, search_term)`: a window counted back from the
-     * END, offset 0 being the newest page — what the web app asks for to open and to refresh a
-     * channel.
-     */
-    fun getMessages(
-        limit: Int = PAGE_SIZE,
-        offset: Int = 0,
-        parentMessage: String? = null,
-        searchTerm: String? = null,
-    ): JsonObject =
-        buildJsonObject {
-            parentMessage?.let { put("parent_message", it) }
-            put("limit", limit)
-            put("offset", offset)
-            searchTerm?.takeIf { it.isNotEmpty() }?.let { put("search_term", it) }
-        }
-
-    /** `get_messages_from(start, limit)`: by absolute position, ascending — the resumable read. */
-    fun getMessagesFrom(
-        start: Long,
-        limit: Int,
-    ): JsonObject =
-        buildJsonObject {
-            put("start", start)
-            put("limit", limit)
-        }
-
-    /**
-     * `send_message(message, mentions, mentions_usernames, parent_message, timestamp, files, images)`.
-     * `mentions` and `mentions_usernames` are required vectors; the rest stay absent when unused,
-     * as on the web.
-     */
-    fun sendMessage(
-        text: String,
-        timestampSecs: Long,
-        mentions: List<String> = emptyList(),
-        mentionUsernames: List<String> = emptyList(),
-        parentMessage: String? = null,
-    ): JsonObject =
-        buildJsonObject {
-            put("message", text)
-            put("mentions", JsonArray(mentions.map { JsonPrimitive(it) }))
-            put("mentions_usernames", JsonArray(mentionUsernames.map { JsonPrimitive(it) }))
-            parentMessage?.let { put("parent_message", it) }
-            put("timestamp", timestampSecs)
-        }
-
-    /** `edit_message(message_id, new_message, timestamp, parent_id)`. */
-    fun editMessage(
-        messageId: String,
-        newText: String,
-        timestampSecs: Long,
-        parentId: String? = null,
-    ): JsonObject =
-        buildJsonObject {
-            put("message_id", messageId)
-            put("new_message", newText)
-            put("timestamp", timestampSecs)
-            parentId?.let { put("parent_id", it) }
-        }
-
-    /** `delete_message(message_id, parent_id)`. */
-    fun deleteMessage(
-        messageId: String,
-        parentId: String? = null,
-    ): JsonObject =
-        buildJsonObject {
-            put("message_id", messageId)
-            parentId?.let { put("parent_id", it) }
-        }
-
-    /** `update_reaction(message_id, emoji, add)`. */
-    fun updateReaction(
-        messageId: String,
-        emoji: String,
-        add: Boolean,
-    ): JsonObject =
-        buildJsonObject {
-            put("message_id", messageId)
-            put("emoji", emoji)
-            put("add", add)
-        }
-
-    /** `set_profile(username, avatar)`; the web app sends `avatar: null` explicitly. */
-    fun setProfile(username: String): JsonObject =
-        buildJsonObject {
-            put("username", username)
-            put("avatar", JsonNull)
-        }
-
-    /** `mark_as_read(timestamp)`, seconds. */
-    fun markAsRead(timestampSecs: Long): JsonObject = buildJsonObject { put("timestamp", timestampSecs) }
-
-    /** The empty object the argument-less views take. */
-    fun none(): JsonObject = JsonObject(emptyMap())
-
-    /**
      * `init(name?, contextType?, description?, creatorUsername?)` for a new channel, in the
-     * component ABI's names (the web's `initArgsFrom`). The node hands them to the instance as they
-     * are, so they skip [ComponentChatContract]; `createdAt` comes from the log's clock.
+     * component ABI's names (the web's `initArgsFrom`). The node hands them to the new instance as
+     * they are, when it creates it; `createdAt` comes from the log's clock.
      */
     fun channelInit(
         name: String,

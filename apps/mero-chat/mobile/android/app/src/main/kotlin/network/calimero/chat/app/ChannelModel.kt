@@ -284,7 +284,7 @@ class ChannelModel(
         require(item != null && item.mine) { "You can only change your own messages." }
     }
 
-    /** Look up names for senders not known yet (`get_profiles`, one call for all of them). */
+    /** Look up names for senders not known yet (`getProfiles`, one call for all of them). */
     private suspend fun ensureNames(messages: List<ChatMessage>) {
         if (messages.none { it.sender !in names }) return
         try {

@@ -15,7 +15,7 @@ the SDK's sealed channel (kotlin-sdk `4.0.0`). Contract calls use the component 
 |---|---|---|
 | Sign in | **Calimero Cloud**: the cluster's name (nodes from the node directory) or a node's URL, then the device's passkey (Credential Manager) or a new account. **Development node**: a `merod local` URL with mock attestation, and a software passkey kept on the device | `CalimeroClient.connect(CalimeroConnectOptions(cluster=…))`, `MeroAppSession.signIn` / `signUp` |
 | Persist the session | Kept in Keystore-backed encrypted preferences with the node it lives on; restored on launch | `EncryptedSessionStore`, `MeroAppSession.restore` |
-| Read and write | Views and calls on `/apps/{app}`, sealed. `ComponentChatContract` maps v1's names and shapes to the ABI's: camelCase, `u64`s as decimal strings | `MeroAppBackend.contract` |
+| Read and write | Views and calls on `/apps/{app}`, sealed, through `ChatClient`: the typed client `scripts/mobile-codegen.sh` generates from the ABI (camelCase names, `u64`s as decimal strings on the wire). `ChatRepository` turns its answers into the app's models | `MeroAppBackend.contract.bound(app)` |
 | Create a workspace | Found an org for chat, then `#general` | `foundNamespace` |
 | Create a channel | An open channel is an app instance of chat in the org itself, as the web makes them. A private one gets its own team that admits by invitation | `createContext`, `createSubgroup` |
 | Invite | An org invite token (a passkey step-up: the Activity's `PlatformPasskey` is the session's `passkey` while it lives) | `createInvitation` |
@@ -32,10 +32,10 @@ the SDK's sealed channel (kotlin-sdk `4.0.0`). Contract calls use the component 
 - Channels per workspace: list (joined, open-but-not-joined, unread counts), create (public or
   private), join an open channel on first open. DMs the web app created appear under "Direct
   messages" and open like channels.
-- A channel: the newest 20 messages (`get_messages`, the web app's page size), older pages on
-  demand by stable index (`get_messages_from`), catch-up of anything missed, send, edit and delete
-  your own messages, reactions (`update_reaction`), your name in a channel (`set_profile`),
-  `mark_as_read` on open.
+- A channel: the newest 20 messages (`getMessages`, the web app's page size), older pages on
+  demand by stable index (`getMessagesFrom`), catch-up of anything missed, send, edit and delete
+  your own messages, reactions (`updateReaction`), your name in a channel (`setProfile`),
+  `markAsRead` on open.
 
 Invitation links are the SDKs' `OrgInvitation`:
 `https://links.calimero.network/com.calimero.chat/join?invitation=<base58(deflate(payload))>` with
@@ -92,21 +92,24 @@ party; they are not set up yet.
 
 ```
 app/src/main/kotlin/network/calimero/chat/
-  data/   contract wire models (ChatWire), argument builders (ChatContract), invitation links,
-          error copy, ChatBackend + MeroChatBackend (the SDK adapter), ComponentChatContract,
-          ChatRepository, MessageWindow
+  data/   the app's contract models and their mapping from the generated client (ChatWire),
+          limits, init arguments and input checks (ChatContract), invitation links, error copy,
+          ChatBackend + MeroChatBackend (the SDK adapter), ChatRepository, MessageWindow
+  generated/client/   ChatClient, generated from ../../logic/res/abi.json by
+          scripts/mobile-codegen.sh (do not edit; CI's `Mobile clients` checks it is current)
   app/    view models as plain state holders (WorkspacesModel, ChannelsModel, ChannelModel),
           ApprovalsModel, SessionStage, ProfileStore, and the Android ChatAppViewModel that owns the
           MeroAppSession
   ui/     Compose screens and the NavHost
-app/src/test/   unit tests; fixtures/ holds contract outputs in the shape serde writes them
+app/src/test/   unit tests; fixtures/ holds contract answers in the ABI's wire shape
 ```
 
 ## Tests
 
-`./gradlew testDebugUnitTest` runs JVM tests against mero-testkit's `InMemoryAppBackend`. They
-cover the argument object of every method, the component ABI's wire (names, `u64` strings, answers
-back in v1's shapes), result parsing from contract-shaped fixtures, paging (newest page, older
+`./gradlew testDebugUnitTest` runs JVM tests against mero-testkit's `InMemoryAppBackend` and a
+recording contract double behind the generated `ChatClient` (`RecordingChatContract`). They cover
+the arguments of every method the app calls, the component ABI's wire (names, `u64` strings),
+reading the client's answers into the app's models from ABI-shaped fixtures, paging (newest page, older
 windows by index, gap catch-up), channel creation in the org and in a private team, founding,
 invitation links (the SDKs' and the web's), redeeming, approvals with the confirmation code, and
 error copy.

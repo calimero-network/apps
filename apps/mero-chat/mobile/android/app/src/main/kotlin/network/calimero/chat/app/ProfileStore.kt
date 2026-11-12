@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The name this person goes by, registered with `set_profile` in each channel they create or join
+ * The name this person goes by, registered with `setProfile` in each channel they create or join
  * (the web app's `getMessengerDisplayName`). Not a secret, so plain storage; the session itself
  * lives in the SDK's encrypted session store.
  */

@@ -5,8 +5,8 @@ import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.app.OrgInvitation
 import kotlinx.coroutines.flow.Flow
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import network.calimero.chat.generated.client.ChatClient
 
 /**
  * Everything the chat layer needs from a signed-in account on a Calimero 1.0 cluster. In 1.0 words
@@ -21,19 +21,12 @@ interface ChatBackend {
 
     // ---- contract calls ------------------------------------------------------------------
 
-    /** Run a view as the account (`POST /apps/{app}` view, over the sealed channel). */
-    suspend fun view(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement?
-
-    /** Run a call as the account (through the instance's log). */
-    suspend fun write(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement?
+    /**
+     * The generated contract client of chat's app instance [contextId]: its views and calls run as
+     * the account, over the sealed channel (`POST /apps/{app}`). Throws [ChatNotReadyException]
+     * while signed out.
+     */
+    fun chat(contextId: String): ChatClient
 
     // ---- workspaces (orgs) and channels (app instances) ----------------------------------
 

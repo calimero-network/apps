@@ -1,17 +1,16 @@
 package network.calimero.chat.data
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import network.calimero.chat.generated.client.ChatClient
 
 /*
- * What the `com.calimero.chat` contract (apps/mero-chat/logic/src/lib.rs) returns, as serde writes
- * it: snake_case keys, `Option` as null or absent, `UserId` as a base58 string, `u64` timestamps in
- * seconds. Only the fields this app reads are required; everything else has a default, so a
- * contract that adds a field does not break the app.
+ * The app's models of what the `com.calimero.chat` contract answers. The generated [ChatClient]
+ * (from `logic/res/abi.json`, by `scripts/mobile-codegen.sh`) reads the wire: camelCase fields,
+ * `u64`s as decimal strings, `Option` as null. The functions at the end of this file turn its typed
+ * answers into these models, which the view models and screens keep using.
  */
 
-/** The one JSON configuration for contract arguments and results. */
+/** The JSON configuration for what this app parses itself (invitation links). */
 internal val chatJson: Json =
     Json {
         ignoreUnknownKeys = true
@@ -19,61 +18,54 @@ internal val chatJson: Json =
         coerceInputValues = true
     }
 
-/** `AttachmentPublic`. Shown by name only: blob download is not part of this app yet. */
-@Serializable
+/** `AttachmentView`. Shown by name only: blob download is not part of this app yet. */
 data class ChatAttachment(
     val name: String = "",
-    @SerialName("mime_type") val mimeType: String = "",
+    val mimeType: String = "",
     val size: Long = 0,
-    @SerialName("blob_id") val blobId: String = "",
-    @SerialName("uploaded_at") val uploadedAt: Long = 0,
+    val blobId: String = "",
+    val uploadedAt: Long = 0,
 )
 
-/**
- * `MessageWithReactions` (`get_messages`, `get_messages_from`); `send_message` / `edit_message`
- * return the slimmer `Message`, which decodes into this with [index] 0.
- */
-@Serializable
+/** `MessageView` (`getMessages`, `getMessagesFrom`, and what `sendMessage` / `editMessage` answer). */
 data class ChatMessage(
-    /** Position in the channel's append-only vector: a stable cursor (lib.rs `MessageWithReactions::index`). */
+    /** Position in the channel's append-only vector: a stable cursor (lib.rs `MessageView::index`). */
     val index: Long = 0,
     val id: String,
     val text: String = "",
-    /** The sender's account, base58 — taken from the entry's owner stamp by the contract. */
+    /** The sender's account, taken from the entry's owner stamp by the contract. */
     val sender: String = "",
     /** Seconds since the epoch, as the sender's client stamped it. */
     val timestamp: Long = 0,
     val mentions: List<String> = emptyList(),
-    @SerialName("mentions_usernames") val mentionsUsernames: List<String> = emptyList(),
+    val mentionsUsernames: List<String> = emptyList(),
     val files: List<ChatAttachment> = emptyList(),
     val images: List<ChatAttachment> = emptyList(),
-    @SerialName("edited_on") val editedOn: Long? = null,
-    /** Emoji → the accounts (base58) that reacted with it. Null for a deleted message. */
+    val editedOn: Long? = null,
+    /** Emoji to the accounts that reacted with it. Null for a deleted message. */
     val reactions: Map<String, List<String>>? = null,
     val deleted: Boolean? = null,
-    @SerialName("thread_count") val threadCount: Int = 0,
-    @SerialName("thread_last_timestamp") val threadLastTimestamp: Long = 0,
-    @SerialName("parent_message_id") val parentMessageId: String? = null,
+    val threadCount: Int = 0,
+    val threadLastTimestamp: Long = 0,
+    val parentMessageId: String? = null,
 ) {
     val isDeleted: Boolean get() = deleted == true
     val isEdited: Boolean get() = editedOn != null
 }
 
 /** `FullMessageResponse`. */
-@Serializable
 data class ChatMessagePage(
-    @SerialName("total_count") val totalCount: Long = 0,
+    val totalCount: Long = 0,
     val messages: List<ChatMessage> = emptyList(),
-    @SerialName("start_position") val startPosition: Long = 0,
+    val startPosition: Long = 0,
 )
 
-/** `ContextInfo` (`get_info`). `context_type` is the serde name of `ContextType`: `Channel` or `Dm`. */
-@Serializable
+/** `ContextInfo` (`getInfo`). [contextType] is the `ContextType` variant's name: `Channel` or `Dm`. */
 data class ChatContextInfo(
     val name: String = "",
-    @SerialName("context_type") val contextType: String = CONTEXT_TYPE_CHANNEL,
+    val contextType: String = CONTEXT_TYPE_CHANNEL,
     val description: String = "",
-    @SerialName("created_at") val createdAt: Long = 0,
+    val createdAt: Long = 0,
     val creator: String = "",
 ) {
     val isDm: Boolean get() = contextType == CONTEXT_TYPE_DM
@@ -84,11 +76,51 @@ data class ChatContextInfo(
     }
 }
 
-/** `UserProfile` (`get_profiles`). */
-@Serializable
+/** `UserProfile` (`getProfiles`). */
 data class ChatProfile(
-    /** base58 account. */
+    /** The account. */
     val identity: String,
     val username: String = "",
     val avatar: String? = null,
 )
+
+// ---- the generated client's answers as the app's models ----------------------------------------
+
+internal fun ChatClient.AttachmentView.toChatAttachment(): ChatAttachment = ChatAttachment(name, mimeType, size.toLong(), blobId, uploadedAt.toLong())
+
+internal fun ChatClient.MessageView.toChatMessage(): ChatMessage =
+    ChatMessage(
+        index = index.toLong(),
+        id = id,
+        text = text,
+        sender = sender,
+        timestamp = timestamp.toLong(),
+        mentions = mentions,
+        mentionsUsernames = mentionsUsernames,
+        files = files.map { it.toChatAttachment() },
+        images = images.map { it.toChatAttachment() },
+        editedOn = editedOn?.toLong(),
+        reactions = reactions,
+        deleted = deleted,
+        threadCount = threadCount.toInt(),
+        threadLastTimestamp = threadLastTimestamp.toLong(),
+        parentMessageId = parentMessageId,
+    )
+
+internal fun ChatClient.FullMessageResponse.toChatMessagePage(): ChatMessagePage =
+    ChatMessagePage(totalCount.toLong(), messages.map { it.toChatMessage() }, startPosition.toLong())
+
+internal fun ChatClient.ContextInfo.toChatContextInfo(): ChatContextInfo =
+    ChatContextInfo(
+        name = name,
+        contextType =
+            when (contextType) {
+                ChatClient.ContextType.Channel -> ChatContextInfo.CONTEXT_TYPE_CHANNEL
+                ChatClient.ContextType.Dm -> ChatContextInfo.CONTEXT_TYPE_DM
+            },
+        description = description,
+        createdAt = createdAt.toLong(),
+        creator = creator,
+    )
+
+internal fun ChatClient.UserProfile.toChatProfile(): ChatProfile = ChatProfile(identity, username, avatar)

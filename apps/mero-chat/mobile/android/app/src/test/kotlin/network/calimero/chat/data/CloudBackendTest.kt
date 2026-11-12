@@ -10,10 +10,8 @@ import com.calimero.mero.testkit.InMemoryAppBackend
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -21,52 +19,63 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The chat layer over kotlin-sdk's app backend, and the component ABI's wire (`logic/res/abi.json`)
- * as the web's `meroChat.ts` converts it. (Swift `CloudBackendTests`, `ComponentChatContractTests`.)
+ * The chat layer over kotlin-sdk's app backend, through the generated `ChatClient` and the component
+ * ABI's wire (`logic/res/abi.json`), as the web's `meroChat.ts` sends and reads it. (Swift
+ * `CloudBackendTests`, `ComponentChatContractTests`.)
  */
 class CloudBackendTest {
     private val org = "aa".repeat(32)
 
     @Test
-    fun `methods and arguments go to camelCase, u64s as strings`() {
-        assertEquals("getMessagesFrom", ComponentChatContract.method("get_messages_from"))
-        val args = ComponentChatContract.args(ChatArgs.sendMessage("hi", 1_760_000_000, mentionUsernames = listOf("ana"), parentMessage = "m_1"))
-        assertEquals(JsonPrimitive("1760000000"), args["timestamp"])
-        assertEquals(JsonPrimitive("m_1"), args["parentMessage"])
-        assertEquals(JsonArray(listOf(JsonPrimitive("ana"))), args["mentionsUsernames"])
-        assertEquals(
-            Json.parseToJsonElement("""{"start":"40","limit":20}"""),
-            ComponentChatContract.args(ChatArgs.getMessagesFrom(40, 20)),
-        )
-        assertEquals(
-            Json.parseToJsonElement("""{"messageId":"m","newMessage":"t","timestamp":"5","parentId":"p"}"""),
-            ComponentChatContract.args(ChatArgs.editMessage("m", "t", 5, parentId = "p")),
-        )
-    }
+    fun `arguments go out in the ABI's names, u64s as strings`() =
+        runBlocking {
+            val app = InMemoryAppBackend()
+            app.recording.handler = { call ->
+                if (call.method == "getMessagesFrom") Json.parseToJsonElement("""{"totalCount":0,"messages":[],"startPosition":40}""") else null
+            }
+            val repo = ChatRepository(MeroChatBackend(app), nowSecs = { 1_760_000_000 })
+            repo.edit("app-general", "m", "t")
+            assertEquals(40L, repo.messagesFrom("app-general", 40, 20).startPosition)
+            val (edit, from) = app.recording.calls
+            assertEquals("editMessage", edit.method)
+            assertEquals(
+                Json.parseToJsonElement("""{"messageId":"m","newMessage":"t","timestamp":"1760000000","parentId":null}"""),
+                edit.args,
+            )
+            assertEquals("getMessagesFrom", from.method)
+            assertEquals(Json.parseToJsonElement("""{"start":"40","limit":20}"""), from.args)
+        }
 
     @Test
-    fun `answers come back in v1 shapes`() {
-        val answer =
-            Json.parseToJsonElement(
-                """
-                {"totalCount":1,"startPosition":0,"messages":[{"index":"7","timestamp":"1760000000","sender":"acc",
-                 "mentions":[],"mentionsUsernames":["ana"],"files":[],"images":[{"name":"a.png","mimeType":"image/png",
-                 "size":"10","blobId":"b","uploadedAt":"1760000001"}],"id":"m_1","text":"hi","editedOn":null,
-                 "reactions":{"👍":["acc"]},"deleted":null,"threadCount":2,"threadLastTimestamp":"1760000002",
-                 "parentMessageId":null}]}
-                """,
-            )
-        val v1 = ComponentChatContract.result(answer, "get_messages")!!.jsonObject
-        val message = v1["messages"]!!.jsonArray[0].jsonObject
-        assertEquals(JsonPrimitive(7L), message["index"])
-        assertEquals(JsonPrimitive(1_760_000_000L), message["timestamp"])
-        assertEquals(JsonPrimitive(1_760_000_002L), message["thread_last_timestamp"])
-        assertEquals(JsonPrimitive("image/png"), message["images"]!!.jsonArray[0].jsonObject["mime_type"])
-        assertEquals(JsonArray(listOf(JsonPrimitive("acc"))), message["reactions"]!!.jsonObject["👍"])
-        val page = chatJson.decodeFromJsonElement(ChatMessagePage.serializer(), v1)
-        assertEquals("m_1", page.messages.single().id)
-        assertEquals(JsonPrimitive(12L), ComponentChatContract.result(JsonPrimitive("12"), "get_message_count"))
-    }
+    fun `answers in the ABI's shape become the app's models`() =
+        runBlocking {
+            val answer =
+                Json.parseToJsonElement(
+                    """
+                    {"totalCount":1,"startPosition":0,"messages":[{"index":"7","timestamp":"1760000000","sender":"acc",
+                     "mentions":[],"mentionsUsernames":["ana"],"files":[],"images":[{"name":"a.png","mimeType":"image/png",
+                     "size":"10","blobId":"b","uploadedAt":"1760000001"}],"id":"m_1","text":"hi","editedOn":null,
+                     "reactions":{"👍":["acc"]},"deleted":null,"threadCount":2,"threadLastTimestamp":"1760000002",
+                     "parentMessageId":null}]}
+                    """,
+                )
+            val app = InMemoryAppBackend()
+            app.recording.handler = { call -> if (call.method == "getMessages") answer else Json.parseToJsonElement("\"12\"") }
+            val message =
+                ChatRepository(MeroChatBackend(app))
+                    .newestMessages("app-general")
+                    .messages
+                    .single()
+            assertEquals("m_1", message.id)
+            assertEquals(7L, message.index)
+            assertEquals(1_760_000_000L, message.timestamp)
+            assertEquals(1_760_000_002L, message.threadLastTimestamp)
+            assertEquals(listOf("ana"), message.mentionsUsernames)
+            assertEquals("image/png", message.images.single().mimeType)
+            assertEquals(10L, message.images.single().size)
+            assertEquals(mapOf("👍" to listOf("acc")), message.reactions)
+            assertEquals(12uL, MeroChatBackend(app).chat("app-general").getMessageCount())
+        }
 
     @Test
     fun `contract calls reach the app instance in the ABI's names`() =

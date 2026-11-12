@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import network.calimero.chat.BuildConfig
 import network.calimero.chat.data.Channel
@@ -43,6 +42,7 @@ import network.calimero.chat.data.JoinedWorkspace
 import network.calimero.chat.data.MeroChatBackend
 import network.calimero.chat.data.Workspace
 import network.calimero.chat.data.describeChatError
+import network.calimero.chat.generated.client.ChatClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import java.lang.ref.WeakReference
@@ -315,17 +315,7 @@ private class SessionChatBackend(
 
     override val accountId: String? get() = current()?.accountId
 
-    override suspend fun view(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement? = live().view(contextId, method, args)
-
-    override suspend fun write(
-        contextId: String,
-        method: String,
-        args: JsonObject,
-    ): JsonElement? = live().write(contextId, method, args)
+    override fun chat(contextId: String): ChatClient = live().chat(contextId)
 
     override suspend fun listWorkspaces() = live().listWorkspaces()
 

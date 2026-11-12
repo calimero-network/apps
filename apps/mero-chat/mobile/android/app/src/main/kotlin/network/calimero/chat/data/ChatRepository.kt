@@ -6,13 +6,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.SerializationException
+import network.calimero.chat.generated.client.ChatClient
 
 /** An org running chat. */
 data class Workspace(
@@ -21,7 +16,7 @@ data class Workspace(
     val memberCount: Int = 0,
 )
 
-/** An app instance of chat: a channel, or a DM (same contract, `context_type: Dm`). */
+/** An app instance of chat: a channel, or a DM (same contract, `contextType: Dm`). */
 data class Channel(
     val contextId: String,
     /** The group it lives in: the org itself (an open channel or a DM), or a team (a private channel). */
@@ -42,8 +37,8 @@ data class ChannelListing(
 
 /**
  * The chat app's operations, in terms of the contract and the delegated session. Holds no state of
- * its own; the view models do. Every argument object comes from [ChatArgs], every result is decoded
- * with the models in ChatWire.kt.
+ * its own; the view models do. Contract calls go through the generated [ChatClient] of each app
+ * instance, and its typed answers become the app's models in ChatWire.kt.
  */
 @Suppress("TooManyFunctions")
 class ChatRepository(
@@ -93,7 +88,7 @@ class ChatRepository(
     /**
      * The workspace's conversations: the org's own app instances (open channels and DMs, as the
      * web app makes them) and those of each of its teams (private channels), named by the
-     * contract's `get_info` where the account can read it. DMs are told apart by `context_type` or
+     * contract's `getInfo` where the account can read it. DMs are told apart by `contextType` or
      * by their `DM_CONTEXT_` name.
      */
     suspend fun channels(workspaceId: String): ChannelListing =
@@ -172,37 +167,43 @@ class ChatRepository(
 
     // ---- contract reads ------------------------------------------------------------------
 
-    suspend fun info(contextId: String): ChatContextInfo = view(contextId, ChatMethods.GET_INFO, ChatArgs.none(), ChatContextInfo.serializer())
+    suspend fun info(contextId: String): ChatContextInfo = read("getInfo") { chat(contextId).getInfo().toChatContextInfo() }
 
-    /** The newest page: `get_messages` at offset 0. */
+    /** The newest page: `getMessages` at offset 0. */
     suspend fun newestMessages(
         contextId: String,
         limit: Int = ChatArgs.PAGE_SIZE,
-    ): ChatMessagePage = view(contextId, ChatMethods.GET_MESSAGES, ChatArgs.getMessages(limit = limit, offset = 0), ChatMessagePage.serializer())
+    ): ChatMessagePage = read("getMessages") { chat(contextId).getMessages(limit = limit.toUInt(), offset = 0u).toChatMessagePage() }
 
-    /** Messages by absolute position: `get_messages_from(start, limit)`. */
+    /** Messages by absolute position: `getMessagesFrom(start, limit)`. */
     suspend fun messagesFrom(
         contextId: String,
         start: Long,
         limit: Int,
-    ): ChatMessagePage = view(contextId, ChatMethods.GET_MESSAGES_FROM, ChatArgs.getMessagesFrom(start, limit), ChatMessagePage.serializer())
+    ): ChatMessagePage =
+        read("getMessagesFrom") {
+            chat(contextId).getMessagesFrom(start.coerceAtLeast(0).toULong(), limit.toUInt()).toChatMessagePage()
+        }
 
-    suspend fun profiles(contextId: String): List<ChatProfile> =
-        view(contextId, ChatMethods.GET_PROFILES, ChatArgs.none(), ListSerializer(ChatProfile.serializer()))
+    suspend fun profiles(contextId: String): List<ChatProfile> = read("getProfiles") { chat(contextId).getProfiles().map { it.toChatProfile() } }
 
-    suspend fun unreadCount(contextId: String): Int {
-        val out = backend.view(contextId, ChatMethods.GET_UNREAD_COUNT, ChatArgs.none())
-        return ((out as? JsonPrimitive)?.longOrNull ?: 0L).toInt()
-    }
+    suspend fun unreadCount(contextId: String): Int = read("getUnreadCount") { chat(contextId).getUnreadCount().toInt() }
 
     // ---- contract writes -----------------------------------------------------------------
 
+    /** Send [text]; the message as the contract stored it, or null when its answer cannot be read. */
     suspend fun send(
         contextId: String,
         text: String,
     ): ChatMessage? {
         ChatValidation.messageError(text)?.let { throw IllegalArgumentException(it) }
-        return decodeOrNull(backend.write(contextId, ChatMethods.SEND_MESSAGE, ChatArgs.sendMessage(text, nowSecs())), ChatMessage.serializer())
+        val client = chat(contextId)
+        return try {
+            val sent = client.sendMessage(message = text, mentions = emptyList(), mentionsUsernames = emptyList(), timestamp = nowSecs().toTimestamp())
+            sent.toChatMessage()
+        } catch (_: SerializationException) {
+            null
+        }
     }
 
     suspend fun edit(
@@ -211,14 +212,14 @@ class ChatRepository(
         text: String,
     ) {
         ChatValidation.messageError(text)?.let { throw IllegalArgumentException(it) }
-        backend.write(contextId, ChatMethods.EDIT_MESSAGE, ChatArgs.editMessage(messageId, text, nowSecs()))
+        written { chat(contextId).editMessage(messageId, text, nowSecs().toTimestamp()) }
     }
 
     suspend fun delete(
         contextId: String,
         messageId: String,
     ) {
-        backend.write(contextId, ChatMethods.DELETE_MESSAGE, ChatArgs.deleteMessage(messageId))
+        written { chat(contextId).deleteMessage(messageId) }
     }
 
     suspend fun react(
@@ -228,7 +229,7 @@ class ChatRepository(
         add: Boolean,
     ) {
         ChatValidation.emojiError(emoji)?.let { throw IllegalArgumentException(it) }
-        backend.write(contextId, ChatMethods.UPDATE_REACTION, ChatArgs.updateReaction(messageId, emoji, add))
+        written { chat(contextId).updateReaction(messageId, emoji, add) }
     }
 
     /**
@@ -240,7 +241,7 @@ class ChatRepository(
         username: String,
     ) {
         ChatValidation.usernameError(username)?.let { throw IllegalArgumentException(it) }
-        backend.write(contextId, ChatMethods.SET_PROFILE, ChatArgs.setProfile(username.trim()))
+        written { chat(contextId).setProfile(username.trim(), avatar = null) }
     }
 
     /**
@@ -260,33 +261,39 @@ class ChatRepository(
         return true
     }
 
-    /** Record that the account has read [contextId] up to now (`mark_as_read`, cross-device). */
+    /** Record that the account has read [contextId] up to now (`markAsRead`, cross-device). */
     suspend fun markRead(contextId: String) {
-        backend.write(contextId, ChatMethods.MARK_AS_READ, ChatArgs.markAsRead(nowSecs()))
+        written { chat(contextId).markAsRead(nowSecs().toTimestamp()) }
     }
 
     fun changes(contextId: String): Flow<Unit>? = backend.changes(contextId)
 
     // ---- helpers ---------------------------------------------------------------------------
 
-    private suspend fun <T> view(
-        contextId: String,
+    private fun chat(contextId: String): ChatClient = backend.chat(contextId)
+
+    /** A view's answer as the app's model; one this app cannot read is an [IllegalStateException] naming [method]. */
+    private suspend fun <T> read(
         method: String,
-        args: JsonObject,
-        serializer: KSerializer<T>,
-    ): T {
-        val out = backend.view(contextId, method, args) ?: JsonNull
-        return try {
-            chatJson.decodeFromJsonElement(serializer, out)
-        } catch (e: IllegalArgumentException) {
+        block: suspend () -> T,
+    ): T =
+        try {
+            block()
+        } catch (e: SerializationException) {
             throw IllegalStateException("$method answered something this app cannot read: ${e.message}", e)
+        }
+
+    /** A call whose answer (the contract's acknowledgement, or the changed message) the app does not read. */
+    private suspend fun written(block: suspend () -> Any?) {
+        try {
+            block()
+        } catch (_: SerializationException) {
+            // The call went through; only its answer is not one this app reads.
         }
     }
 
-    private fun <T> decodeOrNull(
-        out: JsonElement?,
-        serializer: KSerializer<T>,
-    ): T? = out?.takeUnless { it is JsonNull }?.let { runCatching { chatJson.decodeFromJsonElement(serializer, it) }.getOrNull() }
+    /** Seconds since the epoch as the contract's `u64` (a clock before 1970 reads as 0). */
+    private fun Long.toTimestamp(): ULong = coerceAtLeast(0).toULong()
 
     private suspend fun <T> optional(block: suspend () -> T): T? =
         try {
