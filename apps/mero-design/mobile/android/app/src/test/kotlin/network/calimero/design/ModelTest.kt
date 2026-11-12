@@ -238,9 +238,11 @@ class ModelTest {
             backend.recording.handler = { call -> if (call.method == "getRole") JsonPrimitive("viewer") else JsonNull }
             val client = backend.designClient("board")
             client.updateCursor(-3, 4, 1_700_000_000_000uL)
-            assertEquals("""{"x":"-3","y":"4","updatedAt":"1700000000000"}""", backend.recording.calls("updateCursor").first().args.toString())
+            val cursor = backend.recording.calls("updateCursor").first()
+            assertEquals("""{"x":"-3","y":"4","updatedAt":"1700000000000"}""", cursor.args.toString())
             client.getRole("ab")
-            assertEquals("""{"member":"ab"}""", backend.recording.calls("getRole").first().args.toString())
+            val role = backend.recording.calls("getRole").first()
+            assertEquals("""{"member":"ab"}""", role.args.toString())
         }
 
     @Test
