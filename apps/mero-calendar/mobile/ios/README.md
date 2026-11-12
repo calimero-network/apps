@@ -121,7 +121,7 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 ### The SDK pin
 
 `Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
-swift-sdk to its `v2.0.0` release (tag commit `189bcb5`). To bump it, change the
+swift-sdk to its `v4.1.0` release (tag commit `807cfe6`). To bump it, change the
 version in all three files.
 
 ### Pointing it at another environment

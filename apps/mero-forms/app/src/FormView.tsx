@@ -6,6 +6,7 @@ import { isLinked } from "./lib/crm";
 import type { FormTab } from "./route";
 import { Icon } from "./ui";
 import { useRead, type Workspace } from "./useWorkspace";
+import { toForm, toForms } from "./formsApi";
 
 const TABS: [FormTab, string][] = [
   ["responses", "Responses"],
@@ -33,8 +34,8 @@ export function FormView({
   appId: string;
   isAdmin: boolean;
 }) {
-  const form = useRead(workspace.client, workspace.version, (c) => c.getForm({ form_id: formId }), [formId]);
-  const summary = useRead(workspace.client, workspace.version, (c) => c.listForms(), []);
+  const form = useRead(workspace.client, workspace.version, (c) => c.getForm({ formId }).then(toForm), [formId]);
+  const summary = useRead(workspace.client, workspace.version, (c) => c.listForms().then(toForms), []);
   const counts = summary.data?.find((f) => f.id === formId);
 
   if (form.error && !form.data) {

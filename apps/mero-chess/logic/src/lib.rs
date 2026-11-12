@@ -175,7 +175,7 @@ struct MoveRecord {
 // decimal strings (D20), like every component app's.
 
 /// One chair.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SeatView {
     /// `white` or `black`: which chair this is, i.e. its colour in game 0.
@@ -187,7 +187,7 @@ pub struct SeatView {
 }
 
 /// One move of the current game.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveView {
     pub ply: u32,
@@ -199,7 +199,7 @@ pub struct MoveView {
 }
 
 /// One person at the table.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
     pub id: String,
@@ -210,7 +210,7 @@ pub struct PlayerView {
 }
 
 /// One game of the table's record.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSummary {
     pub index: u32,
@@ -230,7 +230,7 @@ pub struct GameSummary {
 /// ONE view rather than a dozen getters: every field comes from the same
 /// replay, so a client never paints a board from one moment next to a status
 /// from another.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct TableView {
     pub title: String,
