@@ -45,6 +45,8 @@ CLIENTS=(
   "mero-pixart|kotlin|apps/mero-pixart/mobile/android/app/src/main/kotlin/network/calimero/pixart/generated/client|pixart|network.calimero.pixart.generated.client"
   "mero-sign|swift|apps/mero-sign/mobile/ios/SignCore/Sources/SignCore/Generated|sign|"
   "mero-sign|kotlin|apps/mero-sign/mobile/android/app/src/main/kotlin/network/calimero/sign/generated/client|sign|network.calimero.sign.generated.client"
+  "mero-updates|swift|apps/mero-updates/mobile/ios/Core/Sources/UpdatesCore/Generated|updates|"
+  "mero-updates|kotlin|apps/mero-updates/mobile/android/app/src/main/kotlin/network/calimero/updates/generated/client|updates|network.calimero.updates.generated.client"
 )
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

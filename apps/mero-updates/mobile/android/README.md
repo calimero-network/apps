@@ -29,8 +29,9 @@ mero-testkit's `InMemoryAppBackend`). For a new release, set it to that tag's co
 
 ## Layout
 
-- `app/src/main/kotlin/network/calimero/updates/generated/UpdatesClient.kt`: the contract client
-  in v1 shapes, under which `core/ComponentWire.kt` speaks the component ABI.
+- `app/src/main/kotlin/network/calimero/updates/generated/client/UpdatesClient.kt`: the contract
+  client, generated from the component ABI; `generated/UpdatesRecords.kt` keeps the v1 types the
+  screens read, and `core/ComponentWire.kt` converts between them and the client's JSON.
 - `core/`: pure helpers ported from the web app's `lib/` (formatting, KPI parsing and deltas,
   templates and the composer state, whose JSON is the web draft's), the invitation link format
   and the error wording.

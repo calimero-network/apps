@@ -9,13 +9,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.updates.core.Catalog
 import network.calimero.updates.core.ErrorText
 import network.calimero.updates.core.Format
+import network.calimero.updates.core.toUpdates
 import network.calimero.updates.generated.AskView
 import network.calimero.updates.generated.ContributionView
 import network.calimero.updates.generated.EngagementRow
 import network.calimero.updates.generated.MetricSeries
 import network.calimero.updates.generated.PersonView
 import network.calimero.updates.generated.PostCard
-import network.calimero.updates.generated.UpdatesClient
+import network.calimero.updates.generated.PostPage
+import network.calimero.updates.generated.Settings
+import network.calimero.updates.generated.client.UpdatesClient
 import java.time.Clock
 
 /** Runs [body], putting any failure into [error] as words. False when it failed. */
@@ -53,8 +56,8 @@ class AsksModel(
     suspend fun load() {
         attempt(error) {
             coroutineScope {
-                val asks = async { audience.client.listAsks(_status.value) }
-                val contributions = async { audience.client.listContributions(0uL) }
+                val asks = async { audience.client.listAsks(_status.value).map { it.toUpdates<AskView>() } }
+                val contributions = async { audience.client.listContributions(0uL).map { it.toUpdates<ContributionView>() } }
                 _asks.value = asks.await()
                 _contributions.value = contributions.await()
             }
@@ -91,7 +94,10 @@ class QuestionsModel(
     ): List<PostCard> = if (open) all.filter { it.status == "open" } else all
 
     suspend fun load() {
-        attempt(error) { _questions.value = audience.client.listPosts("question", null, null, FeedModel.PAGE_SIZE).items }
+        attempt(error) {
+            val page = audience.client.listPosts("question", null, null, FeedModel.PAGE_SIZE)
+            _questions.value = page.toUpdates<PostPage>().items
+        }
         _hasLoaded.value = true
     }
 
@@ -121,7 +127,10 @@ class MetricsModel(
     val error = MutableStateFlow<String?>(null)
 
     suspend fun load() {
-        attempt(error) { _series.value = audience.client.listMetrics().filter { it.points.isNotEmpty() } }
+        attempt(error) {
+            val series = audience.client.listMetrics().map { it.toUpdates<MetricSeries>() }
+            _series.value = series.filter { it.points.isNotEmpty() }
+        }
         _hasLoaded.value = true
     }
 }
@@ -144,8 +153,8 @@ class PeopleModel(
 
     suspend fun load() {
         attempt(error) {
-            _people.value = audience.client.listPeople()
-            _engagement.value = if (audience.isTeam) audience.client.getEngagement() else emptyList()
+            _people.value = audience.client.listPeople().map { it.toUpdates<PersonView>() }
+            _engagement.value = if (audience.isTeam) audience.client.getEngagement().map { it.toUpdates<EngagementRow>() } else emptyList()
         }
         _hasLoaded.value = true
     }
@@ -191,7 +200,7 @@ class SettingsModel(
         if (_hasLoaded.value) return
         if (
             attempt(error) {
-                val settings = audience.client.getSettings()
+                val settings = audience.client.getSettings().toUpdates<Settings>()
                 companyName.value = settings.companyName
                 // An audience never saved has cadence 0 and updated_at 0: offer monthly.
                 cadenceDays.value = if (settings.updatedAt > 0uL) settings.cadenceDays else DEFAULT_CADENCE
