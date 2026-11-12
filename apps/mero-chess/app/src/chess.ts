@@ -1,7 +1,11 @@
 import { AppError } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
 
-import type { AppTransport } from "./generated/client";
+import type {
+  AppTransport,
+  GameSummary as WireGameSummary,
+  TableView as WireTableView,
+} from "./generated/client";
 
 /** The package a production instance is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.mero-chess";
@@ -72,48 +76,15 @@ export interface TableView {
 }
 
 // ── The wire (the contract's own answers) ────────────────────────────────────
+//
+// As the generated client types them from the ABI: camelCase, u64s as decimal
+// strings.
 
-export interface WireMove {
-  ply: number;
-  uci: string;
-  san: string;
-  by: string;
-  /** A u64: a decimal string on the wire. */
-  at: string;
-}
-
-export interface WireGameSummary {
-  index: number;
-  startedAt: string;
-  result: string;
-  reason: string;
-  plies: number;
-  white: string;
-  black: string;
-}
-
-export interface WireTableView {
-  title: string;
-  createdAt: string;
-  game: number;
-  fen: string;
-  sideToMove: string;
-  moves: WireMove[];
-  legalMoves: string[];
-  status: string;
-  result: string;
-  reason: string;
-  check: boolean;
-  claimableDraw: string;
-  white: SeatView;
-  black: SeatView;
-  me: string;
-  myColor: string;
-  myTurn: boolean;
-  drawOfferFrom: string;
-  players: PlayerView[];
-  gamesPlayed: number;
-}
+export type {
+  GameSummary as WireGameSummary,
+  MoveView as WireMove,
+  TableView as WireTableView,
+} from "./generated/client";
 
 /** A u64 off the wire. Timestamps here are milliseconds, well inside 2^53. */
 const num = (s: string | number): number => (typeof s === "number" ? s : Number(s));
@@ -158,10 +129,9 @@ export function toGameSummary(w: WireGameSummary): GameSummary {
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
 // The contract is called through `MeroChessClient`, which `mero-app-build
-// codegen` writes from logic/res/abi.json (`src/generated/client.ts`). Its
-// records come out `unknown` (the ABI names `TableView` and `GameSummary`
-// without their shapes), so the answers are typed and converted here, at the
-// call site, by `toTableView` / `toGameSummary`.
+// codegen` writes from logic/res/abi.json (`src/generated/client.ts`), which
+// types its records from the ABI; the answers are converted to the shapes the
+// screens use here, by `toTableView` / `toGameSummary`.
 
 /** `now` as the contract takes it: the caller's clock, a u64 as a decimal string. */
 export const now = (clock: () => number = Date.now): string => String(Math.floor(clock()));

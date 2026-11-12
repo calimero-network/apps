@@ -4,11 +4,71 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `GameSummary`: the ABI names it without its shape. */
-export type GameSummary = unknown;
+/** The app type `GameSummary`. */
+export interface GameSummary {
+  index: number;
+  startedAt: string;
+  result: string;
+  reason: string;
+  plies: number;
+  white: string;
+  black: string;
+}
 
-/** The app type `TableView`: the ABI names it without its shape. */
-export type TableView = unknown;
+/** The app type `MoveView`. */
+export interface MoveView {
+  ply: number;
+  uci: string;
+  san: string;
+  by: string;
+  at: string;
+}
+
+/** The app type `PlayerView`. */
+export interface PlayerView {
+  id: string;
+  name: string;
+  online: boolean;
+  color: string;
+}
+
+/** The app type `SeatView`. */
+export interface SeatView {
+  seat: string;
+  member: string;
+  name: string;
+  online: boolean;
+}
+
+/** The app type `TableView`. */
+export interface TableView {
+  title: string;
+  createdAt: string;
+  game: number;
+  fen: string;
+  sideToMove: string;
+  moves: MoveView[];
+  legalMoves: string[];
+  status: string;
+  result: string;
+  reason: string;
+  check: boolean;
+  claimableDraw: string;
+  white: SeatView;
+  black: SeatView;
+  me: string;
+  myColor: string;
+  myTurn: boolean;
+  drawOfferFrom: string;
+  players: PlayerView[];
+  gamesPlayed: number;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  title?: string | null;
+  now?: string | null;
+}
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

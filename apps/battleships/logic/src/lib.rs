@@ -109,7 +109,7 @@ pub struct Stats {
 
 // ── results ─────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub enum MatchStatus {
     /// Created; a board is not committed yet.
     Pending,
@@ -120,7 +120,7 @@ pub enum MatchStatus {
 }
 
 /// A match as a client sees it. `status` and `winner` are derived.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct MatchSummary {
     pub match_id: String,
     pub player1: String,
@@ -134,7 +134,7 @@ pub struct MatchSummary {
     pub created_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct PlayerStatsView {
     #[serde(with = "calimero_sdk::json::u64_auto")]
     pub wins: u64,
@@ -145,7 +145,7 @@ pub struct PlayerStatsView {
 }
 
 /// A recorded result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct MatchRecord {
     pub match_id: String,
     pub winner: String,
@@ -155,7 +155,7 @@ pub struct MatchRecord {
 }
 
 /// One registered player. `account` and `player` are the same id now.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct PlayerEntry {
     pub account: String,
     pub player: String,
@@ -171,7 +171,7 @@ pub struct ShotsView {
 }
 
 /// The shot waiting for its defender's answer.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct PendingShotView {
     /// What `acknowledgeShot` takes: this shot's turn index, so an answer
     /// meant for an earlier shot is refused instead of misfiled.
@@ -183,7 +183,7 @@ pub struct PendingShotView {
 }
 
 /// The match as every reader derives it, in one read.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct MatchStateView {
     /// `playing`, `awaiting_reveal`, `won` or `void`.
     pub standing: String,

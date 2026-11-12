@@ -17,9 +17,6 @@ import {
   type MatchSummary,
   type PlayerStatsView,
   type ShotsView,
-  type WireMatchRecord,
-  type WireMatchSummary,
-  type WirePlayerStats,
 } from '../../battleships';
 import {
   cellsFromShips,
@@ -440,21 +437,21 @@ export default function MatchPage() {
   const refreshMatchList = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      setMyMatches(((await lobbyApi.contract.getMatches()) as WireMatchSummary[]).map(toMatchSummary));
+      setMyMatches((await lobbyApi.contract.getMatches()).map(toMatchSummary));
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshHistory = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      setHistory(((await lobbyApi.contract.getHistory()) as WireMatchRecord[]).map(toMatchRecord));
+      setHistory((await lobbyApi.contract.getHistory()).map(toMatchRecord));
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshPlayerStats = useCallback(async () => {
     if (!lobbyApi || !currentUser) return;
     try {
-      const stats = (await lobbyApi.contract.getPlayerStats({ player: currentUser })) as WirePlayerStats | null;
+      const stats = await lobbyApi.contract.getPlayerStats({ player: currentUser });
       setPlayerStats(stats ? toPlayerStats(stats) : null);
     } catch { /* non-critical — no record yet for this player */ }
   }, [lobbyApi, currentUser]);
