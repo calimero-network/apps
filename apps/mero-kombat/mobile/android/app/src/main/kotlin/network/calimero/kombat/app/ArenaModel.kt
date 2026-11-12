@@ -16,7 +16,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import network.calimero.kombat.contract.ArenaView
 import network.calimero.kombat.contract.FighterView
-import network.calimero.kombat.contract.KombatContract
 import network.calimero.kombat.contract.MatchSummary
 import network.calimero.kombat.generated.KombatClient
 
@@ -197,7 +196,7 @@ class ArenaModel(
                 readAgain = false
                 val started = System.currentTimeMillis()
                 try {
-                    apply(KombatContract.arenaView(client.arena(nowMillis())))
+                    apply(client.arena(nowMillis()))
                     _state.update { it.copy(error = null) }
                 } catch (e: CancellationException) {
                     throw e
@@ -236,7 +235,7 @@ class ArenaModel(
         val view = _state.value.view ?: return
         val signature = "${view.matchIndex}:${view.winner}"
         if (signature == pastSignature) return
-        runCatching { KombatContract.matchSummaries(client.history()) }.onSuccess { rows ->
+        runCatching { client.history() }.onSuccess { rows ->
             _state.update { it.copy(past = rows) }
             pastSignature = signature
         }

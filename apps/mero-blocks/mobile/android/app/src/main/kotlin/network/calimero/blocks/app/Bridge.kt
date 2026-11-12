@@ -206,14 +206,25 @@ class BridgeRouter(
     )
 
     @Serializable private data class HeartbeatArgs(
-        val t: Transform,
+        @Serializable(with = TransformJson::class) val t: Transform,
         val now: ULong,
     )
 
     @Serializable private data class SetBlocksArgs(
-        val edits: List<Edit>,
+        @Serializable(with = EditsJson::class) val edits: List<Edit>,
         val now: ULong,
     )
+
+    /** [WorldMeta] as the page reads it: `seed` and `createdAt` as numbers, not the wire's decimal strings. */
+    @Serializable private data class PageWorldMeta(
+        val name: String,
+        val seed: ULong,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            fun of(meta: WorldMeta): PageWorldMeta = PageWorldMeta(meta.name, meta.seed, meta.createdAt)
+        }
+    }
 
     /** The method's return value as JSON text, in the shape the page reads. */
     @Suppress("ThrowsCount", "CyclomaticComplexMethod")
@@ -235,17 +246,17 @@ class BridgeRouter(
                 throw BridgeException.badArguments(method, e.message.orEmpty())
             }
         return when (name) {
-            "worldMeta" -> encode(WorldMeta.serializer(), WorldMeta.fromWire(client.worldMeta().asContractJson()))
+            "worldMeta" -> encode(PageWorldMeta.serializer(), PageWorldMeta.of(client.worldMeta()))
             "getOverrides" -> encode(ListSerializer(BlockEntry.serializer()), client.allOverrides())
             "overrideCount" -> encode(UInt.serializer(), client.overrideCount())
             "getPlayers" -> encode(ListSerializer(PlayerView.serializer()), client.allPlayers(args(NowArgs.serializer()).now))
-            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), BlocksContract.JSON.decodeFromJsonElement(PlayerView.serializer(), client.join(it.name, it.now).asContractJson())) }
+            "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), client.join(it.name, it.now)) }
             "leave" -> client.leave(args(NowArgs.serializer()).now).let { NULL }
-            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(it.t.asContractArg(), it.now) }.let { NULL }
+            "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(it.t, it.now) }.let { NULL }
             "setBlocks" ->
                 args(SetBlocksArgs.serializer()).let {
                     checkEdits(method, it.edits)
-                    encode(UInt.serializer(), client.setBlocks(it.edits.map { e -> e.asContractArg<BlocksClient.Edit>() }, it.now))
+                    encode(UInt.serializer(), client.setBlocks(it.edits, it.now))
                 }
             else -> throw BridgeException.unknownMethod(method)
         }
@@ -296,3 +307,9 @@ class BridgeRouter(
             }
     }
 }
+
+/** The generated [Transform]'s JSON form, for the page's `heartbeat` arguments. */
+private object TransformJson : KSerializer<Transform> by Transform.serializer()
+
+/** The generated [Edit]s' JSON form, for the page's `setBlocks` arguments. */
+private object EditsJson : KSerializer<List<Edit>> by ListSerializer(Edit.serializer())

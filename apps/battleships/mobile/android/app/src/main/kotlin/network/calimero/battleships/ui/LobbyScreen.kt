@@ -65,9 +65,9 @@ import network.calimero.battleships.core.ErrorText
 import network.calimero.battleships.core.LoadPhase
 import network.calimero.battleships.core.LobbyModel
 import network.calimero.battleships.core.MatchRecord
-import network.calimero.battleships.core.MatchStatus
 import network.calimero.battleships.core.MatchSummary
 import network.calimero.battleships.core.Names
+import network.calimero.battleships.generated.BattleshipsClient.MatchStatus
 import java.text.DateFormat
 import java.util.Date
 
@@ -216,7 +216,7 @@ fun LobbyScreen(
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                             StatTile(stats?.wins ?: 0uL, "Wins", highlight = true, modifier = Modifier.weight(1f))
                                             StatTile(stats?.losses ?: 0uL, "Losses", modifier = Modifier.weight(1f))
-                                            StatTile(stats?.gamesPlayed ?: 0uL, "Played", modifier = Modifier.weight(1f))
+                                            StatTile(stats?.games_played ?: 0uL, "Played", modifier = Modifier.weight(1f))
                                         }
                                         SectionLabel("History")
                                         val sorted = model.sortedHistory(history)
@@ -285,7 +285,7 @@ private fun MatchRow(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("vs ${Names.player(opponent, me, names)}", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = Palette.Ink)
-                Text(formatMs(match.createdMs), fontSize = 13.sp, color = Palette.Muted)
+                Text(formatMs(match.created_ms), fontSize = 13.sp, color = Palette.Muted)
             }
             when (won) {
                 true -> Badge("Won")
@@ -374,7 +374,7 @@ private fun HistoryRow(
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Palette.Ink)
-                Text(formatMs(result.finishedMs), fontSize = 13.sp, color = Palette.Muted)
+                Text(formatMs(result.finished_ms), fontSize = 13.sp, color = Palette.Muted)
             }
         }
     }

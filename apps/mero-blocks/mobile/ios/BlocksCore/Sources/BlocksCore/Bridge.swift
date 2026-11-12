@@ -187,6 +187,19 @@ public struct BridgeRouter: Sendable {
         let edits: [Edit]
         let now: UInt64
     }
+    /// `WorldMeta` as the page reads it: `seed` and `createdAt` as numbers, not the wire's decimal
+    /// strings.
+    private struct PageWorldMeta: Encodable {
+        let name: String
+        let seed: UInt64
+        let createdAt: UInt64
+
+        init(_ meta: WorldMeta) {
+            name = meta.name
+            seed = meta.seed
+            createdAt = meta.createdAt
+        }
+    }
 
     /// The contract's name for what the page called, or nil when the game may not call it.
     public static func contractMethod(_ method: String) -> String? {
@@ -209,19 +222,19 @@ public struct BridgeRouter: Sendable {
         }
         let encoder = JSONEncoder()
         switch name {
-        case "worldMeta": return try encoder.encode(try await client.worldMeta().decoded(as: WorldMeta.self))
+        case "worldMeta": return try encoder.encode(PageWorldMeta(try await client.worldMeta()))
         case "getOverrides": return try encoder.encode(try await client.allOverrides())
         case "overrideCount": return try encoder.encode(try await client.overrideCount())
         case "getPlayers":
             return try encoder.encode(try await client.allPlayers(now: try args(NowArgs.self).now))
         case "join":
             let a = try args(JoinArgs.self)
-            return try encoder.encode(try await client.join(name: a.name, now: a.now).decoded(as: PlayerView.self))
+            return try encoder.encode(try await client.join(name: a.name, now: a.now))
         case "leave":
             try await client.leave(now: try args(NowArgs.self).now)
         case "heartbeat":
             let a = try args(HeartbeatArgs.self)
-            try await client.heartbeat(t: try a.t.converted(), now: a.now)
+            try await client.heartbeat(t: a.t, now: a.now)
         case "setBlocks":
             let a = try args(SetBlocksArgs.self)
             if a.edits.count > Self.maxEdits {
@@ -230,7 +243,7 @@ public struct BridgeRouter: Sendable {
             if a.edits.contains(where: { $0.b > Self.maxBlockId }) {
                 throw BridgeError.badArguments(method: method, detail: "block id outside 0 to 15")
             }
-            return try encoder.encode(try await client.setBlocks(edits: a.edits.map { try $0.converted() }, now: a.now))
+            return try encoder.encode(try await client.setBlocks(edits: a.edits, now: a.now))
         default:
             throw BridgeError.unknownMethod(method)
         }

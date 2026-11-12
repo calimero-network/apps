@@ -123,7 +123,7 @@ class LobbyModel(
                 refs
                     .map { ref ->
                         async {
-                            ref.contextId to runCatching { TableSummary.of(ChessContract.tableView(chessClient(backend, ref.contextId).table(nowMillis()))) }.getOrNull()
+                            ref.contextId to runCatching { TableSummary.of(chessClient(backend, ref.contextId).table(nowMillis())) }.getOrNull()
                         }
                     }.awaitAll()
                     .toMap()

@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -14,7 +15,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import network.calimero.kombat.contract.ArenaView
-import network.calimero.kombat.contract.KombatContract
 import network.calimero.kombat.contract.MatchSummary
 import network.calimero.kombat.generated.KombatClient
 
@@ -205,10 +205,10 @@ class GameCalls(
                 }
                 kind == BridgeInbound.CallKind.QUERY && method == "arena" -> {
                     val a = runCatching { JSON.decodeFromString(ArenaArgs.serializer(), argsJson) }.getOrNull()
-                    BridgeOutbound.Result(id, encode(KombatContract.arenaView(client.arena(a?.now ?: nowMillis()))))
+                    BridgeOutbound.Result(id, encode(client.arena(a?.now ?: nowMillis())))
                 }
                 kind == BridgeInbound.CallKind.QUERY && method == "history" ->
-                    BridgeOutbound.Result(id, encode(KombatContract.matchSummaries(client.history())))
+                    BridgeOutbound.Result(id, encode(client.history()))
                 else -> BridgeOutbound.Failure(id, "$method is not open to the game page")
             }
         } catch (e: CancellationException) {
@@ -223,15 +223,28 @@ class GameCalls(
         /**
          * The page protocol predates the component ABI and is unchanged, so its field names stay
          * snake_case (`match_index`, `my_seat`, `rounds_won`): the contract's camelCase is converted
-         * here, the one place the two meet.
+         * here, the one place the two meet. The generated types write their JSON themselves, so a
+         * naming strategy never sees their keys: [snakeKeys] renames them in the written JSON.
          */
-        @OptIn(ExperimentalSerializationApi::class)
-        private val PAGE = Json { namingStrategy = JsonNamingStrategy.SnakeCase }
+        private fun page(element: JsonElement): String = snakeKeys(element).toString()
 
         /** An `ArenaView` as the page reads it. */
-        fun encode(view: ArenaView): String = PAGE.encodeToString(ArenaView.serializer(), view)
+        fun encode(view: ArenaView): String = page(Json.encodeToJsonElement(ArenaView.serializer(), view))
 
         /** The arena's record as the page reads it. */
-        fun encode(history: List<MatchSummary>): String = PAGE.encodeToString(ListSerializer(MatchSummary.serializer()), history)
+        fun encode(history: List<MatchSummary>): String = page(Json.encodeToJsonElement(ListSerializer(MatchSummary.serializer()), history))
+
+        @OptIn(ExperimentalSerializationApi::class)
+        private fun snakeKeys(element: JsonElement): JsonElement =
+            when (element) {
+                is JsonObject ->
+                    JsonObject(
+                        element.entries.associate { (key, value) ->
+                            JsonNamingStrategy.SnakeCase.serialNameForJson(String.serializer().descriptor, 0, key) to snakeKeys(value)
+                        },
+                    )
+                is JsonArray -> JsonArray(element.map { snakeKeys(it) })
+                else -> element
+            }
     }
 }

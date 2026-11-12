@@ -1,30 +1,19 @@
 package network.calimero.chess.contract
 
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonDecoder
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.serializer
+import network.calimero.chess.generated.MeroChessClient
 
 /**
  * The table's contract on Calimero 1.0, as `logic/res/abi.json` declares it. The calls are the
- * generated [network.calimero.chess.generated.MeroChessClient] (`scripts/mobile-codegen.sh`); this
- * file keeps the method lists, the refusal sentences and the answer types of the web app's
- * `src/chess.ts` (Swift `ChessContract`):
+ * generated [MeroChessClient] (`scripts/mobile-codegen.sh`), and so are the answer types; this file
+ * keeps the method lists and the refusal sentences of the web app's `src/chess.ts` (Swift
+ * `ChessContract`):
  *
  * - method names are the ABI's camelCase ones (`offerDraw`, not v1's `offer_draw`);
  * - every `now` argument and every `u64` in an answer is a decimal string on the wire
- *   (`createdAt`, `moves[].at`, `startedAt`); [WireULong] reads either a string or a number;
+ *   (`createdAt`, `moves[].at`, `startedAt`); the generated types read either a string or a number;
  * - answer fields are camelCase (`sideToMove`, `legalMoves`, `myTurn`, …);
  * - a refusal is `APP_ERROR {code, fields}` ([com.calimero.mero.AppError]), worded by [message].
  */
@@ -67,17 +56,6 @@ object ChessContract {
             "GameLimit" to "this table has played all the games it counts",
         )
 
-    private val JSON = Json { ignoreUnknownKeys = true }
-
-    /**
-     * The `table` answer as a [TableView]. The ABI names `TableView` and `GameSummary` without
-     * their shape until the app derives `AbiType`, so the generated client answers their JSON.
-     */
-    fun tableView(answer: Any): TableView = JSON.decodeFromJsonElement(TableView.serializer(), answer.asContractJson())
-
-    /** The `history` answer as [GameSummary] rows. */
-    fun gameSummaries(answer: List<Any>): List<GameSummary> = answer.map { JSON.decodeFromJsonElement(GameSummary.serializer(), it.asContractJson()) }
-
     /** The sentence for a contract refusal, or null for a code the app does not know. */
     fun message(appCode: String): String? = MESSAGES[appCode]
 
@@ -92,117 +70,19 @@ object ChessContract {
         }
 }
 
-/** A `u64` off the wire: a decimal string (the component ABI), or a plain number. Written as a string. */
-object WireULong : KSerializer<ULong> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("WireULong", PrimitiveKind.STRING)
+// The answer types are the generated client's ([MeroChessClient], from the ABI): every `u64`
+// (`createdAt`, `moves[].at`, `startedAt`) is a decimal string on the wire and a [ULong] here.
 
-    override fun serialize(
-        encoder: Encoder,
-        value: ULong,
-    ) = encoder.encodeString(value.toString())
+typealias SeatView = MeroChessClient.SeatView
 
-    override fun deserialize(decoder: Decoder): ULong {
-        val text =
-            if (decoder is JsonDecoder) {
-                decoder.decodeJsonElement().jsonPrimitive.content
-            } else {
-                decoder.decodeString()
-            }
-        return text.toULongOrNull() ?: throw IllegalArgumentException("not a u64: $text")
-    }
-}
+typealias MoveView = MeroChessClient.MoveView
 
-@Serializable
-data class SeatView(
-    /** `white` or `black`: which chair this is, i.e. its colour in game 0. */
-    val seat: String,
-    /** The account holding it, or `""` when the chair is free. */
-    val member: String,
-    val name: String,
-    val online: Boolean,
-)
+typealias PlayerView = MeroChessClient.PlayerView
 
-@Serializable
-data class MoveView(
-    val ply: UInt,
-    val uci: String,
-    val san: String,
-    val by: String,
-    @Serializable(with = WireULong::class) val at: ULong,
-)
-
-@Serializable
-data class PlayerView(
-    val id: String,
-    val name: String,
-    val online: Boolean,
-    /** `white`, `black` or `""`: this player's colour in the current game. */
-    val color: String,
-)
-
-@Serializable
-data class GameSummary(
-    val index: UInt,
-    @Serializable(with = WireULong::class) val startedAt: ULong,
-    val result: String,
-    val reason: String,
-    val plies: UInt,
-    /** The accounts that held the chairs when the game ended. */
-    val white: String,
-    val black: String,
-)
+typealias GameSummary = MeroChessClient.GameSummary
 
 /**
  * Everything a client needs to draw the table, in one read: position, legal moves, status and
  * result all come from the same replay of the move list.
  */
-@Serializable
-data class TableView(
-    val title: String,
-    @Serializable(with = WireULong::class) val createdAt: ULong,
-    /** Index of the game being played now. */
-    val game: UInt,
-    /** The position after every move played, as a FEN. */
-    val fen: String,
-    /** `white` or `black`. */
-    val sideToMove: String,
-    val moves: List<MoveView>,
-    /** Every legal move in this position, in UCI, sorted (empty unless it is your move). */
-    val legalMoves: List<String>,
-    /** `awaitingPlayers`, `inProgress` or `finished`. */
-    val status: String,
-    /** `1-0`, `0-1`, `1/2-1/2`, or `*` while unfinished. */
-    val result: String,
-    /** Why it ended (`checkmate`, `resignation`, …), or `""`. */
-    val reason: String,
-    val check: Boolean,
-    /** `threefold`, `fiftyMove` or `""`: a draw the side to move may claim. */
-    val claimableDraw: String,
-    val white: SeatView,
-    val black: SeatView,
-    /** The caller's account, as the contract sees it. */
-    val me: String,
-    /** The caller's colour in this game, or `""` for a spectator. */
-    val myColor: String,
-    val myTurn: Boolean,
-    /** The account whose draw offer stands in this position, or `""`. */
-    val drawOfferFrom: String,
-    /** In join order. */
-    val players: List<PlayerView>,
-    /** How many games this table has started, including the current one. */
-    val gamesPlayed: UInt,
-)
-
-/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
-fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
-
-/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
-inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
-
-/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
-val contractArgJson =
-    Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }
+typealias TableView = MeroChessClient.TableView

@@ -78,12 +78,12 @@ public final class MatchModel: ObservableObject {
     public var stored: StoredBoard? { store.load(owner: me, matchId: ref.matchId) }
 
     public var isMyTurn: Bool {
-        stage == .battle && turn?.lowercased() == me && state?.pendingShot == nil
+        stage == .battle && turn?.lowercased() == me && state?.pending_shot == nil
     }
 
     /// Whose move the battle is waiting on, in words.
     public var turnText: String {
-        if let pending = state?.pendingShot {
+        if let pending = state?.pending_shot {
             return pending.target.lowercased() == me ? "Answering their shot…" : "Waiting for their answer…"
         }
         return isMyTurn ? "Your turn. Pick a square." : "Their turn."
@@ -101,13 +101,13 @@ public final class MatchModel: ObservableObject {
     /// Why it ended, from the contract's `ended_by` and audit.
     public var endedText: String? {
         guard let state else { return nil }
-        if state.auditFailed.contains(where: { $0.lowercased() == me }) {
+        if state.audit_failed.contains(where: { $0.lowercased() == me }) {
             return "Your revealed board did not match your answers."
         }
-        if state.auditFailed.contains(where: { $0.lowercased() != me }) {
+        if state.audit_failed.contains(where: { $0.lowercased() != me }) {
             return "Their revealed board did not match their answers, so the match is yours."
         }
-        switch state.endedBy {
+        switch state.ended_by {
         case "sunk": return state.loser?.lowercased() == me ? "Your fleet was sunk." : "Every ship of theirs is sunk."
         case "impossible_misses": return "Too many misses to be true: a fleet was hidden."
         default: return nil
@@ -143,7 +143,7 @@ public final class MatchModel: ObservableObject {
         let mine: ShotsView
         let incoming: ShotsView
         do {
-            current = try await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)
+            current = try await game.getMatchState(matchId: matchId)
             mine = try await game.getShots(matchId: matchId).decoded(as: ShotsView.self)
             incoming = try await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self)
         } catch {
@@ -175,12 +175,12 @@ public final class MatchModel: ObservableObject {
         }
         var answers = incoming.shots
         if await answerPendingShot(latest, cells: board.cells) {
-            latest = (try? await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)) ?? latest
+            latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
             answers = (try? await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self))?.shots ?? answers
             turn = try? await game.getCurrentTurn(matchId: matchId)
         }
         if await revealIfDue(latest, board: board) {
-            latest = (try? await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)) ?? latest
+            latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
         }
         state = latest
         ownBoard = BoardReading.overlay(cells: board.cells, incoming: answers)
@@ -197,13 +197,13 @@ public final class MatchModel: ObservableObject {
     /// Answer the pending shot from the board on this device, if it is yours to answer. Automatic,
     /// as on the web: the answer is your signed statement, and the reveal is replayed against it.
     private func answerPendingShot(_ state: MatchStateView, cells: [UInt8]) async -> Bool {
-        guard state.standing == "playing", let shot = state.pendingShot, shot.target.lowercased() == me,
-            answeredShot != shot.shotId
+        guard state.standing == "playing", let shot = state.pending_shot, shot.target.lowercased() == me,
+            answeredShot != shot.shot_id
         else { return false }
-        answeredShot = shot.shotId
+        answeredShot = shot.shot_id
         do {
             try await game.acknowledgeShot(
-                matchId: ref.matchId, shotId: shot.shotId,
+                matchId: ref.matchId, shotId: shot.shot_id,
                 hit: BoardReading.isHit(cells: cells, at: Coordinate(Int(shot.x), Int(shot.y))))
             return true
         } catch {
@@ -215,7 +215,7 @@ public final class MatchModel: ObservableObject {
     /// Open the board once the answers have ended the match and the contract has not seen yours.
     private func revealIfDue(_ state: MatchStateView, board: StoredBoard) async -> Bool {
         guard state.standing != "playing", !state.revealed.contains(where: { $0.lowercased() == me }),
-            !state.auditFailed.contains(where: { $0.lowercased() == me }), !revealing
+            !state.audit_failed.contains(where: { $0.lowercased() == me }), !revealing
         else { return false }
         revealing = true
         defer { revealing = false }

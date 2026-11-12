@@ -124,7 +124,7 @@ class LobbyModel(
                 refs
                     .map { ref ->
                         async {
-                            ref.contextId to runCatching { ArenaSummary.of(KombatContract.arenaView(kombatClient(backend, ref.contextId).arena(nowMillis()))) }.getOrNull()
+                            ref.contextId to runCatching { ArenaSummary.of(kombatClient(backend, ref.contextId).arena(nowMillis())) }.getOrNull()
                         }
                     }.awaitAll()
                     .toMap()

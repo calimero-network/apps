@@ -195,7 +195,7 @@ public final class ArenaModel: ObservableObject, GameHost {
             readAgain = false
             let started = Date()
             do {
-                apply(try await client.arena(now: nowMillis()).decoded(as: ArenaView.self))
+                apply(try await client.arena(now: nowMillis()))
                 error = nil
             } catch is CancellationError {
                 return
@@ -228,7 +228,7 @@ public final class ArenaModel: ObservableObject, GameHost {
         guard let view else { return }
         let signature = "\(view.matchIndex):\(view.winner)"
         guard signature != pastSignature else { return }
-        if let rows = try? await client.history().map({ try $0.decoded(as: MatchSummary.self) }) {
+        if let rows = try? await client.history() {
             past = rows
             pastSignature = signature
         }
