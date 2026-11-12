@@ -31,8 +31,8 @@ after apps#710). The SDK pins are releases. Bumping is one line per platform (iO
   opened). Technical ids sit behind **Details**.
 - **Creating a world** is the web app's three steps: the organization, the app instance (the
   contract's `init()` takes nothing), then `createWorld(name, seed, now)`, which only the creator may run.
-- **The contract** (`MerrariaClient`, typed by hand on both platforms from the component ABI, as the
-  web app's `app/src/net/merraria.ts`): calls `createWorld`, `setTiles`, `join`, `heartbeat`, `leave`;
+- **The contract** (`MerrariaClient`, generated on both platforms from the component ABI, as the
+  web app's client is): calls `createWorld`, `setTiles`, `join`, `heartbeat`, `leave`;
   views `worldMeta`, `getOverrides` (paged: `{items, next}`, read page by page), `getPlayers`.
   `seed`, `createdAt` and every `now` are u32 seconds. `ContractTests` / `ContractTest` check the
   method lists against the ABI.
@@ -98,10 +98,14 @@ WKWebView / Android WebView from files bundled in the app:
 
 ## Contract client
 
-`ios/MerrariaCore/Sources/MerrariaCore/Contract/MerrariaClient.swift` and
-`android/app/src/main/kotlin/network/calimero/merraria/contract/MerrariaClient.kt` are typed by hand
-from the component ABI: abi-codegen does not read a component ABI yet. They take the SDKs'
-`ContextContractCalling`. After an ABI change, update both and the web app's `merraria.ts` together.
+`MerrariaClient` (`ios/MerrariaCore/Sources/MerrariaCore/Generated/` and
+`android/app/src/main/kotlin/network/calimero/merraria/generated/`) is generated from
+`../logic/res/abi.json` by core's `mero-app-build codegen`: after an ABI change, run
+`scripts/mobile-codegen.sh` at the repo root and commit (CI's `Mobile clients` workflow fails on a
+stale client). Until the logic derives `AbiType`, the ABI names the world's types without their
+shape, so the client takes and answers their JSON; `Contract/MerrariaContract.swift` and
+`contract/MerrariaContract.kt` keep those types, the paging of `getOverrides`, the method lists and
+the refusal sentences. An unset `option` argument goes as `null`, which the contract reads as none.
 
 After a change to the web app, rebuild and commit the game bundle: `./scripts/build-game.sh`.
 

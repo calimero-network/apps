@@ -20,7 +20,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import network.calimero.sign.generated.ContractBytes
-import network.calimero.sign.generated.SignClient
+import network.calimero.sign.generated.client.SignClient
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException

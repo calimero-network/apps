@@ -53,7 +53,7 @@ public enum MatchMaker {
     ) async throws -> MatchRef {
         let key = opponent.trimmingCharacters(in: .whitespaces)
         guard LobbyInvitation.isKey(key) else { throw BattleshipsError.invalid("That is not a valid player.") }
-        let matchId = try await BattleshipsContract(backend.contract, appId: appId).createMatch(player2: key)
+        let matchId = try await BattleshipsClient(backend: backend, app: appId).createMatch(player2: key)
         return MatchRef(namespaceId: namespace.id, appId: appId, matchId: matchId, opponent: key)
     }
 }
@@ -152,7 +152,7 @@ public final class LobbyModel: ObservableObject {
             }
         }
         if !registered, let appId {
-            if let key = try? await BattleshipsContract(backend.contract, appId: appId).registerPlayer(),
+            if let key = try? await BattleshipsClient(backend: backend, app: appId).registerPlayer(),
                 LobbyInvitation.isKey(key)
             {
                 me = key
@@ -165,9 +165,9 @@ public final class LobbyModel: ObservableObject {
     /// Re-read the lobby's matches, players, your record and the history.
     public func refresh() async {
         guard let appId else { return }
-        let lobby = BattleshipsContract(backend.contract, appId: appId)
+        let lobby = BattleshipsClient(backend: backend, app: appId)
         do {
-            matches = try await lobby.getMatches()
+            matches = try await lobby.getMatches().map { try $0.decoded(as: MatchSummary.self) }
             phase = .loaded
         } catch {
             if case .loaded = phase {
@@ -176,9 +176,9 @@ public final class LobbyModel: ObservableObject {
             phase = .failed(ErrorText.describe(error))
             return
         }
-        if let list = try? await lobby.getPlayers() { players = list }
-        if let record = try? await lobby.getPlayerStats(player: me) { stats = record }
-        if let records = try? await lobby.getHistory() { history = records }
+        if let list = try? await lobby.getPlayers().map({ try $0.decoded(as: PlayerEntry.self) }) { players = list }
+        if let record = try? await lobby.getPlayerStats(player: me)?.decoded(as: PlayerStatsView.self) { stats = record }
+        if let records = try? await lobby.getHistory().map({ try $0.decoded(as: MatchRecord.self) }) { history = records }
         if let members = try? await backend.listMembers(groupId: namespace.id) {
             names = Dictionary(members.compactMap { m in m.name.map { (m.identity, $0) } }, uniquingKeysWith: { a, _ in a })
         }

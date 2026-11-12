@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FormView, LinkView } from "./formsApi";
+import { type FormView, type LinkView, toForm, toLink, toLinks } from "./formsApi";
 import { fetchCaptchaConfig } from "./lib/captcha";
 import { ago } from "./lib/fields";
 import { revokeKey } from "./lib/formKey";
@@ -35,7 +35,7 @@ export function PublicLinks({
   appId: string;
 }) {
   const { client, passkey, after } = useSignedIn();
-  const links = useRead(workspace.client, workspace.version, (c) => c.listLinks({ form_id: form.id }), [form.id]);
+  const links = useRead(workspace.client, workspace.version, (c) => c.listLinks({ formId: form.id }).then(toLinks), [form.id]);
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const [label, setLabel] = useState("");
   const [cap, setCap] = useState(String(form.link_cap));
@@ -59,10 +59,10 @@ export function PublicLinks({
   }
 
   const setPublic = (on: boolean) =>
-    run("public", () => workspace.act((c) => c.setFormPublic({ form_id: form.id, public: on })));
+    run("public", () => workspace.act((c) => c.setFormPublic({ formId: form.id, public: on }).then(toForm)));
 
   const saveCap = () =>
-    run("cap", () => workspace.act((c) => c.setLinkCap({ form_id: form.id, per_hour: Number(cap) })));
+    run("cap", () => workspace.act((c) => c.setLinkCap({ formId: form.id, perHour: Number(cap) }).then(toForm)));
 
   // The captcha is a pass this deployment's verifier signs: the form saves
   // the verifier's public key. (v1 could also have the contract check the
@@ -70,7 +70,7 @@ export function PublicLinks({
   const setCaptcha = (on: boolean) =>
     run("captcha", async () => {
       const key = on ? (await fetchCaptchaConfig()).publicKey : "";
-      await workspace.act((c) => c.setCaptchaKey({ form_id: form.id, key }));
+      await workspace.act((c) => c.setCaptchaKey({ formId: form.id, key }).then(toForm));
     });
 
   const createLink = () =>
@@ -89,7 +89,7 @@ export function PublicLinks({
       after();
       try {
         const link = await sha256Hex(key.key);
-        await workspace.act((c) => c.createLink({ form_id: form.id, link, grant_id: key.keyId, label: name }));
+        await workspace.act((c) => c.createLink({ formId: form.id, link, grantId: key.keyId, label: name }).then(toLink));
       } catch (e) {
         // No record, no link: take the key back rather than leave one that
         // reaches nothing the team can see.
@@ -109,7 +109,7 @@ export function PublicLinks({
         return;
       }
       // The record first: without it the contract refuses the link at once.
-      const gone = await workspace.act((c) => c.deleteLink({ link: link.id }));
+      const gone = await workspace.act((c) => c.deleteLink({ link: link.id }).then(toLink));
       if (gone.created_by === me.data) {
         await revokeKey(client, gone.grant_id, passkey()).catch(() => undefined);
         after();

@@ -94,7 +94,7 @@ public struct AgreementDirectory: Sendable {
     /// opened before, so its documents are the account's to sign or read.
     public func isJoined(_ contextId: String) async -> Bool {
         guard let roster = try? await client(contextId).listParticipants() else { return false }
-        return roster.contains { SignIds.same($0, backend.account) }
+        return roster.contains { SignIds.same(ContractBytes.text($0), backend.account) }
     }
 
     // MARK: Entering
@@ -130,7 +130,7 @@ public struct AgreementDirectory: Sendable {
         for attempt in 0..<max(timing.stateAttempts, 1) {
             if attempt > 0 { try? await Task.sleep(for: timing.delay) }
             do {
-                return try await client(contextId).getContextDetails(contextIdStr: contextId).contextName
+                return try await client(contextId).getContextDetails(contextIdStr: contextId).decoded(as: ContextDetails.self).contextName
             } catch {
                 if !SignErrorText.isSyncing(error) { return nil }
             }
@@ -141,7 +141,7 @@ public struct AgreementDirectory: Sendable {
     /// On the roster already, or `Conflict` / `Forbidden`, is done; a failure that isn't syncing stops.
     func registerSelf(_ contextId: String) async {
         if let roster = try? await client(contextId).listParticipants(),
-            roster.contains(where: { SignIds.same($0, backend.account) })
+            roster.contains(where: { SignIds.same(ContractBytes.text($0), backend.account) })
         {
             return
         }

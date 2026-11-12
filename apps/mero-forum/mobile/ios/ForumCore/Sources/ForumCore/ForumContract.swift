@@ -1,9 +1,9 @@
 import Foundation
 import MeroKit
 
-/// The forum contract on Calimero 1.0, typed by hand from `logic/res/abi.json`
-/// (no client is generated from a component ABI yet). The port of the web
-/// app's `src/lib/forumApi.ts`, method for method:
+/// The forum contract on Calimero 1.0, as `logic/res/abi.json` declares it. The calls are
+/// `ForumClient`, generated from the ABI into `Generated/`; this file keeps the method lists and
+/// the answer types of the web app's `src/lib/forumApi.ts`:
 ///
 /// - method names and arguments are camelCase (`createPost`, `postId`, `commentId`);
 /// - answers are camelCase, and `createdAt`, `editedAt`, `score` and
@@ -21,110 +21,20 @@ public enum ForumContract {
     public static let views = ["getPost", "listPosts", "listComments", "getNickname", "moderators"]
 }
 
-/// Typed calls to one forum's contract. Views go through `query`, everything else through `execute`.
-public struct ForumClient: Sendable {
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    /// The forum client for one app instance, over the account's sealed session.
+extension ForumClient {
+    /// The forum client for one app instance, over the account's sealed session. `ForumClient` is
+    /// generated from the ABI into `Generated/` (`scripts/mobile-codegen.sh` at the repo root).
     public static func make(contract: any ContextContract, contextId: String) -> ForumClient {
-        ForumClient(transport: contract.bound(to: contextId))
+        ForumClient(contract: contract.bound(to: contextId))
     }
+}
 
-    // MARK: Posts
-
-    @discardableResult
-    public func createPost(title: String, body: String) async throws -> String {
-        try await call("createPost", ["title": .string(title), "body": .string(body)], as: String.self)
-    }
-
-    public func editPost(postId: String, title: String, body: String) async throws {
-        try await run("editPost", ["postId": .string(postId), "title": .string(title), "body": .string(body)])
-    }
-
-    public func deletePost(postId: String) async throws { try await run("deletePost", ["postId": .string(postId)]) }
-
-    public func getPost(postId: String) async throws -> PostView {
-        try await view("getPost", ["postId": .string(postId)])
-    }
-
-    /// One page of the feed. `cursor` is opaque, and only good for the `sort` it came from.
-    public func listPosts(sort: String? = nil, cursor: String? = nil, limit: UInt32) async throws -> PostPage {
-        try await view(
-            "listPosts",
-            ["sort": sort.map(JSONValue.string) ?? .null, "cursor": cursor.map(JSONValue.string) ?? .null,
-             "limit": .number(Double(limit))])
-    }
-
-    // MARK: Comments
-
-    @discardableResult
-    public func createComment(postId: String, body: String) async throws -> String {
-        try await call("createComment", ["postId": .string(postId), "body": .string(body)], as: String.self)
-    }
-
-    public func editComment(commentId: String, body: String) async throws {
-        try await run("editComment", ["commentId": .string(commentId), "body": .string(body)])
-    }
-
-    public func deleteComment(commentId: String) async throws {
-        try await run("deleteComment", ["commentId": .string(commentId)])
-    }
-
-    public func listComments(postId: String, cursor: String? = nil, limit: UInt32) async throws -> CommentPage {
-        try await view(
-            "listComments",
-            ["postId": .string(postId), "cursor": cursor.map(JSONValue.string) ?? .null, "limit": .number(Double(limit))])
-    }
-
-    // MARK: Votes, names, moderation
-
-    /// `value` is -1, 0 (remove) or 1.
-    public func vote(postId: String, value: Int32) async throws {
-        try await run("vote", ["postId": .string(postId), "value": .number(Double(value))])
-    }
-
-    public func voteComment(commentId: String, value: Int32) async throws {
-        try await run("voteComment", ["commentId": .string(commentId), "value": .number(Double(value))])
-    }
-
-    public func setNickname(name: String) async throws { try await run("setNickname", ["name": .string(name)]) }
-
-    public func getNickname(account: String) async throws -> String {
-        try await view("getNickname", ["account": .string(account)])
-    }
-
-    public func moderators() async throws -> [String] { try await view("moderators", [:]) }
-
-    public func setModerators(accounts: [String]) async throws {
-        try await run("setModerators", ["accounts": .array(accounts.map(JSONValue.string))])
-    }
-
-    public func moderatePost(postId: String) async throws {
-        try await run("moderatePost", ["postId": .string(postId)])
-    }
-
-    public func moderateComment(commentId: String) async throws {
-        try await run("moderateComment", ["commentId": .string(commentId)])
-    }
-
-    // MARK: Wire
-
-    private func view<T: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> T {
-        let data = try await transport.query(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func call<T: Decodable>(_ method: String, _ args: [String: JSONValue], as: T.Type) async throws -> T {
-        let data = try await transport.execute(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func run(_ method: String, _ args: [String: JSONValue]) async throws {
-        _ = try await transport.execute(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
+extension JSONValue {
+    /// This answer as the app type `T` (one of the types below). The ABI names `PostView`,
+    /// `PostPage` and `CommentPage` without their shape until the logic derives `AbiType`, so the
+    /// generated client answers their JSON and the types below read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }
 

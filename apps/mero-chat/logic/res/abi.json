@@ -493,5 +493,242 @@
     },
     "version": 1
   },
+  "types": {
+    "AttachmentView": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "mimeType",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "blobId",
+          "string"
+        ],
+        [
+          "uploadedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ContextInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "contextType",
+          "ContextType"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "creator",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ContextType": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Channel"
+        },
+        {
+          "name": "Dm"
+        }
+      ]
+    },
+    "FullMessageResponse": {
+      "fields": [
+        [
+          "totalCount",
+          "u32"
+        ],
+        [
+          "messages",
+          "list<MessageView>"
+        ],
+        [
+          "startPosition",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MessageView": {
+      "fields": [
+        [
+          "index",
+          "u64"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ],
+        [
+          "sender",
+          "string"
+        ],
+        [
+          "mentions",
+          "list<string>"
+        ],
+        [
+          "mentionsUsernames",
+          "list<string>"
+        ],
+        [
+          "files",
+          "list<AttachmentView>"
+        ],
+        [
+          "images",
+          "list<AttachmentView>"
+        ],
+        [
+          "id",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "editedOn",
+          "option<u64>"
+        ],
+        [
+          "reactions",
+          "option<BTreeMap<String,Vec<String>>>"
+        ],
+        [
+          "deleted",
+          "option<bool>"
+        ],
+        [
+          "threadCount",
+          "u32"
+        ],
+        [
+          "threadLastTimestamp",
+          "u64"
+        ],
+        [
+          "parentMessageId",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Role": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "User"
+        },
+        {
+          "name": "Mod"
+        },
+        {
+          "name": "Admin"
+        },
+        {
+          "name": "Banned"
+        }
+      ]
+    },
+    "SearchHit": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "parentMessageId",
+          "option<string>"
+        ],
+        [
+          "index",
+          "option<u64>"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ],
+        [
+          "anchorTimestamp",
+          "u64"
+        ],
+        [
+          "sender",
+          "string"
+        ],
+        [
+          "snippet",
+          "string"
+        ],
+        [
+          "matchStart",
+          "u32"
+        ],
+        [
+          "matchEnd",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SearchPage": {
+      "fields": [
+        [
+          "hits",
+          "list<SearchHit>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ],
+        [
+          "frontierTimestamp",
+          "option<u64>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "UserProfile": {
+      "fields": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "avatar",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

@@ -24,10 +24,13 @@ over the sealed channel to an attested node:
 - **The contract** is the component port's (`../logic/res/abi.json`): views `table` / `history`,
   calls `join`, `sit`, `stand`, `play`, `resign`, `offerDraw`, `acceptDraw`, `declineDraw`,
   `claimDraw`, `rematch`, `heartbeat`. Every `now` and every `u64` in an answer is a decimal string;
-  refusals are `APP_ERROR {code, fields}`, shown in the web app's words. The typed client
-  (`ChessContract.swift` / `contract/MeroChessClient.kt`) is written by hand from the ABI, as the
-  web app's `src/chess.ts` is (no client is generated from a component ABI yet); `ContractTests`
-  checks its method lists against the committed ABI.
+  refusals are `APP_ERROR {code, fields}`, shown in the web app's words. The typed client,
+  `MeroChessClient` (`ChessCore/Sources/ChessCore/Generated/` / `chess/generated/`), is generated
+  from the ABI by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo root;
+  CI's `Mobile clients` workflow fails on a stale one). Until the logic derives `AbiType`, the ABI
+  names `TableView` and `GameSummary` without their shape, so the client answers their JSON and
+  `ChessContract` reads it into the types it keeps, with the method lists `ContractTests` checks
+  against the ABI and the refusal sentences.
 - **A table is one app instance**, created directly in an organization ("club"), so the org invite
   a table mints is the one that admits to it.
 - **Invitations** are org invite links

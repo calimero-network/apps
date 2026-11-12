@@ -26,7 +26,7 @@ open MeroUpdates.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `v2.0.0`, its Calimero 1.0 release
+`project.yml` and `Core/Package.swift` pin swift-sdk `v4.1.0`, its Calimero 1.0 release
 (`exactVersion` / `exact:`). Move both together when bumping to a newer release.
 
 ## Configuration

@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { rpcCall, uploadBlob } from "../api/rpc";
+import { uploadBlob, design, wireElement } from "../api/rpc";
 import { deleteElements, updateElementLabels } from "../api/elementBatch";
 import type { Element } from "../types";
 import { toDataUrl } from "./image";
@@ -152,7 +152,7 @@ export async function flattenElements(
     label: name,
   };
 
-  await rpcCall(deps.contextId, "add_element", { element: created });
+  await design(deps.contextId).addElement({ element: wireElement(created) });
 
   const removedIds = elements.map((e) => e.id);
   // Show it before the deletes land, and without waiting for the blob to come

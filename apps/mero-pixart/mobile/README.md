@@ -109,14 +109,16 @@ once into a cache shared by the gallery and the artwork.
 ## The contract clients
 
 `PixartClient` (`ios/PixartCore/Sources/PixartCore/Generated/PixartClient.swift`,
-`android/app/src/main/kotlin/network/calimero/pixart/generated/PixartClient.kt`) calls the
-component contract's surface (`../logic/res/abi.json` on the component SDK): camelCase method and
-argument names (`updateLayer { id, blendMode, scaleX, updatedAt, … }`); the top-level u64 / i64
-arguments (`updatedAt`, `timestamp`, `x`, `y`) go out as decimal strings (`WireNumbers.swift`,
-`WireNumbers.kt`), while integers inside records (`Layer`, `Member`, cursors) stay JSON numbers.
+`android/app/src/main/kotlin/network/calimero/pixart/generated/client/PixartClient.kt`) is generated
+from the component contract's ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+`scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
+fails on a stale client). It speaks camelCase method and argument names
+(`updateLayer { id, blendMode, scaleX, updatedAt, … }`), sends the u64 / i64 arguments (`updatedAt`,
+`timestamp`, `x`, `y`) as decimal strings and an unset optional as `null`. Until the logic derives
+`AbiType`, the ABI names the document's types without their shape, so the client answers their
+JSON and the kept types read it (`PixartCore/Records.swift`, `generated/PixartRecords.kt`).
 Refusals are `422 APP_ERROR` (`ViewOnly`, `OwnerOnly`, `Invalid { message }`), shown in plain words
-(`PixartFormat.errorText`). `WireTests` / `WireTest` pin the wire. The 0.x abi-codegen does not read
-a component ABI, so after a contract change update both clients by hand against `abi.json`.
+(`PixartFormat.errorText`). `WireTests` / `WireTest` pin the wire.
 
 ## Build and test
 

@@ -24,7 +24,7 @@ import {
   type FabricObject,
 } from "fabric";
 import { v4 as uuid } from "uuid";
-import { rpcCall } from "../api/rpc";
+import { design, i64, optI64, wireElement } from "../api/rpc";
 import { addElements, deleteElements, updateElements, type ElementPatch } from "../api/elementBatch";
 import { redoOnBoard, undoOnBoard } from "../api/history";
 import { toggleLayerFlag } from "../api/layerFlags";
@@ -851,7 +851,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           // and the selection->canvas effect would then discard the active object
           // out from under the caret, ending the edit before it began.
           selectWithPointer(el.id);
-          await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
+          await design(contextId).addElement({ element: wireElement(el) }).catch((e) => reportFailure.current("add_element", e));
           return;
         }
 
@@ -980,7 +980,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           snapshot();
           upsertElement(sticky);
           startTextEdit(sticky.id);
-          await rpcCall(contextId, "add_element", { element: sticky }).catch((err) => reportFailure.current("add_element", err));
+          await design(contextId).addElement({ element: wireElement(sticky) }).catch((err) => reportFailure.current("add_element", err));
           return;
         }
 
@@ -1052,7 +1052,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // The shape is down; the next gesture is almost always about moving or
         // resizing it, so give the pointer back rather than arming another draw.
         selectWithPointer(el.id);
-        await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
+        await design(contextId).addElement({ element: wireElement(el) }).catch((e) => reportFailure.current("add_element", e));
       };
 
       /** A finished pen stroke: persist it as a `path` element. */
@@ -1083,7 +1083,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         path.set({ data: el });
         snapshot();
         upsertElement(el);
-        await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
+        await design(contextId).addElement({ element: wireElement(el) }).catch((e) => reportFailure.current("add_element", e));
       };
 
       /**
@@ -1117,11 +1117,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const updatedEl = geometryOf(obj, Date.now());
         if (!updatedEl) return;
         upsertElement(updatedEl);
-        await rpcCall(contextId, "update_element", {
-          id: updatedEl.id, x: updatedEl.x, y: updatedEl.y,
+        await design(contextId).updateElement({
+          id: updatedEl.id, x: optI64(updatedEl.x), y: optI64(updatedEl.y),
           width: updatedEl.width, height: updatedEl.height, rotation: updatedEl.rotation,
-          fill: null, stroke: null, stroke_width: null, opacity: null,
-          corner_radius: null, updated_at: updatedEl.updatedAt,
+          fill: null, stroke: null, strokeWidth: null, opacity: null,
+          cornerRadius: null, updatedAt: i64(updatedEl.updatedAt),
         }).catch((e) => reportFailure.current("update_element", e));
       };
 
@@ -1192,15 +1192,15 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
             snapshot();
             upsertElement(updated);
             fc.requestRenderAll();
-            await rpcCall(contextId, "update_text_style", {
-              id: updated.id, content: null, font_family: null, font_size: nextSize,
-              bold: null, italic: null, updated_at: updated.updatedAt,
+            await design(contextId).updateTextStyle({
+              id: updated.id, content: null, fontFamily: null, fontSize: nextSize,
+              bold: null, italic: null, updatedAt: i64(updated.updatedAt),
             }).catch((e) => reportFailure.current("update_text_style", e));
-            await rpcCall(contextId, "update_element", {
-              id: updated.id, x: updated.x, y: updated.y,
+            await design(contextId).updateElement({
+              id: updated.id, x: optI64(updated.x), y: optI64(updated.y),
               width: updated.width, height: updated.height, rotation: updated.rotation,
-              fill: null, stroke: null, stroke_width: null, opacity: null,
-              corner_radius: null, updated_at: updated.updatedAt,
+              fill: null, stroke: null, strokeWidth: null, opacity: null,
+              cornerRadius: null, updatedAt: i64(updated.updatedAt),
             }).catch((e) => reportFailure.current("update_element", e));
             return;
           }
@@ -1216,7 +1216,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const saved = detachedIfMoved(el, movedIds);
         if (!saved) return;
         upsertElement(saved);
-        await rpcCall(contextId, "add_element", { element: saved }).catch((err) => reportFailure.current("add_element", err));
+        await design(contextId).addElement({ element: wireElement(saved) }).catch((err) => reportFailure.current("add_element", err));
       };
 
       /** The connector with its moved ends undocked, or null when nothing changes. */
@@ -1276,9 +1276,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         obj.data = updatedEl;
         snapshot();
         upsertElement(updatedEl);
-        await rpcCall(contextId, "update_text_style", {
-          id: el.id, content: newContent, font_family: null, font_size: null,
-          bold: null, italic: null, updated_at: updatedEl.updatedAt,
+        await design(contextId).updateTextStyle({
+          id: el.id, content: newContent, fontFamily: null, fontSize: null,
+          bold: null, italic: null, updatedAt: i64(updatedEl.updatedAt),
         }).catch((e) => reportFailure.current("update_text_style", e));
       };
 
@@ -1324,7 +1324,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           snapshot();
           upsertElement(box);
           startTextEdit(box.id);
-          await rpcCall(contextId, "add_element", { element: box }).catch((err) => reportFailure.current("add_element", err));
+          await design(contextId).addElement({ element: wireElement(box) }).catch((err) => reportFailure.current("add_element", err));
         }
       };
 
@@ -1588,15 +1588,15 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const grow = needed > el.height;
       if (grow) next.height = needed;
       upsertElement(next);
-      await rpcCall(contextId, "update_text_style", {
-        id, content, font_family: null, font_size: null, bold: null, italic: null,
-        text_align: null, vertical_align: null, updated_at: now,
+      await design(contextId).updateTextStyle({
+        id, content, fontFamily: null, fontSize: null, bold: null, italic: null,
+        textAlign: null, verticalAlign: null, updatedAt: i64(now),
       }).catch((e) => reportFailure.current("update_text_style", e));
       if (grow) {
-        await rpcCall(contextId, "update_element", {
+        await design(contextId).updateElement({
           id, x: null, y: null, width: null, height: next.height, rotation: null,
-          fill: null, stroke: null, stroke_width: null, opacity: null, corner_radius: null,
-          updated_at: now,
+          fill: null, stroke: null, strokeWidth: null, opacity: null, cornerRadius: null,
+          updatedAt: i64(now),
         }).catch((e) => reportFailure.current("update_element", e));
       }
     }
@@ -1605,7 +1605,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const { box: _box, textColor: _ink, ...rest } = el;
       const rect: Element = { ...rest, data: { kind: "rect" }, updatedAt: Date.now() };
       upsertElement(rect);
-      await rpcCall(contextId, "add_element", { element: rect }).catch((e) => reportFailure.current("add_element", e));
+      await design(contextId).addElement({ element: wireElement(rect) }).catch((e) => reportFailure.current("add_element", e));
     }
 
     function notifyViewport(z: number) {

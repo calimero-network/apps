@@ -70,17 +70,17 @@ public final class SpreadsheetModel: ObservableObject {
     public func load() async {
         if sheets.isEmpty && cells.isEmpty { phase = .loading }
         do {
-            async let sheetList = client.listSheets()
-            async let allCells = client.getAllCells()
-            async let layoutList = client.getLayouts()
-            async let viewList = client.getSheetViews()
-            async let styleList = client.getStyles()
-            async let chartList = client.getCharts()
-            async let commentList = client.getComments()
-            async let memberList = client.getMembers()
-            async let project = client.getProject()
+            async let sheetList = client.listSheets().map({ try $0.decoded(as: Sheet.self) })
+            async let allCells = client.getAllCells().map({ try $0.decoded(as: Cell.self) })
+            async let layoutList = client.getLayouts().map({ try $0.decoded(as: SheetLayout.self) })
+            async let viewList = client.getSheetViews().map({ try $0.decoded(as: SheetView.self) })
+            async let styleList = client.getStyles().map({ try $0.decoded(as: CellStyle.self) })
+            async let chartList = client.getCharts().map({ try $0.decoded(as: Chart.self) })
+            async let commentList = client.getComments().map({ try $0.decoded(as: Comment.self) })
+            async let memberList = client.getMembers().map({ try $0.decoded(as: Member.self) })
+            async let project = client.getProject().decoded(as: Project.self)
             async let me = client.whoami()
-            async let protectionList = client.getProtections()
+            async let protectionList = client.getProtections().map({ try $0.decoded(as: Protection.self) })
             let (s, c, l, v, st, ch, co) = try await (sheetList, allCells, layoutList, viewList, styleList, chartList, commentList)
             let (m, p, w, pr) = try await (memberList, project, me, protectionList)
             sheets = s.sorted { $0.position < $1.position }

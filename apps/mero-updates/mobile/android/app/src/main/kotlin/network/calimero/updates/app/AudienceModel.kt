@@ -13,11 +13,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import network.calimero.updates.core.ErrorText
 import network.calimero.updates.core.UpdatesInvitation
+import network.calimero.updates.core.toUpdates
 import network.calimero.updates.core.updatesClient
 import network.calimero.updates.generated.CategoryView
 import network.calimero.updates.generated.MeView
 import network.calimero.updates.generated.Overview
-import network.calimero.updates.generated.UpdatesClient
+import network.calimero.updates.generated.client.UpdatesClient
 
 /**
  * One open audience: who you are in it, its overview and categories, every write, and a [version]
@@ -67,9 +68,9 @@ class AudienceModel(
     suspend fun load() {
         try {
             coroutineScope {
-                val me = async { client.getMe() }
-                val overview = async { client.getOverview() }
-                val categories = async { client.listCategories() }
+                val me = async { client.getMe().toUpdates<MeView>() }
+                val overview = async { client.getOverview().toUpdates<Overview>() }
+                val categories = async { client.listCategories().map { it.toUpdates<CategoryView>() } }
                 _me.value = me.await()
                 _overview.value = overview.await()
                 _categories.value = categories.await()

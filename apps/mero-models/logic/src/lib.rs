@@ -147,7 +147,7 @@ pub const OBJECT_KINDS: &[&str] = &[
 // travels as a decimal string.
 
 /// A point or a direction in scene units, or Euler angles in radians.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, AbiType)]
 pub struct Vec3 {
     pub x: f64,
     pub y: f64,
@@ -161,7 +161,7 @@ impl Vec3 {
 }
 
 /// How an object's surface looks. A light reads `color` as its light colour.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
 pub struct Material {
     /// Base colour, `#rrggbb`.
     pub color: String,
@@ -358,7 +358,7 @@ pub struct Member {
 // ── Views ─────────────────────────────────────────────────────────────────────
 
 /// The scene's header: name, environment, counts, and what the caller may do.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 pub struct SceneInfo {
     pub name: String,
     pub environment: Environment,

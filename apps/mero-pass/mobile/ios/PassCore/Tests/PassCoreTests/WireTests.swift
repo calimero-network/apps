@@ -47,7 +47,8 @@ final class WireTests: XCTestCase {
         try await client.setDefaultRole(role: "viewer")
         try await client.registerDevice(fingerprint: "f", publicKey: "pk", label: "l", kind: "mobile")
         try await client.revokeDevice(fingerprint: "f")
-        _ = try await client.addKeyWraps(wraps: [KeyWrapInput(keyId: "k", recipient: "r", wrapper: "w", envelope: "e")])
+        _ = try await client.addKeyWraps(
+            wraps: [try JSONValue(encoding: KeyWrapInput(keyId: "k", recipient: "r", wrapper: "w", envelope: "e"))])
         try await client.rotateKey(keyId: "k")
         _ = try await client.addSecret(id: "s", kind: "login", name: "n", tags: "", fields: [:])
         try await client.updateSecret(id: "s", fields: [:], rekey: false)

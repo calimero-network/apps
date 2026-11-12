@@ -17,8 +17,8 @@ import com.calimero.mero.app.SignedOutException
 import com.calimero.mero.tee.TeeTrustException
 import network.calimero.kombat.contract.ArenaView
 import network.calimero.kombat.contract.FighterView
-import network.calimero.kombat.contract.KombatClient
 import network.calimero.kombat.contract.KombatRefusal
+import network.calimero.kombat.generated.KombatClient
 import java.io.IOException
 
 /** The app's fixed values, shared with the web app and the contract's bundle. (Swift `KombatConstants`.) */
@@ -52,7 +52,7 @@ fun nowMillis(): ULong = System.currentTimeMillis().toULong()
 fun kombatClient(
     backend: MeroAppBackend,
     contextId: String,
-): KombatClient = KombatClient(backend.contract.bound(contextId))
+): KombatClient = KombatClient(backend, contextId)
 
 /**
  * One of the four fighters. Must match `FIGHTERS` in logic/src/lib.rs and `app/src/game/fighters.ts`:

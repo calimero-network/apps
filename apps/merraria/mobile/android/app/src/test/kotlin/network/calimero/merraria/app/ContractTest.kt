@@ -6,11 +6,13 @@ import com.calimero.mero.LoginRequired
 import com.calimero.mero.testkit.InMemoryAppBackend
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
-import network.calimero.merraria.contract.MerrariaClient
+import network.calimero.merraria.contract.MerrariaContract
 import network.calimero.merraria.contract.TileEntry
+import network.calimero.merraria.contract.allOverrides
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -27,8 +29,8 @@ class ContractTest {
         val methods = abi["methods"]!!.jsonObject
 
         fun of(kind: String) = methods.filter { (it.value.jsonObject["kind"] as? JsonPrimitive)?.content == kind }.keys.sorted()
-        assertEquals(MerrariaClient.CALLS, of("call"))
-        assertEquals(MerrariaClient.VIEWS, of("view"))
+        assertEquals(MerrariaContract.CALLS, of("call"))
+        assertEquals(MerrariaContract.VIEWS, of("view"))
     }
 
     @Test
@@ -36,7 +38,9 @@ class ContractTest {
         runTest {
             val backend = InMemoryAppBackend()
             backend.recording.handler = { call ->
-                when ((call.args as JsonObject)["cursor"]?.let { (it as JsonPrimitive).content }) {
+                // The generated client sends an unset `option` argument as `null`, which the
+                // contract reads as none, as it does a missing key.
+                when ((call.args as JsonObject)["cursor"]?.takeUnless { it is JsonNull }?.let { (it as JsonPrimitive).content }) {
                     null -> Json.parseToJsonElement("""{"items":[{"k":"1,2","t":3}],"next":"a"}""")
                     "a" -> Json.parseToJsonElement("""{"items":[{"k":"3,4","t":0}],"next":"b"}""")
                     else -> Json.parseToJsonElement("""{"items":[],"next":null}""")

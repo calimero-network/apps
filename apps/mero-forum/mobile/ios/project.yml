@@ -6,7 +6,7 @@
 #
 # The logic (typed contract client, view models, invitation codec) lives in the
 # local ForumCore package, which builds and tests on macOS with `swift test
-# --package-path ForumCore`. The swift-sdk is pinned to its v2.0.0 release
+# --package-path ForumCore`. The swift-sdk is pinned to its v4.1.0 release
 # (`exactVersion`). Keep it identical to ForumCore/Package.swift and
 # ForumCore/Package.resolved.
 #
@@ -31,7 +31,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 2.0.0
+    exactVersion: 4.1.0
   ForumCore:
     path: ForumCore
 

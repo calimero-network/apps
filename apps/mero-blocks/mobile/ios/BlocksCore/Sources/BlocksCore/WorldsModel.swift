@@ -105,8 +105,8 @@ public final class WorldsModel: ObservableObject {
         let counts = await withTaskGroup(of: (String, Int?).self) { group in
             for ref in refs {
                 group.addTask {
-                    let client = BlocksClient(transport: backend.contract.bound(to: ref.contextId))
-                    let players = try? await client.getPlayers(now: nowSeconds())
+                    let client = BlocksClient(backend: backend, app: ref.contextId)
+                    let players = try? await client.allPlayers(now: nowSeconds())
                     return (ref.contextId, players.map { $0.filter(\.online).count })
                 }
             }

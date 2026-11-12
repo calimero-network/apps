@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import network.calimero.battleships.generated.BattleshipsClient
 
 /**
  * One match, from placing the fleet to the audited result. (Swift `MatchModel`; the web app's
@@ -53,7 +54,7 @@ class MatchModel(
 
     /** The account the match names you by (`registerPlayer`'s answer). */
     val me: String = me.lowercase()
-    private val game = BattleshipsContract(backend.contract, ref.appId)
+    private val game = BattleshipsClient(backend, ref.appId)
 
     private val _stage = MutableStateFlow<Stage>(Stage.Loading)
     val stage: StateFlow<Stage> = _stage.asStateFlow()
@@ -166,15 +167,17 @@ class MatchModel(
         val mine: List<Int>
         val incoming: List<Int>
         try {
-            current = game.getMatchState(matchId)
+            current = game.getMatchState(matchId).toAppType()
             mine =
                 game
                     .getShots(matchId)
+                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
             incoming =
                 game
                     .getIncomingShots(matchId)
+                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
         } catch (e: CancellationException) {
@@ -207,17 +210,18 @@ class MatchModel(
         }
         var answers = incoming
         if (answerPendingShot(latest, board.cells)) {
-            latest = attempt { game.getMatchState(matchId) } ?: latest
+            latest = attempt { game.getMatchState(matchId).toAppType<MatchStateView>() } ?: latest
             answers = attempt {
                 game
                     .getIncomingShots(matchId)
+                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
             } ?: answers
             _turn.value = attempt { game.getCurrentTurn(matchId) }
         }
         if (revealIfDue(latest, board)) {
-            latest = attempt { game.getMatchState(matchId) } ?: latest
+            latest = attempt { game.getMatchState(matchId).toAppType<MatchStateView>() } ?: latest
         }
         _state.value = latest
         _ownBoard.value = BoardReading.overlay(board.cells, answers)
@@ -262,7 +266,7 @@ class MatchModel(
         if (state.revealed.any { it.equals(me, true) } || state.auditFailed.any { it.equals(me, true) }) return false
         revealing = true
         return try {
-            attempt { game.revealBoard(ref.matchId, board.cells, board.saltBytes) } != null
+            attempt { game.revealBoard(ref.matchId, Commitment.boardBytes(board.cells).toBytes(), board.saltBytes.toBytes()) } != null
         } finally {
             revealing = false
         }
@@ -379,7 +383,7 @@ class MatchModel(
         if (!isMyTurn || _busy.value) return
         _busy.value = true
         try {
-            game.proposeShot(ref.matchId, target.x, target.y)
+            game.proposeShot(ref.matchId, target.x.toUByte(), target.y.toUByte())
             _aim.value = null
             refresh()
         } catch (e: CancellationException) {

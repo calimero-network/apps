@@ -26,7 +26,7 @@ import type { BoxKind, Element, ShapeKind, StrokeStyle } from "../types";
  * ⚠️ PACKED ONLY AT THE WIRE. `api/rpc.ts` unpacks every element it reads and
  * packs every element and label it writes, so the store, the canvas and the
  * groups/screens code only ever see the clean label plus typed fields. Anything
- * that writes a label outside `rpcCall` would silently drop these extras.
+ * that writes a label without `wireElement` / `wireLabel` would silently drop these extras.
  */
 
 export const META_SEPARATOR = "\u001F";

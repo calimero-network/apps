@@ -1,7 +1,7 @@
 package network.calimero.sheets.core
 
 import com.calimero.mero.app.ContextContract
-import network.calimero.sheets.generated.SheetsClient
+import network.calimero.sheets.generated.client.SheetsClient
 
 /**
  * The sheets contract in one spreadsheet (context), through the account's node session. The generated

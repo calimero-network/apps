@@ -78,7 +78,7 @@ const ACL_ROLES: [(&str, u8); 2] = [("editor", OP_WRITE), ("moderator", OP_WRITE
 // ── stored values and results ────────────────────────────────────────────────
 
 /// Both halves of the caller's identity, as v1 spelled them.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Identity {
     /// v1's installation key. 1.0 has no per-device identity in an app run:
@@ -91,7 +91,7 @@ pub struct Identity {
 
 /// A file's metadata. The bytes live in the app's blob store on the node
 /// (`client.uploadBlob`); this record keeps the blob's id.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRecord {
     pub id: String,
@@ -111,7 +111,7 @@ pub struct FileRecord {
 
 /// A channel in the workspace directory: another app instance (v1: another
 /// context), made discoverable by registering its id here.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelRecord {
     pub context_id: String,
@@ -126,7 +126,7 @@ pub struct ChannelRecord {
 
 /// A group in the workspace directory (v1: the app-level mirror of a subgroup;
 /// 1.0: of a team).
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct WsGroupRecord {
     pub group_id: String,
@@ -138,7 +138,7 @@ pub struct WsGroupRecord {
 }
 
 /// A workspace member and the role the app grants them.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRecord {
     pub identity: String,
@@ -146,7 +146,7 @@ pub struct MemberRecord {
 }
 
 /// Summary of the workspace, for the header card. Counts are decimal strings.
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceInfo {
     pub name: String,

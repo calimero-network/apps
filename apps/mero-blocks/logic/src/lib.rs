@@ -76,7 +76,7 @@ const PAGE: u32 = 1000;
 
 /// The world's identity: name, terrain seed and creation time. Also the
 /// `worldMeta` answer.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct WorldMeta {
     pub name: String,
@@ -116,7 +116,7 @@ pub struct Player {
 // ── Arguments and answers ────────────────────────────────────────────────────
 
 /// One block change at a world coordinate.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct Edit {
     /// World x, in [0, 128).
@@ -130,7 +130,7 @@ pub struct Edit {
 }
 
 /// A player's reported transform for `heartbeat`.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct Transform {
     /// Display name.
@@ -147,7 +147,7 @@ pub struct Transform {
 }
 
 /// One edited coordinate.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, AbiType)]
 pub struct BlockEntry {
     /// The coordinate as "x,y,z".
     pub k: String,
@@ -157,7 +157,7 @@ pub struct BlockEntry {
 
 /// One page of `getOverrides`: at most `limit` entries in key order, and the
 /// cursor of the next page (`null` after the last one).
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 pub struct OverridesPage {
     pub items: Vec<BlockEntry>,
     pub next: Option<String>,
@@ -165,14 +165,14 @@ pub struct OverridesPage {
 
 /// One page of `getPlayers`: at most `limit` avatars in (account, device)
 /// order, and the cursor of the next page (`null` after the last one).
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 pub struct PlayersPage {
     pub items: Vec<PlayerView>,
     pub next: Option<String>,
 }
 
 /// A player as other players see them.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
     /// The avatar's id: the account, or `"<account>/<device>"` for an avatar
@@ -198,7 +198,7 @@ pub struct PlayerView {
 }
 
 /// The world's size, read from stored counts.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct WorldStats {
     /// Distinct coordinates ever edited, breaks included.

@@ -352,7 +352,7 @@ fn current(history: &[Step]) -> &Step {
 }
 
 /// How a row is best resolved in place. See [`ASK_KINDS`].
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct Ask {
     /// `""`, `confirm`, `reply` or `choose`.
     pub kind: String,
@@ -631,7 +631,7 @@ pub struct Presence {
 
 /// A folder an agent may use on its computer: an absolute path, or one under
 /// `~`, and whether it may write there too.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct Folder {
     pub path: String,
     pub write: bool,
@@ -653,7 +653,7 @@ pub struct Access {
 /// One agent profile an agent runs, as it reports it: which mode or route
 /// it serves, its model, whether its model is attested, and what it can reach
 /// besides your Calimero apps.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct ReachLine {
     /// What it runs: `default`, or the kind of work a profile is routed to.
     pub serves: String,
@@ -820,7 +820,7 @@ pub struct RuleProposal {
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 pub struct ActionInput {
     /// Short app key, e.g. `chat`, `sign`, `crm`. Policies are keyed by it.
     pub app: String,
@@ -867,7 +867,7 @@ pub struct ActionInput {
 }
 
 /// What your client saw for one notification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 pub struct NotificationInput {
     /// Stable for the same event on every device, e.g.
     /// `<context>:<root hash>:<index>`.
@@ -896,7 +896,7 @@ pub struct NotificationInput {
 }
 
 /// The rules' answer for one prospective action.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct Verdict {
     /// `act`, `ask` or `refuse`.
     pub decision: String,
@@ -1017,7 +1017,7 @@ pub struct FeedItem {
     pub subject: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct FeedCounts {
     pub all: u32,
     pub agent: u32,
@@ -1027,7 +1027,7 @@ pub struct FeedCounts {
     pub archived: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct AppCount {
     pub app: String,
     pub count: u32,
@@ -1044,14 +1044,14 @@ pub struct FeedPage {
     pub next_before: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct PolicyView {
     pub app: String,
     pub agent: String,
     pub notifications: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct GuardView {
     pub category: String,
     pub enabled: bool,
@@ -1067,7 +1067,7 @@ pub struct LensView {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct SettingsView {
     pub owner: String,
     pub paused: bool,

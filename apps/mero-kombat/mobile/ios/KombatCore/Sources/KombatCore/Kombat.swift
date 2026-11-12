@@ -24,7 +24,7 @@ extension KombatClient {
     /// `KombatClient` for `contextId` in the account's backend: the SDK's bound contract is the
     /// typed client's transport as is.
     public static func bound(_ backend: any MeroAppBackend, contextId: String) -> KombatClient {
-        KombatClient(transport: backend.contract.bound(to: contextId))
+        KombatClient(backend: backend, app: contextId)
     }
 }
 
