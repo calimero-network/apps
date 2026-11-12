@@ -1,115 +1,60 @@
 import { AppError } from "@calimero-network/mero-js";
-import { describeError, type ClientRoutes } from "@calimero-apps/connect";
+import { describeError } from "@calimero-apps/connect";
 
-import abi from "../../../logic/res/abi.json";
+import { MeroPixartClient, type AppTransport } from "../generated/client";
 
 /**
- * The document contract, called the way the screens called v1.
- *
- * The screens name methods and arguments as v1 did (`update_layer`,
- * `{ updated_at }`, numbers for clocks). The component ABI names them in
- * camelCase, takes `u64`/`i64` arguments as decimal strings, and tells views
- * from calls. This module is the one place that translates, from the committed
- * `logic/res/abi.json`, so a contract change shows up in its test
- * (`pixart.test.ts`) rather than as a refused call.
+ * The document contract is called through `MeroPixartClient`
+ * (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+ * `logic/res/abi.json`): camelCase method and argument names, `u64`/`i64`
+ * arguments as decimal strings (`i64` below), views as views.
  *
  * Answers need no translation: every integer the contract answers is inside a
- * record the contract keeps as v1 did (JSON numbers, camelCase fields).
+ * record the contract keeps as v1 did (JSON numbers, camelCase fields). The ABI
+ * names those records without their shapes, so the generated types are
+ * `unknown` and the screens cast them to `types/`.
+ *
+ * `pixartTransport` is the one adapter on the wire: a refusal reaches the
+ * screens as an `Error` with v1's words (`messageOf`), which is also what
+ * `rpcWithFallback` (api/compat) reads a missing method from.
+ * `client.test.ts` checks the generated class against the committed ABI.
  */
 
 /** The package production instances come from. */
 export const PACKAGE = "com.calimero.mero-pixart";
 
-/** v1's method names, and the component method each one is. */
-export const V1_METHODS = {
-  get_document: "getDocument",
-  update_document: "updateDocument",
-  transfer_ownership: "transferOwnership",
-  grant_editor: "grantEditor",
-  revoke_editor: "revokeEditor",
-  get_role: "getRole",
-  my_role: "myRole",
-  can_edit: "canEdit",
-  list_roles: "listRoles",
-  join: "join",
-  get_members: "getMembers",
-  update_member_username: "updateMemberUsername",
-  add_layer: "addLayer",
-  update_layer: "updateLayer",
-  update_transform: "updateTransform",
-  move_layers: "moveLayers",
-  update_layer_content: "updateLayerContent",
-  update_layer_mask: "updateLayerMask",
-  update_adjustments: "updateAdjustments",
-  update_text: "updateText",
-  delete_layer: "deleteLayer",
-  get_layers: "getLayers",
-  get_layer: "getLayer",
-  move_layer: "moveLayer",
-  reorder_layers: "reorderLayers",
-  bring_to_front: "bringToFront",
-  send_to_back: "sendToBack",
-  clear_layers: "clearLayers",
-  update_cursor: "updateCursor",
-  get_cursors: "getCursors",
-} as const;
-
-export type V1Method = keyof typeof V1_METHODS;
-
-interface AbiMethod {
-  kind: string;
-  params: [string, string][];
+/** A clock or coordinate as the contract takes a `u64`/`i64`: a whole decimal string. */
+export function i64(n: number): string {
+  return String(Math.trunc(n));
 }
 
-const METHODS = (abi as unknown as { methods: Record<string, AbiMethod> }).methods;
-
-/** Integer types that travel as decimal strings (D20). */
-const STRING_INTS = new Set(["u64", "i64", "option<u64>", "option<i64>"]);
-
-const camel = (name: string) => name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-
-/** The component method a v1 name (or an already camelCase name) is. */
-export function methodOf(name: string): string {
-  return (V1_METHODS as Record<string, string>)[name] ?? camel(name);
+/** {@link i64}, keeping "not given". */
+export function optI64(n: number | null | undefined): string | null {
+  return n === null || n === undefined ? null : i64(n);
 }
 
-/** `args` as the component method takes them: camelCase keys, 64-bit integers as strings. */
-export function toWire(method: string, args: Record<string, unknown> = {}): Record<string, unknown> {
-  const types = new Map((METHODS[method]?.params ?? []).map(([n, t]) => [n, t]));
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (value === undefined) continue;
-    const name = camel(key);
-    const type = types.get(name);
-    out[name] =
-      type && STRING_INTS.has(type) && typeof value === "number" ? String(Math.trunc(value)) : value;
-  }
-  return out;
+/** Rethrows a refusal as an `Error` with v1's words, the original as its `cause`. */
+function rethrow(err: unknown): never {
+  throw Object.assign(new Error(messageOf(err)), { cause: err });
 }
 
-/** Whether `method` is a view (read from any replica, not logged). */
-export function isView(method: string): boolean {
-  return METHODS[method]?.kind === "view";
+/** `client` with every refusal in v1's words ({@link messageOf}), for `MeroPixartClient` to call through. */
+export function pixartTransport(client: AppTransport): AppTransport {
+  return {
+    apps: {
+      call: (args, options) => client.apps.call(args, options).catch(rethrow),
+      view: (args, options) => client.apps.view(args, options).catch(rethrow),
+    },
+    events: (app, from, signal) => client.events(app, from, signal),
+  };
 }
 
-/** Call or view `name` (v1 or component name) on the document `app`. */
-export async function invoke<T>(
-  client: ClientRoutes<{ apps: "call" | "view" }>,
-  app: string,
-  name: string,
-  args: Record<string, unknown> = {},
-): Promise<T> {
-  const method = methodOf(name);
-  const wire = toWire(method, args);
-  try {
-    const res = isView(method)
-      ? await client.apps.view({ app, method, args: wire })
-      : await client.apps.call({ app, method, args: wire });
-    return res.result as T;
-  } catch (err) {
-    throw Object.assign(new Error(messageOf(err)), { cause: err });
-  }
+/** The document `app` through `client`; `after` runs after every request. */
+export function pixartClient(client: AppTransport, app: string, after?: () => void): MeroPixartClient {
+  return new MeroPixartClient(pixartTransport(client), app, after ? { after } : {});
 }
+
+export { MeroPixartClient };
 
 /** One line for the UI, in v1's words where v1 had them. */
 export function messageOf(error: unknown): string {
