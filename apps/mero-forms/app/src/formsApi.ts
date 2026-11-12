@@ -1,4 +1,12 @@
-import { MeroFormsClient, type AppCallTransport, type AppTransport } from "./generated/client";
+import {
+  MeroFormsClient,
+  type AnswerInput as WireAnswerInput,
+  type AppCallTransport,
+  type AppTransport,
+  type CaptchaPass as WireCaptchaPass,
+  type CrmLink as WireCrmLink,
+  type Field as WireField,
+} from "./generated/client";
 
 /**
  * The forms contract is called through `MeroFormsClient`
@@ -7,9 +15,10 @@ import { MeroFormsClient, type AppCallTransport, type AppTransport } from "./gen
  * strings. This file is what sits around it:
  *
  * - the shapes the screens use. The screens were written against v1's
- *   `FormsClient`: snake_case records and plain numbers. The ABI names its
- *   records without their shapes, so the generated answers are `unknown`, and
- *   each one passes through a `to*` below (`from*` builds a record argument).
+ *   `FormsClient`: snake_case records and plain numbers. The generated client
+ *   types the records from the ABI; each answer passes through a `to*` below,
+ *   which reads it defensively, and `from*` builds a record argument, checked
+ *   against the generated argument types.
  *   Timestamps are milliseconds (v1's were nanoseconds).
  * - `formsTransport`, the one adapter on the wire: a refusal comes back as an
  *   `AppError` (`appCode` + `fields.message`) and is rethrown as a plain
@@ -171,7 +180,7 @@ export const toField = (f: Raw): Field => ({
   options: Array.isArray(f.options) ? (f.options as string[]) : [],
 });
 
-const fromField = (f: Field) => ({
+const fromField = (f: Field): WireField => ({
   id: f.id,
   kind: f.kind,
   label: f.label,
@@ -190,7 +199,7 @@ export const toCrmLink = (l: Raw | undefined): CrmLink => ({
   title_field: str(l?.titleField),
 });
 
-const fromCrmLink = (l: CrmLink) => ({
+const fromCrmLink = (l: CrmLink): WireCrmLink => ({
   contextId: l.context_id,
   stageId: l.stage_id,
   nameField: l.name_field,
@@ -207,7 +216,7 @@ const toAnswer = (a: Raw): Answer => ({
   values: Array.isArray(a.values) ? (a.values as string[]) : [],
 });
 
-const fromAnswers = (answers: AnswerInput[]) => answers.map((a) => ({ fieldId: a.field_id, values: a.values }));
+const fromAnswers = (answers: AnswerInput[]): WireAnswerInput[] => answers.map((a) => ({ fieldId: a.field_id, values: a.values }));
 
 export const toFormView = (f: Raw): FormView => ({
   id: str(f.id),
@@ -331,7 +340,7 @@ export const toCaptcha = (v: unknown): CaptchaSettings => toCaptchaSettings(v as
 export const fromFields = (fields: Field[]) => fields.map(fromField);
 export { fromCrmLink, fromAnswers };
 /** A captcha pass as `submitViaLink` takes it: its expiry as a decimal string. */
-export const fromCaptchaPass = (pass: CaptchaPass | null) =>
+export const fromCaptchaPass = (pass: CaptchaPass | null): WireCaptchaPass | null =>
   pass ? { nonce: pass.nonce, expiresMs: String(pass.expires_ms), signature: pass.signature } : null;
 
 /** Ignores a call's answer, for the calls the screens only wait for. */

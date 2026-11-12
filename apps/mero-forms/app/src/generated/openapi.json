@@ -434,8 +434,50 @@
         ],
         "type": "object"
       },
+      "Answer": {
+        "properties": {
+          "fieldId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fieldId",
+          "label",
+          "kind",
+          "values"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Answer"
+      },
       "AnswerInput": {
-        "description": "The app type `AnswerInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "fieldId": {
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fieldId",
+          "values"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AnswerInput"
       },
       "ApiError": {
@@ -505,11 +547,50 @@
         ]
       },
       "CaptchaPass": {
-        "description": "The app type `CaptchaPass`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "expiresMs": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nonce",
+          "expiresMs",
+          "signature"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CaptchaPass"
       },
       "CaptchaSettings": {
-        "description": "The app type `CaptchaSettings`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "needsResealing": {
+            "type": "boolean"
+          },
+          "secretSet": {
+            "type": "boolean"
+          },
+          "siteKey": {
+            "type": "string"
+          },
+          "teeAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "siteKey",
+          "secretSet",
+          "teeAvailable",
+          "needsResealing"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CaptchaSettings"
       },
       "CaptchaSettingsArgs": {
@@ -818,7 +899,39 @@
         "type": "object"
       },
       "CrmLink": {
-        "description": "The app type `CrmLink`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "emailField": {
+            "type": "string"
+          },
+          "nameField": {
+            "type": "string"
+          },
+          "organizationField": {
+            "type": "string"
+          },
+          "phoneField": {
+            "type": "string"
+          },
+          "stageId": {
+            "type": "string"
+          },
+          "titleField": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "stageId",
+          "nameField",
+          "emailField",
+          "phoneField",
+          "organizationField",
+          "titleField"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CrmLink"
       },
       "DeleteFormArgs": {
@@ -998,7 +1111,38 @@
         ]
       },
       "Field": {
-        "description": "The app type `Field`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "help": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "help",
+          "required",
+          "options"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Field"
       },
       "FieldKindsArgs": {
@@ -1133,15 +1277,175 @@
         "type": "object"
       },
       "FormKeyView": {
-        "description": "The app type `FormKeyView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "formId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lastResponseAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "responses": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "account",
+          "label",
+          "formId",
+          "createdAt",
+          "createdBy",
+          "responses",
+          "lastResponseAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FormKeyView"
       },
       "FormSummary": {
-        "description": "The app type `FormSummary`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fields": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastResponseAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "newResponses": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "responses": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "open",
+          "fields",
+          "responses",
+          "newResponses",
+          "lastResponseAt",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FormSummary"
       },
       "FormView": {
-        "description": "The app type `FormView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "captchaKey": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "crm": {
+            "$ref": "#/components/schemas/CrmLink"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "linkCap": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "fields",
+          "open",
+          "crm",
+          "public",
+          "linkCap",
+          "captchaKey",
+          "createdAt",
+          "createdBy",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FormView"
       },
       "GetFormArgs": {
@@ -1330,11 +1634,102 @@
         "type": "object"
       },
       "LinkFormView": {
-        "description": "The app type `LinkFormView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "accepting": {
+            "type": "boolean"
+          },
+          "captcha": {
+            "type": "boolean"
+          },
+          "captchaByNode": {
+            "type": "boolean"
+          },
+          "captchaSiteKey": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": "array"
+          },
+          "formId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "formId",
+          "title",
+          "description",
+          "fields",
+          "accepting",
+          "captcha",
+          "captchaByNode",
+          "captchaSiteKey"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LinkFormView"
       },
       "LinkView": {
-        "description": "The app type `LinkView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "formId": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lastHour": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "lastResponseAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "responses": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "id",
+          "formId",
+          "label",
+          "grantId",
+          "createdAt",
+          "createdBy",
+          "responses",
+          "lastHour",
+          "lastResponseAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LinkView"
       },
       "ListFormKeysArgs": {
@@ -1920,7 +2315,68 @@
         "type": "object"
       },
       "ResponseView": {
-        "description": "The app type `ResponseView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            },
+            "type": "array"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "crmContext": {
+            "type": "string"
+          },
+          "crmDeal": {
+            "type": "string"
+          },
+          "crmSentAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "crmSentBy": {
+            "type": "string"
+          },
+          "formId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "submittedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "formId",
+          "answers",
+          "source",
+          "createdAt",
+          "submittedBy",
+          "link",
+          "archived",
+          "crmContext",
+          "crmDeal",
+          "crmSentAt",
+          "crmSentBy"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ResponseView"
       },
       "SetArchivedArgs": {
@@ -2568,7 +3024,19 @@
         "type": "object"
       },
       "TeamMember": {
-        "description": "The app type `TeamMember`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "admin"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TeamMember"
       },
       "Trap": {

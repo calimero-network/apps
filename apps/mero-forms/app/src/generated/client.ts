@@ -4,41 +4,142 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `AnswerInput`: the ABI names it without its shape. */
-export type AnswerInput = unknown;
+/** The app type `Answer`. */
+export interface Answer {
+  fieldId: string;
+  label: string;
+  kind: string;
+  values: string[];
+}
 
-/** The app type `CaptchaPass`: the ABI names it without its shape. */
-export type CaptchaPass = unknown;
+/** The app type `AnswerInput`. */
+export interface AnswerInput {
+  fieldId: string;
+  values: string[];
+}
 
-/** The app type `CaptchaSettings`: the ABI names it without its shape. */
-export type CaptchaSettings = unknown;
+/** The app type `CaptchaPass`. */
+export interface CaptchaPass {
+  nonce: string;
+  expiresMs: string;
+  signature: string;
+}
 
-/** The app type `CrmLink`: the ABI names it without its shape. */
-export type CrmLink = unknown;
+/** The app type `CaptchaSettings`. */
+export interface CaptchaSettings {
+  siteKey: string;
+  secretSet: boolean;
+  teeAvailable: boolean;
+  needsResealing: boolean;
+}
 
-/** The app type `Field`: the ABI names it without its shape. */
-export type Field = unknown;
+/** The app type `CrmLink`. */
+export interface CrmLink {
+  contextId: string;
+  stageId: string;
+  nameField: string;
+  emailField: string;
+  phoneField: string;
+  organizationField: string;
+  titleField: string;
+}
 
-/** The app type `FormKeyView`: the ABI names it without its shape. */
-export type FormKeyView = unknown;
+/** The app type `Field`. */
+export interface Field {
+  id: string;
+  kind: string;
+  label: string;
+  help: string;
+  required: boolean;
+  options: string[];
+}
 
-/** The app type `FormSummary`: the ABI names it without its shape. */
-export type FormSummary = unknown;
+/** The app type `FormKeyView`. */
+export interface FormKeyView {
+  account: string;
+  label: string;
+  formId: string;
+  createdAt: string;
+  createdBy: string;
+  responses: number;
+  lastResponseAt: string;
+}
 
-/** The app type `FormView`: the ABI names it without its shape. */
-export type FormView = unknown;
+/** The app type `FormSummary`. */
+export interface FormSummary {
+  id: string;
+  title: string;
+  description: string;
+  open: boolean;
+  fields: number;
+  responses: number;
+  newResponses: number;
+  lastResponseAt: string;
+  createdAt: string;
+}
 
-/** The app type `LinkFormView`: the ABI names it without its shape. */
-export type LinkFormView = unknown;
+/** The app type `FormView`. */
+export interface FormView {
+  id: string;
+  title: string;
+  description: string;
+  fields: Field[];
+  open: boolean;
+  crm: CrmLink;
+  public: boolean;
+  linkCap: number;
+  captchaKey: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+}
 
-/** The app type `LinkView`: the ABI names it without its shape. */
-export type LinkView = unknown;
+/** The app type `LinkFormView`. */
+export interface LinkFormView {
+  formId: string;
+  title: string;
+  description: string;
+  fields: Field[];
+  accepting: boolean;
+  captcha: boolean;
+  captchaByNode: boolean;
+  captchaSiteKey: string;
+}
 
-/** The app type `ResponseView`: the ABI names it without its shape. */
-export type ResponseView = unknown;
+/** The app type `LinkView`. */
+export interface LinkView {
+  id: string;
+  formId: string;
+  label: string;
+  grantId: string;
+  createdAt: string;
+  createdBy: string;
+  responses: number;
+  lastHour: number;
+  lastResponseAt: string;
+}
 
-/** The app type `TeamMember`: the ABI names it without its shape. */
-export type TeamMember = unknown;
+/** The app type `ResponseView`. */
+export interface ResponseView {
+  id: string;
+  formId: string;
+  answers: Answer[];
+  source: string;
+  createdAt: string;
+  submittedBy: string;
+  link: string;
+  archived: boolean;
+  crmContext: string;
+  crmDeal: string;
+  crmSentAt: string;
+  crmSentBy: string;
+}
+
+/** The app type `TeamMember`. */
+export interface TeamMember {
+  account: string;
+  admin: boolean;
+}
 
 /** The arguments of `addTeamMember`. */
 export interface AddTeamMemberArgs {

@@ -1529,5 +1529,445 @@
     },
     "version": 1
   },
+  "types": {
+    "ActionDef": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ],
+        [
+          "category",
+          "string"
+        ],
+        [
+          "writes",
+          "bool"
+        ],
+        [
+          "methods",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ActionInput": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "source_context",
+          "string"
+        ],
+        [
+          "source_label",
+          "string"
+        ],
+        [
+          "method",
+          "string"
+        ],
+        [
+          "category",
+          "string"
+        ],
+        [
+          "writes",
+          "bool"
+        ],
+        [
+          "undoable",
+          "bool"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "why",
+          "string"
+        ],
+        [
+          "outcome",
+          "string"
+        ],
+        [
+          "intent_hash",
+          "string"
+        ],
+        [
+          "executor",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "ask",
+          "Ask"
+        ],
+        [
+          "grant",
+          "string"
+        ],
+        [
+          "subject",
+          "string"
+        ],
+        [
+          "send_call",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ActionModeView": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "action",
+          "string"
+        ],
+        [
+          "mode",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Ask": {
+      "fields": [
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "prompt",
+          "string"
+        ],
+        [
+          "options",
+          "list<string>"
+        ],
+        [
+          "draft",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CheckpointInput": {
+      "fields": [
+        [
+          "done",
+          "string"
+        ],
+        [
+          "next",
+          "string"
+        ],
+        [
+          "branches",
+          "list<string>"
+        ],
+        [
+          "worktrees",
+          "list<string>"
+        ],
+        [
+          "prs",
+          "list<string>"
+        ],
+        [
+          "questions",
+          "list<string>"
+        ],
+        [
+          "author",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Folder": {
+      "fields": [
+        [
+          "path",
+          "string"
+        ],
+        [
+          "write",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "GuardView": {
+      "fields": [
+        [
+          "category",
+          "string"
+        ],
+        [
+          "enabled",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LinkInput": {
+      "fields": [
+        [
+          "subject",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "by",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "NotificationInput": {
+      "fields": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "app",
+          "string"
+        ],
+        [
+          "source_context",
+          "string"
+        ],
+        [
+          "source_label",
+          "string"
+        ],
+        [
+          "from",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "event",
+          "string"
+        ],
+        [
+          "needs_you",
+          "bool"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "ask",
+          "Ask"
+        ],
+        [
+          "item_type",
+          "string"
+        ],
+        [
+          "fields",
+          "string"
+        ],
+        [
+          "reply_call",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PolicyView": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "notifications",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PushDeviceInput": {
+      "fields": [
+        [
+          "endpoint",
+          "string"
+        ],
+        [
+          "p256dh",
+          "string"
+        ],
+        [
+          "auth",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "quiet",
+          "bool"
+        ],
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ReachLine": {
+      "fields": [
+        [
+          "serves",
+          "string"
+        ],
+        [
+          "profile",
+          "string"
+        ],
+        [
+          "model",
+          "string"
+        ],
+        [
+          "attested",
+          "bool"
+        ],
+        [
+          "folders",
+          "list<Folder>"
+        ],
+        [
+          "shell",
+          "bool"
+        ],
+        [
+          "web",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SettingsView": {
+      "fields": [
+        [
+          "owner",
+          "string"
+        ],
+        [
+          "paused",
+          "bool"
+        ],
+        [
+          "policies",
+          "list<PolicyView>"
+        ],
+        [
+          "guards",
+          "list<GuardView>"
+        ],
+        [
+          "agents",
+          "list<AgentView>"
+        ],
+        [
+          "rules",
+          "list<RuleView>"
+        ],
+        [
+          "rule_proposals",
+          "list<RuleProposalView>"
+        ],
+        [
+          "message_modes",
+          "list<string>"
+        ],
+        [
+          "access",
+          "list<AccessView>"
+        ],
+        [
+          "reach",
+          "list<ReachView>"
+        ],
+        [
+          "assignments",
+          "list<AssignmentView>"
+        ],
+        [
+          "agent_rules",
+          "list<AgentRuleView>"
+        ],
+        [
+          "action_modes",
+          "list<ActionModeView>"
+        ],
+        [
+          "agent_accounts",
+          "list<AgentAccountView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Verdict": {
+      "fields": [
+        [
+          "decision",
+          "string"
+        ],
+        [
+          "reason",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

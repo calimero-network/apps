@@ -269,7 +269,7 @@ pub struct CellMeta {
 }
 
 /// One cell's change within an activity entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, AbiType)]
 pub struct CellChange {
     pub row_id: String,
     pub col_id: String,
@@ -321,7 +321,7 @@ pub struct ScratchCell {
 // Arguments and results (v1's field names; u64 as decimal strings)
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Project {
     pub id: String,
     /// Empty until `initProject` runs.
@@ -330,7 +330,7 @@ pub struct Project {
     pub created_at: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Member {
     /// The member's account (`whoami`).
     pub id: String,
@@ -345,7 +345,7 @@ pub struct Member {
     pub role: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 pub struct StyleOp {
     pub row_id: String,
     pub col_id: String,
@@ -353,7 +353,7 @@ pub struct StyleOp {
     pub value: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct CellStyle {
     pub sheet_id: String,
     pub row_id: String,
@@ -361,7 +361,7 @@ pub struct CellStyle {
     pub style: BTreeMap<String, String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 pub struct RuleInput {
     pub sheet_id: String,
     pub top_row_id: String,
@@ -377,7 +377,7 @@ pub struct RuleInput {
     pub recipients: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 pub struct ChartInput {
     pub sheet_id: String,
     pub top_row_id: String,
@@ -388,14 +388,14 @@ pub struct ChartInput {
     pub title: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Chart {
     pub id: String,
     pub chart: ChartInput,
     pub created_by: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Attachment {
     pub id: String,
     pub sheet_id: String,
@@ -411,7 +411,7 @@ pub struct Attachment {
     pub created_at: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Publication {
     pub id: String,
     pub sheet_id: String,
@@ -426,7 +426,7 @@ pub struct Publication {
 
 /// What a link pushes to its workbook: the client delivers it there with
 /// `receiveLink` (core rc.7 has no cross-app call for components).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct LinkPush {
     pub publication_id: String,
     pub target_context: String,
@@ -437,7 +437,7 @@ pub struct LinkPush {
     pub values: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Link {
     pub id: String,
     pub source_context: String,
@@ -449,14 +449,14 @@ pub struct Link {
     pub updated_at: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Rule {
     pub id: String,
     pub rule: RuleInput,
     pub created_by: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 pub struct AxisSize {
     /// `row` or `col`.
     pub axis: String,
@@ -464,7 +464,7 @@ pub struct AxisSize {
     pub size: u32,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct SheetView {
     pub sheet_id: String,
     pub frozen_rows: u32,
@@ -472,7 +472,7 @@ pub struct SheetView {
     pub sizes: Vec<AxisSize>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Protection {
     pub id: String,
     pub sheet_id: String,
@@ -485,7 +485,7 @@ pub struct Protection {
     pub created_by: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Sheet {
     pub id: String,
     pub name: String,
@@ -497,7 +497,7 @@ pub struct Sheet {
 }
 
 /// A cell, by row and column id.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Cell {
     pub id: String,
     pub sheet_id: String,
@@ -513,7 +513,7 @@ pub struct Cell {
     pub last_edited_at: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct NotedCell {
     pub sheet_id: String,
     pub row_id: String,
@@ -521,7 +521,7 @@ pub struct NotedCell {
     pub preview: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct Comment {
     pub id: String,
     pub sheet_id: String,
@@ -538,7 +538,7 @@ pub struct Comment {
     pub updated_at: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct ActivityEntry {
     pub id: String,
     pub author: String,
@@ -552,7 +552,7 @@ pub struct ActivityEntry {
 }
 
 /// v1's adjacently tagged `{ name, payload }` form.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(tag = "name", content = "payload")]
 pub enum CellOp {
     Set {
@@ -571,7 +571,7 @@ pub enum CellOp {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(tag = "name", content = "payload")]
 pub enum AxisOp {
     InsertRow { id: String, pos: String },
@@ -582,27 +582,27 @@ pub enum AxisOp {
     RestoreCol { id: String },
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct AxisEntryView {
     pub id: String,
     pub pos: String,
     pub deleted: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct SheetLayout {
     pub sheet_id: String,
     pub rows: Vec<AxisEntryView>,
     pub cols: Vec<AxisEntryView>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct NamedRange {
     pub name: String,
     pub target: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, AbiType)]
 pub struct FunctionDef {
     pub name: String,
     pub category: String,
