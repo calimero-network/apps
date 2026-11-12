@@ -1,22 +1,22 @@
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
-// Every section calls the contract by its v1 method name with v1's snake_case
-// arguments (`rpcRaw("get_result", { key })`) and reads back the envelope it
-// displays (`{ result: { output } }` or `{ error }`). This file is the one
-// place that maps that onto the 1.0 client:
+// Every section calls the contract through the functions in `kvStore.ts`, and
+// reads back the envelope it displays (`{ result: { output } }` or `{ error }`).
+// Those functions call `ScaffoldingE2eClient` (`src/generated/client.ts`, which
+// `mero-app-build codegen` writes from `logic/res/abi.json`) with the ABI's
+// method and argument names; this file is what sits around it:
 //
-//   • the method name and argument names become camelCase (the component ABI's);
-//   • a view goes through `client.view`, anything else through `client.call`
-//     (the ABI says which; a call is logged, a view is not);
-//   • 64-bit integers travel as decimal strings: a number argument is sent as
-//     one, and a `u64`/`i64` result comes back as a number again;
-//   • a typed contract error (`AppError`: `appCode` + `fields`) is folded into
-//     `envelope.error` instead of thrown, because the sections show it.
+//   • `contract()` is the class over the open instance's signed-in client;
+//   • `run` turns one call into the envelope: a typed contract error
+//     (`AppError`: `appCode` + `fields`) is folded into `envelope.error`
+//     instead of thrown, because the sections show it;
+//   • 64-bit integers travel as decimal strings: `u64` makes an argument one,
+//     and `int` turns a `u64`/`i64` result back into a number.
 
 import { describeError } from "@calimero-apps/connect";
 
 import { getConnection } from "../lib/calimero";
-import { METHODS, type MethodSpec } from "./abi";
+import { ScaffoldingE2eClient } from "../generated/client";
 
 /**
  * What a section displays: the value, or the error. `ResultBox` colours a
@@ -38,35 +38,19 @@ export class RpcCallError extends Error {
   }
 }
 
-/** `get_result` → `getResult`; a name already in camelCase stays. */
-export function camel(name: string): string {
-  return name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-}
-
 /** `uploadedAt` → `uploaded_at`. */
 export function snake(name: string): string {
   return name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
 
-const INT64 = /^(option<)?(u64|i64)>?$/;
-
-/** The arguments as the ABI names and types them. */
-export function toWireArgs(spec: MethodSpec | undefined, args: Record<string, unknown>): Record<string, unknown> {
-  const types = new Map(spec?.params ?? []);
-  return Object.fromEntries(
-    Object.entries(args).map(([k, v]) => {
-      const name = camel(k);
-      const type = types.get(name) ?? "";
-      const wire = INT64.test(type) && typeof v === "number" ? String(Math.trunc(v)) : v;
-      return [name, wire];
-    }),
-  );
+/** A 64-bit integer argument as the decimal string the contract takes. */
+export function u64(n: number | string): string {
+  return typeof n === "number" ? String(Math.trunc(n)) : n;
 }
 
 /** A `u64`/`i64` result (a decimal string on the wire) as a number. */
-export function fromWire(spec: MethodSpec | undefined, value: unknown): unknown {
-  if (spec?.returns && INT64.test(spec.returns) && typeof value === "string") return Number(value);
-  return value;
+export function int(value: unknown): unknown {
+  return typeof value === "string" ? Number(value) : value;
 }
 
 /** The error as the sections show it: the contract's code and fields, and a readable line. */
@@ -81,39 +65,32 @@ function errorEnvelope(e: unknown): RpcEnvelope["error"] {
 }
 
 /**
- * Call a contract method on the open instance and return the envelope. A
- * contract failure comes back as `envelope.error`; only a missing session or
- * instance throws.
+ * The contract of the open instance. Throws when nobody is signed in or no
+ * instance is open; `method` names the call that wanted it.
  */
-export async function rpcRaw<T = unknown>(
-  method: string,
-  argsJson: Record<string, unknown> = {},
-): Promise<RpcEnvelope<T>> {
+export function contract(method = "contract"): ScaffoldingE2eClient {
   const conn = getConnection();
   if (!conn) {
     throw new RpcCallError("No app instance open — sign in and pick one in the Setup Wizard first.", method);
   }
-  const name = camel(method);
-  const spec = METHODS[name];
-  const args = toWireArgs(spec, argsJson);
-  try {
-    const answer = spec?.view
-      ? await conn.client.apps.view({ app: conn.appId, method: name, args })
-      : await conn.client.apps.call({ app: conn.appId, method: name, args });
-    return { result: { output: fromWire(spec, answer.result) as T } };
-  } catch (e) {
-    return { error: errorEnvelope(e) };
-  } finally {
-    conn.after();
-  }
+  return new ScaffoldingE2eClient(conn.client, conn.appId, { after: conn.after });
 }
 
-/** Call a method and return its value, throwing on any failure. */
-export async function rpcCall<T>(method: string, argsJson: Record<string, unknown> = {}): Promise<T> {
-  const envelope = await rpcRaw<T>(method, argsJson);
-  if (envelope.error) {
-    const e = envelope.error as { message?: string };
-    throw new RpcCallError(e.message ?? JSON.stringify(envelope.error), method);
+/**
+ * Run one contract method (`call`, on the open instance's class) and return
+ * the envelope, its answer through `answer` (`int`, `v1Record`, …). A contract
+ * failure comes back as `envelope.error`; only a missing session or instance
+ * throws.
+ */
+export async function run<T = unknown>(
+  method: string,
+  call: (contract: ScaffoldingE2eClient) => Promise<unknown>,
+  answer: (value: unknown) => unknown = (value) => value,
+): Promise<RpcEnvelope<T>> {
+  const c = contract(method);
+  try {
+    return { result: { output: answer(await call(c)) as T } };
+  } catch (e) {
+    return { error: errorEnvelope(e) };
   }
-  return (envelope.result?.output ?? null) as T;
 }
