@@ -133,7 +133,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "calimero-bundle",
  "eyre",
@@ -146,7 +146,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "calimero-app-abi",
  "eyre",
@@ -158,7 +158,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "async-trait",
  "bytes",
@@ -181,7 +181,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -196,12 +196,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "base64",
  "bs58",
@@ -222,7 +222,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -244,7 +244,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.17#125f31c212686846394a1083850a448cdbf15e15"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.18#4f37b94d6332a6dcdef4fa7f00e5a6da80a85017"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
