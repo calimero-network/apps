@@ -1,11 +1,12 @@
 // The world's contract is called through `MerrariaClient`, which `mero-app-build
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`);
 // tests/generatedClient.test.ts checks it covers exactly the committed ABI. The
-// ABI names its records (`WorldMeta`, `OverridesPage`, `PlayerView`, ...) without
-// their shapes, so the generated types are `unknown`: the interfaces below type
-// them where they are read.
+// ABI describes its records (`WorldMeta`, `OverridesPage`, `PlayerView`, ...),
+// so the generated client types them: they are re-exported below.
 
-import type { AppTransport, MerrariaClient } from "../generated/client";
+import type { AppTransport, MerrariaClient, TileEntry } from "../generated/client";
+
+export type { Edit, OverridesPage, PlayerView, TileEntry, WorldMeta } from "../generated/client";
 
 /** The package a production world is created from (`[package.metadata.calimero]`). */
 export const PACKAGE = "com.calimero.merraria";
@@ -20,32 +21,6 @@ export type WorldCalls = Pick<
   "worldMeta" | "setTiles" | "getOverrides" | "getPlayers" | "join" | "heartbeat" | "leave"
 >;
 
-export interface WorldMeta {
-  name: string;
-  /** read by the terrain generator as a u32 */
-  seed: number;
-  /** seconds since the epoch: the day clock's anchor */
-  createdAt: number;
-}
-
-export interface Edit {
-  x: number;
-  y: number;
-  t: number;
-}
-
-export interface TileEntry {
-  /** `"x,y"` */
-  k: string;
-  t: number;
-}
-
-/** One page of `getOverrides`: `next` is null on the last page. */
-export interface OverridesPage {
-  items: TileEntry[];
-  next: string | null;
-}
-
 /** The most overrides one `getOverrides` answers (its default and largest `limit`). */
 export const OVERRIDES_PAGE = 1000;
 
@@ -58,23 +33,11 @@ export async function readAllOverrides(world: Pick<WorldCalls, "getOverrides">):
   const all: TileEntry[] = [];
   let cursor: string | null = null;
   do {
-    const page = (await world.getOverrides(cursor === null ? {} : { cursor })) as OverridesPage;
+    const page = await world.getOverrides(cursor === null ? {} : { cursor });
     all.push(...(page?.items ?? []));
     cursor = page?.next ?? null;
   } while (cursor !== null);
   return all;
-}
-
-export interface PlayerView {
-  /** the player's account */
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  dir: number;
-  sel: number;
-  action: string;
-  online: boolean;
 }
 
 /** Seconds since the epoch, as every `now` argument takes it (a u32). */

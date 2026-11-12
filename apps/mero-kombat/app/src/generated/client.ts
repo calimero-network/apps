@@ -4,11 +4,64 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
-/** The app type `ArenaView`: the ABI names it without its shape. */
-export type ArenaView = unknown;
+/** The app type `ArenaView`. */
+export interface ArenaView {
+  title: string;
+  createdAt: string;
+  matchIndex: number;
+  round: number;
+  status: string;
+  roundResults: string[];
+  winner: string;
+  flawless: boolean;
+  p1: FighterView;
+  p2: FighterView;
+  me: string;
+  mySeat: string;
+  hits: HitView[];
+  matchActions: number;
+  totalActions: string;
+  maxHp: number;
+  roundsToWin: number;
+}
 
-/** The app type `MatchSummary`: the ABI names it without its shape. */
-export type MatchSummary = unknown;
+/** The app type `FighterView`. */
+export interface FighterView {
+  seat: string;
+  member: string;
+  name: string;
+  fighter: string;
+  hp: number;
+  roundsWon: number;
+  matchesWon: number;
+  online: boolean;
+}
+
+/** The app type `HitView`. */
+export interface HitView {
+  by: string;
+  id: number;
+  kind: string;
+  damage: number;
+  blocked: boolean;
+  at: string;
+}
+
+/** The app type `MatchSummary`. */
+export interface MatchSummary {
+  index: number;
+  startedAt: string;
+  winner: string;
+  flawless: boolean;
+  rounds: string[];
+  actions: number;
+}
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  title?: string | null;
+  now?: string | null;
+}
 
 /** The arguments of `act`. */
 export interface ActArgs {
@@ -197,47 +250,134 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroKombatClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroKombatClient` implements, for a test double to stand in for it. */
+export interface MeroKombatApi {
+  /** call `act`. */
+  act(args: ActArgs, options?: CallOptions): Promise<null>;
+  /** view `arena`. */
+  arena(args: ArenaArgs, options?: ViewOptions): Promise<ArenaView>;
+  /** view `history`. */
+  history(options?: ViewOptions): Promise<MatchSummary[]>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<null>;
+  /** call `pick`. */
+  pick(args: PickArgs, options?: CallOptions): Promise<null>;
+  /** call `rematch`. */
+  rematch(args: RematchArgs, options?: CallOptions): Promise<number>;
+  /** call `sit`. */
+  sit(args: SitArgs, options?: CallOptions): Promise<null>;
+  /** call `stand`. */
+  stand(args: StandArgs, options?: CallOptions): Promise<null>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroKombatClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroKombatRawApi {
+  /** call `act`. */
+  act(args: ActArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `arena`. */
+  arena(args: ArenaArgs, options?: ViewOptions): Promise<ViewAnswer<ArenaView>>;
+  /** view `history`. */
+  history(options?: ViewOptions): Promise<ViewAnswer<MatchSummary[]>>;
+  /** call `join`. */
+  join(args: JoinArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `pick`. */
+  pick(args: PickArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `rematch`. */
+  rematch(args: RematchArgs, options?: CallOptions): Promise<CallAnswer<number>>;
+  /** call `sit`. */
+  sit(args: SitArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `stand`. */
+  stand(args: StandArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroKombatClient<T extends AppCallTransport = AppTransport> implements MeroKombatApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroKombatRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      act: (args, options = {}) => this.#call<null>('act', args, options),
+      arena: (args, options = {}) => this.#view<ArenaView>('arena', args, options),
+      history: (options = {}) => this.#view<MatchSummary[]>('history', {}, options),
+      join: (args, options = {}) => this.#call<null>('join', args, options),
+      pick: (args, options = {}) => this.#call<null>('pick', args, options),
+      rematch: (args, options = {}) => this.#call<number>('rematch', args, options),
+      sit: (args, options = {}) => this.#call<null>('sit', args, options),
+      stand: (args, options = {}) => this.#call<null>('stand', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -247,7 +387,8 @@ export class MeroKombatClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -255,46 +396,46 @@ export class MeroKombatClient {
 
   /** call `act`. */
   async act(args: ActArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('act', args, options)) as null;
+    return (await this.#call<null>('act', args, options)).result;
   }
 
   /** view `arena`. */
   async arena(args: ArenaArgs, options: ViewOptions = {}): Promise<ArenaView> {
-    return (await this.#view('arena', args, options)) as ArenaView;
+    return (await this.#view<ArenaView>('arena', args, options)).result;
   }
 
   /** view `history`. */
   async history(options: ViewOptions = {}): Promise<MatchSummary[]> {
-    return (await this.#view('history', {}, options)) as MatchSummary[];
+    return (await this.#view<MatchSummary[]>('history', {}, options)).result;
   }
 
   /** call `join`. */
   async join(args: JoinArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('join', args, options)) as null;
+    return (await this.#call<null>('join', args, options)).result;
   }
 
   /** call `pick`. */
   async pick(args: PickArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('pick', args, options)) as null;
+    return (await this.#call<null>('pick', args, options)).result;
   }
 
   /** call `rematch`. */
   async rematch(args: RematchArgs, options: CallOptions = {}): Promise<number> {
-    return (await this.#call('rematch', args, options)) as number;
+    return (await this.#call<number>('rematch', args, options)).result;
   }
 
   /** call `sit`. */
   async sit(args: SitArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('sit', args, options)) as null;
+    return (await this.#call<null>('sit', args, options)).result;
   }
 
   /** call `stand`. */
   async stand(args: StandArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('stand', args, options)) as null;
+    return (await this.#call<null>('stand', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroKombatClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

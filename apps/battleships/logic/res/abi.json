@@ -314,5 +314,163 @@
     },
     "version": 1
   },
+  "types": {
+    "MatchRecord": {
+      "fields": [
+        [
+          "match_id",
+          "string"
+        ],
+        [
+          "winner",
+          "string"
+        ],
+        [
+          "loser",
+          "string"
+        ],
+        [
+          "finished_ms",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MatchStateView": {
+      "fields": [
+        [
+          "standing",
+          "string"
+        ],
+        [
+          "committed",
+          "list<string>"
+        ],
+        [
+          "pending_shot",
+          "option<PendingShotView>"
+        ],
+        [
+          "ended_by",
+          "option<string>"
+        ],
+        [
+          "loser",
+          "option<string>"
+        ],
+        [
+          "revealed",
+          "list<string>"
+        ],
+        [
+          "audit_failed",
+          "list<string>"
+        ],
+        [
+          "winner",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MatchStatus": {
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Pending"
+        },
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Finished"
+        }
+      ]
+    },
+    "MatchSummary": {
+      "fields": [
+        [
+          "match_id",
+          "string"
+        ],
+        [
+          "player1",
+          "string"
+        ],
+        [
+          "player2",
+          "string"
+        ],
+        [
+          "player2_account",
+          "string"
+        ],
+        [
+          "status",
+          "MatchStatus"
+        ],
+        [
+          "winner",
+          "option<string>"
+        ],
+        [
+          "created_ms",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PendingShotView": {
+      "fields": [
+        [
+          "shot_id",
+          "u32"
+        ],
+        [
+          "x",
+          "u8"
+        ],
+        [
+          "y",
+          "u8"
+        ],
+        [
+          "target",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayerEntry": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "player",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PlayerStatsView": {
+      "fields": [
+        [
+          "wins",
+          "u64"
+        ],
+        [
+          "losses",
+          "u64"
+        ],
+        [
+          "games_played",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }
