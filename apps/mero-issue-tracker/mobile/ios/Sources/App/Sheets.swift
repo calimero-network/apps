@@ -130,7 +130,7 @@ struct NewIssueSheet: View {
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
             }
-            Text("All four sections are required. Issues filed through MCP follow the same format.")
+            Text("All four sections are required.")
                 .font(.system(size: 13)).foregroundStyle(Theme.text3)
         }
     }

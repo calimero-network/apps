@@ -170,7 +170,7 @@ fun NewIssueSheet(
             Eyebrow("Labels")
             Field(draft.labels, { draft = draft.copy(labels = it) }, "sync, crdt…")
         }
-        Text("All four sections are required. Issues filed through MCP follow the same format.", fontSize = 13.sp, color = Palette.text3)
+        Text("All four sections are required.", fontSize = 13.sp, color = Palette.text3)
     }
 }
 

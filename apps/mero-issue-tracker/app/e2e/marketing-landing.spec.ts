@@ -32,7 +32,7 @@ test.describe('Mero Issue Tracker landing page', () => {
     // IntersectionObserver renders these blank in a headless capture, which is
     // the bug this fleet hit twice.
     await expect(page.locator('#features')).toBeVisible();
-    await expect(page.locator('.cal-lp-feature')).toHaveCount(5);
+    await expect(page.locator('.cal-lp-feature')).toHaveCount(4);
     // The explainer, the four steps and the FAQ moved to /docs. Finding them
     // here again would mean the split silently un-split.
     await expect(page.locator('#about')).toHaveCount(0);

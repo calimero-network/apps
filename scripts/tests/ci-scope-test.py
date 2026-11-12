@@ -71,8 +71,6 @@ with tempfile.TemporaryDirectory() as t:
           {"app_paths": ["apps/mero-chat/"], "frontend_dirs": ["apps/mero-chat/app"]})
     check("a contract with no frontend dir", s("apps/kv-only/logic/src/lib.rs"),
           {"app_paths": ["apps/kv-only/"], "frontend_dirs": []})
-    check("an app's MCP server is its own frontend member, no wasm", s("apps/mero-issue-tracker/mcp/src/index.ts"),
-          {"app_paths": [], "frontend_dirs": ["apps/mero-issue-tracker/mcp"]})
     check("the rig the rich browser job boots", s("apps/mero-docs/scripts/local-rig.sh"),
           {"app_paths": ["apps/mero-docs/"], "frontend_dirs": []})
 

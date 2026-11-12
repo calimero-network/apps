@@ -8,7 +8,7 @@
  * `name`, `packageId` and `tagline` come from the Cargo metadata the registry
  * publishes from, so this page and the registry listing cannot diverge.
  */
-import { FileCheck, Package, Refresh, Shield, Zap } from '@calimero-network/mero-icons';
+import { FileCheck, Refresh, Shield, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
@@ -23,10 +23,10 @@ export const CONFIG: LandingConfig = {
   availability: "web",
   tint: "#84cc16",
   themeStorageKey: "mero-issue-tracker:theme",
-  trust: ["Structured issues", "MCP server included", "Private to your team"],
+  trust: ["Structured issues", "Copy fix prompt", "Private to your team"],
   explainer: [
     "A real-time issue board for a small engineering team. Issues are structured around what actually makes a bug actionable — a summary, who it affects, how to reproduce it, and what \"fixed\" has to satisfy — rather than a free-text box and a pile of labels.",
-    "It also ships an MCP server, so an AI coding agent can pull an issue with its full context and hand you back a fix. The board is private to your workspace, held on attested Calimero nodes, not a tenant in someone else’s SaaS.",
+    "Any issue copies out as a prompt for an AI coding agent, with its full context, so the agent can hand you back a fix. The board is private to your workspace, held on attested Calimero nodes, not a tenant in someone else’s SaaS.",
   ],
   features: [
     {
@@ -43,11 +43,6 @@ export const CONFIG: LandingConfig = {
       icon: Zap,
       title: "Copy fix prompt",
       body: "Render any issue as a prompt for a coding agent, with its context attached, in one click.",
-    },
-    {
-      icon: Package,
-      title: "MCP server",
-      body: "Expose the board to an AI agent over Model Context Protocol, so it can read issues directly.",
     },
     {
       icon: Shield,
@@ -68,7 +63,6 @@ export const CONFIG: LandingConfig = {
         { term: "Repository", def: "One board in the workspace, named after the repo it tracks: its issues, comments, labels and the repo URL." },
         { term: "Issue", def: "Title plus summary, impact, repro steps and resolution criteria, with a status, a priority, an assignee and labels." },
         { term: "Label", def: "A row keyed by issue and label together, which is why adding the same label twice leaves one label, not two." },
-        { term: "MCP server", def: "A Model Context Protocol server exposing the board, so an AI coding agent can read an issue and its context directly rather than being pasted a screenshot." },
       ],
     },
     {
@@ -86,7 +80,6 @@ export const CONFIG: LandingConfig = {
       heading: "Working with an agent",
       paragraphs: [
         "Any issue can be rendered as a prompt for a coding agent in one click, carrying the four sections as written.",
-        "For a tighter loop, the MCP server exposes the board directly, with an agent key you create on the Members page, so an agent can list issues and read one without a human relaying the text.",
         "Authorship is enforced in the contract: only the author of a comment may edit or delete it, and only the creator of an issue may delete it.",
       ],
     },
@@ -115,6 +108,6 @@ export const CONFIG: LandingConfig = {
     { title: "Four columns", body: "Open, in progress, blocked, done: the board every member of the workspace sees." },
     { title: "A card moves", body: "A status change is one call; the board updates for everyone watching." },
     { title: "A teammate moves one back", body: "The calls are ordered: the later status holds, and every other field is untouched." },
-    { title: "An agent reads it", body: "The same issue is available over MCP, so a coding agent gets the repro steps as written." },
+    { title: "An agent reads it", body: "The same issue copies out as a fix prompt, so a coding agent gets the repro steps as written." },
   ],
 };

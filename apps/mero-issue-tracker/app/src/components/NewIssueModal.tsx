@@ -134,7 +134,7 @@ export default function NewIssueModal({ onCreate, onClose, repoName }: Props): R
           </Grid2>
         </Body>
         <Foot>
-          <span className="note">All four sections are required. Issues filed through MCP follow the same format.</span>
+          <span className="note">All four sections are required.</span>
           <span className="spacer" />
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button

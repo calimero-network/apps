@@ -1,5 +1,3 @@
-// keep in sync with mcp/src/fixPrompt.ts
-
 /** The fields of an issue needed to build a fix prompt. */
 export interface IssueForPrompt {
   id: string;
