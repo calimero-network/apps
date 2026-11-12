@@ -13,7 +13,7 @@ import { describeError } from "@calimero-apps/connect";
 import { getActiveNamespaceId, getContextId } from "./active";
 import { readCompany, setCompanyName } from "./companies";
 import { useMaybeSignedIn } from "./sessionContext";
-import { UpdatesClient } from "./updatesClient";
+import { MeroUpdatesClient } from "../generated/client";
 
 /**
  * The audience this browser has open: one app instance == one audience. An
@@ -31,13 +31,13 @@ export function useSelfAccount(): string | null {
 }
 
 /** The open audience through the signed-in client, or null while there is neither. */
-export function useUpdatesClient(): UpdatesClient | null {
+export function useUpdatesClient(): MeroUpdatesClient | null {
   const signedIn = useMaybeSignedIn();
   const contextId = useAudienceContextId();
   const client = signedIn?.client ?? null;
   const after = signedIn?.after;
   return useMemo(
-    () => (client && contextId ? new UpdatesClient(client, contextId, after) : null),
+    () => (client && contextId ? new MeroUpdatesClient(client, contextId, { after }) : null),
     [client, contextId, after],
   );
 }
@@ -106,7 +106,7 @@ export function useRevision() {
  * peer reacts); `loading` is only true until the first answer.
  */
 export function useLive<T>(
-  fn: (client: UpdatesClient) => Promise<T>,
+  fn: (client: MeroUpdatesClient) => Promise<T>,
   deps: unknown[],
 ): {
   data: T | null;

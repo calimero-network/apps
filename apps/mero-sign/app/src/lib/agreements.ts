@@ -40,7 +40,8 @@ const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
 
-import { MeroSignApp, type Transport } from './meroSign';
+import { MeroSignClient } from '../generated/client';
+import type { Transport } from './meroSign';
 
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
@@ -202,7 +203,7 @@ export async function publishWorkspaceName(
  * owns outside any org, created and set up on first use.
  */
 export async function ensurePrivateLibrary(
-  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }> & Transport,
   source: AppSource,
   accountId: string,
   after: () => void = () => {},
@@ -212,16 +213,16 @@ export async function ensurePrivateLibrary(
   );
   if (found) {
     // Set up once; an instance whose setup never ran is set up now.
-    const lib = new MeroSignApp(client, found.appId, after);
+    const lib = new MeroSignClient(client, found.appId, { after });
     if (!(await lib.isDefaultPrivateContext())) {
-      await lib.setup({ is_private: true, context_name: 'default' });
+      await lib.setup({ isPrivate: true, contextName: 'default' });
     }
     return found.appId;
   }
   const appId = (await client.apps.create({ name: LIBRARY_NAME, ...appTarget(source) })).appId;
-  await new MeroSignApp(client, appId, after).setup({
-    is_private: true,
-    context_name: 'default',
+  await new MeroSignClient(client, appId, { after }).setup({
+    isPrivate: true,
+    contextName: 'default',
   });
   return appId;
 }
@@ -252,7 +253,7 @@ export async function listAgreements(
   const apps = (await listInstances(client, source)).filter((a) => a.org === org);
   const rows = await Promise.all(
     apps.map(async (a) => {
-      const roster = await new MeroSignApp(client, a.appId)
+      const roster = await new MeroSignClient(client, a.appId)
         .listParticipants()
         .catch(() => null);
       return {
@@ -280,7 +281,7 @@ export const CONNECTED_AGREEMENT_NAME = 'Untitled agreement';
  * Answers the instance id.
  */
 export async function createAgreement(
-  client: Pick<CalimeroClient, 'session'> &
+  client: Pick<CalimeroClient, 'session' | 'events'> &
     ClientRoutes<{ apps: 'create' | 'list' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   opts: {
     source: AppSource;
@@ -304,9 +305,9 @@ export async function createAgreement(
     })
   ).appId;
   onStatus('Preparing its documents…');
-  await new MeroSignApp(client, appId, after).setup({
-    is_private: false,
-    context_name: opts.name,
+  await new MeroSignClient(client, appId, { after }).setup({
+    isPrivate: false,
+    contextName: opts.name,
   });
   await recordInLibrary(client, opts.source, opts.accountId, appId, opts.name, after);
   return appId;
@@ -314,7 +315,7 @@ export async function createAgreement(
 
 /** Records a joined agreement in the private library; best-effort. */
 export async function recordInLibrary(
-  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }> & Transport,
   source: AppSource,
   accountId: string,
   appId: string,
@@ -323,10 +324,10 @@ export async function recordInLibrary(
 ): Promise<void> {
   try {
     const library = await ensurePrivateLibrary(client, source, accountId, after);
-    await new MeroSignApp(client, library, after).joinSharedContext({
-      context_id_str: appId,
-      shared_identity_str: accountId,
-      context_name: name,
+    await new MeroSignClient(client, library, { after }).joinSharedContext({
+      contextIdStr: appId,
+      sharedIdentityStr: accountId,
+      contextName: name,
     });
   } catch {
     // "Already joined" or a library not reachable yet: the agreement itself
@@ -342,11 +343,11 @@ export async function recordInLibrary(
  * removed, is refused by the contract and gets its sentence.
  */
 export async function enterAgreement(
-  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }>,
+  client: ClientRoutes<{ apps: 'list' | 'create' | 'call' | 'view' }> & Transport,
   opts: { source: AppSource; appId: string; accountId: string; name: string },
   after: () => void = () => {},
 ): Promise<string> {
-  const agreement = new MeroSignApp(client, opts.appId, after);
+  const agreement = new MeroSignClient(client, opts.appId, { after });
   const roster = await agreement.listParticipants();
   if (!roster.includes(opts.accountId)) {
     try {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { CommentView } from "../lib/updatesClient";
+import { fromWire, type CommentView } from "../lib/updatesClient";
 import { usePersonLabel, timeAgo, useLive, useSelfAccount, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
 import { MessageIcon, SendIcon } from "./icons";
@@ -23,14 +23,14 @@ export default function Comments({
 }) {
   const client = useUpdatesClient();
   const self = useSelfAccount();
-  const { data, reload, setData } = useLive((c) => c.listComments({ post_id: postId }), [postId]);
+  const { data, reload, setData } = useLive((c) => c.listComments({ postId }).then(fromWire<CommentView[]>), [postId]);
   const comments = data ?? [];
   const top = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
 
   const post = async (body: string, parentId: string | null) => {
     if (!client) throw new Error("not connected to a node");
-    await client.addComment({ post_id: postId, parent_id: parentId, body });
+    await client.addComment({ postId, parentId, body });
     reload();
   };
 
@@ -38,7 +38,7 @@ export default function Comments({
     if (!client) return;
     setData(comments.filter((x) => x.id !== c.id));
     try {
-      await client.deleteComment({ comment_id: c.id });
+      await client.deleteComment({ commentId: c.id });
     } finally {
       reload();
     }

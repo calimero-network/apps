@@ -75,7 +75,8 @@
     "lint:fix": "concurrently \"pnpm:lint:*:fix\"",
     "lint:src:fix": "eslint . --fix",
     "preview": "vite preview",
-    "prettier": "exec prettier . --write"
+    "prettier": "exec prettier . --write",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-sign -o src/generated"
   },
   "browserslist": {
     "production": [

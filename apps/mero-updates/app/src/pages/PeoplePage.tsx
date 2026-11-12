@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, EditIcon } from "../components/icons";
-import type { EngagementRow, PersonView } from "../lib/updatesClient";
+import { fromWire, type EngagementRow, type PersonView } from "../lib/updatesClient";
 import {
   formatDate,
   usePersonLabel,
@@ -24,8 +24,8 @@ import {
 export default function PeoplePage() {
   const { me, reload: reloadShell } = useAudience();
   const isTeam = !!me?.is_team;
-  const people = useLive((c) => c.listPeople(), []);
-  const engagement = useLive((c) => (isTeam ? c.getEngagement() : Promise.resolve([] as EngagementRow[])), [isTeam]);
+  const people = useLive((c) => c.listPeople().then(fromWire<PersonView[]>), []);
+  const engagement = useLive((c) => (isTeam ? c.getEngagement().then(fromWire<EngagementRow[]>) : Promise.resolve([] as EngagementRow[])), [isTeam]);
 
   const team = (people.data ?? []).filter((p) => p.is_team);
   const investors = (people.data ?? []).filter((p) => !p.is_team);
@@ -274,7 +274,7 @@ function MyProfile({ onSaved }: { onSaved: () => void }) {
                 onClick={async () => {
                   const muted = categories.filter((x) => x.muted).map((x) => x.id);
                   const next = c.muted ? muted.filter((id) => id !== c.id) : [...muted, c.id];
-                  await client?.setMutedCategories({ category_ids: next });
+                  await client?.setMutedCategories({ categoryIds: next });
                   onSaved();
                 }}
               />

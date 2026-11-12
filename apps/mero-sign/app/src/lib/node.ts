@@ -17,7 +17,7 @@ import {
 } from '@calimero-network/mero-js';
 import { describeError, type AppSource, type Target } from '@calimero-apps/connect';
 
-import { MeroSignApp } from './meroSign';
+import { MeroSignClient } from '../generated/client';
 
 export type ErrorResponse = { code?: number; message: string };
 
@@ -62,9 +62,9 @@ export function maybeSignSession(): SignSession | null {
 }
 
 /** The contract on one app instance (an agreement, or the private library). */
-export function meroSignApp(appId: string): MeroSignApp {
+export function meroSignApp(appId: string): MeroSignClient {
   const s = signSession();
-  return new MeroSignApp(s.client, appId, s.after);
+  return new MeroSignClient(s.client, appId, { after: s.after });
 }
 
 /**

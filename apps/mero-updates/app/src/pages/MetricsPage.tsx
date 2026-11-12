@@ -4,6 +4,7 @@ import { DeltaIcon, Empty, Sparkline } from "../components/bits";
 import { deltaDir } from "../components/delta";
 import { BarChartIcon, ChevronDownIcon } from "../components/icons";
 import { deltaLabel, formatDate, useLive } from "../lib/updates";
+import { fromWire, type MetricSeries } from "../lib/updatesClient";
 
 /**
  * Every KPI the company has ever reported, as a series.
@@ -13,7 +14,7 @@ import { deltaLabel, formatDate, useLive } from "../lib/updates";
  * doing" page that a pile of emails never adds up to.
  */
 export default function MetricsPage() {
-  const metrics = useLive((c) => c.listMetrics(), []);
+  const metrics = useLive((c) => c.listMetrics().then(fromWire<MetricSeries[]>), []);
   const series = metrics.data ?? [];
 
   if (!metrics.loading && series.length === 0)

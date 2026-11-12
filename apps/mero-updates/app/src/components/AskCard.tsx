@@ -34,7 +34,7 @@ export default function AskCard({
   const [error, setError] = useState<string | null>(null);
   const open = ask.status === "open";
 
-  const run = async (key: string, fn: () => Promise<void>) => {
+  const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
     setError(null);
     try {
@@ -91,7 +91,7 @@ export default function AskCard({
                 disabled={busy === "withdraw"}
                 onClick={() =>
                   void run("withdraw", async () => {
-                    await client!.withdrawOffer({ ask_id: ask.id });
+                    await client!.withdrawOffer({ askId: ask.id });
                   })
                 }
               >
@@ -116,7 +116,7 @@ export default function AskCard({
                   disabled={busy === "offer"}
                   onClick={() =>
                     void run("offer", async () => {
-                      await client!.offerHelp({ ask_id: ask.id, note: note.trim() });
+                      await client!.offerHelp({ askId: ask.id, note: note.trim() });
                       setOffering(false);
                     })
                   }
@@ -133,7 +133,7 @@ export default function AskCard({
                 disabled={busy === "offer"}
                 onClick={() =>
                   void run("offer", async () => {
-                    await client!.offerHelp({ ask_id: ask.id, note: "" });
+                    await client!.offerHelp({ askId: ask.id, note: "" });
                   })
                 }
               >
@@ -169,7 +169,7 @@ export default function AskCard({
                           disabled={!!busy}
                           onClick={() =>
                             void run(`acc:${o.account}`, () =>
-                              client!.setOfferStatus({ ask_id: ask.id, account: o.account, status: "accepted" }),
+                              client!.setOfferStatus({ askId: ask.id, account: o.account, status: "accepted" }),
                             )
                           }
                         >
@@ -180,7 +180,7 @@ export default function AskCard({
                           disabled={!!busy}
                           onClick={() =>
                             void run(`dec:${o.account}`, () =>
-                              client!.setOfferStatus({ ask_id: ask.id, account: o.account, status: "declined" }),
+                              client!.setOfferStatus({ askId: ask.id, account: o.account, status: "declined" }),
                             )
                           }
                         >
@@ -196,7 +196,7 @@ export default function AskCard({
                           className="linkBtn"
                           onClick={() =>
                             void run(`undo:${o.account}`, () =>
-                              client!.setOfferStatus({ ask_id: ask.id, account: o.account, status: "offered" }),
+                              client!.setOfferStatus({ askId: ask.id, account: o.account, status: "offered" }),
                             )
                           }
                         >
@@ -215,7 +215,7 @@ export default function AskCard({
             disabled={!!busy}
             onClick={() =>
               void run("status", () =>
-                client!.setAskStatus({ ask_id: ask.id, status: open ? "resolved" : "open" }),
+                client!.setAskStatus({ askId: ask.id, status: open ? "resolved" : "open" }),
               )
             }
           >
