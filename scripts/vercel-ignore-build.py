@@ -38,9 +38,9 @@ copied so the two cannot drift:
   * The root `package.json`, `tsconfig.base.json`, `.npmrc`, `.pnpmfile.*` and
     `patches/` reach every app, except
     a root `package.json` edit confined to scripts that no install runs.
-  * `packages/e2e-node` reaches no app. It is the browser e2e harness: apps
-    list it only as a devDependency and import it only from tests and
-    Playwright configs (TEST_ONLY_PACKAGES).
+  * `packages/test-setup` reaches no app. It is the vitest setup file every
+    app's tests load: apps list it only as a devDependency and name it only
+    in their vitest `setupFiles` (TEST_ONLY_PACKAGES).
   * This script and the CI scope scripts it imports reach no app. Changing
     them changes no bundle; after fixing a skip that was wrong, redeploy the
     app that missed out from the dashboard.
@@ -91,7 +91,7 @@ EVERY_APP_DIRS = ("patches/",)
 # bundle, though ci-scope.py rightly maps it to every app for CI.
 # scripts/tests/vercel-ignore-build-test.py fails if anything shipped depends on
 # or imports one.
-TEST_ONLY_PACKAGES = {"packages/e2e-node"}
+TEST_ONLY_PACKAGES = {"packages/test-setup"}
 
 LOGIC_RE = re.compile(r"^apps/[^/]+/logic/")
 
