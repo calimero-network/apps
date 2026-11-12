@@ -55,7 +55,7 @@ import {
   type VaultApi,
 } from '@calimero-network/mero-pass';
 
-import { meroPass } from './meroPass';
+import { MeroPassClient } from '../generated/client';
 import { vaultApiFor } from './vaultApi';
 import { type TeamRole, normaliseRole } from './roles';
 
@@ -76,7 +76,7 @@ export function vaultApi(
   conn: Pick<Conn, 'client' | 'after'>,
   appId: string,
 ): VaultApi {
-  return vaultApiFor(meroPass(conn.client, appId, conn.after));
+  return vaultApiFor(new MeroPassClient(conn.client, appId, { after: conn.after }));
 }
 
 /** The first non-blank candidate, else `<prefix> <id…>`. */
@@ -349,7 +349,7 @@ export async function createVault(
         ? { org: opts.namespaceId, access }
         : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME)) })).appId;
     onStatus('Naming it…');
-    await meroPass(conn.client, contextId, conn.after).renameVault(opts.name);
+    await new MeroPassClient(conn.client, contextId, { after: conn.after }).renameVault({ name: opts.name });
     return { contextId };
   } finally {
     conn.after?.();

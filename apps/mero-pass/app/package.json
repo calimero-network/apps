@@ -2,7 +2,7 @@
   "name": "mero-pass",
   "private": true,
   "version": "1.0.0",
-  "description": "Mero Pass \u2014 an end-to-end encrypted secret manager on Calimero",
+  "description": "Mero Pass — an end-to-end encrypted secret manager on Calimero",
   "keywords": [
     "calimero",
     "secrets",
@@ -20,7 +20,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-pass -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

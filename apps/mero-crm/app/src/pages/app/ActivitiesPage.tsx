@@ -13,6 +13,7 @@ import {
 import { describeError } from '../../utils/errors';
 import type { ActivityView } from '../../hooks/useCrm';
 import { useAppCtx } from './appContext';
+import { u64 } from '../../crm';
 
 const SECTIONS: { key: ActivityBucket; title: string; empty: string }[] = [
   { key: 'overdue', title: 'Overdue', empty: '' },
@@ -59,7 +60,7 @@ export default function ActivitiesPage(): React.ReactElement {
       <QuickAdd
         deals={data.deals.filter((d) => d.status === 'open').map((d) => ({ id: d.id, title: d.title, contactId: d.contact_id }))}
         onAdd={(dealId, contactId, kind, subject, due) => run(() => data.act((c) => c.addActivity({
-          deal_id: dealId, contact_id: contactId, kind, subject, due_at: due, owner: myOwner || null, note: '',
+          dealId, contactId, kind, subject, dueAt: u64(due), owner: myOwner || null, note: '',
         })))}
       />
 
@@ -85,8 +86,8 @@ export default function ActivitiesPage(): React.ReactElement {
                     a={a}
                     ownerName={aliases.ownerName(a.owner)}
                     now={now}
-                    onToggle={() => run(() => data.act((c) => c.setActivityDone({ activity_id: a.id, done: !a.done })))}
-                    onSnooze={() => run(() => data.act((c) => c.rescheduleActivity({ activity_id: a.id, due_at: dueInDays(1, now) })))}
+                    onToggle={() => run(() => data.act((c) => c.setActivityDone({ activityId: a.id, done: !a.done })))}
+                    onSnooze={() => run(() => data.act((c) => c.rescheduleActivity({ activityId: a.id, dueAt: u64(dueInDays(1, now)) })))}
                   />
                 ))}
               </Items>

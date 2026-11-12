@@ -1,0 +1,3462 @@
+{
+  "components": {
+    "parameters": {
+      "app": {
+        "description": "The app instance's id.",
+        "in": "path",
+        "name": "app",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "AppError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "Forbidden"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/ForbiddenError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "Invalid"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/InvalidError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "NotFound"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/NotFoundError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/components/schemas/Trap"
+                }
+              ]
+            }
+          }
+        },
+        "description": "The app refused the call (`APP_ERROR`, one of its declared errors) or the run trapped (`TRAP`)."
+      },
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "The request is malformed (`BAD_REQUEST`), names a reserved method (`RESERVED_METHOD`), or carries an approval for another call (`WRONG_CHALLENGE`)."
+      },
+      "ConfirmRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConfirmRequired"
+            }
+          }
+        },
+        "description": "`CONFIRM_REQUIRED`: approve the call with the passkey and send it again with `confirm`."
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "The caller may not call this method of this app (`FORBIDDEN`), or the app is read-only."
+      },
+      "Gone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`UNSUPPORTED_ENGINE`: the app is an SDK 0.12 app, which this node no longer runs."
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "No such app here."
+      },
+      "RateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`RATE_LIMITED`: a public method's rate, or the node's limits."
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "No valid session or API key, and the method is not public."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`UNAVAILABLE` or `TIMEOUT`: retry with the same idempotency key."
+      }
+    },
+    "schemas": {
+      "AddCommentArgs": {
+        "description": "The arguments of `addComment`, by name.",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "body"
+        ],
+        "type": "object"
+      },
+      "AddCommentRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/AddCommentArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "AddCommentResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "AddLabelArgs": {
+        "description": "The arguments of `addLabel`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "label"
+        ],
+        "type": "object"
+      },
+      "AddLabelRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/AddLabelArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "AddLabelResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ApiError": {
+        "properties": {
+          "details": {},
+          "error": {
+            "description": "A stable code, e.g. `NOT_FOUND`.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "type": "object"
+      },
+      "CallEvent": {
+        "oneOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentAddedEvent"
+              },
+              "kind": {
+                "const": "CommentAdded"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentDeletedEvent"
+              },
+              "kind": {
+                "const": "CommentDeleted"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentEditedEvent"
+              },
+              "kind": {
+                "const": "CommentEdited"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueAssigneeChangedEvent"
+              },
+              "kind": {
+                "const": "IssueAssigneeChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueCreatedEvent"
+              },
+              "kind": {
+                "const": "IssueCreated"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueDeletedEvent"
+              },
+              "kind": {
+                "const": "IssueDeleted"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueEditedEvent"
+              },
+              "kind": {
+                "const": "IssueEdited"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueLabelsChangedEvent"
+              },
+              "kind": {
+                "const": "IssueLabelsChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssuePriorityChangedEvent"
+              },
+              "kind": {
+                "const": "IssuePriorityChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueStatusChangedEvent"
+              },
+              "kind": {
+                "const": "IssueStatusChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/RepoUrlChangedEvent"
+              },
+              "kind": {
+                "const": "RepoUrlChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CommentAddedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issueId"
+        ],
+        "type": "object"
+      },
+      "CommentDeletedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "CommentEditedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Confirm": {
+        "description": "The passkey's approval of this exact call: the 412's challenge id and the WebAuthn assertion over its challenge.",
+        "properties": {
+          "assertion": {
+            "properties": {
+              "authenticatorData": {
+                "type": "string"
+              },
+              "clientDataJson": {
+                "type": "string"
+              },
+              "credentialId": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "credentialId",
+              "authenticatorData",
+              "clientDataJson",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "challengeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "challengeId",
+          "assertion"
+        ],
+        "type": "object"
+      },
+      "ConfirmRequired": {
+        "properties": {
+          "details": {
+            "properties": {
+              "allowCredentials": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "challenge": {
+                "contentEncoding": "base64url",
+                "type": "string"
+              },
+              "challengeId": {
+                "type": "string"
+              },
+              "rpId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "challengeId",
+              "challenge",
+              "rpId",
+              "allowCredentials"
+            ],
+            "type": "object"
+          },
+          "error": {
+            "const": "CONFIRM_REQUIRED"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "details"
+        ],
+        "type": "object"
+      },
+      "CreateIssueArgs": {
+        "description": "The arguments of `createIssue`, by name.",
+        "properties": {
+          "impact": {
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "type": "string"
+          },
+          "repro": {
+            "type": "string"
+          },
+          "resolutionCriteria": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "impact",
+          "repro",
+          "resolutionCriteria",
+          "priority"
+        ],
+        "type": "object"
+      },
+      "CreateIssueRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/CreateIssueArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "CreateIssueResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "DeleteCommentArgs": {
+        "description": "The arguments of `deleteComment`, by name.",
+        "properties": {
+          "commentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "commentId"
+        ],
+        "type": "object"
+      },
+      "DeleteCommentRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/DeleteCommentArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "DeleteCommentResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "DeleteIssueArgs": {
+        "description": "The arguments of `deleteIssue`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId"
+        ],
+        "type": "object"
+      },
+      "DeleteIssueRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/DeleteIssueArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "DeleteIssueResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "EditCommentArgs": {
+        "description": "The arguments of `editComment`, by name.",
+        "properties": {
+          "commentId": {
+            "type": "string"
+          },
+          "newBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "commentId",
+          "newBody"
+        ],
+        "type": "object"
+      },
+      "EditCommentRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/EditCommentArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "EditCommentResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "EventFrame": {
+        "oneOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentAddedEvent"
+              },
+              "event": {
+                "const": "CommentAdded"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentDeletedEvent"
+              },
+              "event": {
+                "const": "CommentDeleted"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/CommentEditedEvent"
+              },
+              "event": {
+                "const": "CommentEdited"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueAssigneeChangedEvent"
+              },
+              "event": {
+                "const": "IssueAssigneeChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueCreatedEvent"
+              },
+              "event": {
+                "const": "IssueCreated"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueDeletedEvent"
+              },
+              "event": {
+                "const": "IssueDeleted"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueEditedEvent"
+              },
+              "event": {
+                "const": "IssueEdited"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueLabelsChangedEvent"
+              },
+              "event": {
+                "const": "IssueLabelsChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssuePriorityChangedEvent"
+              },
+              "event": {
+                "const": "IssuePriorityChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/IssueStatusChangedEvent"
+              },
+              "event": {
+                "const": "IssueStatusChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/RepoUrlChangedEvent"
+              },
+              "event": {
+                "const": "RepoUrlChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ForbiddenError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "GetIssueArgs": {
+        "description": "The arguments of `getIssue`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId"
+        ],
+        "type": "object"
+      },
+      "GetIssueRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/GetIssueArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "GetIssueResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/IssueDetail"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "GetRepoInfoArgs": {
+        "description": "The arguments of `getRepoInfo`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetRepoInfoRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/GetRepoInfoArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "GetRepoInfoResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RepoInfo"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "GetStatusCountsArgs": {
+        "description": "The arguments of `getStatusCounts`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStatusCountsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/GetStatusCountsArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "GetStatusCountsResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/StatusCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "InvalidError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "IssueAssigneeChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "IssueCreatedEvent": {
+        "properties": {
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdBy",
+          "id"
+        ],
+        "type": "object"
+      },
+      "IssueDeletedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "IssueDetail": {
+        "description": "The app type `IssueDetail`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "IssueDetail"
+      },
+      "IssueEditedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "IssueLabelsChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "IssuePriorityChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "priority"
+        ],
+        "type": "object"
+      },
+      "IssueStatusChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "IssueView": {
+        "description": "The app type `IssueView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "IssueView"
+      },
+      "ListIssuesArgs": {
+        "description": "The arguments of `listIssues`, by name.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ListIssuesRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/ListIssuesArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ListIssuesResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/IssueView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "NotFoundError": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Receipt": {
+        "description": "The answering node's signature over the app, the index and the result's hash.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "node": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resultHash": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "index",
+          "resultHash",
+          "node",
+          "key",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "RemoveLabelArgs": {
+        "description": "The arguments of `removeLabel`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "label"
+        ],
+        "type": "object"
+      },
+      "RemoveLabelRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RemoveLabelArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RemoveLabelResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RepoInfo": {
+        "description": "The app type `RepoInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "RepoInfo"
+      },
+      "RepoUrlChangedEvent": {
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "SetAssigneeArgs": {
+        "description": "The arguments of `setAssignee`, by name.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId"
+        ],
+        "type": "object"
+      },
+      "SetAssigneeRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetAssigneeArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetAssigneeResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetImpactArgs": {
+        "description": "The arguments of `setImpact`, by name.",
+        "properties": {
+          "impact": {
+            "type": "string"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "impact"
+        ],
+        "type": "object"
+      },
+      "SetImpactRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetImpactArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetImpactResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetPriorityArgs": {
+        "description": "The arguments of `setPriority`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "priority"
+        ],
+        "type": "object"
+      },
+      "SetPriorityRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetPriorityArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetPriorityResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetRepoUrlArgs": {
+        "description": "The arguments of `setRepoUrl`, by name.",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "SetRepoUrlRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetRepoUrlArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetRepoUrlResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetReproArgs": {
+        "description": "The arguments of `setRepro`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "repro": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "repro"
+        ],
+        "type": "object"
+      },
+      "SetReproRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetReproArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetReproResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetResolutionCriteriaArgs": {
+        "description": "The arguments of `setResolutionCriteria`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "resolutionCriteria": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "resolutionCriteria"
+        ],
+        "type": "object"
+      },
+      "SetResolutionCriteriaRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetResolutionCriteriaArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetResolutionCriteriaResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetStatusArgs": {
+        "description": "The arguments of `setStatus`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "SetStatusRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetStatusArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetStatusResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetSummaryArgs": {
+        "description": "The arguments of `setSummary`, by name.",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "SetSummaryRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetSummaryArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetSummaryResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "StatusCount": {
+        "description": "The app type `StatusCount`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "StatusCount"
+      },
+      "Trap": {
+        "properties": {
+          "details": {
+            "properties": {
+              "detail": {},
+              "index": {
+                "type": "integer"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "error": {
+            "const": "TRAP"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "details"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "description": "A passkey session's token or an API key, as `Authorization: Bearer`, inside the sealed channel.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "title": "mero-issue-tracker",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/apps/{app}/events": {
+      "get": {
+        "description": "Server-sent events: the committed events from log index `from`, then live ones. Each frame's `event` is the event's name, `id` is `<index>:<seq>` and `data` its fields as JSON. A subscriber receives only the events it is in the audience of.",
+        "operationId": "events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventFrame"
+                }
+              }
+            },
+            "description": "An event stream."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "The app's events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/apps/{app}/methods/addComment": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"addComment\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "addComment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddCommentResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `addComment`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/addLabel": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"addLabel\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "addLabel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddLabelResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `addLabel`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/createIssue": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"createIssue\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "createIssue",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateIssueResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `createIssue`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/deleteComment": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"deleteComment\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "deleteComment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteCommentResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `deleteComment`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/deleteIssue": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"deleteIssue\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "deleteIssue",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteIssueResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `deleteIssue`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/editComment": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"editComment\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "editComment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditCommentResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `editComment`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/getIssue": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"getIssue\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "getIssue",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetIssueResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `getIssue`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/getRepoInfo": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"getRepoInfo\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "getRepoInfo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetRepoInfoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetRepoInfoResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `getRepoInfo`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/getStatusCounts": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"getStatusCounts\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "getStatusCounts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetStatusCountsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetStatusCountsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `getStatusCounts`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/listIssues": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"listIssues\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "listIssues",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListIssuesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListIssuesResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `listIssues`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/removeLabel": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"removeLabel\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "removeLabel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveLabelResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `removeLabel`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setAssignee": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setAssignee\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setAssignee",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAssigneeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetAssigneeResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setAssignee`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setImpact": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setImpact\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setImpact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetImpactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetImpactResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setImpact`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setPriority": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setPriority\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setPriority",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPriorityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPriorityResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setPriority`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setRepoUrl": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setRepoUrl\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setRepoUrl",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRepoUrlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetRepoUrlResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setRepoUrl`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setRepro": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setRepro\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setRepro",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReproRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetReproResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setRepro`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setResolutionCriteria": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setResolutionCriteria\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setResolutionCriteria",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetResolutionCriteriaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetResolutionCriteriaResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setResolutionCriteria`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setStatus": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setStatus\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setStatus",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetStatusResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setStatus`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setSummary": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setSummary\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setSummary",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSummaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetSummaryResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setSummary`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "session": []
+    }
+  ],
+  "tags": [
+    {
+      "description": "Writes: each runs once, in order, through the app's log.",
+      "name": "call"
+    },
+    {
+      "description": "Reads: answered from the app's state without writing.",
+      "name": "view"
+    },
+    {
+      "description": "The app's committed events, then live.",
+      "name": "events"
+    }
+  ],
+  "x-calimero": {
+    "abiVersion": 1,
+    "stateVersion": 1,
+    "world": "calimero:app@0.5.1"
+  }
+}

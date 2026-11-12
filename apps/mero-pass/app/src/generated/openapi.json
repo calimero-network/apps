@@ -1,0 +1,3615 @@
+{
+  "components": {
+    "parameters": {
+      "app": {
+        "description": "The app instance's id.",
+        "in": "path",
+        "name": "app",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "AppError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "Conflict"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/ConflictError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "Forbidden"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/ForbiddenError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "Invalid"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/InvalidError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "details": {
+                      "properties": {
+                        "code": {
+                          "const": "NotFound"
+                        },
+                        "fields": {
+                          "$ref": "#/components/schemas/NotFoundError"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "error": {
+                      "const": "APP_ERROR"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message",
+                    "details"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/components/schemas/Trap"
+                }
+              ]
+            }
+          }
+        },
+        "description": "The app refused the call (`APP_ERROR`, one of its declared errors) or the run trapped (`TRAP`)."
+      },
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "The request is malformed (`BAD_REQUEST`), names a reserved method (`RESERVED_METHOD`), or carries an approval for another call (`WRONG_CHALLENGE`)."
+      },
+      "ConfirmRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConfirmRequired"
+            }
+          }
+        },
+        "description": "`CONFIRM_REQUIRED`: approve the call with the passkey and send it again with `confirm`."
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "The caller may not call this method of this app (`FORBIDDEN`), or the app is read-only."
+      },
+      "Gone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`UNSUPPORTED_ENGINE`: the app is an SDK 0.12 app, which this node no longer runs."
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "No such app here."
+      },
+      "RateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`RATE_LIMITED`: a public method's rate, or the node's limits."
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "No valid session or API key, and the method is not public."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        },
+        "description": "`UNAVAILABLE` or `TIMEOUT`: retry with the same idempotency key."
+      }
+    },
+    "schemas": {
+      "AddKeyWrapsArgs": {
+        "description": "The arguments of `addKeyWraps`, by name.",
+        "properties": {
+          "wraps": {
+            "items": {
+              "$ref": "#/components/schemas/KeyWrapInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "wraps"
+        ],
+        "type": "object"
+      },
+      "AddKeyWrapsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/AddKeyWrapsArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "AddKeyWrapsResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "AddSecretArgs": {
+        "description": "The arguments of `addSecret`, by name.",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "tags",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "AddSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/AddSecretArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "AddSecretResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ApiError": {
+        "properties": {
+          "details": {},
+          "error": {
+            "description": "A stable code, e.g. `NOT_FOUND`.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AuditView": {
+        "description": "The app type `AuditView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "AuditView"
+      },
+      "CallEvent": {
+        "oneOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/KeysChangedEvent"
+              },
+              "kind": {
+                "const": "KeysChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/MembersChangedEvent"
+              },
+              "kind": {
+                "const": "MembersChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/SecretChangedEvent"
+              },
+              "kind": {
+                "const": "SecretChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/VaultRenamedEvent"
+              },
+              "kind": {
+                "const": "VaultRenamed"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Confirm": {
+        "description": "The passkey's approval of this exact call: the 412's challenge id and the WebAuthn assertion over its challenge.",
+        "properties": {
+          "assertion": {
+            "properties": {
+              "authenticatorData": {
+                "type": "string"
+              },
+              "clientDataJson": {
+                "type": "string"
+              },
+              "credentialId": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "credentialId",
+              "authenticatorData",
+              "clientDataJson",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "challengeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "challengeId",
+          "assertion"
+        ],
+        "type": "object"
+      },
+      "ConfirmRequired": {
+        "properties": {
+          "details": {
+            "properties": {
+              "allowCredentials": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "challenge": {
+                "contentEncoding": "base64url",
+                "type": "string"
+              },
+              "challengeId": {
+                "type": "string"
+              },
+              "rpId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "challengeId",
+              "challenge",
+              "rpId",
+              "allowCredentials"
+            ],
+            "type": "object"
+          },
+          "error": {
+            "const": "CONFIRM_REQUIRED"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "details"
+        ],
+        "type": "object"
+      },
+      "ConflictError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "DeviceView": {
+        "description": "The app type `DeviceView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "DeviceView"
+      },
+      "EventFrame": {
+        "oneOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/KeysChangedEvent"
+              },
+              "event": {
+                "const": "KeysChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/MembersChangedEvent"
+              },
+              "event": {
+                "const": "MembersChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/SecretChangedEvent"
+              },
+              "event": {
+                "const": "SecretChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/VaultRenamedEvent"
+              },
+              "event": {
+                "const": "VaultRenamed"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ForbiddenError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "GetAuditLogsArgs": {
+        "description": "The arguments of `getAuditLogs`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAuditLogsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/GetAuditLogsArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "GetAuditLogsResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/AuditView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "GetSecretArgs": {
+        "description": "The arguments of `getSecret`, by name.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "GetSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/GetSecretArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "GetSecretResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SecretView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "InvalidError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "KeyWrapInput": {
+        "description": "The app type `KeyWrapInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "KeyWrapInput"
+      },
+      "KeyWrapView": {
+        "description": "The app type `KeyWrapView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "KeyWrapView"
+      },
+      "KeyWrapsForArgs": {
+        "description": "The arguments of `keyWrapsFor`, by name.",
+        "properties": {
+          "recipient": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient"
+        ],
+        "type": "object"
+      },
+      "KeyWrapsForRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/KeyWrapsForArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "KeyWrapsForResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/KeyWrapView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "KeysChangedEvent": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ListDevicesArgs": {
+        "description": "The arguments of `listDevices`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ListDevicesRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/ListDevicesArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ListDevicesResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ListMembersArgs": {
+        "description": "The arguments of `listMembers`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ListMembersRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/ListMembersArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ListMembersResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/MemberView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ListSecretsArgs": {
+        "description": "The arguments of `listSecrets`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ListSecretsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/ListSecretsArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ListSecretsResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/SecretView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "MemberView": {
+        "description": "The app type `MemberView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "MemberView"
+      },
+      "MembersChangedEvent": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "NotFoundError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "PurgeSecretArgs": {
+        "description": "The arguments of `purgeSecret`, by name.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "PurgeSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/PurgeSecretArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "PurgeSecretResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "Receipt": {
+        "description": "The answering node's signature over the app, the index and the result's hash.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "node": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resultHash": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "index",
+          "resultHash",
+          "node",
+          "key",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "RegisterDeviceArgs": {
+        "description": "The arguments of `registerDevice`, by name.",
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "publicKey",
+          "label",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "RegisterDeviceRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RegisterDeviceArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RegisterDeviceResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RemoveMemberArgs": {
+        "description": "The arguments of `removeMember`, by name.",
+        "properties": {
+          "account": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "type": "object"
+      },
+      "RemoveMemberRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RemoveMemberArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RemoveMemberResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RenameVaultArgs": {
+        "description": "The arguments of `renameVault`, by name.",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "RenameVaultRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RenameVaultArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RenameVaultResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RestoreSecretArgs": {
+        "description": "The arguments of `restoreSecret`, by name.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "RestoreSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RestoreSecretArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RestoreSecretResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RevisionView": {
+        "description": "The app type `RevisionView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "RevisionView"
+      },
+      "RevokeDeviceArgs": {
+        "description": "The arguments of `revokeDevice`, by name.",
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "type": "object"
+      },
+      "RevokeDeviceRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RevokeDeviceArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RevokeDeviceResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RotateKeyArgs": {
+        "description": "The arguments of `rotateKey`, by name.",
+        "properties": {
+          "keyId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyId"
+        ],
+        "type": "object"
+      },
+      "RotateKeyRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RotateKeyArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RotateKeyResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SecretChangedEvent": {
+        "properties": {
+          "secretId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secretId"
+        ],
+        "type": "object"
+      },
+      "SecretHistoryArgs": {
+        "description": "The arguments of `secretHistory`, by name.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "SecretHistoryRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SecretHistoryArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SecretHistoryResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SecretView": {
+        "description": "The app type `SecretView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "SecretView"
+      },
+      "SetDefaultRoleArgs": {
+        "description": "The arguments of `setDefaultRole`, by name.",
+        "properties": {
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "SetDefaultRoleRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetDefaultRoleArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetDefaultRoleResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetRoleArgs": {
+        "description": "The arguments of `setRole`, by name.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "role"
+        ],
+        "type": "object"
+      },
+      "SetRoleRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetRoleArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetRoleResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "Trap": {
+        "properties": {
+          "details": {
+            "properties": {
+              "detail": {},
+              "index": {
+                "type": "integer"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "error": {
+            "const": "TRAP"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "details"
+        ],
+        "type": "object"
+      },
+      "TrashSecretArgs": {
+        "description": "The arguments of `trashSecret`, by name.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "TrashSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/TrashSecretArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "TrashSecretResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "UpdateSecretArgs": {
+        "description": "The arguments of `updateSecret`, by name.",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rekey": {
+            "type": "boolean"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "fields",
+          "rekey"
+        ],
+        "type": "object"
+      },
+      "UpdateSecretRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/UpdateSecretArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "UpdateSecretResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "VaultInfo": {
+        "description": "The app type `VaultInfo`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "x-calimero-abi-type": "VaultInfo"
+      },
+      "VaultInfoArgs": {
+        "description": "The arguments of `vaultInfo`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "VaultInfoRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/VaultInfoArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "VaultInfoResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/VaultInfo"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "VaultNameArgs": {
+        "description": "The arguments of `vaultName`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "VaultNameRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/VaultNameArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "VaultNameResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "VaultRenamedEvent": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "WrappedPairsArgs": {
+        "description": "The arguments of `wrappedPairs`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "WrappedPairsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/WrappedPairsArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "WrappedPairsResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "description": "A passkey session's token or an API key, as `Authorization: Bearer`, inside the sealed channel.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "title": "mero-pass",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/apps/{app}/events": {
+      "get": {
+        "description": "Server-sent events: the committed events from log index `from`, then live ones. Each frame's `event` is the event's name, `id` is `<index>:<seq>` and `data` its fields as JSON. A subscriber receives only the events it is in the audience of.",
+        "operationId": "events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventFrame"
+                }
+              }
+            },
+            "description": "An event stream."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "The app's events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/apps/{app}/methods/addKeyWraps": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"addKeyWraps\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "addKeyWraps",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddKeyWrapsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddKeyWrapsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `addKeyWraps`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/addSecret": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"addSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "addSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `addSecret`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/getAuditLogs": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"getAuditLogs\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "getAuditLogs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetAuditLogsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAuditLogsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `getAuditLogs`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/getSecret": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"getSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "getSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `getSecret`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/keyWrapsFor": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"keyWrapsFor\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "keyWrapsFor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyWrapsForRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyWrapsForResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `keyWrapsFor`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/listDevices": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"listDevices\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "listDevices",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListDevicesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDevicesResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `listDevices`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/listMembers": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"listMembers\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListMembersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMembersResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `listMembers`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/listSecrets": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"listSecrets\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "listSecrets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListSecretsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSecretsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `listSecrets`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/purgeSecret": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"purgeSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "purgeSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `purgeSecret`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/registerDevice": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"registerDevice\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "registerDevice",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterDeviceResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `registerDevice`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/removeMember": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"removeMember\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveMemberResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `removeMember`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/renameVault": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"renameVault\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "renameVault",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameVaultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameVaultResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `renameVault`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/restoreSecret": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"restoreSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "restoreSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `restoreSecret`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/revokeDevice": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"revokeDevice\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "revokeDevice",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeDeviceResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `revokeDevice`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/rotateKey": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"rotateKey\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "rotateKey",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateKeyResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `rotateKey`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/secretHistory": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"secretHistory\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "secretHistory",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretHistoryResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `secretHistory`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setDefaultRole": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setDefaultRole\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setDefaultRole",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetDefaultRoleResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setDefaultRole`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/setRole": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setRole\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setRole",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetRoleResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setRole`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/trashSecret": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"trashSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "trashSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrashSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `trashSecret`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/updateSecret": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"updateSecret\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "updateSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateSecretResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `updateSecret`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/vaultInfo": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"vaultInfo\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "vaultInfo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultInfoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultInfoResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `vaultInfo`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/vaultName": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"vaultName\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "vaultName",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultNameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultNameResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `vaultName`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    },
+    "/apps/{app}/methods/wrappedPairs": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"wrappedPairs\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "wrappedPairs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WrappedPairsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WrappedPairsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `wrappedPairs`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "session": []
+    }
+  ],
+  "tags": [
+    {
+      "description": "Writes: each runs once, in order, through the app's log.",
+      "name": "call"
+    },
+    {
+      "description": "Reads: answered from the app's state without writing.",
+      "name": "view"
+    },
+    {
+      "description": "The app's committed events, then live.",
+      "name": "events"
+    }
+  ],
+  "x-calimero": {
+    "abiVersion": 1,
+    "stateVersion": 1,
+    "world": "calimero:app@0.5.1"
+  }
+}

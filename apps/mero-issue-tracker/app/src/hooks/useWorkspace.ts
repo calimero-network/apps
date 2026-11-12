@@ -17,7 +17,8 @@ import { setOrgName } from '@calimero-apps/names';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
-import { tracker } from '../tracker';
+import { MeroIssueTrackerClient } from '../generated/client';
+import { toRepoInfo } from '../tracker';
 import {
   addRepo as addRepoTo,
   createWorkspace,
@@ -339,13 +340,17 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   // ── the active repo's URL ─────────────────────────────────────────────────
   const [repoUrl, setRepoUrlState] = useState('');
-  const board = useMemo(() => (activeRepo ? tracker(client, activeRepo, after) : null), [client, activeRepo, after]);
+  const board = useMemo(
+    () => (activeRepo ? new MeroIssueTrackerClient(client, activeRepo, { after }) : null),
+    [client, activeRepo, after],
+  );
   useEffect(() => {
     setRepoUrlState('');
     if (!board) return;
     let live = true;
     board
       .getRepoInfo()
+      .then(toRepoInfo)
       .then((info) => {
         if (live) setRepoUrlState(info.repoUrl);
       })
@@ -357,7 +362,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   const setRepoUrl = useCallback(
     async (url: string) => {
       if (!board) return;
-      await board.setRepoUrl(url);
+      await board.setRepoUrl({ url });
       setRepoUrlState(url);
     },
     [board],

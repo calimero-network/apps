@@ -25,7 +25,7 @@ import {
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
-import { crm } from './crm';
+import { MeroCrmClient } from './generated/client';
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -135,7 +135,7 @@ export async function createWorkspace(
  * over. Answers the instance id.
  */
 export async function addPipeline(
-  client: Pick<CalimeroClient, 'session'> &
+  client: Pick<CalimeroClient, 'session' | 'events'> &
     ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   source: AppSource,
   org: string,
@@ -156,7 +156,7 @@ export async function addPipeline(
   const code = currency.trim().toUpperCase();
   if (code && code !== 'USD') {
     try {
-      await crm(client, appId, after).setCurrency({ currency: code });
+      await new MeroCrmClient(client, appId, { after }).setCurrency({ currency: code });
     } catch {
       /* stays USD until changed in Settings */
     }

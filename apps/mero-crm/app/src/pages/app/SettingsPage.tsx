@@ -30,7 +30,7 @@ export default function SettingsPage(): React.ReactElement {
     const j = idx + dir;
     if (j < 0 || j >= ids.length) return;
     [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    void run(() => data.act((c) => c.reorderStages({ stage_ids: ids })));
+    void run(() => data.act((c) => c.reorderStages({ stageIds: ids })));
   };
 
   return (
@@ -46,12 +46,12 @@ export default function SettingsPage(): React.ReactElement {
               first={i === 0}
               last={i === data.stages.length - 1}
               openDeals={data.deals.filter((d) => d.status === 'open' && d.stage_id === s.id).length}
-              onSave={(name, probability) => run(() => data.act((c) => c.updateStage({ stage_id: s.id, name, probability })), 'Stage saved')}
+              onSave={(name, probability) => run(() => data.act((c) => c.updateStage({ stageId: s.id, name, probability })), 'Stage saved')}
               onUp={() => move(i, -1)}
               onDown={() => move(i, 1)}
               onDelete={() => {
                 if (!window.confirm(`Delete the ${s.name} stage and its automations?`)) return;
-                void run(() => data.act((c) => c.deleteStage({ stage_id: s.id })));
+                void run(() => data.act((c) => c.deleteStage({ stageId: s.id })));
               }}
             />
           ))}
@@ -73,20 +73,20 @@ export default function SettingsPage(): React.ReactElement {
                 type="checkbox"
                 checked={a.enabled}
                 aria-label={a.enabled ? 'Disable automation' : 'Enable automation'}
-                onChange={() => run(() => data.act((c) => c.setAutomationEnabled({ automation_id: a.id, enabled: !a.enabled })))}
+                onChange={() => run(() => data.act((c) => c.setAutomationEnabled({ automationId: a.id, enabled: !a.enabled })))}
               />
               <span>
                 When a deal enters <strong>{data.stages.find((s) => s.id === a.stage_id)?.name ?? '—'}</strong>, schedule{' '}
                 <KindIcon kind={a.kind} /> <strong>{a.subject}</strong>{' '}
                 {a.due_in_days === 0 ? 'for the same day' : `due in ${a.due_in_days} day${a.due_in_days === 1 ? '' : 's'}`}
               </span>
-              <button className="x" aria-label="Delete automation" onClick={() => run(() => data.act((c) => c.deleteAutomation({ automation_id: a.id })))}>×</button>
+              <button className="x" aria-label="Delete automation" onClick={() => run(() => data.act((c) => c.deleteAutomation({ automationId: a.id })))}>×</button>
             </li>
           ))}
         </AutoList>
         <AddAutomation
           stages={data.stages}
-          onAdd={(stageId, kind, subject, days) => run(() => data.act((c) => c.addAutomation({ stage_id: stageId, kind, subject, due_in_days: days })), 'Automation added')}
+          onAdd={(stageId, kind, subject, days) => run(() => data.act((c) => c.addAutomation({ stageId, kind, subject, dueInDays: days })), 'Automation added')}
         />
       </Panel>
 

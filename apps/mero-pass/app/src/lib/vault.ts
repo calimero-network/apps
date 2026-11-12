@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCalimero } from '../calimero';
-import { type MeroPass, meroPass } from './meroPass';
+import { MeroPassClient } from '../generated/client';
 
 /**
  * One vault's typed contract, or null until signed in. A vault is an app
  * instance this account reaches; there is no per-context identity to resolve
  * first (v1's `getContextIdentitiesOwned`): the caller is the account.
  */
-export function useVaultClient(contextId: string | null): MeroPass | null {
+export function useVaultClient(contextId: string | null): MeroPassClient | null {
   const { client, isAuthenticated, after } = useCalimero();
   return useMemo(
     () =>
       client && isAuthenticated && contextId
-        ? meroPass(client, contextId, after)
+        ? new MeroPassClient(client, contextId, { after })
         : null,
     [client, isAuthenticated, contextId, after],
   );

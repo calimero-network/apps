@@ -20,11 +20,11 @@ import type {
   DeviceWire,
   KeyWrapWire,
   MemberWire,
-  MeroPass,
   RevisionWire,
   SecretWire,
   VaultInfoWire,
 } from './meroPass';
+import type { MeroPassClient } from '../generated/client';
 
 /** A decimal-string u64 (or a number) as a number; 0 for anything else. */
 export function num(v: string | number | null | undefined): number {
@@ -102,47 +102,52 @@ export const toAudit = (a: AuditWire): AuditView => ({
   timestamp: num(a.timestamp),
 });
 
-/** The narrow `VaultApi` the vault session needs, over one vault's contract. */
-export function vaultApiFor(api: MeroPass): VaultApi {
+/**
+ * The narrow `VaultApi` the vault session needs, over one vault's contract:
+ * `MeroPassClient`, generated from logic/res/abi.json. Its record answers are
+ * `unknown` (the ABI names them without their shapes), typed by the `*Wire`
+ * shapes here.
+ */
+export function vaultApiFor(api: MeroPassClient): VaultApi {
   return {
-    vaultInfo: async () => toVaultInfo(await api.vaultInfo()),
+    vaultInfo: async () => toVaultInfo((await api.vaultInfo()) as VaultInfoWire),
     registerDevice: async (fingerprint, publicKey, label, kind) => {
-      await api.registerDevice(fingerprint, publicKey, label, kind);
+      await api.registerDevice({ fingerprint, publicKey, label, kind });
     },
     revokeDevice: async (fingerprint) => {
-      await api.revokeDevice(fingerprint);
+      await api.revokeDevice({ fingerprint });
     },
-    listDevices: async () => (await api.listDevices()).map(toDevice),
-    listMembers: async () => (await api.listMembers()).map(toMember),
+    listDevices: async () => ((await api.listDevices()) as DeviceWire[]).map(toDevice),
+    listMembers: async () => ((await api.listMembers()) as MemberWire[]).map(toMember),
     keyWrapsFor: async (recipient) =>
-      (await api.keyWrapsFor(recipient)).map(toWrap),
+      ((await api.keyWrapsFor({ recipient })) as KeyWrapWire[]).map(toWrap),
     wrappedPairs: () => api.wrappedPairs(),
     addKeyWraps: async (wraps) =>
       num(
-        await api.addKeyWraps(
-          wraps.map((w) => ({
+        await api.addKeyWraps({
+          wraps: wraps.map((w) => ({
             keyId: w.key_id,
             recipient: w.recipient,
             wrapper: w.wrapper,
             envelope: w.envelope,
           })),
-        ),
+        }),
       ),
     rotateKey: async (keyId) => {
-      await api.rotateKey(keyId);
+      await api.rotateKey({ keyId });
     },
     setRole: async (account, role) => {
-      await api.setRole(account, role);
+      await api.setRole({ account, role });
     },
     removeMember: async (account) => {
-      await api.removeMember(account);
+      await api.removeMember({ account });
     },
-    listSecrets: async () => (await api.listSecrets()).map(toSecret),
+    listSecrets: async () => ((await api.listSecrets()) as SecretWire[]).map(toSecret),
     addSecret: (id, kind, name, tags, fields) =>
-      api.addSecret(id, kind, name, tags, fields),
+      api.addSecret({ id, kind, name, tags, fields }),
     updateSecret: async (id, name, tags, fields, rekey) => {
-      await api.updateSecret(id, name, tags, fields, rekey);
+      await api.updateSecret({ id, name, tags, fields, rekey });
     },
-    secretHistory: async (id) => (await api.secretHistory(id)).map(toRevision),
+    secretHistory: async (id) => ((await api.secretHistory({ id })) as RevisionWire[]).map(toRevision),
   };
 }

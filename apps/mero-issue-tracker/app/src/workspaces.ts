@@ -25,7 +25,7 @@ import {
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
-import { tracker } from './tracker';
+import { MeroIssueTrackerClient } from './generated/client';
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -130,7 +130,7 @@ export async function createWorkspace(
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */
 export async function addRepo(
-  client: Pick<CalimeroClient, 'session'> &
+  client: Pick<CalimeroClient, 'session' | 'events'> &
     ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   source: AppSource,
   org: string,
@@ -148,7 +148,7 @@ export async function addRepo(
       ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
     })
   ).appId;
-  if (repoUrl.trim()) await tracker(client, appId, after).setRepoUrl(repoUrl.trim());
+  if (repoUrl.trim()) await new MeroIssueTrackerClient(client, appId, { after }).setRepoUrl({ url: repoUrl.trim() });
   return appId;
 }
 
