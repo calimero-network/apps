@@ -1,10 +1,11 @@
 import Foundation
 import MeroKit
 
-// The arena contract's component ABI (`logic/res/abi.json`, `calimero:app@0.5.0`), typed by hand:
-// no Swift client is generated from a component ABI yet. It mirrors the web app's
-// `app/src/kombat.ts`, and `ContractTests` checks the method lists against the committed ABI.
-// (Kotlin `network.calimero.kombat.contract.KombatClient`.)
+// The arena contract's component ABI (`logic/res/abi.json`). The calls are `KombatClient`, generated
+// from it into `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this
+// file keeps the method lists `ContractTests` checks against the ABI, `initArgs`, the answer types
+// and the refusal sentences of the web app's `app/src/kombat.ts`. (Kotlin
+// `network.calimero.kombat.contract.KombatContract`.)
 //
 // Wire format (component ABI):
 // - argument and result fields are camelCase (`matchIndex`, `mySeat`, `roundsWon`, …);
@@ -12,104 +13,24 @@ import MeroKit
 //   `startedAt`); the Swift fields stay `UInt64` and are converted here;
 // - a refusal is `422 APP_ERROR {code, fields}`, an `AppError` (see `KombatRefusal`).
 
-/// Typed calls to the arena. Views go through `query` (`POST /apps/{app}/views`), calls through
-/// `execute` (an intent).
-public struct KombatClient: Sendable {
+extension KombatClient {
     /// The contract's calls (writes), by their ABI names.
     public static let calls = ["act", "join", "pick", "rematch", "sit", "stand"]
     /// The contract's views (reads), by their ABI names.
     public static let views = ["arena", "history"]
 
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    /// Record one blow in round `round` of match `matchIndex`.
-    public func act(matchIndex: UInt32, round: UInt32, id: UInt32, kind: String, hit: Bool, blocked: Bool, now: UInt64)
-        async throws
-    {
-        try await call(
-            "act",
-            ActArgs(matchIndex: matchIndex, round: round, id: id, kind: kind, hit: hit, blocked: blocked, now: U64(now)))
-    }
-
-    /// The whole arena in one read.
-    public func arena(now: UInt64) async throws -> ArenaView {
-        try JSONDecoder().decode(ArenaView.self, from: try await view("arena", NowArgs(now: U64(now))))
-    }
-
-    /// Every match this arena has fought, oldest first.
-    public func history() async throws -> [MatchSummary] {
-        try JSONDecoder().decode([MatchSummary].self, from: try await view("history", Empty()))
-    }
-
-    /// Announce yourself, or refresh your name and fighter.
-    public func join(name: String, fighter: String, now: UInt64) async throws {
-        try await call("join", JoinArgs(name: name, fighter: fighter, now: U64(now)))
-    }
-
-    /// Change fighter.
-    public func pick(fighter: String, now: UInt64) async throws {
-        try await call("pick", PickArgs(fighter: fighter, now: U64(now)))
-    }
-
-    /// Start the next match; answers its index.
-    @discardableResult
-    public func rematch(now: UInt64) async throws -> UInt32 {
-        let data = try await transport.execute(method: "rematch", argsJSON: try JSONEncoder().encode(NowArgs(now: U64(now))))
-        return try JSONDecoder().decode(UInt32.self, from: data)
-    }
-
-    /// Take corner `p1` or `p2`, if it is free.
-    public func sit(seat: String, name: String, fighter: String, now: UInt64) async throws {
-        try await call("sit", SitArgs(seat: seat, name: name, fighter: fighter, now: U64(now)))
-    }
-
-    /// Leave your corner (only before you have fought here).
-    public func stand(now: UInt64) async throws {
-        try await call("stand", NowArgs(now: U64(now)))
-    }
-
     /// The `init` arguments a new arena instance is created with (`init(title?, now?)`).
     public static func initArgs(title: String, now: UInt64) -> JSONValue {
         .object(["title": .string(title), "now": .string(String(now))])
     }
+}
 
-    private func call<A: Encodable>(_ method: String, _ args: A) async throws {
-        _ = try await transport.execute(method: method, argsJSON: try JSONEncoder().encode(args))
-    }
-
-    private func view<A: Encodable>(_ method: String, _ args: A) async throws -> Data {
-        try await transport.query(method: method, argsJSON: try JSONEncoder().encode(args))
-    }
-
-    private struct Empty: Encodable {}
-    private struct NowArgs: Encodable { let now: U64 }
-    private struct JoinArgs: Encodable {
-        let name: String
-        let fighter: String
-        let now: U64
-    }
-    private struct PickArgs: Encodable {
-        let fighter: String
-        let now: U64
-    }
-    private struct SitArgs: Encodable {
-        let seat: String
-        let name: String
-        let fighter: String
-        let now: U64
-    }
-    private struct ActArgs: Encodable {
-        let matchIndex: UInt32
-        let round: UInt32
-        let id: UInt32
-        let kind: String
-        let hit: Bool
-        let blocked: Bool
-        let now: U64
+extension JSONValue {
+    /// This answer as the app type `T`. The ABI names `ArenaView` and `MatchSummary` without their
+    /// shape until the logic derives `AbiType`, so the generated client answers their JSON and the
+    /// types below read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }
 

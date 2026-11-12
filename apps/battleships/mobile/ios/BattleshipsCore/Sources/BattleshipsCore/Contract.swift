@@ -1,10 +1,12 @@
 import Foundation
 import MeroKit
 
-// The Battleships component contract (`../logic/res/abi.json`), typed by hand: no client is
-// generated from a component ABI yet. The same surface as the web app's `src/battleships.ts`:
-// camelCase method and argument names, snake_case result fields, 64-bit integers as decimal
-// strings, bytes as base64url, refusals as `422 APP_ERROR {code, fields}`. (Kotlin `Contract.kt`.)
+// The Battleships component contract (`../logic/res/abi.json`). The calls are `BattleshipsClient`,
+// generated from it into `Generated/` by core's `mero-app-build codegen`
+// (`scripts/mobile-codegen.sh`); this file keeps the method lists and the answer types of the web
+// app's `src/battleships.ts`: camelCase method and argument names, snake_case result fields, 64-bit
+// integers as decimal strings, bytes as base64url, refusals as `422 APP_ERROR {code, fields}`.
+// (Kotlin `Contract.kt`.)
 
 /// The contract's methods by their ABI names: a call goes through the app's log, a view is
 /// answered by a node without writing. `ContractTests` checks both lists against the ABI.
@@ -245,88 +247,14 @@ public struct MatchStateView: Codable, Sendable, Equatable {
     }
 }
 
-// MARK: - The client
+// MARK: - Reading the generated client's answers
 
-/// One lobby's contract: the app instance `appId`, through the session's ``ContextContract``.
-/// (Kotlin `BattleshipsContract`; the web app's `battleships(client, app)`.)
-public struct BattleshipsContract: Sendable {
-    public let contract: any ContextContract
-    public let appId: String
-
-    public init(_ contract: any ContextContract, appId: String) {
-        self.contract = contract
-        self.appId = appId
-    }
-
-    public func registerPlayer() async throws -> String { try await call("registerPlayer", as: String.self) }
-    public func createMatch(player2: String) async throws -> String {
-        try await call("createMatch", ["player2": .string(player2)], as: String.self)
-    }
-    public func commitBoard(matchId: String, commitment: String) async throws {
-        try await call("commitBoard", ["matchId": .string(matchId), "commitment": .string(commitment)])
-    }
-    public func proposeShot(matchId: String, x: Int, y: Int) async throws {
-        try await call("proposeShot", ["matchId": .string(matchId), "x": .number(Double(x)), "y": .number(Double(y))])
-    }
-    /// `"hit"` or `"miss"`.
-    @discardableResult
-    public func acknowledgeShot(matchId: String, shotId: UInt32, hit: Bool) async throws -> String? {
-        try await call(
-            "acknowledgeShot", ["matchId": .string(matchId), "shotId": .number(Double(shotId)), "hit": .bool(hit)],
-            as: String?.self)
-    }
-    /// Open the board at the end: `cells` as borsh bytes and the 16-byte salt, both base64url.
-    public func revealBoard(matchId: String, cells: [UInt8], salt: [UInt8]) async throws {
-        try await call(
-            "revealBoard",
-            [
-                "matchId": .string(matchId), "boardBytes": .string(Base64URL.encode(Commitment.boardBytes(cells))),
-                "salt": .string(Base64URL.encode(salt)),
-            ])
-    }
-
-    public func getPlayers() async throws -> [PlayerEntry] { try await view("getPlayers", as: [PlayerEntry].self) }
-    public func getMatches() async throws -> [MatchSummary] { try await view("getMatches", as: [MatchSummary].self) }
-    public func getPlayerStats(player: String) async throws -> PlayerStatsView? {
-        try await view("getPlayerStats", ["player": .string(player)], as: PlayerStatsView?.self)
-    }
-    public func getHistory() async throws -> [MatchRecord] { try await view("getHistory", as: [MatchRecord].self) }
-    public func getShots(matchId: String) async throws -> ShotsView {
-        try await view("getShots", ["matchId": .string(matchId)], as: ShotsView.self)
-    }
-    public func getIncomingShots(matchId: String) async throws -> ShotsView {
-        try await view("getIncomingShots", ["matchId": .string(matchId)], as: ShotsView.self)
-    }
-    public func getMatchState(matchId: String) async throws -> MatchStateView {
-        try await view("getMatchState", ["matchId": .string(matchId)], as: MatchStateView.self)
-    }
-    public func getActiveMatchId() async throws -> String? { try await view("getActiveMatchId", as: String?.self) }
-    /// Whose turn it is, `nil` once the match is over.
-    public func getCurrentTurn(matchId: String) async throws -> String? {
-        try await view("getCurrentTurn", ["matchId": .string(matchId)], as: String?.self)
-    }
-    public func getWinner(matchId: String) async throws -> String? {
-        try await view("getWinner", ["matchId": .string(matchId)], as: String?.self)
-    }
-    public func getCurrentUser() async throws -> String { try await view("getCurrentUser", as: String.self) }
-
-    // MARK: Wire
-
-    private func call(_ method: String, _ args: [String: JSONValue] = [:]) async throws {
-        _ = try await contract.execute(contextId: appId, method: method, args: .object(args))
-    }
-
-    private func call<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:], as: T.Type) async throws -> T {
-        try Self.decode(try await contract.execute(contextId: appId, method: method, args: .object(args)))
-    }
-
-    private func view<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:], as: T.Type) async throws -> T {
-        try Self.decode(try await contract.query(contextId: appId, method: method, args: .object(args)))
-    }
-
-    static func decode<T: Decodable>(_ value: JSONValue?) throws -> T {
-        let data = try JSONEncoder().encode(value ?? .null)
-        return try JSONDecoder().decode(T.self, from: data)
+extension JSONValue {
+    /// This answer as the app type `T`. The ABI names the contract's types (`MatchSummary`,
+    /// `MatchStateView`, `ShotsView`, ...) without their shape until the logic derives `AbiType`,
+    /// so the generated `BattleshipsClient` answers their JSON and the types above read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }
 

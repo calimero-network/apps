@@ -1,10 +1,11 @@
 import Foundation
 import MeroKit
 
-// The world contract's component ABI (`logic/res/abi.json`, `calimero:app@0.5.0`), typed by hand:
-// no Swift client is generated from a component ABI yet. It mirrors the web app's
-// `app/src/net/merraria.ts`, and `ContractTests` checks the method lists against the committed ABI.
-// (Kotlin `network.calimero.merraria.contract.MerrariaClient`.)
+// The world contract's component ABI (`logic/res/abi.json`). The calls are `MerrariaClient`,
+// generated from it into `Generated/` by core's `mero-app-build codegen`
+// (`scripts/mobile-codegen.sh`); this file keeps the method lists `ContractTests` checks against the
+// ABI, the paging of `getOverrides`, the world's types and the refusal sentences of the web app's
+// `app/src/net/merraria.ts`. (Kotlin `network.calimero.merraria.contract.MerrariaContract`.)
 //
 // Wire format (component ABI):
 // - method names are camelCase (`worldMeta`, `setTiles`, `getOverrides`, `getPlayers`);
@@ -14,9 +15,7 @@ import MeroKit
 // - a refusal is `422 APP_ERROR {code, fields}` (`NoWorld`, `WorldExists`, `WorldFull`,
 //   `TooManyEdits`), an `AppError` (see `MerrariaRefusal`).
 
-/// Typed calls to a world. Views go through `query` (`POST /apps/{app}/views`), calls through
-/// `execute` (an intent).
-public struct MerrariaClient: Sendable {
+extension MerrariaClient {
     /// The contract's calls (writes), by their ABI names.
     public static let calls = ["createWorld", "heartbeat", "join", "leave", "setTiles"]
     /// The contract's views (reads), by their ABI names.
@@ -24,97 +23,25 @@ public struct MerrariaClient: Sendable {
     /// The most overrides one `getOverrides` answers (its default and largest `limit`).
     public static let overridesPage: UInt32 = 1000
 
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    /// Found the world: its name and seed. Only the instance's owner, once.
-    public func createWorld(name: String, seed: UInt32, now: UInt32) async throws {
-        _ = try await transport.execute(method: "createWorld", argsJSON: try encode(CreateWorldArgs(name: name, seed: seed, now: now)))
-    }
-
-    /// The world's name, seed and day-clock anchor.
-    public func worldMeta() async throws -> WorldMeta {
-        try decode(WorldMeta.self, try await transport.query(method: "worldMeta", argsJSON: Data("{}".utf8)))
-    }
-
-    /// Write tile edits; answers how many were applied.
-    @discardableResult
-    public func setTiles(edits: [Edit], now: UInt32) async throws -> UInt32 {
-        try decode(UInt32.self, try await transport.execute(method: "setTiles", argsJSON: try encode(SetTilesArgs(edits: edits, now: now))))
-    }
-
-    /// One page of overrides, from `cursor` (nil for the first).
-    public func getOverrides(cursor: String? = nil, limit: UInt32? = nil) async throws -> OverridesPage {
-        let args = try encode(OverridesArgs(cursor: cursor, limit: limit))
-        return try decode(OverridesPage.self, try await transport.query(method: "getOverrides", argsJSON: args))
-    }
-
     /// Every override, page after page until `next` is nil (the web app's `readAllOverrides`).
     public func allOverrides() async throws -> [TileEntry] {
         var all: [TileEntry] = []
         var cursor: String?
         repeat {
-            let page = try await getOverrides(cursor: cursor)
+            let page = try await getOverrides(cursor: cursor).decoded(as: MerrariaCore.OverridesPage.self)
             all += page.items
             cursor = page.next
         } while cursor != nil
         return all
     }
+}
 
-    /// Enter the world (or come back); answers this account's avatar.
-    public func join(name: String, now: UInt32) async throws -> PlayerView {
-        try decode(PlayerView.self, try await transport.execute(method: "join", argsJSON: try encode(JoinArgs(name: name, now: now))))
-    }
-
-    /// This account's avatar, moved.
-    public func heartbeat(t: Transform, now: UInt32) async throws {
-        _ = try await transport.execute(method: "heartbeat", argsJSON: try encode(HeartbeatArgs(t: t, now: now)))
-    }
-
-    /// Leave the world.
-    public func leave(now: UInt32) async throws {
-        _ = try await transport.execute(method: "leave", argsJSON: try encode(NowArgs(now: now)))
-    }
-
-    /// Everyone in the world, at most 1,000.
-    public func getPlayers(now: UInt32) async throws -> [PlayerView] {
-        try decode([PlayerView].self, try await transport.query(method: "getPlayers", argsJSON: try encode(NowArgs(now: now))))
-    }
-
-    private func encode<T: Encodable>(_ value: T) throws -> Data { try JSONEncoder().encode(value) }
-    private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T { try JSONDecoder().decode(type, from: data) }
-
-    private struct NowArgs: Encodable { let now: UInt32 }
-    private struct CreateWorldArgs: Encodable {
-        let name: String
-        let seed: UInt32
-        let now: UInt32
-    }
-    private struct SetTilesArgs: Encodable {
-        let edits: [Edit]
-        let now: UInt32
-    }
-    private struct JoinArgs: Encodable {
-        let name: String
-        let now: UInt32
-    }
-    private struct HeartbeatArgs: Encodable {
-        let t: Transform
-        let now: UInt32
-    }
-    /// Absent keys, not nulls: the contract refuses unknown or malformed arguments.
-    private struct OverridesArgs: Encodable {
-        let cursor: String?
-        let limit: UInt32?
-        func encode(to encoder: Encoder) throws {
-            var c = encoder.container(keyedBy: CodingKeys.self)
-            try c.encodeIfPresent(cursor, forKey: .cursor)
-            try c.encodeIfPresent(limit, forKey: .limit)
-        }
-        enum CodingKeys: String, CodingKey { case cursor, limit }
+extension JSONValue {
+    /// This answer as the app type `T`. The ABI names the world's types (`WorldMeta`, `Edit`,
+    /// `OverridesPage`, `Transform`, `PlayerView`) without their shape until the logic derives
+    /// `AbiType`, so the generated client takes and answers their JSON and the types below read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }
 

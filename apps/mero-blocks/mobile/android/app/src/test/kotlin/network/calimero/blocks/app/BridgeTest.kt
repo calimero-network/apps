@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
+import network.calimero.blocks.generated.BlocksClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -158,7 +159,9 @@ class BridgeRouterTest {
                     }
                 // Two pages: the router follows `next`.
                 "getOverrides" ->
-                    if (call.args.jsonObject["cursor"] == null) {
+                    // The generated client sends an unset `option` argument as `null`, which the
+                    // contract reads as none, as it does a missing key.
+                    if (call.args.jsonObject["cursor"].let { it == null || it is JsonNull }) {
                         page(entry("1,2,3", 8), next = "p2")
                     } else {
                         page(entry("4,5,6", 2), next = null)
@@ -228,7 +231,7 @@ class BridgeRouterTest {
             // Both pages, as one list: the page's shape.
             val overrides = Json.parseToJsonElement(router.handle(BridgeOp.QUERY, "get_overrides", "{}")).jsonArray
             assertEquals(listOf(8, 2), overrides.map { it.jsonObject["b"]!!.jsonPrimitive.int })
-            assertEquals(listOf(null, JsonPrimitive("p2")), recording.calls("getOverrides").map { it.args.jsonObject["cursor"] })
+            assertEquals(listOf(JsonNull, JsonPrimitive("p2")), recording.calls("getOverrides").map { it.args.jsonObject["cursor"] })
 
             // A page built against the component ABI may use its names.
             router.handle(BridgeOp.QUERY, "worldMeta", "{}")

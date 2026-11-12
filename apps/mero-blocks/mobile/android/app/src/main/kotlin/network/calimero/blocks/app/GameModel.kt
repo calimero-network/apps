@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import network.calimero.blocks.generated.BlocksClient
 
 /**
  * One open world: gets the account into its context, then serves the game page — answers its
@@ -52,7 +53,7 @@ class GameModel(
     var paused = false
         private set
 
-    private val router = BridgeRouter(BlocksClient(backend.contract.bound(world.contextId)))
+    private val router = BridgeRouter(BlocksClient(backend, world.contextId))
     private var insets = GameInsets.ZERO
     private var events: Job? = null
 

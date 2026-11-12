@@ -25,6 +25,14 @@ ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 CLIENTS=(
   "mero-chess|swift|apps/mero-chess/mobile/ios/ChessCore/Sources/ChessCore/Generated|mero-chess|"
   "mero-chess|kotlin|apps/mero-chess/mobile/android/app/src/main/kotlin/network/calimero/chess/generated|mero-chess|network.calimero.chess.generated"
+  "mero-kombat|swift|apps/mero-kombat/mobile/ios/KombatCore/Sources/KombatCore/Generated|kombat|"
+  "mero-kombat|kotlin|apps/mero-kombat/mobile/android/app/src/main/kotlin/network/calimero/kombat/generated|kombat|network.calimero.kombat.generated"
+  "merraria|swift|apps/merraria/mobile/ios/MerrariaCore/Sources/MerrariaCore/Generated|merraria|"
+  "merraria|kotlin|apps/merraria/mobile/android/app/src/main/kotlin/network/calimero/merraria/generated|merraria|network.calimero.merraria.generated"
+  "mero-blocks|swift|apps/mero-blocks/mobile/ios/BlocksCore/Sources/BlocksCore/Generated|blocks|"
+  "mero-blocks|kotlin|apps/mero-blocks/mobile/android/app/src/main/kotlin/network/calimero/blocks/generated|blocks|network.calimero.blocks.generated"
+  "battleships|swift|apps/battleships/mobile/ios/BattleshipsCore/Sources/BattleshipsCore/Generated|battleships|"
+  "battleships|kotlin|apps/battleships/mobile/android/app/src/main/kotlin/network/calimero/battleships/generated|battleships|network.calimero.battleships.generated"
 )
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

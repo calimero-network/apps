@@ -3,8 +3,9 @@ import MeroKit
 
 // The world contract (`../../logic`, `res/abi.json`), as the component runtime speaks it:
 // camelCase methods, u64 values (`now`, `seed`, `createdAt`) as decimal strings, and the growing
-// reads (`getOverrides`, `getPlayers`) paged at 1,000 rows. Hand-written: no client is generated
-// from a component ABI yet. Same types and calls as the Kotlin `BlocksClient`.
+// reads (`getOverrides`, `getPlayers`) paged at 1,000 rows. The calls are `BlocksClient`, generated
+// from the ABI into `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`);
+// this file keeps the world's types and the paged reads. Same as the Kotlin `BlocksContract.kt`.
 
 /// One block change: world coordinates and the block id (0 = air).
 public struct Edit: Codable, Sendable, Equatable {
@@ -146,10 +147,9 @@ struct Page<Row: Decodable>: Decodable {
     let next: String?
 }
 
-/// The world contract, bound to one world's app instance.
-public struct BlocksClient: Sendable {
-    /// Every method this client calls, with its parameters in ABI order. Tests pin it to the
-    /// component ABI. `device` is left out: one avatar per account (`PlayerView.id` = account).
+extension BlocksClient {
+    /// Every method this app calls, with its parameters in ABI order. Tests pin it to the
+    /// component ABI. `device` is left unset: one avatar per account (`PlayerView.id` = account).
     public static let methods: [String: [String]] = [
         "worldMeta": [], "getOverrides": ["cursor", "limit"], "getPlayers": ["now", "cursor", "limit"],
         "overrideCount": [], "join": ["name", "now", "device"], "heartbeat": ["t", "now", "device"],
@@ -158,76 +158,40 @@ public struct BlocksClient: Sendable {
     /// Pages a read follows at most: 1,000 rows each, so ~1M rows (a world full of edits).
     public static let maxPages = 1_100
 
-    public let transport: any ContextContractCalling
-
-    public init(transport: any ContextContractCalling) {
-        self.transport = transport
-    }
-
-    public func worldMeta() async throws -> WorldMeta {
-        try await view("worldMeta", [:])
-    }
-
     /// Every changed block, following the pages.
-    public func getOverrides() async throws -> [BlockEntry] {
-        try await allPages("getOverrides", [:])
+    public func allOverrides() async throws -> [BlockEntry] {
+        try await Self.allPages("getOverrides") { cursor in
+            try await getOverrides(cursor: cursor).decoded(as: Page<BlockEntry>.self)
+        }
     }
 
     /// Every player, online or not, following the pages. `now` is unix seconds.
-    public func getPlayers(now: UInt64) async throws -> [PlayerView] {
-        try await allPages("getPlayers", ["now": .string(String(now))])
+    public func allPlayers(now: UInt64) async throws -> [BlocksCore.PlayerView] {
+        try await Self.allPages("getPlayers") { cursor in
+            try await getPlayers(now: now, cursor: cursor).decoded(as: Page<BlocksCore.PlayerView>.self)
+        }
     }
 
-    public func overrideCount() async throws -> UInt32 {
-        try await view("overrideCount", [:])
-    }
-
-    @discardableResult
-    public func join(name: String, now: UInt64) async throws -> PlayerView {
-        try await call("join", ["name": .string(name), "now": .string(String(now))])
-    }
-
-    public func heartbeat(t: Transform, now: UInt64) async throws {
-        let _: JSONValue? = try await call("heartbeat", ["t": try Self.value(t), "now": .string(String(now))])
-    }
-
-    public func leave(now: UInt64) async throws {
-        let _: JSONValue? = try await call("leave", ["now": .string(String(now))])
-    }
-
-    /// How many of `edits` changed a block.
-    @discardableResult
-    public func setBlocks(edits: [Edit], now: UInt64) async throws -> UInt32 {
-        try await call("setBlocks", ["edits": try Self.value(edits), "now": .string(String(now))])
-    }
-
-    // MARK: Wire
-
-    private func view<T: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> T {
-        let data = try await transport.query(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func call<T: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> T {
-        let data = try await transport.execute(method: method, argsJSON: try JSONEncoder().encode(JSONValue.object(args)))
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func allPages<Row: Decodable>(_ method: String, _ args: [String: JSONValue]) async throws -> [Row] {
+    private static func allPages<Row: Decodable>(
+        _ method: String, _ page: (String?) async throws -> Page<Row>
+    ) async throws -> [Row] {
         var rows: [Row] = []
         var cursor: String?
-        for _ in 0..<Self.maxPages {
-            var a = args
-            if let cursor { a["cursor"] = .string(cursor) }
-            let page: Page<Row> = try await view(method, a)
-            rows += page.items
-            guard let next = page.next else { return rows }
-            cursor = next
+        for _ in 0..<maxPages {
+            let next = try await page(cursor)
+            rows += next.items
+            guard let more = next.next else { return rows }
+            cursor = more
         }
-        throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "\(method): more than \(Self.maxPages) pages"))
+        throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "\(method): more than \(maxPages) pages"))
     }
+}
 
-    private static func value<T: Encodable>(_ value: T) throws -> JSONValue {
-        try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
+extension JSONValue {
+    /// This answer as the app type `T`. The ABI names the world's types (`WorldMeta`, `Edit`,
+    /// `PlayerView`, `Transform`, the pages) without their shape until the logic derives `AbiType`,
+    /// so the generated client takes and answers their JSON and the types above read it.
+    func decoded<T: Decodable>(as type: T.Type) throws -> T {
+        try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }
 }

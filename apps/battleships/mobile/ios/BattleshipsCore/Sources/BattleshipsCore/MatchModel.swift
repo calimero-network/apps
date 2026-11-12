@@ -59,7 +59,7 @@ public final class MatchModel: ObservableObject {
     public let store: any BoardStore
     /// The account the match names you by (`registerPlayer`'s answer).
     public let me: String
-    private let game: BattleshipsContract
+    private let game: BattleshipsClient
     private var answeredShot: UInt32?
     private var revealing = false
     private var refreshing = false
@@ -70,7 +70,7 @@ public final class MatchModel: ObservableObject {
         self.me = me.lowercased()
         self.backend = backend
         self.store = store
-        self.game = BattleshipsContract(backend.contract, appId: ref.appId)
+        self.game = BattleshipsClient(backend: backend, app: ref.appId)
     }
 
     // MARK: Reading
@@ -143,9 +143,9 @@ public final class MatchModel: ObservableObject {
         let mine: ShotsView
         let incoming: ShotsView
         do {
-            current = try await game.getMatchState(matchId: matchId)
-            mine = try await game.getShots(matchId: matchId)
-            incoming = try await game.getIncomingShots(matchId: matchId)
+            current = try await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)
+            mine = try await game.getShots(matchId: matchId).decoded(as: ShotsView.self)
+            incoming = try await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self)
         } catch {
             if state == nil {
                 // A match the node has not applied yet (just created on another node).
@@ -175,12 +175,12 @@ public final class MatchModel: ObservableObject {
         }
         var answers = incoming.shots
         if await answerPendingShot(latest, cells: board.cells) {
-            latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
-            answers = (try? await game.getIncomingShots(matchId: matchId))?.shots ?? answers
+            latest = (try? await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)) ?? latest
+            answers = (try? await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self))?.shots ?? answers
             turn = try? await game.getCurrentTurn(matchId: matchId)
         }
         if await revealIfDue(latest, board: board) {
-            latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
+            latest = (try? await game.getMatchState(matchId: matchId).decoded(as: MatchStateView.self)) ?? latest
         }
         state = latest
         ownBoard = BoardReading.overlay(cells: board.cells, incoming: answers)
@@ -220,7 +220,8 @@ public final class MatchModel: ObservableObject {
         revealing = true
         defer { revealing = false }
         do {
-            try await game.revealBoard(matchId: ref.matchId, cells: board.cells, salt: board.saltBytes)
+            try await game.revealBoard(
+                matchId: ref.matchId, boardBytes: Data(Commitment.boardBytes(board.cells)), salt: Data(board.saltBytes))
             return true
         } catch {
             return false
@@ -339,7 +340,7 @@ public final class MatchModel: ObservableObject {
         busy = true
         defer { busy = false }
         do {
-            try await game.proposeShot(matchId: ref.matchId, x: target.x, y: target.y)
+            try await game.proposeShot(matchId: ref.matchId, x: UInt8(target.x), y: UInt8(target.y))
             aim = nil
             await refresh()
         } catch {

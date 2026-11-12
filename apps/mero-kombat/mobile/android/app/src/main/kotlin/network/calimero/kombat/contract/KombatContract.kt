@@ -1,11 +1,8 @@
 package network.calimero.kombat.contract
 
-import com.calimero.mero.app.ContextContractCalling
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -13,15 +10,17 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-// The arena contract's component ABI (`logic/res/abi.json`, `calimero:app@0.5.0`), typed by hand:
-// no Kotlin client is generated from a component ABI yet. It mirrors the web app's
-// `app/src/kombat.ts`, and `ContractTest` checks the method lists against the committed ABI.
-// (Swift `KombatClient`.)
+// The arena contract's component ABI (`logic/res/abi.json`). The calls are
+// [network.calimero.kombat.generated.KombatClient], generated from it by core's `mero-app-build
+// codegen` (`scripts/mobile-codegen.sh`); this file keeps the method lists `ContractTest` checks
+// against the ABI, `initArgs`, the answer types and the refusal sentences of the web app's
+// `app/src/kombat.ts`. (Swift `Contract/KombatContract.swift`.)
 //
 // Wire format (component ABI):
 // - argument and result fields are camelCase (`matchIndex`, `mySeat`, `roundsWon`, …);
@@ -29,125 +28,35 @@ import kotlinx.serialization.json.put
 //   `startedAt`); the Kotlin fields stay `ULong` and are converted by [U64];
 // - a refusal is `422 APP_ERROR {code, fields}`, an `AppError` (see [KombatRefusal]).
 
-/** Typed calls to the arena. Views go through `query` (`POST /apps/{app}/views`), calls through `execute` (an intent). */
-class KombatClient(
-    private val transport: ContextContractCalling,
-) {
-    /** Record one blow in round [round] of match [matchIndex]. */
-    @Suppress("LongParameterList")
-    suspend fun act(
-        matchIndex: UInt,
-        round: UInt,
-        id: UInt,
-        kind: String,
-        hit: Boolean,
-        blocked: Boolean,
+/** What the app keeps of the contract beside the generated [network.calimero.kombat.generated.KombatClient]. */
+object KombatContract {
+    /** The contract's calls (writes), by their ABI names. */
+    val CALLS = listOf("act", "join", "pick", "rematch", "sit", "stand")
+
+    /** The contract's views (reads), by their ABI names. */
+    val VIEWS = listOf("arena", "history")
+
+    /** The JSON the contract speaks. */
+    val JSON = Json { ignoreUnknownKeys = true }
+
+    /** The `init` arguments a new arena instance is created with (`init(title?, now?)`). */
+    fun initArgs(
+        title: String,
         now: ULong,
-    ) {
-        transport.execute("act", JSON.encodeToString(ActArgs.serializer(), ActArgs(matchIndex, round, id, kind, hit, blocked, now)))
-    }
+    ): JsonObject =
+        buildJsonObject {
+            put("title", title)
+            put("now", now.toString())
+        }
 
-    /** The whole arena in one read. */
-    suspend fun arena(now: ULong): ArenaView =
-        JSON.decodeFromString(ArenaView.serializer(), transport.query("arena", JSON.encodeToString(NowArgs.serializer(), NowArgs(now))))
+    /**
+     * The `arena` answer as an [ArenaView]. The ABI names `ArenaView` and `MatchSummary` without
+     * their shape until the logic derives `AbiType`, so the generated client answers their JSON.
+     */
+    fun arenaView(answer: JsonElement): ArenaView = JSON.decodeFromJsonElement(ArenaView.serializer(), answer)
 
-    /** Every match this arena has fought, oldest first. */
-    suspend fun history(): List<MatchSummary> =
-        JSON.decodeFromString(ListSerializer(MatchSummary.serializer()), transport.query("history", "{}"))
-
-    /** Announce yourself, or refresh your name and fighter. */
-    suspend fun join(
-        name: String,
-        fighter: String,
-        now: ULong,
-    ) {
-        transport.execute("join", JSON.encodeToString(JoinArgs.serializer(), JoinArgs(name, fighter, now)))
-    }
-
-    /** Change fighter. */
-    suspend fun pick(
-        fighter: String,
-        now: ULong,
-    ) {
-        transport.execute("pick", JSON.encodeToString(PickArgs.serializer(), PickArgs(fighter, now)))
-    }
-
-    /** Start the next match; answers its index. */
-    suspend fun rematch(now: ULong): UInt =
-        JSON.decodeFromString(UInt.serializer(), transport.execute("rematch", JSON.encodeToString(NowArgs.serializer(), NowArgs(now))))
-
-    /** Take corner `p1` or `p2`, if it is free. */
-    suspend fun sit(
-        seat: String,
-        name: String,
-        fighter: String,
-        now: ULong,
-    ) {
-        transport.execute("sit", JSON.encodeToString(SitArgs.serializer(), SitArgs(seat, name, fighter, now)))
-    }
-
-    /** Leave your corner (only before you have fought here). */
-    suspend fun stand(now: ULong) {
-        transport.execute("stand", JSON.encodeToString(NowArgs.serializer(), NowArgs(now)))
-    }
-
-    @Serializable
-    private data class NowArgs(
-        @Serializable(with = U64::class) val now: ULong,
-    )
-
-    @Serializable
-    private data class JoinArgs(
-        val name: String,
-        val fighter: String,
-        @Serializable(with = U64::class) val now: ULong,
-    )
-
-    @Serializable
-    private data class PickArgs(
-        val fighter: String,
-        @Serializable(with = U64::class) val now: ULong,
-    )
-
-    @Serializable
-    private data class SitArgs(
-        val seat: String,
-        val name: String,
-        val fighter: String,
-        @Serializable(with = U64::class) val now: ULong,
-    )
-
-    @Serializable
-    private data class ActArgs(
-        val matchIndex: UInt,
-        val round: UInt,
-        val id: UInt,
-        val kind: String,
-        val hit: Boolean,
-        val blocked: Boolean,
-        @Serializable(with = U64::class) val now: ULong,
-    )
-
-    companion object {
-        /** The contract's calls (writes), by their ABI names. */
-        val CALLS = listOf("act", "join", "pick", "rematch", "sit", "stand")
-
-        /** The contract's views (reads), by their ABI names. */
-        val VIEWS = listOf("arena", "history")
-
-        /** The JSON the contract speaks. */
-        val JSON = Json { ignoreUnknownKeys = true }
-
-        /** The `init` arguments a new arena instance is created with (`init(title?, now?)`). */
-        fun initArgs(
-            title: String,
-            now: ULong,
-        ): JsonObject =
-            buildJsonObject {
-                put("title", title)
-                put("now", now.toString())
-            }
-    }
+    /** The `history` answer as [MatchSummary] rows. */
+    fun matchSummaries(answer: List<JsonElement>): List<MatchSummary> = answer.map { JSON.decodeFromJsonElement(MatchSummary.serializer(), it) }
 }
 
 /** A `u64` on the wire: a decimal string. Reads a bare number too (an older node, a fixture). */

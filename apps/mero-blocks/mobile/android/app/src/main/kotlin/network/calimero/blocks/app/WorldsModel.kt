@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import network.calimero.blocks.generated.BlocksClient
 
 /**
  * A world to open: its app instance and the organization it is the only world of. `groupId` is kept
@@ -98,8 +99,8 @@ class WorldsModel(
                 refs
                     .map { ref ->
                         async {
-                            val client = BlocksClient(backend.contract.bound(ref.contextId))
-                            ref.contextId to runCatching { client.getPlayers(nowSeconds()).count { it.online } }.getOrNull()
+                            val client = BlocksClient(backend, ref.contextId)
+                            ref.contextId to runCatching { client.allPlayers(nowSeconds()).count { it.online } }.getOrNull()
                         }
                     }.awaitAll()
             }.toMap()
