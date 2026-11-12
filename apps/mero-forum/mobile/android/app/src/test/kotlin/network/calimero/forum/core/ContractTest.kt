@@ -110,7 +110,7 @@ class ContractTest {
             assertEquals(1_700_000_000_000uL, post.createdAt)
             assertEquals(-2L, post.score)
             assertEquals(3uL, post.commentCount)
-            assertEquals(-1, post.myVote.toInt())
+            assertEquals((-1).toByte(), post.myVote)
         }
 
     @Test
