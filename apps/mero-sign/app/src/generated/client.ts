@@ -274,47 +274,239 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroSignClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroSignClient` implements, for a test double to stand in for it. */
+export interface MeroSignApi {
+  /** call `addParticipant`. */
+  addParticipant(args: AddParticipantArgs, options?: CallOptions): Promise<null>;
+  /** call `createSignature`. */
+  createSignature(args: CreateSignatureArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteDocument`. */
+  deleteDocument(args: DeleteDocumentArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteSignature`. */
+  deleteSignature(args: DeleteSignatureArgs, options?: CallOptions): Promise<null>;
+  /** view `getContextDetails`. */
+  getContextDetails(args: GetContextDetailsArgs, options?: ViewOptions): Promise<ContextDetails>;
+  /** view `getContextId`. */
+  getContextId(options?: ViewOptions): Promise<string>;
+  /** view `getDocumentSignatures`. */
+  getDocumentSignatures(args: GetDocumentSignaturesArgs, options?: ViewOptions): Promise<DocumentSignature[]>;
+  /** view `getIdentityMapping`. */
+  getIdentityMapping(args: GetIdentityMappingArgs, options?: ViewOptions): Promise<IdentityMapping>;
+  /** view `getSharedIdentity`. */
+  getSharedIdentity(args: GetSharedIdentityArgs, options?: ViewOptions): Promise<string>;
+  /** view `getUserPermission`. */
+  getUserPermission(args: GetUserPermissionArgs, options?: ViewOptions): Promise<PermissionLevel>;
+  /** view `hasConsented`. */
+  hasConsented(args: HasConsentedArgs, options?: ViewOptions): Promise<boolean>;
+  /** view `isDefaultPrivateContext`. */
+  isDefaultPrivateContext(options?: ViewOptions): Promise<boolean>;
+  /** call `joinSharedContext`. */
+  joinSharedContext(args: JoinSharedContextArgs, options?: CallOptions): Promise<null>;
+  /** call `leaveSharedContext`. */
+  leaveSharedContext(args: LeaveSharedContextArgs, options?: CallOptions): Promise<null>;
+  /** view `listDocuments`. */
+  listDocuments(options?: ViewOptions): Promise<DocumentInfo[]>;
+  /** view `listJoinedContexts`. */
+  listJoinedContexts(options?: ViewOptions): Promise<ContextMetadata[]>;
+  /** view `listParticipants`. */
+  listParticipants(options?: ViewOptions): Promise<string[]>;
+  /** view `listSignatures`. */
+  listSignatures(options?: ViewOptions): Promise<SignatureRecord[]>;
+  /** call `markParticipantSigned`. */
+  markParticipantSigned(args: MarkParticipantSignedArgs, options?: CallOptions): Promise<null>;
+  /** call `registerSelfAsParticipant`. */
+  registerSelfAsParticipant(options?: CallOptions): Promise<null>;
+  /** call `removeParticipant`. */
+  removeParticipant(args: RemoveParticipantArgs, options?: CallOptions): Promise<null>;
+  /** view `resolvePrivateIdentity`. */
+  resolvePrivateIdentity(args: ResolvePrivateIdentityArgs, options?: ViewOptions): Promise<string | null>;
+  /** view `searchDocumentByEmbedding`. */
+  searchDocumentByEmbedding(args: SearchDocumentByEmbeddingArgs, options?: ViewOptions): Promise<string>;
+  /** call `setConsent`. */
+  setConsent(args: SetConsentArgs, options?: CallOptions): Promise<null>;
+  /** call `setParticipantPermission`. */
+  setParticipantPermission(args: SetParticipantPermissionArgs, options?: CallOptions): Promise<null>;
+  /** call `setup`. */
+  setup(args: SetupArgs, options?: CallOptions): Promise<null>;
+  /** call `signDocument`. */
+  signDocument(args: SignDocumentArgs, options?: CallOptions): Promise<null>;
+  /** call `uploadDocument`. */
+  uploadDocument(args: UploadDocumentArgs, options?: CallOptions): Promise<string>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<string>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroSignClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroSignRawApi {
+  /** call `addParticipant`. */
+  addParticipant(args: AddParticipantArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `createSignature`. */
+  createSignature(args: CreateSignatureArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteDocument`. */
+  deleteDocument(args: DeleteDocumentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteSignature`. */
+  deleteSignature(args: DeleteSignatureArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `getContextDetails`. */
+  getContextDetails(args: GetContextDetailsArgs, options?: ViewOptions): Promise<ViewAnswer<ContextDetails>>;
+  /** view `getContextId`. */
+  getContextId(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getDocumentSignatures`. */
+  getDocumentSignatures(args: GetDocumentSignaturesArgs, options?: ViewOptions): Promise<ViewAnswer<DocumentSignature[]>>;
+  /** view `getIdentityMapping`. */
+  getIdentityMapping(args: GetIdentityMappingArgs, options?: ViewOptions): Promise<ViewAnswer<IdentityMapping>>;
+  /** view `getSharedIdentity`. */
+  getSharedIdentity(args: GetSharedIdentityArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getUserPermission`. */
+  getUserPermission(args: GetUserPermissionArgs, options?: ViewOptions): Promise<ViewAnswer<PermissionLevel>>;
+  /** view `hasConsented`. */
+  hasConsented(args: HasConsentedArgs, options?: ViewOptions): Promise<ViewAnswer<boolean>>;
+  /** view `isDefaultPrivateContext`. */
+  isDefaultPrivateContext(options?: ViewOptions): Promise<ViewAnswer<boolean>>;
+  /** call `joinSharedContext`. */
+  joinSharedContext(args: JoinSharedContextArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `leaveSharedContext`. */
+  leaveSharedContext(args: LeaveSharedContextArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `listDocuments`. */
+  listDocuments(options?: ViewOptions): Promise<ViewAnswer<DocumentInfo[]>>;
+  /** view `listJoinedContexts`. */
+  listJoinedContexts(options?: ViewOptions): Promise<ViewAnswer<ContextMetadata[]>>;
+  /** view `listParticipants`. */
+  listParticipants(options?: ViewOptions): Promise<ViewAnswer<string[]>>;
+  /** view `listSignatures`. */
+  listSignatures(options?: ViewOptions): Promise<ViewAnswer<SignatureRecord[]>>;
+  /** call `markParticipantSigned`. */
+  markParticipantSigned(args: MarkParticipantSignedArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `registerSelfAsParticipant`. */
+  registerSelfAsParticipant(options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `removeParticipant`. */
+  removeParticipant(args: RemoveParticipantArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `resolvePrivateIdentity`. */
+  resolvePrivateIdentity(args: ResolvePrivateIdentityArgs, options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** view `searchDocumentByEmbedding`. */
+  searchDocumentByEmbedding(args: SearchDocumentByEmbeddingArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** call `setConsent`. */
+  setConsent(args: SetConsentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setParticipantPermission`. */
+  setParticipantPermission(args: SetParticipantPermissionArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setup`. */
+  setup(args: SetupArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `signDocument`. */
+  signDocument(args: SignDocumentArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `uploadDocument`. */
+  uploadDocument(args: UploadDocumentArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `whoami`. */
+  whoami(options?: ViewOptions): Promise<ViewAnswer<string>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroSignClient<T extends AppCallTransport = AppTransport> implements MeroSignApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroSignRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      addParticipant: (args, options = {}) => this.#call<null>('addParticipant', args, options),
+      createSignature: (args, options = {}) => this.#call<string>('createSignature', args, options),
+      deleteDocument: (args, options = {}) => this.#call<null>('deleteDocument', args, options),
+      deleteSignature: (args, options = {}) => this.#call<null>('deleteSignature', args, options),
+      getContextDetails: (args, options = {}) => this.#view<ContextDetails>('getContextDetails', args, options),
+      getContextId: (options = {}) => this.#view<string>('getContextId', {}, options),
+      getDocumentSignatures: (args, options = {}) => this.#view<DocumentSignature[]>('getDocumentSignatures', args, options),
+      getIdentityMapping: (args, options = {}) => this.#view<IdentityMapping>('getIdentityMapping', args, options),
+      getSharedIdentity: (args, options = {}) => this.#view<string>('getSharedIdentity', args, options),
+      getUserPermission: (args, options = {}) => this.#view<PermissionLevel>('getUserPermission', args, options),
+      hasConsented: (args, options = {}) => this.#view<boolean>('hasConsented', args, options),
+      isDefaultPrivateContext: (options = {}) => this.#view<boolean>('isDefaultPrivateContext', {}, options),
+      joinSharedContext: (args, options = {}) => this.#call<null>('joinSharedContext', args, options),
+      leaveSharedContext: (args, options = {}) => this.#call<null>('leaveSharedContext', args, options),
+      listDocuments: (options = {}) => this.#view<DocumentInfo[]>('listDocuments', {}, options),
+      listJoinedContexts: (options = {}) => this.#view<ContextMetadata[]>('listJoinedContexts', {}, options),
+      listParticipants: (options = {}) => this.#view<string[]>('listParticipants', {}, options),
+      listSignatures: (options = {}) => this.#view<SignatureRecord[]>('listSignatures', {}, options),
+      markParticipantSigned: (args, options = {}) => this.#call<null>('markParticipantSigned', args, options),
+      registerSelfAsParticipant: (options = {}) => this.#call<null>('registerSelfAsParticipant', {}, options),
+      removeParticipant: (args, options = {}) => this.#call<null>('removeParticipant', args, options),
+      resolvePrivateIdentity: (args, options = {}) => this.#view<string | null>('resolvePrivateIdentity', args, options),
+      searchDocumentByEmbedding: (args, options = {}) => this.#view<string>('searchDocumentByEmbedding', args, options),
+      setConsent: (args, options = {}) => this.#call<null>('setConsent', args, options),
+      setParticipantPermission: (args, options = {}) => this.#call<null>('setParticipantPermission', args, options),
+      setup: (args, options = {}) => this.#call<null>('setup', args, options),
+      signDocument: (args, options = {}) => this.#call<null>('signDocument', args, options),
+      uploadDocument: (args, options = {}) => this.#call<string>('uploadDocument', args, options),
+      whoami: (options = {}) => this.#view<string>('whoami', {}, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -324,7 +516,8 @@ export class MeroSignClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -332,151 +525,151 @@ export class MeroSignClient {
 
   /** call `addParticipant`. */
   async addParticipant(args: AddParticipantArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('addParticipant', args, options)) as null;
+    return (await this.#call<null>('addParticipant', args, options)).result;
   }
 
   /** call `createSignature`. */
   async createSignature(args: CreateSignatureArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createSignature', args, options)) as string;
+    return (await this.#call<string>('createSignature', args, options)).result;
   }
 
   /** call `deleteDocument`. */
   async deleteDocument(args: DeleteDocumentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteDocument', args, options)) as null;
+    return (await this.#call<null>('deleteDocument', args, options)).result;
   }
 
   /** call `deleteSignature`. */
   async deleteSignature(args: DeleteSignatureArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteSignature', args, options)) as null;
+    return (await this.#call<null>('deleteSignature', args, options)).result;
   }
 
   /** view `getContextDetails`. */
   async getContextDetails(args: GetContextDetailsArgs, options: ViewOptions = {}): Promise<ContextDetails> {
-    return (await this.#view('getContextDetails', args, options)) as ContextDetails;
+    return (await this.#view<ContextDetails>('getContextDetails', args, options)).result;
   }
 
   /** view `getContextId`. */
   async getContextId(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getContextId', {}, options)) as string;
+    return (await this.#view<string>('getContextId', {}, options)).result;
   }
 
   /** view `getDocumentSignatures`. */
   async getDocumentSignatures(args: GetDocumentSignaturesArgs, options: ViewOptions = {}): Promise<DocumentSignature[]> {
-    return (await this.#view('getDocumentSignatures', args, options)) as DocumentSignature[];
+    return (await this.#view<DocumentSignature[]>('getDocumentSignatures', args, options)).result;
   }
 
   /** view `getIdentityMapping`. */
   async getIdentityMapping(args: GetIdentityMappingArgs, options: ViewOptions = {}): Promise<IdentityMapping> {
-    return (await this.#view('getIdentityMapping', args, options)) as IdentityMapping;
+    return (await this.#view<IdentityMapping>('getIdentityMapping', args, options)).result;
   }
 
   /** view `getSharedIdentity`. */
   async getSharedIdentity(args: GetSharedIdentityArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getSharedIdentity', args, options)) as string;
+    return (await this.#view<string>('getSharedIdentity', args, options)).result;
   }
 
   /** view `getUserPermission`. */
   async getUserPermission(args: GetUserPermissionArgs, options: ViewOptions = {}): Promise<PermissionLevel> {
-    return (await this.#view('getUserPermission', args, options)) as PermissionLevel;
+    return (await this.#view<PermissionLevel>('getUserPermission', args, options)).result;
   }
 
   /** view `hasConsented`. */
   async hasConsented(args: HasConsentedArgs, options: ViewOptions = {}): Promise<boolean> {
-    return (await this.#view('hasConsented', args, options)) as boolean;
+    return (await this.#view<boolean>('hasConsented', args, options)).result;
   }
 
   /** view `isDefaultPrivateContext`. */
   async isDefaultPrivateContext(options: ViewOptions = {}): Promise<boolean> {
-    return (await this.#view('isDefaultPrivateContext', {}, options)) as boolean;
+    return (await this.#view<boolean>('isDefaultPrivateContext', {}, options)).result;
   }
 
   /** call `joinSharedContext`. */
   async joinSharedContext(args: JoinSharedContextArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('joinSharedContext', args, options)) as null;
+    return (await this.#call<null>('joinSharedContext', args, options)).result;
   }
 
   /** call `leaveSharedContext`. */
   async leaveSharedContext(args: LeaveSharedContextArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('leaveSharedContext', args, options)) as null;
+    return (await this.#call<null>('leaveSharedContext', args, options)).result;
   }
 
   /** view `listDocuments`. */
   async listDocuments(options: ViewOptions = {}): Promise<DocumentInfo[]> {
-    return (await this.#view('listDocuments', {}, options)) as DocumentInfo[];
+    return (await this.#view<DocumentInfo[]>('listDocuments', {}, options)).result;
   }
 
   /** view `listJoinedContexts`. */
   async listJoinedContexts(options: ViewOptions = {}): Promise<ContextMetadata[]> {
-    return (await this.#view('listJoinedContexts', {}, options)) as ContextMetadata[];
+    return (await this.#view<ContextMetadata[]>('listJoinedContexts', {}, options)).result;
   }
 
   /** view `listParticipants`. */
   async listParticipants(options: ViewOptions = {}): Promise<string[]> {
-    return (await this.#view('listParticipants', {}, options)) as string[];
+    return (await this.#view<string[]>('listParticipants', {}, options)).result;
   }
 
   /** view `listSignatures`. */
   async listSignatures(options: ViewOptions = {}): Promise<SignatureRecord[]> {
-    return (await this.#view('listSignatures', {}, options)) as SignatureRecord[];
+    return (await this.#view<SignatureRecord[]>('listSignatures', {}, options)).result;
   }
 
   /** call `markParticipantSigned`. */
   async markParticipantSigned(args: MarkParticipantSignedArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('markParticipantSigned', args, options)) as null;
+    return (await this.#call<null>('markParticipantSigned', args, options)).result;
   }
 
   /** call `registerSelfAsParticipant`. */
   async registerSelfAsParticipant(options: CallOptions = {}): Promise<null> {
-    return (await this.#call('registerSelfAsParticipant', {}, options)) as null;
+    return (await this.#call<null>('registerSelfAsParticipant', {}, options)).result;
   }
 
   /** call `removeParticipant`. */
   async removeParticipant(args: RemoveParticipantArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('removeParticipant', args, options)) as null;
+    return (await this.#call<null>('removeParticipant', args, options)).result;
   }
 
   /** view `resolvePrivateIdentity`. */
   async resolvePrivateIdentity(args: ResolvePrivateIdentityArgs, options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('resolvePrivateIdentity', args, options)) as string | null;
+    return (await this.#view<string | null>('resolvePrivateIdentity', args, options)).result;
   }
 
   /** view `searchDocumentByEmbedding`. */
   async searchDocumentByEmbedding(args: SearchDocumentByEmbeddingArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('searchDocumentByEmbedding', args, options)) as string;
+    return (await this.#view<string>('searchDocumentByEmbedding', args, options)).result;
   }
 
   /** call `setConsent`. */
   async setConsent(args: SetConsentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setConsent', args, options)) as null;
+    return (await this.#call<null>('setConsent', args, options)).result;
   }
 
   /** call `setParticipantPermission`. */
   async setParticipantPermission(args: SetParticipantPermissionArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setParticipantPermission', args, options)) as null;
+    return (await this.#call<null>('setParticipantPermission', args, options)).result;
   }
 
   /** call `setup`. */
   async setup(args: SetupArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setup', args, options)) as null;
+    return (await this.#call<null>('setup', args, options)).result;
   }
 
   /** call `signDocument`. */
   async signDocument(args: SignDocumentArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('signDocument', args, options)) as null;
+    return (await this.#call<null>('signDocument', args, options)).result;
   }
 
   /** call `uploadDocument`. */
   async uploadDocument(args: UploadDocumentArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('uploadDocument', args, options)) as string;
+    return (await this.#call<string>('uploadDocument', args, options)).result;
   }
 
   /** view `whoami`. */
   async whoami(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('whoami', {}, options)) as string;
+    return (await this.#view<string>('whoami', {}, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroSignClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

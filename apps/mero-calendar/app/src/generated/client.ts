@@ -203,47 +203,184 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroCalendarClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroCalendarClient` implements, for a test double to stand in for it. */
+export interface MeroCalendarApi {
+  /** call `bookSlot`. */
+  bookSlot(args: BookSlotArgs, options?: CallOptions): Promise<BookingView>;
+  /** call `cancelBooking`. */
+  cancelBooking(args: CancelBookingArgs, options?: CallOptions): Promise<null>;
+  /** call `createBookingLink`. */
+  createBookingLink(args: CreateBookingLinkArgs, options?: CallOptions): Promise<BookingLinkView>;
+  /** call `createEvent`. */
+  createEvent(args: CreateEventArgs, options?: CallOptions): Promise<string>;
+  /** call `createPrivateEvent`. */
+  createPrivateEvent(args: CreatePrivateEventArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteBookingLink`. */
+  deleteBookingLink(args: DeleteBookingLinkArgs, options?: CallOptions): Promise<string>;
+  /** call `deleteEvent`. */
+  deleteEvent(args: DeleteEventArgs, options?: CallOptions): Promise<string>;
+  /** call `deletePrivateEvent`. */
+  deletePrivateEvent(args: DeletePrivateEventArgs, options?: CallOptions): Promise<string>;
+  /** view `getAvailableSlots`. */
+  getAvailableSlots(args: GetAvailableSlotsArgs, options?: ViewOptions): Promise<string[]>;
+  /** view `getBookingPage`. */
+  getBookingPage(args: GetBookingPageArgs, options?: ViewOptions): Promise<BookingPage>;
+  /** view `getEvents`. */
+  getEvents(options?: ViewOptions): Promise<CalendarEvent[]>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<Member[]>;
+  /** view `getPrivateEvents`. */
+  getPrivateEvents(options?: ViewOptions): Promise<CalendarEvent[]>;
+  /** view `listBookingLinks`. */
+  listBookingLinks(options?: ViewOptions): Promise<BookingLinkView[]>;
+  /** call `rescheduleBooking`. */
+  rescheduleBooking(args: RescheduleBookingArgs, options?: CallOptions): Promise<BookingView>;
+  /** call `setUsername`. */
+  setUsername(args: SetUsernameArgs, options?: CallOptions): Promise<null>;
+  /** call `updateEvent`. */
+  updateEvent(args: UpdateEventArgs, options?: CallOptions): Promise<string>;
+  /** call `updatePrivateEvent`. */
+  updatePrivateEvent(args: UpdatePrivateEventArgs, options?: CallOptions): Promise<string>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroCalendarClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroCalendarRawApi {
+  /** call `bookSlot`. */
+  bookSlot(args: BookSlotArgs, options?: CallOptions): Promise<CallAnswer<BookingView>>;
+  /** call `cancelBooking`. */
+  cancelBooking(args: CancelBookingArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `createBookingLink`. */
+  createBookingLink(args: CreateBookingLinkArgs, options?: CallOptions): Promise<CallAnswer<BookingLinkView>>;
+  /** call `createEvent`. */
+  createEvent(args: CreateEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `createPrivateEvent`. */
+  createPrivateEvent(args: CreatePrivateEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteBookingLink`. */
+  deleteBookingLink(args: DeleteBookingLinkArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deleteEvent`. */
+  deleteEvent(args: DeleteEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `deletePrivateEvent`. */
+  deletePrivateEvent(args: DeletePrivateEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `getAvailableSlots`. */
+  getAvailableSlots(args: GetAvailableSlotsArgs, options?: ViewOptions): Promise<ViewAnswer<string[]>>;
+  /** view `getBookingPage`. */
+  getBookingPage(args: GetBookingPageArgs, options?: ViewOptions): Promise<ViewAnswer<BookingPage>>;
+  /** view `getEvents`. */
+  getEvents(options?: ViewOptions): Promise<ViewAnswer<CalendarEvent[]>>;
+  /** view `getMembers`. */
+  getMembers(options?: ViewOptions): Promise<ViewAnswer<Member[]>>;
+  /** view `getPrivateEvents`. */
+  getPrivateEvents(options?: ViewOptions): Promise<ViewAnswer<CalendarEvent[]>>;
+  /** view `listBookingLinks`. */
+  listBookingLinks(options?: ViewOptions): Promise<ViewAnswer<BookingLinkView[]>>;
+  /** call `rescheduleBooking`. */
+  rescheduleBooking(args: RescheduleBookingArgs, options?: CallOptions): Promise<CallAnswer<BookingView>>;
+  /** call `setUsername`. */
+  setUsername(args: SetUsernameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `updateEvent`. */
+  updateEvent(args: UpdateEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `updatePrivateEvent`. */
+  updatePrivateEvent(args: UpdatePrivateEventArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroCalendarClient<T extends AppCallTransport = AppTransport> implements MeroCalendarApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroCalendarRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      bookSlot: (args, options = {}) => this.#call<BookingView>('bookSlot', args, options),
+      cancelBooking: (args, options = {}) => this.#call<null>('cancelBooking', args, options),
+      createBookingLink: (args, options = {}) => this.#call<BookingLinkView>('createBookingLink', args, options),
+      createEvent: (args, options = {}) => this.#call<string>('createEvent', args, options),
+      createPrivateEvent: (args, options = {}) => this.#call<string>('createPrivateEvent', args, options),
+      deleteBookingLink: (args, options = {}) => this.#call<string>('deleteBookingLink', args, options),
+      deleteEvent: (args, options = {}) => this.#call<string>('deleteEvent', args, options),
+      deletePrivateEvent: (args, options = {}) => this.#call<string>('deletePrivateEvent', args, options),
+      getAvailableSlots: (args, options = {}) => this.#view<string[]>('getAvailableSlots', args, options),
+      getBookingPage: (args, options = {}) => this.#view<BookingPage>('getBookingPage', args, options),
+      getEvents: (options = {}) => this.#view<CalendarEvent[]>('getEvents', {}, options),
+      getMembers: (options = {}) => this.#view<Member[]>('getMembers', {}, options),
+      getPrivateEvents: (options = {}) => this.#view<CalendarEvent[]>('getPrivateEvents', {}, options),
+      listBookingLinks: (options = {}) => this.#view<BookingLinkView[]>('listBookingLinks', {}, options),
+      rescheduleBooking: (args, options = {}) => this.#call<BookingView>('rescheduleBooking', args, options),
+      setUsername: (args, options = {}) => this.#call<null>('setUsername', args, options),
+      updateEvent: (args, options = {}) => this.#call<string>('updateEvent', args, options),
+      updatePrivateEvent: (args, options = {}) => this.#call<string>('updatePrivateEvent', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -253,7 +390,8 @@ export class MeroCalendarClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -261,96 +399,96 @@ export class MeroCalendarClient {
 
   /** call `bookSlot`. */
   async bookSlot(args: BookSlotArgs, options: CallOptions = {}): Promise<BookingView> {
-    return (await this.#call('bookSlot', args, options)) as BookingView;
+    return (await this.#call<BookingView>('bookSlot', args, options)).result;
   }
 
   /** call `cancelBooking`. */
   async cancelBooking(args: CancelBookingArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('cancelBooking', args, options)) as null;
+    return (await this.#call<null>('cancelBooking', args, options)).result;
   }
 
   /** call `createBookingLink`. */
   async createBookingLink(args: CreateBookingLinkArgs, options: CallOptions = {}): Promise<BookingLinkView> {
-    return (await this.#call('createBookingLink', args, options)) as BookingLinkView;
+    return (await this.#call<BookingLinkView>('createBookingLink', args, options)).result;
   }
 
   /** call `createEvent`. */
   async createEvent(args: CreateEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createEvent', args, options)) as string;
+    return (await this.#call<string>('createEvent', args, options)).result;
   }
 
   /** call `createPrivateEvent`. */
   async createPrivateEvent(args: CreatePrivateEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('createPrivateEvent', args, options)) as string;
+    return (await this.#call<string>('createPrivateEvent', args, options)).result;
   }
 
   /** call `deleteBookingLink`. */
   async deleteBookingLink(args: DeleteBookingLinkArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('deleteBookingLink', args, options)) as string;
+    return (await this.#call<string>('deleteBookingLink', args, options)).result;
   }
 
   /** call `deleteEvent`. */
   async deleteEvent(args: DeleteEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('deleteEvent', args, options)) as string;
+    return (await this.#call<string>('deleteEvent', args, options)).result;
   }
 
   /** call `deletePrivateEvent`. */
   async deletePrivateEvent(args: DeletePrivateEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('deletePrivateEvent', args, options)) as string;
+    return (await this.#call<string>('deletePrivateEvent', args, options)).result;
   }
 
   /** view `getAvailableSlots`. */
   async getAvailableSlots(args: GetAvailableSlotsArgs, options: ViewOptions = {}): Promise<string[]> {
-    return (await this.#view('getAvailableSlots', args, options)) as string[];
+    return (await this.#view<string[]>('getAvailableSlots', args, options)).result;
   }
 
   /** view `getBookingPage`. */
   async getBookingPage(args: GetBookingPageArgs, options: ViewOptions = {}): Promise<BookingPage> {
-    return (await this.#view('getBookingPage', args, options)) as BookingPage;
+    return (await this.#view<BookingPage>('getBookingPage', args, options)).result;
   }
 
   /** view `getEvents`. */
   async getEvents(options: ViewOptions = {}): Promise<CalendarEvent[]> {
-    return (await this.#view('getEvents', {}, options)) as CalendarEvent[];
+    return (await this.#view<CalendarEvent[]>('getEvents', {}, options)).result;
   }
 
   /** view `getMembers`. */
   async getMembers(options: ViewOptions = {}): Promise<Member[]> {
-    return (await this.#view('getMembers', {}, options)) as Member[];
+    return (await this.#view<Member[]>('getMembers', {}, options)).result;
   }
 
   /** view `getPrivateEvents`. */
   async getPrivateEvents(options: ViewOptions = {}): Promise<CalendarEvent[]> {
-    return (await this.#view('getPrivateEvents', {}, options)) as CalendarEvent[];
+    return (await this.#view<CalendarEvent[]>('getPrivateEvents', {}, options)).result;
   }
 
   /** view `listBookingLinks`. */
   async listBookingLinks(options: ViewOptions = {}): Promise<BookingLinkView[]> {
-    return (await this.#view('listBookingLinks', {}, options)) as BookingLinkView[];
+    return (await this.#view<BookingLinkView[]>('listBookingLinks', {}, options)).result;
   }
 
   /** call `rescheduleBooking`. */
   async rescheduleBooking(args: RescheduleBookingArgs, options: CallOptions = {}): Promise<BookingView> {
-    return (await this.#call('rescheduleBooking', args, options)) as BookingView;
+    return (await this.#call<BookingView>('rescheduleBooking', args, options)).result;
   }
 
   /** call `setUsername`. */
   async setUsername(args: SetUsernameArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setUsername', args, options)) as null;
+    return (await this.#call<null>('setUsername', args, options)).result;
   }
 
   /** call `updateEvent`. */
   async updateEvent(args: UpdateEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('updateEvent', args, options)) as string;
+    return (await this.#call<string>('updateEvent', args, options)).result;
   }
 
   /** call `updatePrivateEvent`. */
   async updatePrivateEvent(args: UpdatePrivateEventArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('updatePrivateEvent', args, options)) as string;
+    return (await this.#call<string>('updatePrivateEvent', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroCalendarClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

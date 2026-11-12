@@ -10,6 +10,9 @@ export type AttachmentInput = unknown;
 /** The app type `ContextInfo`: the ABI names it without its shape. */
 export type ContextInfo = unknown;
 
+/** The app type `ContextType`: the ABI names it without its shape. */
+export type ContextType = unknown;
+
 /** The app type `FullMessageResponse`: the ABI names it without its shape. */
 export type FullMessageResponse = unknown;
 
@@ -24,6 +27,14 @@ export type SearchPage = unknown;
 
 /** The app type `UserProfile`: the ABI names it without its shape. */
 export type UserProfile = unknown;
+
+/** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
+export interface InitArgs {
+  name?: string | null;
+  contextType?: ContextType | null;
+  description?: string | null;
+  creatorUsername?: string | null;
+}
 
 /** The arguments of `deleteDraft`. */
 export interface DeleteDraftArgs {
@@ -243,47 +254,219 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroChatClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroChatClient` implements, for a test double to stand in for it. */
+export interface MeroChatApi {
+  /** call `deleteDraft`. */
+  deleteDraft(args: DeleteDraftArgs, options?: CallOptions): Promise<null>;
+  /** call `deleteMessage`. */
+  deleteMessage(args: DeleteMessageArgs, options?: CallOptions): Promise<string>;
+  /** call `editMessage`. */
+  editMessage(args: EditMessageArgs, options?: CallOptions): Promise<MessageView>;
+  /** view `getChannelInfo`. */
+  getChannelInfo(args: GetChannelInfoArgs, options?: ViewOptions): Promise<ContextInfo>;
+  /** view `getDraft`. */
+  getDraft(args: GetDraftArgs, options?: ViewOptions): Promise<string>;
+  /** view `getInfo`. */
+  getInfo(options?: ViewOptions): Promise<ContextInfo>;
+  /** view `getMemberRole`. */
+  getMemberRole(args: GetMemberRoleArgs, options?: ViewOptions): Promise<Role>;
+  /** view `getMessageCount`. */
+  getMessageCount(options?: ViewOptions): Promise<string>;
+  /** view `getMessages`. */
+  getMessages(args: GetMessagesArgs, options?: ViewOptions): Promise<FullMessageResponse>;
+  /** view `getMessagesFrom`. */
+  getMessagesFrom(args: GetMessagesFromArgs, options?: ViewOptions): Promise<FullMessageResponse>;
+  /** view `getProfiles`. */
+  getProfiles(options?: ViewOptions): Promise<UserProfile[]>;
+  /** view `getUnreadCount`. */
+  getUnreadCount(options?: ViewOptions): Promise<number>;
+  /** view `getUnreadMentions`. */
+  getUnreadMentions(options?: ViewOptions): Promise<number>;
+  /** view `listRoles`. */
+  listRoles(options?: ViewOptions): Promise<Array<[string, Role]>>;
+  /** call `markAsRead`. */
+  markAsRead(args: MarkAsReadArgs, options?: CallOptions): Promise<string>;
+  /** view `markMessagesAsRead`. */
+  markMessagesAsRead(args: MarkMessagesAsReadArgs, options?: ViewOptions): Promise<string>;
+  /** view `messagePosition`. */
+  messagePosition(args: MessagePositionArgs, options?: ViewOptions): Promise<string | null>;
+  /** call `saveDraft`. */
+  saveDraft(args: SaveDraftArgs, options?: CallOptions): Promise<null>;
+  /** view `searchMessages`. */
+  searchMessages(args: SearchMessagesArgs, options?: ViewOptions): Promise<SearchPage>;
+  /** view `searchMessagesScan`. */
+  searchMessagesScan(args: SearchMessagesScanArgs, options?: ViewOptions): Promise<SearchPage>;
+  /** call `sendMessage`. */
+  sendMessage(args: SendMessageArgs, options?: CallOptions): Promise<MessageView>;
+  /** call `setMemberRole`. */
+  setMemberRole(args: SetMemberRoleArgs, options?: CallOptions): Promise<string>;
+  /** call `setProfile`. */
+  setProfile(args: SetProfileArgs, options?: CallOptions): Promise<string>;
+  /** call `updateInfo`. */
+  updateInfo(args: UpdateInfoArgs, options?: CallOptions): Promise<string>;
+  /** call `updateReaction`. */
+  updateReaction(args: UpdateReactionArgs, options?: CallOptions): Promise<string>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroChatClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroChatRawApi {
+  /** call `deleteDraft`. */
+  deleteDraft(args: DeleteDraftArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `deleteMessage`. */
+  deleteMessage(args: DeleteMessageArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `editMessage`. */
+  editMessage(args: EditMessageArgs, options?: CallOptions): Promise<CallAnswer<MessageView>>;
+  /** view `getChannelInfo`. */
+  getChannelInfo(args: GetChannelInfoArgs, options?: ViewOptions): Promise<ViewAnswer<ContextInfo>>;
+  /** view `getDraft`. */
+  getDraft(args: GetDraftArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getInfo`. */
+  getInfo(options?: ViewOptions): Promise<ViewAnswer<ContextInfo>>;
+  /** view `getMemberRole`. */
+  getMemberRole(args: GetMemberRoleArgs, options?: ViewOptions): Promise<ViewAnswer<Role>>;
+  /** view `getMessageCount`. */
+  getMessageCount(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `getMessages`. */
+  getMessages(args: GetMessagesArgs, options?: ViewOptions): Promise<ViewAnswer<FullMessageResponse>>;
+  /** view `getMessagesFrom`. */
+  getMessagesFrom(args: GetMessagesFromArgs, options?: ViewOptions): Promise<ViewAnswer<FullMessageResponse>>;
+  /** view `getProfiles`. */
+  getProfiles(options?: ViewOptions): Promise<ViewAnswer<UserProfile[]>>;
+  /** view `getUnreadCount`. */
+  getUnreadCount(options?: ViewOptions): Promise<ViewAnswer<number>>;
+  /** view `getUnreadMentions`. */
+  getUnreadMentions(options?: ViewOptions): Promise<ViewAnswer<number>>;
+  /** view `listRoles`. */
+  listRoles(options?: ViewOptions): Promise<ViewAnswer<Array<[string, Role]>>>;
+  /** call `markAsRead`. */
+  markAsRead(args: MarkAsReadArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `markMessagesAsRead`. */
+  markMessagesAsRead(args: MarkMessagesAsReadArgs, options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `messagePosition`. */
+  messagePosition(args: MessagePositionArgs, options?: ViewOptions): Promise<ViewAnswer<string | null>>;
+  /** call `saveDraft`. */
+  saveDraft(args: SaveDraftArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `searchMessages`. */
+  searchMessages(args: SearchMessagesArgs, options?: ViewOptions): Promise<ViewAnswer<SearchPage>>;
+  /** view `searchMessagesScan`. */
+  searchMessagesScan(args: SearchMessagesScanArgs, options?: ViewOptions): Promise<ViewAnswer<SearchPage>>;
+  /** call `sendMessage`. */
+  sendMessage(args: SendMessageArgs, options?: CallOptions): Promise<CallAnswer<MessageView>>;
+  /** call `setMemberRole`. */
+  setMemberRole(args: SetMemberRoleArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `setProfile`. */
+  setProfile(args: SetProfileArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `updateInfo`. */
+  updateInfo(args: UpdateInfoArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** call `updateReaction`. */
+  updateReaction(args: UpdateReactionArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroChatClient<T extends AppCallTransport = AppTransport> implements MeroChatApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroChatRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      deleteDraft: (args, options = {}) => this.#call<null>('deleteDraft', args, options),
+      deleteMessage: (args, options = {}) => this.#call<string>('deleteMessage', args, options),
+      editMessage: (args, options = {}) => this.#call<MessageView>('editMessage', args, options),
+      getChannelInfo: (args, options = {}) => this.#view<ContextInfo>('getChannelInfo', args, options),
+      getDraft: (args, options = {}) => this.#view<string>('getDraft', args, options),
+      getInfo: (options = {}) => this.#view<ContextInfo>('getInfo', {}, options),
+      getMemberRole: (args, options = {}) => this.#view<Role>('getMemberRole', args, options),
+      getMessageCount: (options = {}) => this.#view<string>('getMessageCount', {}, options),
+      getMessages: (args, options = {}) => this.#view<FullMessageResponse>('getMessages', args, options),
+      getMessagesFrom: (args, options = {}) => this.#view<FullMessageResponse>('getMessagesFrom', args, options),
+      getProfiles: (options = {}) => this.#view<UserProfile[]>('getProfiles', {}, options),
+      getUnreadCount: (options = {}) => this.#view<number>('getUnreadCount', {}, options),
+      getUnreadMentions: (options = {}) => this.#view<number>('getUnreadMentions', {}, options),
+      listRoles: (options = {}) => this.#view<Array<[string, Role]>>('listRoles', {}, options),
+      markAsRead: (args, options = {}) => this.#call<string>('markAsRead', args, options),
+      markMessagesAsRead: (args, options = {}) => this.#view<string>('markMessagesAsRead', args, options),
+      messagePosition: (args, options = {}) => this.#view<string | null>('messagePosition', args, options),
+      saveDraft: (args, options = {}) => this.#call<null>('saveDraft', args, options),
+      searchMessages: (args, options = {}) => this.#view<SearchPage>('searchMessages', args, options),
+      searchMessagesScan: (args, options = {}) => this.#view<SearchPage>('searchMessagesScan', args, options),
+      sendMessage: (args, options = {}) => this.#call<MessageView>('sendMessage', args, options),
+      setMemberRole: (args, options = {}) => this.#call<string>('setMemberRole', args, options),
+      setProfile: (args, options = {}) => this.#call<string>('setProfile', args, options),
+      updateInfo: (args, options = {}) => this.#call<string>('updateInfo', args, options),
+      updateReaction: (args, options = {}) => this.#call<string>('updateReaction', args, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -293,7 +476,8 @@ export class MeroChatClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -301,131 +485,131 @@ export class MeroChatClient {
 
   /** call `deleteDraft`. */
   async deleteDraft(args: DeleteDraftArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('deleteDraft', args, options)) as null;
+    return (await this.#call<null>('deleteDraft', args, options)).result;
   }
 
   /** call `deleteMessage`. */
   async deleteMessage(args: DeleteMessageArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('deleteMessage', args, options)) as string;
+    return (await this.#call<string>('deleteMessage', args, options)).result;
   }
 
   /** call `editMessage`. */
   async editMessage(args: EditMessageArgs, options: CallOptions = {}): Promise<MessageView> {
-    return (await this.#call('editMessage', args, options)) as MessageView;
+    return (await this.#call<MessageView>('editMessage', args, options)).result;
   }
 
   /** view `getChannelInfo`. */
   async getChannelInfo(args: GetChannelInfoArgs, options: ViewOptions = {}): Promise<ContextInfo> {
-    return (await this.#view('getChannelInfo', args, options)) as ContextInfo;
+    return (await this.#view<ContextInfo>('getChannelInfo', args, options)).result;
   }
 
   /** view `getDraft`. */
   async getDraft(args: GetDraftArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getDraft', args, options)) as string;
+    return (await this.#view<string>('getDraft', args, options)).result;
   }
 
   /** view `getInfo`. */
   async getInfo(options: ViewOptions = {}): Promise<ContextInfo> {
-    return (await this.#view('getInfo', {}, options)) as ContextInfo;
+    return (await this.#view<ContextInfo>('getInfo', {}, options)).result;
   }
 
   /** view `getMemberRole`. */
   async getMemberRole(args: GetMemberRoleArgs, options: ViewOptions = {}): Promise<Role> {
-    return (await this.#view('getMemberRole', args, options)) as Role;
+    return (await this.#view<Role>('getMemberRole', args, options)).result;
   }
 
   /** view `getMessageCount`. */
   async getMessageCount(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('getMessageCount', {}, options)) as string;
+    return (await this.#view<string>('getMessageCount', {}, options)).result;
   }
 
   /** view `getMessages`. */
   async getMessages(args: GetMessagesArgs, options: ViewOptions = {}): Promise<FullMessageResponse> {
-    return (await this.#view('getMessages', args, options)) as FullMessageResponse;
+    return (await this.#view<FullMessageResponse>('getMessages', args, options)).result;
   }
 
   /** view `getMessagesFrom`. */
   async getMessagesFrom(args: GetMessagesFromArgs, options: ViewOptions = {}): Promise<FullMessageResponse> {
-    return (await this.#view('getMessagesFrom', args, options)) as FullMessageResponse;
+    return (await this.#view<FullMessageResponse>('getMessagesFrom', args, options)).result;
   }
 
   /** view `getProfiles`. */
   async getProfiles(options: ViewOptions = {}): Promise<UserProfile[]> {
-    return (await this.#view('getProfiles', {}, options)) as UserProfile[];
+    return (await this.#view<UserProfile[]>('getProfiles', {}, options)).result;
   }
 
   /** view `getUnreadCount`. */
   async getUnreadCount(options: ViewOptions = {}): Promise<number> {
-    return (await this.#view('getUnreadCount', {}, options)) as number;
+    return (await this.#view<number>('getUnreadCount', {}, options)).result;
   }
 
   /** view `getUnreadMentions`. */
   async getUnreadMentions(options: ViewOptions = {}): Promise<number> {
-    return (await this.#view('getUnreadMentions', {}, options)) as number;
+    return (await this.#view<number>('getUnreadMentions', {}, options)).result;
   }
 
   /** view `listRoles`. */
   async listRoles(options: ViewOptions = {}): Promise<Array<[string, Role]>> {
-    return (await this.#view('listRoles', {}, options)) as Array<[string, Role]>;
+    return (await this.#view<Array<[string, Role]>>('listRoles', {}, options)).result;
   }
 
   /** call `markAsRead`. */
   async markAsRead(args: MarkAsReadArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('markAsRead', args, options)) as string;
+    return (await this.#call<string>('markAsRead', args, options)).result;
   }
 
   /** view `markMessagesAsRead`. */
   async markMessagesAsRead(args: MarkMessagesAsReadArgs, options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('markMessagesAsRead', args, options)) as string;
+    return (await this.#view<string>('markMessagesAsRead', args, options)).result;
   }
 
   /** view `messagePosition`. */
   async messagePosition(args: MessagePositionArgs, options: ViewOptions = {}): Promise<string | null> {
-    return (await this.#view('messagePosition', args, options)) as string | null;
+    return (await this.#view<string | null>('messagePosition', args, options)).result;
   }
 
   /** call `saveDraft`. */
   async saveDraft(args: SaveDraftArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('saveDraft', args, options)) as null;
+    return (await this.#call<null>('saveDraft', args, options)).result;
   }
 
   /** view `searchMessages`. */
   async searchMessages(args: SearchMessagesArgs, options: ViewOptions = {}): Promise<SearchPage> {
-    return (await this.#view('searchMessages', args, options)) as SearchPage;
+    return (await this.#view<SearchPage>('searchMessages', args, options)).result;
   }
 
   /** view `searchMessagesScan`. */
   async searchMessagesScan(args: SearchMessagesScanArgs, options: ViewOptions = {}): Promise<SearchPage> {
-    return (await this.#view('searchMessagesScan', args, options)) as SearchPage;
+    return (await this.#view<SearchPage>('searchMessagesScan', args, options)).result;
   }
 
   /** call `sendMessage`. */
   async sendMessage(args: SendMessageArgs, options: CallOptions = {}): Promise<MessageView> {
-    return (await this.#call('sendMessage', args, options)) as MessageView;
+    return (await this.#call<MessageView>('sendMessage', args, options)).result;
   }
 
   /** call `setMemberRole`. */
   async setMemberRole(args: SetMemberRoleArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('setMemberRole', args, options)) as string;
+    return (await this.#call<string>('setMemberRole', args, options)).result;
   }
 
   /** call `setProfile`. */
   async setProfile(args: SetProfileArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('setProfile', args, options)) as string;
+    return (await this.#call<string>('setProfile', args, options)).result;
   }
 
   /** call `updateInfo`. */
   async updateInfo(args: UpdateInfoArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('updateInfo', args, options)) as string;
+    return (await this.#call<string>('updateInfo', args, options)).result;
   }
 
   /** call `updateReaction`. */
   async updateReaction(args: UpdateReactionArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('updateReaction', args, options)) as string;
+    return (await this.#call<string>('updateReaction', args, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroChatClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }

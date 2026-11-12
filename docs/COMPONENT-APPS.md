@@ -234,7 +234,7 @@ is the worked example; core's guide is `docs/src/content/docs/build/guides/typed
 at the generator's tag.
 
 ```bash
-scripts/install-mero-app-build.sh     # once: mero-app-build at its pinned tag, into ~/.cargo/bin
+scripts/install-mero-app-build.sh     # once: mero-app-build at its pinned ref, into ~/.cargo/bin
 pnpm -F <app> codegen                 # logic/res/abi.json -> app/src/generated/{client.ts,openapi.json}
 ```
 
@@ -283,7 +283,7 @@ Kept fresh by CI: `ci.yml`'s `frontend` job installs `mero-app-build` with
 build. So a contract change is: build (`mero-component build`), `pnpm -F <app>
 codegen`, fix what `tsc -b` now reports, commit all three.
 
-The generator has its own pin (`TAG` in `scripts/install-mero-app-build.sh`),
+The generator has its own pin (`REF` in `scripts/install-mero-app-build.sh`, a tag or a core commit),
 which may run ahead of `component-core-tag`: moving it regenerates every app's
 client in the same PR. A record or enum type in the ABI is an interface or a
 union only when the contract derives `Record` or `AbiType` and was built at

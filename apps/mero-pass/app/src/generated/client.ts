@@ -192,47 +192,209 @@ export interface ClientOptions {
   after?: () => void | Promise<void>;
 }
 
+/** A call's whole answer (`raw`): its result, the log index it committed at, its events. */
+export interface CallAnswer<T> {
+  result: T;
+  /** The log index the call committed at. */
+  index: number;
+  /** The app's events the call emitted, in order. */
+  events: AppEvent[];
+}
+
+/** A view's whole answer (`raw`): its result and the log index of the state it read. */
+export interface ViewAnswer<T> {
+  result: T;
+  index: number;
+}
+
 /**
- * What the class uses of mero-js's `CalimeroClient` (`client.apps.call`, `client.apps.view`,
- * `client.events`): a test double implements this alone.
+ * What calls and views use of mero-js's `CalimeroClient` (`client.apps.call`,
+ * `client.apps.view`): `Pick<CalimeroClient, 'apps'>` or a test double of the two. A double
+ * that leaves out `index` or `events` answers `raw` with index 0 and no events.
  */
-export interface AppTransport {
+export interface AppCallTransport {
   apps: {
     call(
       args: { app: string; method: string; args?: unknown; idempotencyKey?: string },
       options?: { confirm?: ConfirmCallback; signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number; events?: { kind: string; data: unknown }[] }>;
     view(
       args: { app: string; method: string; args?: unknown; consistency?: 'strong' | 'stale'; minIndex?: number },
       options?: { signal?: AbortSignal },
-    ): Promise<{ result: unknown }>;
+    ): Promise<{ result: unknown; index?: number }>;
   };
+}
+
+/**
+ * What the class uses of mero-js's `CalimeroClient`: calls and views, and the event stream
+ * (`client.events`) its `events()` reads. A test double implements this alone.
+ */
+export interface AppTransport extends AppCallTransport {
   events(app: string, from?: number, signal?: AbortSignal): AsyncIterable<NodeEvent>;
 }
 
-/** The app's methods, over a signed-in `CalimeroClient` (or any {@link AppTransport}). */
-export class MeroPassClient {
-  readonly #client: AppTransport;
+/** The app's methods: what `MeroPassClient` implements, for a test double to stand in for it. */
+export interface MeroPassApi {
+  /** call `addKeyWraps`. */
+  addKeyWraps(args: AddKeyWrapsArgs, options?: CallOptions): Promise<number>;
+  /** call `addSecret`. */
+  addSecret(args: AddSecretArgs, options?: CallOptions): Promise<string>;
+  /** view `getAuditLogs`. */
+  getAuditLogs(options?: ViewOptions): Promise<AuditView[]>;
+  /** view `getSecret`. */
+  getSecret(args: GetSecretArgs, options?: ViewOptions): Promise<SecretView | null>;
+  /** view `keyWrapsFor`. */
+  keyWrapsFor(args: KeyWrapsForArgs, options?: ViewOptions): Promise<KeyWrapView[]>;
+  /** view `listDevices`. */
+  listDevices(options?: ViewOptions): Promise<DeviceView[]>;
+  /** view `listMembers`. */
+  listMembers(options?: ViewOptions): Promise<MemberView[]>;
+  /** view `listSecrets`. */
+  listSecrets(options?: ViewOptions): Promise<SecretView[]>;
+  /** call `purgeSecret`. */
+  purgeSecret(args: PurgeSecretArgs, options?: CallOptions): Promise<null>;
+  /** call `registerDevice`. */
+  registerDevice(args: RegisterDeviceArgs, options?: CallOptions): Promise<null>;
+  /** call `removeMember`. */
+  removeMember(args: RemoveMemberArgs, options?: CallOptions): Promise<null>;
+  /** call `renameVault`. */
+  renameVault(args: RenameVaultArgs, options?: CallOptions): Promise<null>;
+  /** call `restoreSecret`. */
+  restoreSecret(args: RestoreSecretArgs, options?: CallOptions): Promise<null>;
+  /** call `revokeDevice`. */
+  revokeDevice(args: RevokeDeviceArgs, options?: CallOptions): Promise<null>;
+  /** call `rotateKey`. */
+  rotateKey(args: RotateKeyArgs, options?: CallOptions): Promise<null>;
+  /** view `secretHistory`. */
+  secretHistory(args: SecretHistoryArgs, options?: ViewOptions): Promise<RevisionView[]>;
+  /** call `setDefaultRole`. */
+  setDefaultRole(args: SetDefaultRoleArgs, options?: CallOptions): Promise<null>;
+  /** call `setRole`. */
+  setRole(args: SetRoleArgs, options?: CallOptions): Promise<null>;
+  /** call `trashSecret`. */
+  trashSecret(args: TrashSecretArgs, options?: CallOptions): Promise<null>;
+  /** call `updateSecret`. */
+  updateSecret(args: UpdateSecretArgs, options?: CallOptions): Promise<null>;
+  /** view `vaultInfo`. */
+  vaultInfo(options?: ViewOptions): Promise<VaultInfo>;
+  /** view `vaultName`. */
+  vaultName(options?: ViewOptions): Promise<string>;
+  /** view `wrappedPairs`. */
+  wrappedPairs(options?: ViewOptions): Promise<string[]>;
+  /** The app's events from log index `from`, then live, until `signal` aborts. */
+  events(from?: number, signal?: AbortSignal): AsyncIterable<AppEvent & { id: string }>;
+}
+
+/**
+ * The app's methods answering whole: `MeroPassClient`'s `raw`, for code that reads a call's log
+ * index or events.
+ */
+export interface MeroPassRawApi {
+  /** call `addKeyWraps`. */
+  addKeyWraps(args: AddKeyWrapsArgs, options?: CallOptions): Promise<CallAnswer<number>>;
+  /** call `addSecret`. */
+  addSecret(args: AddSecretArgs, options?: CallOptions): Promise<CallAnswer<string>>;
+  /** view `getAuditLogs`. */
+  getAuditLogs(options?: ViewOptions): Promise<ViewAnswer<AuditView[]>>;
+  /** view `getSecret`. */
+  getSecret(args: GetSecretArgs, options?: ViewOptions): Promise<ViewAnswer<SecretView | null>>;
+  /** view `keyWrapsFor`. */
+  keyWrapsFor(args: KeyWrapsForArgs, options?: ViewOptions): Promise<ViewAnswer<KeyWrapView[]>>;
+  /** view `listDevices`. */
+  listDevices(options?: ViewOptions): Promise<ViewAnswer<DeviceView[]>>;
+  /** view `listMembers`. */
+  listMembers(options?: ViewOptions): Promise<ViewAnswer<MemberView[]>>;
+  /** view `listSecrets`. */
+  listSecrets(options?: ViewOptions): Promise<ViewAnswer<SecretView[]>>;
+  /** call `purgeSecret`. */
+  purgeSecret(args: PurgeSecretArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `registerDevice`. */
+  registerDevice(args: RegisterDeviceArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `removeMember`. */
+  removeMember(args: RemoveMemberArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `renameVault`. */
+  renameVault(args: RenameVaultArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `restoreSecret`. */
+  restoreSecret(args: RestoreSecretArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `revokeDevice`. */
+  revokeDevice(args: RevokeDeviceArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `rotateKey`. */
+  rotateKey(args: RotateKeyArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `secretHistory`. */
+  secretHistory(args: SecretHistoryArgs, options?: ViewOptions): Promise<ViewAnswer<RevisionView[]>>;
+  /** call `setDefaultRole`. */
+  setDefaultRole(args: SetDefaultRoleArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `setRole`. */
+  setRole(args: SetRoleArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `trashSecret`. */
+  trashSecret(args: TrashSecretArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `updateSecret`. */
+  updateSecret(args: UpdateSecretArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** view `vaultInfo`. */
+  vaultInfo(options?: ViewOptions): Promise<ViewAnswer<VaultInfo>>;
+  /** view `vaultName`. */
+  vaultName(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** view `wrappedPairs`. */
+  wrappedPairs(options?: ViewOptions): Promise<ViewAnswer<string[]>>;
+}
+
+/**
+ * The app's methods, over a signed-in `CalimeroClient`, `Pick<CalimeroClient, 'apps'>` or any
+ * {@link AppCallTransport}; `events()` needs an {@link AppTransport}.
+ */
+export class MeroPassClient<T extends AppCallTransport = AppTransport> implements MeroPassApi {
+  readonly #client: T;
   readonly #app: string;
   readonly #after: ClientOptions['after'];
+  /**
+   * The same methods answering whole: `{ result, index, events }` for a call, `{ result, index }`
+   * for a view.
+   */
+  readonly raw: MeroPassRawApi;
 
-  constructor(client: AppTransport, app: string, options: ClientOptions = {}) {
+  constructor(client: T, app: string, options: ClientOptions = {}) {
     this.#client = client;
     this.#app = app;
     this.#after = options.after;
+    this.raw = {
+      addKeyWraps: (args, options = {}) => this.#call<number>('addKeyWraps', args, options),
+      addSecret: (args, options = {}) => this.#call<string>('addSecret', args, options),
+      getAuditLogs: (options = {}) => this.#view<AuditView[]>('getAuditLogs', {}, options),
+      getSecret: (args, options = {}) => this.#view<SecretView | null>('getSecret', args, options),
+      keyWrapsFor: (args, options = {}) => this.#view<KeyWrapView[]>('keyWrapsFor', args, options),
+      listDevices: (options = {}) => this.#view<DeviceView[]>('listDevices', {}, options),
+      listMembers: (options = {}) => this.#view<MemberView[]>('listMembers', {}, options),
+      listSecrets: (options = {}) => this.#view<SecretView[]>('listSecrets', {}, options),
+      purgeSecret: (args, options = {}) => this.#call<null>('purgeSecret', args, options),
+      registerDevice: (args, options = {}) => this.#call<null>('registerDevice', args, options),
+      removeMember: (args, options = {}) => this.#call<null>('removeMember', args, options),
+      renameVault: (args, options = {}) => this.#call<null>('renameVault', args, options),
+      restoreSecret: (args, options = {}) => this.#call<null>('restoreSecret', args, options),
+      revokeDevice: (args, options = {}) => this.#call<null>('revokeDevice', args, options),
+      rotateKey: (args, options = {}) => this.#call<null>('rotateKey', args, options),
+      secretHistory: (args, options = {}) => this.#view<RevisionView[]>('secretHistory', args, options),
+      setDefaultRole: (args, options = {}) => this.#call<null>('setDefaultRole', args, options),
+      setRole: (args, options = {}) => this.#call<null>('setRole', args, options),
+      trashSecret: (args, options = {}) => this.#call<null>('trashSecret', args, options),
+      updateSecret: (args, options = {}) => this.#call<null>('updateSecret', args, options),
+      vaultInfo: (options = {}) => this.#view<VaultInfo>('vaultInfo', {}, options),
+      vaultName: (options = {}) => this.#view<string>('vaultName', {}, options),
+      wrappedPairs: (options = {}) => this.#view<string[]>('wrappedPairs', {}, options),
+    };
   }
 
-  async #call(method: string, args: object, options: CallOptions): Promise<unknown> {
+  async #call<R>(method: string, args: object, options: CallOptions): Promise<CallAnswer<R>> {
     const { idempotencyKey, ...rest } = options;
     const request = { app: this.#app, method, args, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) };
     try {
-      return (await this.#client.apps.call(request, rest)).result;
+      const { result, index = 0, events = [] } = await this.#client.apps.call(request, rest);
+      return { result: result as R, index, events: events as AppEvent[] };
     } finally {
       await this.#after?.();
     }
   }
 
-  async #view(method: string, args: object, options: ViewOptions): Promise<unknown> {
+  async #view<R>(method: string, args: object, options: ViewOptions): Promise<ViewAnswer<R>> {
     const { consistency, minIndex, signal } = options;
     const request = {
       app: this.#app,
@@ -242,7 +404,8 @@ export class MeroPassClient {
       ...(minIndex === undefined ? {} : { minIndex }),
     };
     try {
-      return (await this.#client.apps.view(request, signal === undefined ? {} : { signal })).result;
+      const { result, index = 0 } = await this.#client.apps.view(request, signal === undefined ? {} : { signal });
+      return { result: result as R, index };
     } finally {
       await this.#after?.();
     }
@@ -250,121 +413,121 @@ export class MeroPassClient {
 
   /** call `addKeyWraps`. */
   async addKeyWraps(args: AddKeyWrapsArgs, options: CallOptions = {}): Promise<number> {
-    return (await this.#call('addKeyWraps', args, options)) as number;
+    return (await this.#call<number>('addKeyWraps', args, options)).result;
   }
 
   /** call `addSecret`. */
   async addSecret(args: AddSecretArgs, options: CallOptions = {}): Promise<string> {
-    return (await this.#call('addSecret', args, options)) as string;
+    return (await this.#call<string>('addSecret', args, options)).result;
   }
 
   /** view `getAuditLogs`. */
   async getAuditLogs(options: ViewOptions = {}): Promise<AuditView[]> {
-    return (await this.#view('getAuditLogs', {}, options)) as AuditView[];
+    return (await this.#view<AuditView[]>('getAuditLogs', {}, options)).result;
   }
 
   /** view `getSecret`. */
   async getSecret(args: GetSecretArgs, options: ViewOptions = {}): Promise<SecretView | null> {
-    return (await this.#view('getSecret', args, options)) as SecretView | null;
+    return (await this.#view<SecretView | null>('getSecret', args, options)).result;
   }
 
   /** view `keyWrapsFor`. */
   async keyWrapsFor(args: KeyWrapsForArgs, options: ViewOptions = {}): Promise<KeyWrapView[]> {
-    return (await this.#view('keyWrapsFor', args, options)) as KeyWrapView[];
+    return (await this.#view<KeyWrapView[]>('keyWrapsFor', args, options)).result;
   }
 
   /** view `listDevices`. */
   async listDevices(options: ViewOptions = {}): Promise<DeviceView[]> {
-    return (await this.#view('listDevices', {}, options)) as DeviceView[];
+    return (await this.#view<DeviceView[]>('listDevices', {}, options)).result;
   }
 
   /** view `listMembers`. */
   async listMembers(options: ViewOptions = {}): Promise<MemberView[]> {
-    return (await this.#view('listMembers', {}, options)) as MemberView[];
+    return (await this.#view<MemberView[]>('listMembers', {}, options)).result;
   }
 
   /** view `listSecrets`. */
   async listSecrets(options: ViewOptions = {}): Promise<SecretView[]> {
-    return (await this.#view('listSecrets', {}, options)) as SecretView[];
+    return (await this.#view<SecretView[]>('listSecrets', {}, options)).result;
   }
 
   /** call `purgeSecret`. */
   async purgeSecret(args: PurgeSecretArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('purgeSecret', args, options)) as null;
+    return (await this.#call<null>('purgeSecret', args, options)).result;
   }
 
   /** call `registerDevice`. */
   async registerDevice(args: RegisterDeviceArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('registerDevice', args, options)) as null;
+    return (await this.#call<null>('registerDevice', args, options)).result;
   }
 
   /** call `removeMember`. */
   async removeMember(args: RemoveMemberArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('removeMember', args, options)) as null;
+    return (await this.#call<null>('removeMember', args, options)).result;
   }
 
   /** call `renameVault`. */
   async renameVault(args: RenameVaultArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('renameVault', args, options)) as null;
+    return (await this.#call<null>('renameVault', args, options)).result;
   }
 
   /** call `restoreSecret`. */
   async restoreSecret(args: RestoreSecretArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('restoreSecret', args, options)) as null;
+    return (await this.#call<null>('restoreSecret', args, options)).result;
   }
 
   /** call `revokeDevice`. */
   async revokeDevice(args: RevokeDeviceArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('revokeDevice', args, options)) as null;
+    return (await this.#call<null>('revokeDevice', args, options)).result;
   }
 
   /** call `rotateKey`. */
   async rotateKey(args: RotateKeyArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('rotateKey', args, options)) as null;
+    return (await this.#call<null>('rotateKey', args, options)).result;
   }
 
   /** view `secretHistory`. */
   async secretHistory(args: SecretHistoryArgs, options: ViewOptions = {}): Promise<RevisionView[]> {
-    return (await this.#view('secretHistory', args, options)) as RevisionView[];
+    return (await this.#view<RevisionView[]>('secretHistory', args, options)).result;
   }
 
   /** call `setDefaultRole`. */
   async setDefaultRole(args: SetDefaultRoleArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setDefaultRole', args, options)) as null;
+    return (await this.#call<null>('setDefaultRole', args, options)).result;
   }
 
   /** call `setRole`. */
   async setRole(args: SetRoleArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('setRole', args, options)) as null;
+    return (await this.#call<null>('setRole', args, options)).result;
   }
 
   /** call `trashSecret`. */
   async trashSecret(args: TrashSecretArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('trashSecret', args, options)) as null;
+    return (await this.#call<null>('trashSecret', args, options)).result;
   }
 
   /** call `updateSecret`. */
   async updateSecret(args: UpdateSecretArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call('updateSecret', args, options)) as null;
+    return (await this.#call<null>('updateSecret', args, options)).result;
   }
 
   /** view `vaultInfo`. */
   async vaultInfo(options: ViewOptions = {}): Promise<VaultInfo> {
-    return (await this.#view('vaultInfo', {}, options)) as VaultInfo;
+    return (await this.#view<VaultInfo>('vaultInfo', {}, options)).result;
   }
 
   /** view `vaultName`. */
   async vaultName(options: ViewOptions = {}): Promise<string> {
-    return (await this.#view('vaultName', {}, options)) as string;
+    return (await this.#view<string>('vaultName', {}, options)).result;
   }
 
   /** view `wrappedPairs`. */
   async wrappedPairs(options: ViewOptions = {}): Promise<string[]> {
-    return (await this.#view('wrappedPairs', {}, options)) as string[];
+    return (await this.#view<string[]>('wrappedPairs', {}, options)).result;
   }
 
   /** The app's events from log index `from`, then live, until `signal` aborts. */
-  async *events(from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
+  async *events(this: MeroPassClient<AppTransport>, from = 0, signal?: AbortSignal): AsyncGenerator<AppEvent & { id: string }> {
     for await (const event of this.#client.events(this.#app, from, signal)) {
       yield event as AppEvent & { id: string };
     }
