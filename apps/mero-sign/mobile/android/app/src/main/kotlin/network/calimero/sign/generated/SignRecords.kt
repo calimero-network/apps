@@ -28,6 +28,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.serializer
 
 /** What the app keeps of the contract beside the generated [network.calimero.sign.generated.client.SignClient]. */
 object SignContract {
