@@ -90,14 +90,20 @@ cluster lines (local is the default) and add `TRACKER_BUNDLE` with the
 ## Tests
 
 ```bash
-npm test         # node:test, a fake CalimeroClient
-npm run typecheck
+pnpm install     # once, at the repo root: this is a pnpm workspace member
+pnpm test        # node:test, a fake CalimeroClient
+pnpm typecheck
 ```
+
+CI's frontend job runs both (and `pnpm build`) on any change under `mcp/`.
 
 ## Publishing
 
-`npm run build` then `npm publish` (semantic-release config in
-`.releaserc.json`). This repository has no workflow that publishes it yet.
+`pnpm build` then `pnpm publish`, never `npm publish`: mero-js and TypeScript
+come from the workspace catalog (`catalog:component`, `catalog:`), which
+`pnpm publish` rewrites to the pinned versions and npm would ship as is. This
+repository has no workflow that publishes it yet; the semantic-release config
+from the package's own repository was dropped with the move.
 
 ## Live smoke test
 

@@ -23,6 +23,7 @@ node_modules/
 # cannot be ignored by accident.
 apps/*/app/dist/
 apps/*/app/dist-types/
+apps/*/mcp/dist/
 *.tsbuildinfo
 
 # merobox drops several hundred MB of node state here.
