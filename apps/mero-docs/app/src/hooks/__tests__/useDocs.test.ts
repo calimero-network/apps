@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { withRoutes } from '@calimero-apps/connect/testing';
+import { MeroDocsClient } from '@/lib/docsApi';
 import { subscribeDocsRefetch, useDocs } from '../useDocs';
 
 // Regression layer for useDocs - the docs facade for a folder. The
@@ -25,6 +27,35 @@ const docsClientStub = {
 };
 // Per-context clients for tests that switch folders; others share the stub.
 const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
+
+/** A doc as the stubs write it (v1's fields) on the wire: camelCase, milliseconds as decimal strings. */
+const wireDoc = (d: { id: string; title: string; updated_at?: number }) => ({
+  id: d.id,
+  title: d.title,
+  updatedAt: String(d.updated_at ?? 0),
+});
+
+/**
+ * The real `MeroDocsClient` for a context, over a fake transport that answers
+ * each contract method from the stub's mock of that name (`listDocs` rows on
+ * the wire), so the hook's arguments and the answers' conversion are the real
+ * ones. One per context, as `useDocsClient` memoises it.
+ */
+const bound = new Map<string, MeroDocsClient>();
+function clientFor(ctxId: string): MeroDocsClient {
+  let client = bound.get(ctxId);
+  if (!client) {
+    const answer = async (_app: string, method: string, args: unknown) => {
+      const stub = (clientsByContext.get(ctxId) ?? docsClientStub) as Record<string, ((a: unknown) => unknown) | undefined>;
+      let result = await stub[method]?.(args);
+      if (method === 'listDocs' && Array.isArray(result)) result = result.map(wireDoc);
+      return { index: 1, result: result ?? null, events: [] };
+    };
+    client = new MeroDocsClient(withRoutes({ call: answer, view: answer }), ctxId);
+    bound.set(ctxId, client);
+  }
+  return client;
+}
 const workspace = { selfIdentity: 'me' as string | null };
 // A folder's docs context is the one context core lists in its subgroup;
 // `subgroupContext` names it per folder. Stable, like the session's admin.
@@ -51,7 +82,7 @@ vi.mock('../useDriveWorkspace', () => ({
 // useDocsClient so `refetch` doesn't fire before the context is known.
 vi.mock('../useDocsClient', () => ({
   useDocsClient: (ctxId: string | null, identity: string | null) =>
-    ctxId && identity ? (clientsByContext.get(ctxId) ?? docsClientStub) : null,
+    ctxId && identity ? clientFor(ctxId) : null,
 }));
 // The latest handler useDocs gave the event stream, so a test can deliver events.
 const docEvents = { fire: (() => undefined) as () => void };
@@ -88,6 +119,7 @@ describe('useDocs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clientsByContext.clear();
+    bound.clear();
     workspace.selfIdentity = 'me';
     subgroupContext.mockResolvedValue('docs-ctx-1');
     listDocs.mockResolvedValue([]);
@@ -326,7 +358,7 @@ describe('useDocs', () => {
   it('passes includeArchived through to listDocs', async () => {
     const { result } = renderHook(() => useDocs('folder-1', { includeArchived: true }));
     await waitFor(() => expect(result.current.listed).toBe(true));
-    expect(listDocs).toHaveBeenCalledWith({ include_archived: true });
+    expect(listDocs).toHaveBeenCalledWith({ includeArchived: true });
   });
 
   it('tags and untags a doc, then has every list of the folder re-read', async () => {

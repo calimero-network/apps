@@ -152,8 +152,19 @@ object CalendarContract {
     fun parse(text: String): JsonElement = json.parseToJsonElement(text)
 
     /** An answer of the generated client as the shape [T]. */
-    inline fun <reified T> read(answer: JsonElement): T = json.decodeFromJsonElement(serializer<T>(), answer)
-
-    /** [value] (one of the shapes above) as the JSON the generated client takes. */
-    inline fun <reified T> write(value: T): JsonElement = json.encodeToJsonElement(serializer<T>(), value)
+    inline fun <reified T> read(answer: Any): T = json.decodeFromJsonElement(serializer<T>(), answer.asContractJson())
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

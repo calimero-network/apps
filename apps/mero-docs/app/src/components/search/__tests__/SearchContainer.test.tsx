@@ -12,7 +12,8 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import type { TextIndex } from '@/hooks/useTextIndex';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
-import type { Block, DocsClient } from '@/lib/docsApi';
+import type { Block, MeroDocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { docTextFromBlocks, searchText } from '@/lib/search/docText';
 import {
   rowKey,
@@ -32,7 +33,7 @@ const index = {
   folders: [] as FolderInfo[],
   folderStatus: {} as Record<string, FolderIndexStatus>,
   contextOf: (_id: string): string | undefined => undefined,
-  clientOf: (_id: string): DocsClient | undefined => undefined,
+  clientOf: (_id: string): MeroDocsClient | undefined => undefined,
   refetchFolder: () => {},
 };
 let textIndex: TextIndex;
@@ -530,11 +531,14 @@ describe('SearchContainer opening', () => {
 });
 
 describe('SearchContainer with the node index', () => {
-  /** A docs client whose `search_docs` answers `hits`, or fails with `error`. */
+  /** Each client's `searchDocs` mock, by client. */
+  const searches = new WeakMap<object, ReturnType<typeof vi.fn>>();
+
+  /** A docs client whose `searchDocs` answers `hits`, or fails with `error`. */
   function indexed(
     hits: { id: string; snippet: string; score?: number }[] | Error,
   ) {
-    const searchDocs = vi.fn(async () => {
+    const searchDocs = vi.fn(async (_args: unknown) => {
       if (hits instanceof Error) throw hits;
       return {
         hits: hits.map((h) => ({
@@ -544,10 +548,12 @@ describe('SearchContainer with the node index', () => {
           ...h,
         })),
         total: hits.length,
-        next_cursor: null,
+        nextCursor: null,
       };
     });
-    return { searchDocs } as unknown as DocsClient;
+    const client = docsOver({ searchDocs });
+    searches.set(client, searchDocs);
+    return client;
   }
 
   it("lists a folder's matches from its index, docs never read here included", async () => {
@@ -561,9 +567,9 @@ describe('SearchContainer with the node index', () => {
     ).findByRole('option');
     expect(found.textContent).toContain('API spec v2');
     expect(marks(found)).toEqual(['zebra']);
-    expect(vi.mocked(f2.searchDocs)).toHaveBeenLastCalledWith({
+    expect(searches.get(f2)).toHaveBeenLastCalledWith({
       query: 'zebra',
-      include_archived: false,
+      includeArchived: false,
       cursor: null,
       limit: 20,
     });

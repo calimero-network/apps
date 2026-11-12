@@ -53,9 +53,6 @@ typealias MemberView = JsonElement
 /** The app type `MeshRef`: the ABI names it without its shape, so it is its JSON. */
 typealias MeshRef = JsonElement
 
-/** The app type `SceneInfo`: the ABI names it without its shape, so it is its JSON. */
-typealias SceneInfo = JsonElement
-
 /** The app type `SceneObject`: the ABI names it without its shape, so it is its JSON. */
 typealias SceneObject = JsonElement
 
@@ -220,7 +217,7 @@ class ModelsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            JsonElement.serializer(),
+            SceneInfo.serializer(),
         )
 
     /** call `grantEditor`. */
@@ -580,6 +577,60 @@ class ModelsClient private constructor(
         }
     }
 
+    /** The app type `SceneInfo`. */
+    data class SceneInfo(
+        val name: String,
+        val environment: Environment,
+        val object_count: UInt,
+        val mesh_count: UInt,
+        val texture_count: UInt,
+        val member_count: UInt,
+        val me: String,
+        val my_role: String,
+    ) {
+        companion object {
+            /** `SceneInfo`'s JSON form. */
+            fun serializer(): KSerializer<SceneInfo> = Wire
+
+            private object Wire : KSerializer<SceneInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SceneInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("environment", encode(JsonElement.serializer(), value.environment))
+                            put("object_count", encode(UInt.serializer(), value.object_count))
+                            put("mesh_count", encode(UInt.serializer(), value.mesh_count))
+                            put("texture_count", encode(UInt.serializer(), value.texture_count))
+                            put("member_count", encode(UInt.serializer(), value.member_count))
+                            put("me", encode(String.serializer(), value.me))
+                            put("my_role", encode(String.serializer(), value.my_role))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SceneInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SceneInfo")
+                    return SceneInfo(
+                        name = field(fields, "name", String.serializer()),
+                        environment = field(fields, "environment", JsonElement.serializer()),
+                        object_count = field(fields, "object_count", UInt.serializer()),
+                        mesh_count = field(fields, "mesh_count", UInt.serializer()),
+                        texture_count = field(fields, "texture_count", UInt.serializer()),
+                        member_count = field(fields, "member_count", UInt.serializer()),
+                        me = field(fields, "me", String.serializer()),
+                        my_role = field(fields, "my_role", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -646,5 +697,11 @@ class ModelsClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

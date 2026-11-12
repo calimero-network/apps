@@ -2,12 +2,12 @@
 // title is one text sequence rather than a block per caret.
 
 import { useEffect, useRef, useState } from 'react';
-import type { DocsClient } from '@/lib/docsApi';
+import type { MeroDocsClient } from '@/lib/docsApi';
 import { titleCarets, type TitleCaret } from '@/lib/rich/cursors';
 import { signature, type DocPresence } from '@/lib/rich/presence';
 
 export function useTitleCursors(
-  client: DocsClient | null,
+  client: MeroDocsClient | null,
   docId: string | null,
   peers: Map<string, DocPresence>,
   title: string,

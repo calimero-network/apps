@@ -41,21 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `MatchRecord`: the ABI names it without its shape, so it is its JSON. */
-typealias MatchRecord = JsonElement
-
-/** The app type `MatchStateView`: the ABI names it without its shape, so it is its JSON. */
-typealias MatchStateView = JsonElement
-
-/** The app type `MatchSummary`: the ABI names it without its shape, so it is its JSON. */
-typealias MatchSummary = JsonElement
-
-/** The app type `PlayerEntry`: the ABI names it without its shape, so it is its JSON. */
-typealias PlayerEntry = JsonElement
-
-/** The app type `PlayerStatsView`: the ABI names it without its shape, so it is its JSON. */
-typealias PlayerStatsView = JsonElement
-
 /** The app type `ShotsView`: the ABI names it without its shape, so it is its JSON. */
 typealias ShotsView = JsonElement
 
@@ -183,7 +168,7 @@ class BattleshipsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MatchRecord.serializer()),
         )
 
     /** view `getIncomingShots`. */
@@ -215,7 +200,7 @@ class BattleshipsClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            MatchStateView.serializer(),
         )
 
     /** view `getMatches`. */
@@ -228,7 +213,7 @@ class BattleshipsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MatchSummary.serializer()),
         )
 
     /** view `getPlayerStats`. */
@@ -244,7 +229,7 @@ class BattleshipsClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer().nullable,
+            PlayerStatsView.serializer().nullable,
         )
 
     /** view `getPlayers`. */
@@ -257,7 +242,7 @@ class BattleshipsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(PlayerEntry.serializer()),
         )
 
     /** view `getShots`. */
@@ -562,6 +547,315 @@ class BattleshipsClient private constructor(
         }
     }
 
+    /** The app type `MatchRecord`. */
+    data class MatchRecord(
+        val match_id: String,
+        val winner: String,
+        val loser: String,
+        val finished_ms: ULong,
+    ) {
+        companion object {
+            /** `MatchRecord`'s JSON form. */
+            fun serializer(): KSerializer<MatchRecord> = Wire
+
+            private object Wire : KSerializer<MatchRecord> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MatchRecord,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("match_id", encode(String.serializer(), value.match_id))
+                            put("winner", encode(String.serializer(), value.winner))
+                            put("loser", encode(String.serializer(), value.loser))
+                            put("finished_ms", encode(U64AsString, value.finished_ms))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MatchRecord {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MatchRecord")
+                    return MatchRecord(
+                        match_id = field(fields, "match_id", String.serializer()),
+                        winner = field(fields, "winner", String.serializer()),
+                        loser = field(fields, "loser", String.serializer()),
+                        finished_ms = field(fields, "finished_ms", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MatchStateView`. */
+    data class MatchStateView(
+        val standing: String,
+        val committed: List<String>,
+        val pending_shot: PendingShotView? = null,
+        val ended_by: String? = null,
+        val loser: String? = null,
+        val revealed: List<String>,
+        val audit_failed: List<String>,
+        val winner: String? = null,
+    ) {
+        companion object {
+            /** `MatchStateView`'s JSON form. */
+            fun serializer(): KSerializer<MatchStateView> = Wire
+
+            private object Wire : KSerializer<MatchStateView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MatchStateView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("standing", encode(String.serializer(), value.standing))
+                            put("committed", encode(ListSerializer(String.serializer()), value.committed))
+                            put("pending_shot", encode(PendingShotView.serializer().nullable, value.pending_shot))
+                            put("ended_by", encode(String.serializer().nullable, value.ended_by))
+                            put("loser", encode(String.serializer().nullable, value.loser))
+                            put("revealed", encode(ListSerializer(String.serializer()), value.revealed))
+                            put("audit_failed", encode(ListSerializer(String.serializer()), value.audit_failed))
+                            put("winner", encode(String.serializer().nullable, value.winner))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MatchStateView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MatchStateView")
+                    return MatchStateView(
+                        standing = field(fields, "standing", String.serializer()),
+                        committed = field(fields, "committed", ListSerializer(String.serializer())),
+                        pending_shot = field(fields, "pending_shot", PendingShotView.serializer().nullable),
+                        ended_by = field(fields, "ended_by", String.serializer().nullable),
+                        loser = field(fields, "loser", String.serializer().nullable),
+                        revealed = field(fields, "revealed", ListSerializer(String.serializer())),
+                        audit_failed = field(fields, "audit_failed", ListSerializer(String.serializer())),
+                        winner = field(fields, "winner", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MatchStatus`. */
+    sealed interface MatchStatus {
+        /** `Pending`. */
+        data object Pending : MatchStatus
+
+        /** `Active`. */
+        data object Active : MatchStatus
+
+        /** `Finished`. */
+        data object Finished : MatchStatus
+
+        companion object {
+            /** `MatchStatus`'s JSON form. */
+            fun serializer(): KSerializer<MatchStatus> = Wire
+
+            private object Wire : KSerializer<MatchStatus> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MatchStatus,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is Pending -> JsonPrimitive("Pending")
+                            is Active -> JsonPrimitive("Active")
+                            is Finished -> JsonPrimitive("Finished")
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MatchStatus {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = external(data, "MatchStatus").first
+                    return when (name) {
+                        "Pending" -> Pending
+                        "Active" -> Active
+                        "Finished" -> Finished
+                        else -> throw SerializationException("MatchStatus: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
+    /** The app type `MatchSummary`. */
+    data class MatchSummary(
+        val match_id: String,
+        val player1: String,
+        val player2: String,
+        val player2_account: String,
+        val status: MatchStatus,
+        val winner: String? = null,
+        val created_ms: ULong,
+    ) {
+        companion object {
+            /** `MatchSummary`'s JSON form. */
+            fun serializer(): KSerializer<MatchSummary> = Wire
+
+            private object Wire : KSerializer<MatchSummary> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MatchSummary,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("match_id", encode(String.serializer(), value.match_id))
+                            put("player1", encode(String.serializer(), value.player1))
+                            put("player2", encode(String.serializer(), value.player2))
+                            put("player2_account", encode(String.serializer(), value.player2_account))
+                            put("status", encode(MatchStatus.serializer(), value.status))
+                            put("winner", encode(String.serializer().nullable, value.winner))
+                            put("created_ms", encode(U64AsString, value.created_ms))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MatchSummary {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MatchSummary")
+                    return MatchSummary(
+                        match_id = field(fields, "match_id", String.serializer()),
+                        player1 = field(fields, "player1", String.serializer()),
+                        player2 = field(fields, "player2", String.serializer()),
+                        player2_account = field(fields, "player2_account", String.serializer()),
+                        status = field(fields, "status", MatchStatus.serializer()),
+                        winner = field(fields, "winner", String.serializer().nullable),
+                        created_ms = field(fields, "created_ms", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PendingShotView`. */
+    data class PendingShotView(
+        val shot_id: UInt,
+        val x: UByte,
+        val y: UByte,
+        val target: String,
+    ) {
+        companion object {
+            /** `PendingShotView`'s JSON form. */
+            fun serializer(): KSerializer<PendingShotView> = Wire
+
+            private object Wire : KSerializer<PendingShotView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PendingShotView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("shot_id", encode(UInt.serializer(), value.shot_id))
+                            put("x", encode(UByte.serializer(), value.x))
+                            put("y", encode(UByte.serializer(), value.y))
+                            put("target", encode(String.serializer(), value.target))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PendingShotView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PendingShotView")
+                    return PendingShotView(
+                        shot_id = field(fields, "shot_id", UInt.serializer()),
+                        x = field(fields, "x", UByte.serializer()),
+                        y = field(fields, "y", UByte.serializer()),
+                        target = field(fields, "target", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PlayerEntry`. */
+    data class PlayerEntry(
+        val account: String,
+        val player: String,
+    ) {
+        companion object {
+            /** `PlayerEntry`'s JSON form. */
+            fun serializer(): KSerializer<PlayerEntry> = Wire
+
+            private object Wire : KSerializer<PlayerEntry> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PlayerEntry,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("account", encode(String.serializer(), value.account))
+                            put("player", encode(String.serializer(), value.player))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PlayerEntry {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PlayerEntry")
+                    return PlayerEntry(
+                        account = field(fields, "account", String.serializer()),
+                        player = field(fields, "player", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `PlayerStatsView`. */
+    data class PlayerStatsView(
+        val wins: ULong,
+        val losses: ULong,
+        val games_played: ULong,
+    ) {
+        companion object {
+            /** `PlayerStatsView`'s JSON form. */
+            fun serializer(): KSerializer<PlayerStatsView> = Wire
+
+            private object Wire : KSerializer<PlayerStatsView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PlayerStatsView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("wins", encode(U64AsString, value.wins))
+                            put("losses", encode(U64AsString, value.losses))
+                            put("games_played", encode(U64AsString, value.games_played))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PlayerStatsView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "PlayerStatsView")
+                    return PlayerStatsView(
+                        wins = field(fields, "wins", U64AsString),
+                        losses = field(fields, "losses", U64AsString),
+                        games_played = field(fields, "games_played", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
     /** A `u64` as the wire carries it: a decimal string (a number is read too). */
     object U64AsString : KSerializer<ULong> {
         override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("calimero.u64", PrimitiveKind.STRING)
@@ -628,5 +922,22 @@ class BattleshipsClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** An externally tagged variant's name and data: `"Name"`, or `{ "Name": data }`. */
+        private fun external(
+            data: JsonElement,
+            what: String,
+        ): Pair<String, JsonElement> =
+            when {
+                data is JsonPrimitive && data.isString -> data.content to JsonNull
+                data is JsonObject && data.size == 1 -> data.entries.first().let { it.key to it.value }
+                else -> throw SerializationException("$what: expected a variant name or an object with one key")
+            }
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

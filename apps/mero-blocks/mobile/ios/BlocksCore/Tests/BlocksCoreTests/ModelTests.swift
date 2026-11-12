@@ -141,9 +141,10 @@ final class WorldsModelTests: XCTestCase {
         backend.recording.setHandler { call in
             call.method == "getPlayers"
                 ? .object([
+                    // Every field the contract's `PlayerView` has: the generated client reads them strictly.
                     "items": .array([
-                        .object(["id": "a", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
-                        .object(["id": "b", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
+                        .object(["id": "a", "account": "a", "device": "", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
+                        .object(["id": "b", "account": "b", "device": "", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
                     ]),
                     "next": .null,
                 ]) : .null

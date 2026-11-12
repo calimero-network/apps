@@ -15,23 +15,327 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct BattleshipsClient: Sendable {
-    /// The app type `MatchRecord`: the ABI names it without its shape, so it is its JSON.
-    public typealias MatchRecord = JSONValue
-
-    /// The app type `MatchStateView`: the ABI names it without its shape, so it is its JSON.
-    public typealias MatchStateView = JSONValue
-
-    /// The app type `MatchSummary`: the ABI names it without its shape, so it is its JSON.
-    public typealias MatchSummary = JSONValue
-
-    /// The app type `PlayerEntry`: the ABI names it without its shape, so it is its JSON.
-    public typealias PlayerEntry = JSONValue
-
-    /// The app type `PlayerStatsView`: the ABI names it without its shape, so it is its JSON.
-    public typealias PlayerStatsView = JSONValue
-
     /// The app type `ShotsView`: the ABI names it without its shape, so it is its JSON.
     public typealias ShotsView = JSONValue
+
+
+    /// The app type `MatchRecord`.
+    public struct MatchRecord: Codable, Sendable, Equatable {
+        public var match_id: String
+        public var winner: String
+        public var loser: String
+        public var finished_ms: UInt64
+
+        public init(
+            match_id: String,
+            winner: String,
+            loser: String,
+            finished_ms: UInt64
+        ) {
+            self.match_id = match_id
+            self.winner = winner
+            self.loser = loser
+            self.finished_ms = finished_ms
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("match_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("winner"))
+            let v2 = try fields.decode(String.self, forKey: Key("loser"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("finished_ms")).value
+            self.match_id = v0
+            self.winner = v1
+            self.loser = v2
+            self.finished_ms = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.match_id, forKey: Key("match_id"))
+            try fields.encode(self.winner, forKey: Key("winner"))
+            try fields.encode(self.loser, forKey: Key("loser"))
+            try fields.encode(DecimalString(self.finished_ms), forKey: Key("finished_ms"))
+        }
+    }
+
+    /// The app type `MatchStateView`.
+    public struct MatchStateView: Codable, Sendable, Equatable {
+        public var standing: String
+        public var committed: [String]
+        public var pending_shot: PendingShotView?
+        public var ended_by: String?
+        public var loser: String?
+        public var revealed: [String]
+        public var audit_failed: [String]
+        public var winner: String?
+
+        public init(
+            standing: String,
+            committed: [String],
+            pending_shot: PendingShotView? = nil,
+            ended_by: String? = nil,
+            loser: String? = nil,
+            revealed: [String],
+            audit_failed: [String],
+            winner: String? = nil
+        ) {
+            self.standing = standing
+            self.committed = committed
+            self.pending_shot = pending_shot
+            self.ended_by = ended_by
+            self.loser = loser
+            self.revealed = revealed
+            self.audit_failed = audit_failed
+            self.winner = winner
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("standing"))
+            let v1 = try fields.decode([String].self, forKey: Key("committed"))
+            let v2 = try fields.decodeIfPresent(PendingShotView.self, forKey: Key("pending_shot"))
+            let v3 = try fields.decodeIfPresent(String.self, forKey: Key("ended_by"))
+            let v4 = try fields.decodeIfPresent(String.self, forKey: Key("loser"))
+            let v5 = try fields.decode([String].self, forKey: Key("revealed"))
+            let v6 = try fields.decode([String].self, forKey: Key("audit_failed"))
+            let v7 = try fields.decodeIfPresent(String.self, forKey: Key("winner"))
+            self.standing = v0
+            self.committed = v1
+            self.pending_shot = v2
+            self.ended_by = v3
+            self.loser = v4
+            self.revealed = v5
+            self.audit_failed = v6
+            self.winner = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.standing, forKey: Key("standing"))
+            try fields.encode(self.committed, forKey: Key("committed"))
+            try fields.encode(self.pending_shot, forKey: Key("pending_shot"))
+            try fields.encode(self.ended_by, forKey: Key("ended_by"))
+            try fields.encode(self.loser, forKey: Key("loser"))
+            try fields.encode(self.revealed, forKey: Key("revealed"))
+            try fields.encode(self.audit_failed, forKey: Key("audit_failed"))
+            try fields.encode(self.winner, forKey: Key("winner"))
+        }
+    }
+
+    /// The app type `MatchStatus`.
+    public enum MatchStatus: Codable, Sendable, Equatable {
+        /// `Pending`.
+        case pending
+        /// `Active`.
+        case active
+        /// `Finished`.
+        case finished
+
+        public init(from decoder: Decoder) throws {
+            if let name = try? decoder.singleValueContainer().decode(String.self) {
+                switch name {
+                case "Pending":
+                    self = .pending
+                case "Active":
+                    self = .active
+                case "Finished":
+                    self = .finished
+                default:
+                    throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "MatchStatus: unknown variant \(name)"))
+                }
+                return
+            }
+            let container = try decoder.container(keyedBy: Key.self)
+            guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "MatchStatus: expected one variant"))
+            }
+            switch key.stringValue {
+            case "Pending":
+                self = .pending
+            case "Active":
+                self = .active
+            case "Finished":
+                self = .finished
+            default:
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "MatchStatus: unknown variant \(key.stringValue)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .pending:
+                var single = encoder.singleValueContainer()
+                try single.encode("Pending")
+            case .active:
+                var single = encoder.singleValueContainer()
+                try single.encode("Active")
+            case .finished:
+                var single = encoder.singleValueContainer()
+                try single.encode("Finished")
+            }
+        }
+    }
+
+    /// The app type `MatchSummary`.
+    public struct MatchSummary: Codable, Sendable, Equatable {
+        public var match_id: String
+        public var player1: String
+        public var player2: String
+        public var player2_account: String
+        public var status: MatchStatus
+        public var winner: String?
+        public var created_ms: UInt64
+
+        public init(
+            match_id: String,
+            player1: String,
+            player2: String,
+            player2_account: String,
+            status: MatchStatus,
+            winner: String? = nil,
+            created_ms: UInt64
+        ) {
+            self.match_id = match_id
+            self.player1 = player1
+            self.player2 = player2
+            self.player2_account = player2_account
+            self.status = status
+            self.winner = winner
+            self.created_ms = created_ms
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("match_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("player1"))
+            let v2 = try fields.decode(String.self, forKey: Key("player2"))
+            let v3 = try fields.decode(String.self, forKey: Key("player2_account"))
+            let v4 = try fields.decode(MatchStatus.self, forKey: Key("status"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("winner"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("created_ms")).value
+            self.match_id = v0
+            self.player1 = v1
+            self.player2 = v2
+            self.player2_account = v3
+            self.status = v4
+            self.winner = v5
+            self.created_ms = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.match_id, forKey: Key("match_id"))
+            try fields.encode(self.player1, forKey: Key("player1"))
+            try fields.encode(self.player2, forKey: Key("player2"))
+            try fields.encode(self.player2_account, forKey: Key("player2_account"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.winner, forKey: Key("winner"))
+            try fields.encode(DecimalString(self.created_ms), forKey: Key("created_ms"))
+        }
+    }
+
+    /// The app type `PendingShotView`.
+    public struct PendingShotView: Codable, Sendable, Equatable {
+        public var shot_id: UInt32
+        public var x: UInt8
+        public var y: UInt8
+        public var target: String
+
+        public init(
+            shot_id: UInt32,
+            x: UInt8,
+            y: UInt8,
+            target: String
+        ) {
+            self.shot_id = shot_id
+            self.x = x
+            self.y = y
+            self.target = target
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt32.self, forKey: Key("shot_id"))
+            let v1 = try fields.decode(UInt8.self, forKey: Key("x"))
+            let v2 = try fields.decode(UInt8.self, forKey: Key("y"))
+            let v3 = try fields.decode(String.self, forKey: Key("target"))
+            self.shot_id = v0
+            self.x = v1
+            self.y = v2
+            self.target = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.shot_id, forKey: Key("shot_id"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.target, forKey: Key("target"))
+        }
+    }
+
+    /// The app type `PlayerEntry`.
+    public struct PlayerEntry: Codable, Sendable, Equatable {
+        public var account: String
+        public var player: String
+
+        public init(
+            account: String,
+            player: String
+        ) {
+            self.account = account
+            self.player = player
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("account"))
+            let v1 = try fields.decode(String.self, forKey: Key("player"))
+            self.account = v0
+            self.player = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.player, forKey: Key("player"))
+        }
+    }
+
+    /// The app type `PlayerStatsView`.
+    public struct PlayerStatsView: Codable, Sendable, Equatable {
+        public var wins: UInt64
+        public var losses: UInt64
+        public var games_played: UInt64
+
+        public init(
+            wins: UInt64,
+            losses: UInt64,
+            games_played: UInt64
+        ) {
+            self.wins = wins
+            self.losses = losses
+            self.games_played = games_played
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("wins")).value
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("losses")).value
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("games_played")).value
+            self.wins = v0
+            self.losses = v1
+            self.games_played = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.wins), forKey: Key("wins"))
+            try fields.encode(DecimalString(self.losses), forKey: Key("losses"))
+            try fields.encode(DecimalString(self.games_played), forKey: Key("games_played"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

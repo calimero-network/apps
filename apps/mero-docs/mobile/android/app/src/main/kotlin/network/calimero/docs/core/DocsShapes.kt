@@ -1,5 +1,6 @@
 package network.calimero.docs.core
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.serializer
 
 // The shapes of the contract's answers the phone reads: the read and comment half of the web's
 // adapter (`app/src/lib/docsApi.ts`), over the component ABI in `../logic/res/abi.json`. The calls
@@ -141,3 +143,17 @@ object DocsContract {
     /** Every method the app calls: the ABI test checks each against `abi.json`. */
     val METHODS = listOf("listDocs", "getDoc", "searchDocs", "getDocument", "listComments", "addComment")
 }
+
+/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
+fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
+
+/** [this] (an app type) as the generated client's type [R] (an argument), through its JSON. */
+inline fun <reified R> Any.asContractArg(): R = contractArgJson.decodeFromJsonElement(serializer<R>(), asContractJson())
+
+/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
+val contractArgJson =
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }

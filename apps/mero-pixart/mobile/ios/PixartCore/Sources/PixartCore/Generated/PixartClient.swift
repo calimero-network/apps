@@ -18,17 +18,104 @@ public struct PixartClient: Sendable {
     /// The app type `CursorState`: the ABI names it without its shape, so it is its JSON.
     public typealias CursorState = JSONValue
 
-    /// The app type `DocumentInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias DocumentInfo = JSONValue
-
     /// The app type `Layer`: the ABI names it without its shape, so it is its JSON.
     public typealias Layer = JSONValue
 
     /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
     public typealias Member = JSONValue
 
-    /// The app type `MemberRole`: the ABI names it without its shape, so it is its JSON.
-    public typealias MemberRole = JSONValue
+
+    /// The app type `DocumentInfo`.
+    public struct DocumentInfo: Codable, Sendable, Equatable {
+        public var name: String
+        public var description: String
+        public var width: UInt32
+        public var height: UInt32
+        public var background: String
+        public var layerCount: UInt32
+        public var memberCount: UInt32
+        public var owner: String?
+
+        public init(
+            name: String,
+            description: String,
+            width: UInt32,
+            height: UInt32,
+            background: String,
+            layerCount: UInt32,
+            memberCount: UInt32,
+            owner: String? = nil
+        ) {
+            self.name = name
+            self.description = description
+            self.width = width
+            self.height = height
+            self.background = background
+            self.layerCount = layerCount
+            self.memberCount = memberCount
+            self.owner = owner
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("description"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("width"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("height"))
+            let v4 = try fields.decode(String.self, forKey: Key("background"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("layerCount"))
+            let v6 = try fields.decode(UInt32.self, forKey: Key("memberCount"))
+            let v7 = try fields.decodeIfPresent(String.self, forKey: Key("owner"))
+            self.name = v0
+            self.description = v1
+            self.width = v2
+            self.height = v3
+            self.background = v4
+            self.layerCount = v5
+            self.memberCount = v6
+            self.owner = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(self.background, forKey: Key("background"))
+            try fields.encode(self.layerCount, forKey: Key("layerCount"))
+            try fields.encode(self.memberCount, forKey: Key("memberCount"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+        }
+    }
+
+    /// The app type `MemberRole`.
+    public struct MemberRole: Codable, Sendable, Equatable {
+        public var member: String
+        public var role: String
+
+        public init(
+            member: String,
+            role: String
+        ) {
+            self.member = member
+            self.role = role
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("member"))
+            let v1 = try fields.decode(String.self, forKey: Key("role"))
+            self.member = v0
+            self.role = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.member, forKey: Key("member"))
+            try fields.encode(self.role, forKey: Key("role"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

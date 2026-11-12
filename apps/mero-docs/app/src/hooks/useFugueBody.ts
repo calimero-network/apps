@@ -12,7 +12,7 @@ import {
   type SubscriptionEventData,
 } from '@/calimero/react';
 import { classifyError } from '@/calimero/errors';
-import type { Change as WireChange, DocsClient } from '@/lib/docsApi';
+import { type Change as WireChange, type MeroDocsClient, toApplied, wireOps, toBlocks, toBlock } from '@/lib/docsApi';
 import {
   diffBlocks,
   isPlaceholder,
@@ -84,7 +84,7 @@ export interface BodyEditor {
 }
 
 export interface UseFugueBodyOptions {
-  client: DocsClient | null;
+  client: MeroDocsClient | null;
   docId: string | null;
   contextId: string | null;
   editor: BodyEditor | null;
@@ -499,7 +499,7 @@ export function useFugueBody({
     async (touched: Set<string>) => {
       if (!client || !docId) return;
       try {
-        const remote = backendBlocks(await client.getDocument({ doc: docId })).map(withoutDefaults);
+        const remote = backendBlocks(toBlocks(await client.getDocument({ doc: docId }))).map(withoutDefaults);
         reconcile(remote, touched);
         setStatus((prev) => (prev === 'error' ? prev : 'saved'));
       } catch (cause) {
@@ -515,7 +515,7 @@ export function useFugueBody({
   /** Replaces the editor's unsent edits with the node's document. */
   const discardUnsent = useCallback(async () => {
     if (!client || !docId) return;
-    const remote = backendBlocks(await client.getDocument({ doc: docId }));
+    const remote = backendBlocks(toBlocks(await client.getDocument({ doc: docId })));
     dirtyRef.current = false;
     resyncRef.current = false;
     replaceChanged(remote);
@@ -531,7 +531,7 @@ export function useFugueBody({
         for (const block of blocks) {
           const was = serverBlock(block);
           if (!was) return void (await refresh());
-          const read = await client.getBlock({ doc: docId, block });
+          const read = toBlock(await client.getBlock({ doc: docId, block }));
           if (!read) return void (await refresh());
           const remote = { inline: backendSpans(read.spans), ids: read.ids };
           rebaseBlock(block, was, remote);
@@ -547,7 +547,7 @@ export function useFugueBody({
 
   /** Runs one diff's calls in order, stopping at the first refused write. */
   const runCalls = useCallback(
-    async (target: DocsClient, doc: string, calls: BlockCall[], progress: { done: number }): Promise<Outcome> => {
+    async (target: MeroDocsClient, doc: string, calls: BlockCall[], progress: { done: number }): Promise<Outcome> => {
       const minted = new Map<string, string>();
       const touched = new Set<string>();
       const real = (ref: string | null) => (ref === null ? null : (minted.get(ref) ?? ref));
@@ -601,14 +601,16 @@ export function useFugueBody({
             const ops = typed ?? call.ops;
             // The editor's ops leave `attributes` out where the generated type sends
             // `null`; serde reads a missing Option as None, so they go as they are.
-            const result = await target.applyDeltaOn({
-              doc,
-              block,
-              base: call.base,
-              ops: ops as unknown as WireChange[],
-              // The anchor claims the write is an insert at it, which the node checks.
-              anchor: typed ? (anchor?.token ?? null) : null,
-            });
+            const result = toApplied(
+              await target.applyDeltaOn({
+                doc,
+                block,
+                base: call.base,
+                ops: wireOps(ops as unknown as WireChange[]),
+                // The anchor claims the write is an insert at it, which the node checks.
+                anchor: typed ? (anchor?.token ?? null) : null,
+              }),
+            );
             if (was && !touched.has(block)) {
               const base = result.applied ? { inline: applyChanges(was.inline, ops) } : was;
               const remote = { inline: backendSpans(result.spans), ids: result.ids };

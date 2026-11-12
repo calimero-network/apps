@@ -15,9 +15,6 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct DesignClient: Sendable {
-    /// The app type `BoardInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias BoardInfo = JSONValue
-
     /// The app type `Comment`: the ABI names it without its shape, so it is its JSON.
     public typealias Comment = JSONValue
 
@@ -27,20 +24,148 @@ public struct DesignClient: Sendable {
     /// The app type `Element`: the ABI names it without its shape, so it is its JSON.
     public typealias Element = JSONValue
 
-    /// The app type `ElementPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias ElementPage = JSONValue
-
     /// The app type `ElementPatch`: the ABI names it without its shape, so it is its JSON.
     public typealias ElementPatch = JSONValue
-
-    /// The app type `LabelUpdate`: the ABI names it without its shape, so it is its JSON.
-    public typealias LabelUpdate = JSONValue
 
     /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
     public typealias Member = JSONValue
 
-    /// The app type `MemberRole`: the ABI names it without its shape, so it is its JSON.
-    public typealias MemberRole = JSONValue
+
+    /// The app type `BoardInfo`.
+    public struct BoardInfo: Codable, Sendable, Equatable {
+        public var name: String
+        public var description: String
+        public var elementCount: UInt32
+        public var memberCount: UInt32
+        public var owner: String?
+
+        public init(
+            name: String,
+            description: String,
+            elementCount: UInt32,
+            memberCount: UInt32,
+            owner: String? = nil
+        ) {
+            self.name = name
+            self.description = description
+            self.elementCount = elementCount
+            self.memberCount = memberCount
+            self.owner = owner
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("description"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("elementCount"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("memberCount"))
+            let v4 = try fields.decodeIfPresent(String.self, forKey: Key("owner"))
+            self.name = v0
+            self.description = v1
+            self.elementCount = v2
+            self.memberCount = v3
+            self.owner = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.elementCount, forKey: Key("elementCount"))
+            try fields.encode(self.memberCount, forKey: Key("memberCount"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+        }
+    }
+
+    /// The app type `ElementPage`.
+    public struct ElementPage: Codable, Sendable, Equatable {
+        public var items: [Element]
+        public var nextCursor: String?
+
+        public init(
+            items: [Element],
+            nextCursor: String? = nil
+        ) {
+            self.items = items
+            self.nextCursor = nextCursor
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode([Element].self, forKey: Key("items"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("nextCursor"))
+            self.items = v0
+            self.nextCursor = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.items, forKey: Key("items"))
+            try fields.encode(self.nextCursor, forKey: Key("nextCursor"))
+        }
+    }
+
+    /// The app type `LabelUpdate`.
+    public struct LabelUpdate: Codable, Sendable, Equatable {
+        public var id: String
+        public var label: String?
+
+        public init(
+            id: String,
+            label: String? = nil
+        ) {
+            self.id = id
+            self.label = label
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("label"))
+            self.id = v0
+            self.label = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.label, forKey: Key("label"))
+        }
+    }
+
+    /// The app type `MemberRole`.
+    public struct MemberRole: Codable, Sendable, Equatable {
+        public var member: String
+        public var role: String
+        public var account: String?
+
+        public init(
+            member: String,
+            role: String,
+            account: String? = nil
+        ) {
+            self.member = member
+            self.role = role
+            self.account = account
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("member"))
+            let v1 = try fields.decode(String.self, forKey: Key("role"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("account"))
+            self.member = v0
+            self.role = v1
+            self.account = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.member, forKey: Key("member"))
+            try fields.encode(self.role, forKey: Key("role"))
+            try fields.encode(self.account, forKey: Key("account"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

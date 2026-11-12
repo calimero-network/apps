@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { DocsClient } from '@/lib/docsApi';
+import type { MeroDocsClient } from '@/lib/docsApi';
+import { docsOver } from '@/test/docsClient';
 import { TagNameTakenError, useTagsSource } from '../useTags';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
@@ -13,37 +14,33 @@ const notifyDocsRefetch = vi.fn();
 const toastError = vi.hoisted(() => vi.fn());
 let onRegistryEvent: (() => void) | null = null;
 let watched: unknown = null;
-type Client = {
-  listTags: typeof listTags;
-  setTag?: typeof setTag;
-  deleteTag?: typeof deleteTag;
-};
+/** The workspace's registry: the real class over fakes of its methods. */
+const registry = (fake: object) => docsOver(fake, 'reg-ctx');
 const ws = {
-  registryClient: { listTags, setTag, deleteTag } as Client | null,
+  registryClient: registry({ listTags, setTag, deleteTag }) as MeroDocsClient | null,
   registryContextId: 'reg-ctx',
 };
 let mero: object | null = {}; // null: no node connection, so no docs client
 const index = {
   rows: [] as IndexRow[],
   contextOf: (folderId: string) => `ctx-${folderId}`,
-  clientOf: (folderId: string) =>
-    mero ? new DocsClient(mero as never, `ctx-${folderId}`) : undefined,
+  clientOf: (folderId: string) => (mero ? folderClient(`ctx-${folderId}`) : undefined),
 };
+
+/** A folder's docs instance: the real class, its `removeTag` recorded with the folder's context. */
+const folderFakes = new Map<string, object>();
+function folderClient(contextId: string): MeroDocsClient {
+  let fake = folderFakes.get(contextId);
+  if (!fake) {
+    fake = { removeTag: (params: { id: string; tag: string }) => removeTag(contextId, params) };
+    folderFakes.set(contextId, fake);
+  }
+  return docsOver(fake, contextId);
+}
 
 vi.mock('../useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('../useDocs', () => ({
   notifyDocsRefetch: (id: string) => notifyDocsRefetch(id),
-}));
-vi.mock('@/lib/docsApi', () => ({
-  DocsClient: class {
-    constructor(
-      _mero: unknown,
-      private contextId: string,
-    ) {}
-    removeTag(params: { id: string; tag: string }) {
-      return removeTag(this.contextId, params);
-    }
-  },
 }));
 vi.mock('sonner', () => ({ toast: { error: toastError } }));
 vi.mock('../useContextEvents', () => ({
@@ -66,7 +63,7 @@ beforeEach(() => {
   setTag.mockReset().mockResolvedValue(undefined);
   deleteTag.mockReset().mockResolvedValue(undefined);
   removeTag.mockReset().mockResolvedValue(undefined);
-  ws.registryClient = { listTags, setTag, deleteTag };
+  ws.registryClient = registry({ listTags, setTag, deleteTag });
   index.rows = [];
   mero = {};
   onRegistryEvent = null;
@@ -110,7 +107,7 @@ describe('useTagsSource', () => {
     await waitFor(() => expect(result.current.tags).toHaveLength(1));
 
     const other = vi.fn(() => new Promise(() => {}));
-    ws.registryClient = { listTags: other };
+    ws.registryClient = registry({ listTags: other });
     rerender();
     expect(result.current.tags).toEqual([]);
   });
@@ -127,7 +124,7 @@ describe('useTagsSource', () => {
     expect(listTags).toHaveBeenCalledTimes(3);
 
     listTags.mockReset().mockRejectedValue(new Error('down'));
-    const other = { listTags };
+    const other = registry({ listTags });
     ws.registryClient = other;
     const view = renderHook(() => useTagsSource(index));
     await act(async () => vi.advanceTimersByTimeAsync(60_000));

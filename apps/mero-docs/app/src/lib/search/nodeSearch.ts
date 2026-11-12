@@ -4,7 +4,7 @@
 // app version without the view, cannot answer; the caller then falls back to
 // the text it has read itself (`useTextIndex`).
 
-import type { DocSearchHit, DocsClient } from '@/lib/docsApi';
+import { type DocSearchHit, type MeroDocsClient, toSearchPage } from '@/lib/docsApi';
 import type { DocText } from '@/lib/workspaceIndex/types';
 import { foldForSearch } from './match';
 
@@ -110,33 +110,37 @@ export function matchedInTitle(hit: NodeHit): boolean {
 /** One page of a folder's best matches. */
 export async function searchFolder(
   folderId: string,
-  client: DocsClient,
+  client: MeroDocsClient,
   query: string,
   limit = NODE_SEARCH_LIMIT,
 ): Promise<NodeHit[]> {
-  const page = await client.searchDocs({
-    query,
-    include_archived: false,
-    cursor: null,
-    limit,
-  });
+  const page = toSearchPage(
+    await client.searchDocs({
+      query,
+      includeArchived: false,
+      cursor: null,
+      limit,
+    }),
+  );
   return page.hits.map((h) => toHit(folderId, h));
 }
 
 /** Every doc of a folder the index matches, up to `NODE_FILTER_PAGES` pages. */
 export async function folderMatches(
-  client: DocsClient,
+  client: MeroDocsClient,
   query: string,
 ): Promise<string[]> {
   const ids: string[] = [];
   let cursor: number | null = null;
   for (let page = 0; page < NODE_FILTER_PAGES; page++) {
-    const res = await client.searchDocs({
-      query,
-      include_archived: true,
-      cursor,
-      limit: NODE_FILTER_PAGE,
-    });
+    const res = toSearchPage(
+      await client.searchDocs({
+        query,
+        includeArchived: true,
+        cursor,
+        limit: NODE_FILTER_PAGE,
+      }),
+    );
     ids.push(...res.hits.map((h) => h.id));
     cursor = res.next_cursor ?? null;
     if (cursor === null) break;

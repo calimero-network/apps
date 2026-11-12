@@ -15,32 +15,592 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct CalendarClient: Sendable {
-    /// The app type `BookingLinkView`: the ABI names it without its shape, so it is its JSON.
-    public typealias BookingLinkView = JSONValue
 
-    /// The app type `BookingPage`: the ABI names it without its shape, so it is its JSON.
-    public typealias BookingPage = JSONValue
+    /// The app type `BookingLinkView`.
+    public struct BookingLinkView: Codable, Sendable, Equatable {
+        public var linkId: String
+        public var grantId: String
+        public var title: String
+        public var description: String
+        public var durationMinutes: UInt32
+        public var weeklyHours: [WeeklyWindow]
+        public var utcOffsetMinutes: Int32
+        public var horizonDays: UInt32
+        public var minNoticeMinutes: UInt32
+        public var createdAtMs: UInt64
+        public var expiresAtMs: UInt64?
+        public var status: String
+        public var booking: BookingView?
 
-    /// The app type `BookingView`: the ABI names it without its shape, so it is its JSON.
-    public typealias BookingView = JSONValue
+        public init(
+            linkId: String,
+            grantId: String,
+            title: String,
+            description: String,
+            durationMinutes: UInt32,
+            weeklyHours: [WeeklyWindow],
+            utcOffsetMinutes: Int32,
+            horizonDays: UInt32,
+            minNoticeMinutes: UInt32,
+            createdAtMs: UInt64,
+            expiresAtMs: UInt64? = nil,
+            status: String,
+            booking: BookingView? = nil
+        ) {
+            self.linkId = linkId
+            self.grantId = grantId
+            self.title = title
+            self.description = description
+            self.durationMinutes = durationMinutes
+            self.weeklyHours = weeklyHours
+            self.utcOffsetMinutes = utcOffsetMinutes
+            self.horizonDays = horizonDays
+            self.minNoticeMinutes = minNoticeMinutes
+            self.createdAtMs = createdAtMs
+            self.expiresAtMs = expiresAtMs
+            self.status = status
+            self.booking = booking
+        }
 
-    /// The app type `CalendarEvent`: the ABI names it without its shape, so it is its JSON.
-    public typealias CalendarEvent = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("linkId"))
+            let v1 = try fields.decode(String.self, forKey: Key("grantId"))
+            let v2 = try fields.decode(String.self, forKey: Key("title"))
+            let v3 = try fields.decode(String.self, forKey: Key("description"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("durationMinutes"))
+            let v5 = try fields.decode([WeeklyWindow].self, forKey: Key("weeklyHours"))
+            let v6 = try fields.decode(Int32.self, forKey: Key("utcOffsetMinutes"))
+            let v7 = try fields.decode(UInt32.self, forKey: Key("horizonDays"))
+            let v8 = try fields.decode(UInt32.self, forKey: Key("minNoticeMinutes"))
+            let v9 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAtMs")).value
+            let v10 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("expiresAtMs"))?.value
+            let v11 = try fields.decode(String.self, forKey: Key("status"))
+            let v12 = try fields.decodeIfPresent(BookingView.self, forKey: Key("booking"))
+            self.linkId = v0
+            self.grantId = v1
+            self.title = v2
+            self.description = v3
+            self.durationMinutes = v4
+            self.weeklyHours = v5
+            self.utcOffsetMinutes = v6
+            self.horizonDays = v7
+            self.minNoticeMinutes = v8
+            self.createdAtMs = v9
+            self.expiresAtMs = v10
+            self.status = v11
+            self.booking = v12
+        }
 
-    /// The app type `CreateBookingLink`: the ABI names it without its shape, so it is its JSON.
-    public typealias CreateBookingLink = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.linkId, forKey: Key("linkId"))
+            try fields.encode(self.grantId, forKey: Key("grantId"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.durationMinutes, forKey: Key("durationMinutes"))
+            try fields.encode(self.weeklyHours, forKey: Key("weeklyHours"))
+            try fields.encode(self.utcOffsetMinutes, forKey: Key("utcOffsetMinutes"))
+            try fields.encode(self.horizonDays, forKey: Key("horizonDays"))
+            try fields.encode(self.minNoticeMinutes, forKey: Key("minNoticeMinutes"))
+            try fields.encode(DecimalString(self.createdAtMs), forKey: Key("createdAtMs"))
+            try fields.encode(self.expiresAtMs.map { DecimalString($0) }, forKey: Key("expiresAtMs"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.booking, forKey: Key("booking"))
+        }
+    }
 
-    /// The app type `CreateCalendarEvent`: the ABI names it without its shape, so it is its JSON.
-    public typealias CreateCalendarEvent = JSONValue
+    /// The app type `BookingPage`.
+    public struct BookingPage: Codable, Sendable, Equatable {
+        public var title: String
+        public var description: String
+        public var ownerName: String?
+        public var durationMinutes: UInt32
+        public var status: String
+        public var expiresAtMs: UInt64?
+        public var booking: BookingView?
 
-    /// The app type `GuestDetails`: the ABI names it without its shape, so it is its JSON.
-    public typealias GuestDetails = JSONValue
+        public init(
+            title: String,
+            description: String,
+            ownerName: String? = nil,
+            durationMinutes: UInt32,
+            status: String,
+            expiresAtMs: UInt64? = nil,
+            booking: BookingView? = nil
+        ) {
+            self.title = title
+            self.description = description
+            self.ownerName = ownerName
+            self.durationMinutes = durationMinutes
+            self.status = status
+            self.expiresAtMs = expiresAtMs
+            self.booking = booking
+        }
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("title"))
+            let v1 = try fields.decode(String.self, forKey: Key("description"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("ownerName"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("durationMinutes"))
+            let v4 = try fields.decode(String.self, forKey: Key("status"))
+            let v5 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("expiresAtMs"))?.value
+            let v6 = try fields.decodeIfPresent(BookingView.self, forKey: Key("booking"))
+            self.title = v0
+            self.description = v1
+            self.ownerName = v2
+            self.durationMinutes = v3
+            self.status = v4
+            self.expiresAtMs = v5
+            self.booking = v6
+        }
 
-    /// The app type `UpdateCalendarEvent`: the ABI names it without its shape, so it is its JSON.
-    public typealias UpdateCalendarEvent = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.ownerName, forKey: Key("ownerName"))
+            try fields.encode(self.durationMinutes, forKey: Key("durationMinutes"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.expiresAtMs.map { DecimalString($0) }, forKey: Key("expiresAtMs"))
+            try fields.encode(self.booking, forKey: Key("booking"))
+        }
+    }
+
+    /// The app type `BookingView`.
+    public struct BookingView: Codable, Sendable, Equatable {
+        public var startMs: UInt64
+        public var endMs: UInt64
+        public var guestName: String
+        public var guestEmail: String
+        public var guestNote: String
+        public var bookedAtMs: UInt64
+        public var rescheduledCount: UInt32
+
+        public init(
+            startMs: UInt64,
+            endMs: UInt64,
+            guestName: String,
+            guestEmail: String,
+            guestNote: String,
+            bookedAtMs: UInt64,
+            rescheduledCount: UInt32
+        ) {
+            self.startMs = startMs
+            self.endMs = endMs
+            self.guestName = guestName
+            self.guestEmail = guestEmail
+            self.guestNote = guestNote
+            self.bookedAtMs = bookedAtMs
+            self.rescheduledCount = rescheduledCount
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("startMs")).value
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("endMs")).value
+            let v2 = try fields.decode(String.self, forKey: Key("guestName"))
+            let v3 = try fields.decode(String.self, forKey: Key("guestEmail"))
+            let v4 = try fields.decode(String.self, forKey: Key("guestNote"))
+            let v5 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("bookedAtMs")).value
+            let v6 = try fields.decode(UInt32.self, forKey: Key("rescheduledCount"))
+            self.startMs = v0
+            self.endMs = v1
+            self.guestName = v2
+            self.guestEmail = v3
+            self.guestNote = v4
+            self.bookedAtMs = v5
+            self.rescheduledCount = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.startMs), forKey: Key("startMs"))
+            try fields.encode(DecimalString(self.endMs), forKey: Key("endMs"))
+            try fields.encode(self.guestName, forKey: Key("guestName"))
+            try fields.encode(self.guestEmail, forKey: Key("guestEmail"))
+            try fields.encode(self.guestNote, forKey: Key("guestNote"))
+            try fields.encode(DecimalString(self.bookedAtMs), forKey: Key("bookedAtMs"))
+            try fields.encode(self.rescheduledCount, forKey: Key("rescheduledCount"))
+        }
+    }
+
+    /// The app type `CalendarEvent`.
+    public struct CalendarEvent: Codable, Sendable, Equatable {
+        public var id: String
+        public var title: String
+        public var description: String
+        public var owner: String
+        public var start: String
+        public var end: String
+        public var event_type: String
+        public var color: String
+        public var peers: [String]
+        public var `private`: Bool
+
+        public init(
+            id: String,
+            title: String,
+            description: String,
+            owner: String,
+            start: String,
+            end: String,
+            event_type: String,
+            color: String,
+            peers: [String],
+            `private`: Bool
+        ) {
+            self.id = id
+            self.title = title
+            self.description = description
+            self.owner = owner
+            self.start = start
+            self.end = end
+            self.event_type = event_type
+            self.color = color
+            self.peers = peers
+            self.`private` = `private`
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("title"))
+            let v2 = try fields.decode(String.self, forKey: Key("description"))
+            let v3 = try fields.decode(String.self, forKey: Key("owner"))
+            let v4 = try fields.decode(String.self, forKey: Key("start"))
+            let v5 = try fields.decode(String.self, forKey: Key("end"))
+            let v6 = try fields.decode(String.self, forKey: Key("event_type"))
+            let v7 = try fields.decode(String.self, forKey: Key("color"))
+            let v8 = try fields.decode([String].self, forKey: Key("peers"))
+            let v9 = try fields.decode(Bool.self, forKey: Key("private"))
+            self.id = v0
+            self.title = v1
+            self.description = v2
+            self.owner = v3
+            self.start = v4
+            self.end = v5
+            self.event_type = v6
+            self.color = v7
+            self.peers = v8
+            self.`private` = v9
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+            try fields.encode(self.start, forKey: Key("start"))
+            try fields.encode(self.end, forKey: Key("end"))
+            try fields.encode(self.event_type, forKey: Key("event_type"))
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.peers, forKey: Key("peers"))
+            try fields.encode(self.`private`, forKey: Key("private"))
+        }
+    }
+
+    /// The app type `CreateBookingLink`.
+    public struct CreateBookingLink: Codable, Sendable, Equatable {
+        public var tokenHash: String
+        public var grantId: String
+        public var title: String
+        public var description: String
+        public var durationMinutes: UInt32
+        public var weeklyHours: [WeeklyWindow]
+        public var utcOffsetMinutes: Int32
+        public var horizonDays: UInt32
+        public var minNoticeMinutes: UInt32
+        public var expiresAtMs: UInt64?
+
+        public init(
+            tokenHash: String,
+            grantId: String,
+            title: String,
+            description: String,
+            durationMinutes: UInt32,
+            weeklyHours: [WeeklyWindow],
+            utcOffsetMinutes: Int32,
+            horizonDays: UInt32,
+            minNoticeMinutes: UInt32,
+            expiresAtMs: UInt64? = nil
+        ) {
+            self.tokenHash = tokenHash
+            self.grantId = grantId
+            self.title = title
+            self.description = description
+            self.durationMinutes = durationMinutes
+            self.weeklyHours = weeklyHours
+            self.utcOffsetMinutes = utcOffsetMinutes
+            self.horizonDays = horizonDays
+            self.minNoticeMinutes = minNoticeMinutes
+            self.expiresAtMs = expiresAtMs
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("tokenHash"))
+            let v1 = try fields.decode(String.self, forKey: Key("grantId"))
+            let v2 = try fields.decode(String.self, forKey: Key("title"))
+            let v3 = try fields.decode(String.self, forKey: Key("description"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("durationMinutes"))
+            let v5 = try fields.decode([WeeklyWindow].self, forKey: Key("weeklyHours"))
+            let v6 = try fields.decode(Int32.self, forKey: Key("utcOffsetMinutes"))
+            let v7 = try fields.decode(UInt32.self, forKey: Key("horizonDays"))
+            let v8 = try fields.decode(UInt32.self, forKey: Key("minNoticeMinutes"))
+            let v9 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("expiresAtMs"))?.value
+            self.tokenHash = v0
+            self.grantId = v1
+            self.title = v2
+            self.description = v3
+            self.durationMinutes = v4
+            self.weeklyHours = v5
+            self.utcOffsetMinutes = v6
+            self.horizonDays = v7
+            self.minNoticeMinutes = v8
+            self.expiresAtMs = v9
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.tokenHash, forKey: Key("tokenHash"))
+            try fields.encode(self.grantId, forKey: Key("grantId"))
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.durationMinutes, forKey: Key("durationMinutes"))
+            try fields.encode(self.weeklyHours, forKey: Key("weeklyHours"))
+            try fields.encode(self.utcOffsetMinutes, forKey: Key("utcOffsetMinutes"))
+            try fields.encode(self.horizonDays, forKey: Key("horizonDays"))
+            try fields.encode(self.minNoticeMinutes, forKey: Key("minNoticeMinutes"))
+            try fields.encode(self.expiresAtMs.map { DecimalString($0) }, forKey: Key("expiresAtMs"))
+        }
+    }
+
+    /// The app type `CreateCalendarEvent`.
+    public struct CreateCalendarEvent: Codable, Sendable, Equatable {
+        public var title: String
+        public var description: String
+        public var start: String
+        public var end: String
+        public var event_type: String
+        public var color: String
+        public var peers: [String]
+
+        public init(
+            title: String,
+            description: String,
+            start: String,
+            end: String,
+            event_type: String,
+            color: String,
+            peers: [String]
+        ) {
+            self.title = title
+            self.description = description
+            self.start = start
+            self.end = end
+            self.event_type = event_type
+            self.color = color
+            self.peers = peers
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("title"))
+            let v1 = try fields.decode(String.self, forKey: Key("description"))
+            let v2 = try fields.decode(String.self, forKey: Key("start"))
+            let v3 = try fields.decode(String.self, forKey: Key("end"))
+            let v4 = try fields.decode(String.self, forKey: Key("event_type"))
+            let v5 = try fields.decode(String.self, forKey: Key("color"))
+            let v6 = try fields.decode([String].self, forKey: Key("peers"))
+            self.title = v0
+            self.description = v1
+            self.start = v2
+            self.end = v3
+            self.event_type = v4
+            self.color = v5
+            self.peers = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.start, forKey: Key("start"))
+            try fields.encode(self.end, forKey: Key("end"))
+            try fields.encode(self.event_type, forKey: Key("event_type"))
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.peers, forKey: Key("peers"))
+        }
+    }
+
+    /// The app type `GuestDetails`.
+    public struct GuestDetails: Codable, Sendable, Equatable {
+        public var name: String
+        public var email: String
+        public var note: String
+
+        public init(
+            name: String,
+            email: String,
+            note: String
+        ) {
+            self.name = name
+            self.email = email
+            self.note = note
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("email"))
+            let v2 = try fields.decode(String.self, forKey: Key("note"))
+            self.name = v0
+            self.email = v1
+            self.note = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.email, forKey: Key("email"))
+            try fields.encode(self.note, forKey: Key("note"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var username: String
+        public var joinedAt: UInt64
+        public var usernameUpdatedAt: UInt64
+
+        public init(
+            id: String,
+            username: String,
+            joinedAt: UInt64,
+            usernameUpdatedAt: UInt64
+        ) {
+            self.id = id
+            self.username = username
+            self.joinedAt = joinedAt
+            self.usernameUpdatedAt = usernameUpdatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("joinedAt")).value
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("usernameUpdatedAt")).value
+            self.id = v0
+            self.username = v1
+            self.joinedAt = v2
+            self.usernameUpdatedAt = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(DecimalString(self.joinedAt), forKey: Key("joinedAt"))
+            try fields.encode(DecimalString(self.usernameUpdatedAt), forKey: Key("usernameUpdatedAt"))
+        }
+    }
+
+    /// The app type `UpdateCalendarEvent`.
+    public struct UpdateCalendarEvent: Codable, Sendable, Equatable {
+        public var title: String?
+        public var description: String?
+        public var start: String?
+        public var end: String?
+        public var event_type: String?
+        public var color: String?
+        public var peers: [String]?
+
+        public init(
+            title: String? = nil,
+            description: String? = nil,
+            start: String? = nil,
+            end: String? = nil,
+            event_type: String? = nil,
+            color: String? = nil,
+            peers: [String]? = nil
+        ) {
+            self.title = title
+            self.description = description
+            self.start = start
+            self.end = end
+            self.event_type = event_type
+            self.color = color
+            self.peers = peers
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decodeIfPresent(String.self, forKey: Key("title"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("description"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("start"))
+            let v3 = try fields.decodeIfPresent(String.self, forKey: Key("end"))
+            let v4 = try fields.decodeIfPresent(String.self, forKey: Key("event_type"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("color"))
+            let v6 = try fields.decodeIfPresent([String].self, forKey: Key("peers"))
+            self.title = v0
+            self.description = v1
+            self.start = v2
+            self.end = v3
+            self.event_type = v4
+            self.color = v5
+            self.peers = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.title, forKey: Key("title"))
+            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encode(self.start, forKey: Key("start"))
+            try fields.encode(self.end, forKey: Key("end"))
+            try fields.encode(self.event_type, forKey: Key("event_type"))
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.peers, forKey: Key("peers"))
+        }
+    }
+
+    /// The app type `WeeklyWindow`.
+    public struct WeeklyWindow: Codable, Sendable, Equatable {
+        public var weekday: UInt8
+        public var startMinute: UInt16
+        public var endMinute: UInt16
+
+        public init(
+            weekday: UInt8,
+            startMinute: UInt16,
+            endMinute: UInt16
+        ) {
+            self.weekday = weekday
+            self.startMinute = startMinute
+            self.endMinute = endMinute
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt8.self, forKey: Key("weekday"))
+            let v1 = try fields.decode(UInt16.self, forKey: Key("startMinute"))
+            let v2 = try fields.decode(UInt16.self, forKey: Key("endMinute"))
+            self.weekday = v0
+            self.startMinute = v1
+            self.endMinute = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.weekday, forKey: Key("weekday"))
+            try fields.encode(self.startMinute, forKey: Key("startMinute"))
+            try fields.encode(self.endMinute, forKey: Key("endMinute"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

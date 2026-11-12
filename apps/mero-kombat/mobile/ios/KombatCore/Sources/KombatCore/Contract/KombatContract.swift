@@ -25,12 +25,17 @@ extension KombatClient {
     }
 }
 
-extension JSONValue {
+extension Encodable {
     /// This answer as the app type `T`. The ABI names `ArenaView` and `MatchSummary` without their
     /// shape until the logic derives `AbiType`, so the generated client answers their JSON and the
     /// types below read it.
     func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 
