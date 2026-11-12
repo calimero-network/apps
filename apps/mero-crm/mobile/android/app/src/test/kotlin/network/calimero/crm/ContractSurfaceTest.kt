@@ -8,9 +8,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.crm.generated.CrmContract
-import network.calimero.crm.generated.DealDetail
 import network.calimero.crm.generated.DealView
 import network.calimero.crm.generated.client.CrmClient
+import network.calimero.crm.generated.closedAt
+import network.calimero.crm.generated.dueAt
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.nextActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -111,12 +114,12 @@ class ContractSurfaceTest {
     fun `answers read u64s from decimal strings`() =
         runTest {
             val c = CrmClient(Recorder())
-            val deal = CrmContract.read<DealView>(c.listDeals().first())
+            val deal = c.listDeals().first()
             assertEquals(12_500uL, deal.value)
             assertEquals(1_793_181_600_000uL, deal.expectedClose)
             assertNull(deal.closedAt)
             assertEquals(1_793_268_000_000uL, deal.nextActivity?.dueAt)
-            assertEquals(deal, CrmContract.read<DealDetail>(c.getDeal("d1")).deal)
+            assertEquals(deal, c.getDeal("d1").deal)
             val back = Json.decodeFromString(DealView.serializer(), Json.encodeToString(DealView.serializer(), deal))
             assertEquals("encoding writes the wire's strings back", deal, back)
         }

@@ -88,7 +88,7 @@ enum CrmDemo {
         var activities: [ActivityView] = []
         var notes: [NoteView] = []
         var automations: [AutomationView] = []
-        var settings = Settings(currency: "USD", rottingDays: 14)
+        var settings = Settings(currency: "USD", rotting_days: 14)
     }
 
     final class Store: @unchecked Sendable {
@@ -200,10 +200,10 @@ enum CrmDemo {
                 let id = mint("activity")
                 p.activities.append(
                     ActivityView(
-                        id: id, dealId: call.string("dealId"), contactId: call.string("contactId"),
+                        id: id, deal_id: call.string("dealId"), contact_id: call.string("contactId"),
                         kind: call.string("kind") ?? "task", subject: call.string("subject") ?? "",
-                        dueAt: u64(call, "dueAt") ?? nowMs, done: false, owner: call.string("owner") ?? CrmDemo.me,
-                        note: call.string("note") ?? "", createdBy: CrmDemo.me, createdAt: nowMs))
+                        due_at: u64(call, "dueAt") ?? nowMs, done: false, owner: call.string("owner") ?? CrmDemo.me,
+                        note: call.string("note") ?? "", created_by: CrmDemo.me, created_at: nowMs))
                 return try DemoReply.json(id)
             case "setActivityDone":
                 if let id = call.string("activityId"), let i = p.activities.firstIndex(where: { $0.id == id }) {
@@ -224,8 +224,8 @@ enum CrmDemo {
                 let id = mint("note")
                 p.notes.append(
                     NoteView(
-                        id: id, dealId: call.string("dealId") ?? "", author: CrmDemo.me, body: call.string("body") ?? "",
-                        createdAt: nowMs))
+                        id: id, deal_id: call.string("dealId") ?? "", author: CrmDemo.me, body: call.string("body") ?? "",
+                        created_at: nowMs))
                 return try DemoReply.json(id)
             case "deleteNote":
                 let id = call.string("noteId")
@@ -283,9 +283,9 @@ enum CrmDemo {
                 let id = mint("automation")
                 p.automations.append(
                     AutomationView(
-                        id: id, stageId: call.string("stageId") ?? "", kind: call.string("kind") ?? "task",
-                        subject: call.string("subject") ?? "", dueInDays: u32(call, "dueInDays"), enabled: true,
-                        createdBy: CrmDemo.me, createdAt: nowMs))
+                        id: id, stage_id: call.string("stageId") ?? "", kind: call.string("kind") ?? "task",
+                        subject: call.string("subject") ?? "", due_in_days: u32(call, "dueInDays"), enabled: true,
+                        created_by: CrmDemo.me, created_at: nowMs))
                 return try DemoReply.json(id)
             case "setAutomationEnabled":
                 if let id = call.string("automationId"), let i = p.automations.firstIndex(where: { $0.id == id }) {
@@ -310,21 +310,21 @@ enum CrmDemo {
             let probability: UInt32 =
                 d.status == "won" ? 100 : d.status == "lost" ? 0 : (p.stages.first { $0.id == d.stageId }?.probability ?? 0)
             return DealView(
-                id: d.id, title: d.title, value: d.value, organization: d.organization, contactId: d.contactId,
-                contactName: d.contactId.flatMap { id in p.contacts.first { $0.id == id }?.name }, owner: d.owner,
-                stageId: d.stageId, status: d.status, lostReason: d.lostReason, expectedClose: d.expectedClose,
-                source: d.source, probability: probability, stageEnteredAt: d.stageEnteredAt, closedAt: d.closedAt,
-                nextActivity: open.first.map { NextActivity(id: $0.id, kind: $0.kind, subject: $0.subject, dueAt: $0.dueAt) },
-                openActivities: UInt32(open.count), lastTouchAt: touches.max(), createdBy: d.createdBy, createdAt: d.createdAt)
+                id: d.id, title: d.title, value: d.value, organization: d.organization, contact_id: d.contactId,
+                contact_name: d.contactId.flatMap { id in p.contacts.first { $0.id == id }?.name }, owner: d.owner,
+                stage_id: d.stageId, status: d.status, lost_reason: d.lostReason, expected_close: d.expectedClose,
+                source: d.source, probability: probability, stage_entered_at: d.stageEnteredAt, closed_at: d.closedAt,
+                next_activity: open.first.map { NextActivity(id: $0.id, kind: $0.kind, subject: $0.subject, due_at: $0.dueAt) },
+                open_activities: UInt32(open.count), last_touch_at: touches.max(), created_by: d.createdBy, created_at: d.createdAt)
         }
 
         private func view(_ c: ContactRecord, _ p: Pipeline) -> ContactView {
             let deals = p.deals.filter { $0.contactId == c.id }
             return ContactView(
-                id: c.id, name: c.name, email: c.email, phone: c.phone, organization: c.organization, jobTitle: c.jobTitle,
-                openDeals: UInt32(deals.filter { $0.status == "open" }.count),
-                wonValue: deals.filter { $0.status == "won" }.reduce(0) { $0 + $1.value }, createdBy: c.createdBy,
-                createdAt: c.createdAt)
+                id: c.id, name: c.name, email: c.email, phone: c.phone, organization: c.organization, job_title: c.jobTitle,
+                open_deals: UInt32(deals.filter { $0.status == "open" }.count),
+                won_value: deals.filter { $0.status == "won" }.reduce(0) { $0 + $1.value }, created_by: c.createdBy,
+                created_at: c.createdAt)
         }
 
         private func activityView(_ a: ActivityView, _ p: Pipeline) -> ActivityView {
@@ -341,9 +341,9 @@ enum CrmDemo {
                 let due = Days.ms(Days.dueIn(Int(rule.dueInDays), now: Date(), .current))
                 p.activities.append(
                     ActivityView(
-                        id: mint("activity"), dealId: dealId, contactId: contactId, kind: rule.kind, subject: rule.subject,
-                        dueAt: due, done: false, owner: owner, note: "", automationId: rule.id, createdBy: CrmDemo.me,
-                        createdAt: nowMs))
+                        id: mint("activity"), deal_id: dealId, contact_id: contactId, kind: rule.kind, subject: rule.subject,
+                        due_at: due, done: false, owner: owner, note: "", automation_id: rule.id, created_by: CrmDemo.me,
+                        created_at: nowMs))
             }
         }
 
@@ -481,9 +481,9 @@ enum CrmDemo {
                 let contactId = dealId.flatMap { did in p.deals.first { $0.id == did }?.contactId }
                 p.activities.append(
                     ActivityView(
-                        id: id("activity:\(n)"), dealId: dealId, contactId: contactId, kind: kind, subject: subject,
-                        dueAt: due(day, hour), done: doneAgo != nil, doneAt: doneAgo.map { ms(-$0) }, owner: owner,
-                        note: note, automationId: auto, createdBy: owner, createdAt: ms(Double(min(day, 0)) - 3)))
+                        id: id("activity:\(n)"), deal_id: dealId, contact_id: contactId, kind: kind, subject: subject,
+                        due_at: due(day, hour), done: doneAgo != nil, done_at: doneAgo.map { ms(-$0) }, owner: owner,
+                        note: note, automation_id: auto, created_by: owner, created_at: ms(Double(min(day, 0)) - 3)))
             }
             let fieldstone = "Fieldstone Coffee — 12-store dashboards"
             let verde = "Verde Foods — supply chain pilot"
@@ -548,21 +548,21 @@ enum CrmDemo {
                 (cobalt, me, "Priya's team runs 1,200 lanes. Biggest win is spotting empty backhauls.", -6),
             ]
             p.notes = notes.enumerated().map { i, note in
-                NoteView(id: id("note:\(i)"), dealId: deal(note.0), author: note.1, body: note.2, createdAt: ms(note.3))
+                NoteView(id: id("note:\(i)"), deal_id: deal(note.0), author: note.1, body: note.2, created_at: ms(note.3))
             }
 
             p.automations = [
                 AutomationView(
-                    id: id("automation:proposal"), stageId: stage["Proposal"] ?? "", kind: "email",
-                    subject: "Send proposal recap", dueInDays: 1, enabled: true, createdBy: me, createdAt: ms(-60)),
+                    id: id("automation:proposal"), stage_id: stage["Proposal"] ?? "", kind: "email",
+                    subject: "Send proposal recap", due_in_days: 1, enabled: true, created_by: me, created_at: ms(-60)),
                 AutomationView(
-                    id: id("automation:qualified"), stageId: stage["Qualified"] ?? "", kind: "call",
-                    subject: "Qualification call: budget, timeline, decision maker", dueInDays: 2, enabled: true,
-                    createdBy: me, createdAt: ms(-60)),
+                    id: id("automation:qualified"), stage_id: stage["Qualified"] ?? "", kind: "call",
+                    subject: "Qualification call: budget, timeline, decision maker", due_in_days: 2, enabled: true,
+                    created_by: me, created_at: ms(-60)),
                 AutomationView(
-                    id: id("automation:negotiation"), stageId: stage["Negotiation"] ?? "", kind: "task",
-                    subject: "Loop in legal for contract review", dueInDays: 1, enabled: false, createdBy: sofia,
-                    createdAt: ms(-30)),
+                    id: id("automation:negotiation"), stage_id: stage["Negotiation"] ?? "", kind: "task",
+                    subject: "Loop in legal for contract review", due_in_days: 1, enabled: false, created_by: sofia,
+                    created_at: ms(-30)),
             ]
             return p
         }

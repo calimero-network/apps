@@ -19,7 +19,7 @@ public struct Notice: Identifiable, Equatable, Sendable {
 /// the context re-reads it; every write re-reads it after.
 @MainActor
 public final class PipelineModel: ObservableObject {
-    public static let defaultSettings = Settings(currency: "USD", rottingDays: 14)
+    public static let defaultSettings = Settings(currency: "USD", rotting_days: 14)
 
     @Published public private(set) var stages: [StageView] = []
     @Published public private(set) var deals: [DealView] = []
@@ -81,13 +81,13 @@ public final class PipelineModel: ObservableObject {
             async let au = client.listAutomations()
             async let se = client.getSettings()
             let (s, d, c, a, u, t) = try await (st, ds, cs, ac, au, se)
-            stages = try s.map { try $0.decoded(as: StageView.self) }.sorted { $0.position < $1.position }
-            deals = try d.map { try $0.decoded(as: DealView.self) }
-            contacts = try c.map { try $0.decoded(as: ContactView.self) }
+            stages = s.sorted { $0.position < $1.position }
+            deals = d
+            contacts = c
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            activities = try a.map { try $0.decoded(as: ActivityView.self) }
-            automations = try u.map { try $0.decoded(as: AutomationView.self) }
-            settings = try t.decoded(as: Settings.self)
+            activities = a
+            automations = u
+            settings = t
             hasLoaded = true
             warmingUp = false
             error = nil
@@ -164,7 +164,7 @@ public final class PipelineModel: ObservableObject {
 
     /// One deal with its person, activities and notes.
     public func detail(_ dealId: String) async throws -> DealDetail {
-        try await client.getDeal(dealId: dealId).decoded(as: DealDetail.self)
+        try await client.getDeal(dealId: dealId)
     }
 
     // MARK: People and ownership

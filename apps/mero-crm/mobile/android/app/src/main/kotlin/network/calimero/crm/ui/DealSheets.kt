@@ -60,6 +60,10 @@ import network.calimero.crm.core.DealField
 import network.calimero.crm.core.LostReasons
 import network.calimero.crm.generated.ContactView
 import network.calimero.crm.generated.DealView
+import network.calimero.crm.generated.contactId
+import network.calimero.crm.generated.dealId
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.stageId
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate

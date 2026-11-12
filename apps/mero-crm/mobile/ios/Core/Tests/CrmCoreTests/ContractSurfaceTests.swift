@@ -144,13 +144,13 @@ final class ContractSurfaceTests: XCTestCase {
 
     func testAnswersReadU64sFromDecimalStrings() async throws {
         let c = CrmClient(contract: Recorder())
-        let deals = try await c.listDeals().map { try $0.decoded(as: DealView.self) }
+        let deals = try await c.listDeals()
         let deal = try XCTUnwrap(deals.first)
         XCTAssertEqual(deal.value, 12_500)
         XCTAssertEqual(deal.expectedClose, 1_793_181_600_000)
         XCTAssertNil(deal.closedAt)
         XCTAssertEqual(deal.nextActivity?.dueAt, 1_793_268_000_000)
-        let detail = try await c.getDeal(dealId: "d1").decoded(as: DealDetail.self)
+        let detail = try await c.getDeal(dealId: "d1")
         XCTAssertEqual(detail.deal, deal)
         let back = try JSONDecoder().decode(DealView.self, from: JSONEncoder().encode(deal))
         XCTAssertEqual(back, deal, "encoding writes the wire's strings back")

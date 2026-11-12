@@ -58,6 +58,10 @@ import network.calimero.crm.core.Insights
 import network.calimero.crm.core.Money
 import network.calimero.crm.generated.DealView
 import network.calimero.crm.generated.StageView
+import network.calimero.crm.generated.contactName
+import network.calimero.crm.generated.dueAt
+import network.calimero.crm.generated.nextActivity
+import network.calimero.crm.generated.openDeals
 
 /**
  * The board: one swipeable column per stage, with its count, total and win probability, and one

@@ -58,6 +58,7 @@ import network.calimero.crm.app.CrmViewModel
 import network.calimero.crm.app.PipelineModel
 import network.calimero.crm.app.PipelineState
 import network.calimero.crm.core.Days
+import network.calimero.crm.generated.dueAt
 
 /** Where a row leads. */
 sealed interface Route {

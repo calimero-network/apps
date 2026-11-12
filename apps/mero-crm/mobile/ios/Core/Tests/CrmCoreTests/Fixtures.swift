@@ -31,27 +31,27 @@ func deal(
     created: UInt64 = ms(daysFromNow: -2), lastTouch: UInt64? = nil, closedAt: UInt64? = nil, lostReason: String = ""
 ) -> DealView {
     DealView(
-        id: id, title: title, value: value, organization: organization, contactId: contactId,
-        contactName: contactId == nil ? nil : "Ana Diaz", owner: owner, stageId: stage, status: status,
-        lostReason: lostReason, expectedClose: close, source: "Referral", probability: probability,
-        stageEnteredAt: created, closedAt: closedAt, nextActivity: next, openActivities: next == nil ? 0 : 1,
-        lastTouchAt: lastTouch, createdBy: "me", createdAt: created)
+        id: id, title: title, value: value, organization: organization, contact_id: contactId,
+        contact_name: contactId == nil ? nil : "Ana Diaz", owner: owner, stage_id: stage, status: status,
+        lost_reason: lostReason, expected_close: close, source: "Referral", probability: probability,
+        stage_entered_at: created, closed_at: closedAt, next_activity: next, open_activities: next == nil ? 0 : 1,
+        last_touch_at: lastTouch, created_by: "me", created_at: created)
 }
 
 func next(_ days: Double, subject: String = "Call Ana") -> NextActivity {
-    NextActivity(id: "a1", kind: "call", subject: subject, dueAt: ms(daysFromNow: days))
+    NextActivity(id: "a1", kind: "call", subject: subject, due_at: ms(daysFromNow: days))
 }
 
 func contact(_ id: String, name: String, org: String = "Acme") -> ContactView {
     ContactView(
         id: id, name: name, email: "\(name.lowercased().prefix(3))@acme.test", phone: "", organization: org,
-        jobTitle: "Head of Ops", openDeals: 1, wonValue: 0, createdBy: "me", createdAt: 1)
+        job_title: "Head of Ops", open_deals: 1, won_value: 0, created_by: "me", created_at: 1)
 }
 
 func activity(_ id: String, due: UInt64, done: Bool = false, doneAt: UInt64? = nil, kind: String = "call") -> ActivityView {
     ActivityView(
-        id: id, dealId: "d1", dealTitle: "Acme", contactId: nil, kind: kind, subject: "Subject \(id)", dueAt: due,
-        done: done, doneAt: doneAt, owner: nil, note: "", automationId: nil, createdBy: "me", createdAt: 1)
+        id: id, deal_id: "d1", deal_title: "Acme", contact_id: nil, kind: kind, subject: "Subject \(id)", due_at: due,
+        done: done, done_at: doneAt, owner: nil, note: "", automation_id: nil, created_by: "me", created_at: 1)
 }
 
 func encode<T: Encodable>(_ value: T) -> Data { try! JSONEncoder().encode(value) }
@@ -63,7 +63,7 @@ final class Script: @unchecked Sendable {
     var deals: [DealView] = []
     var contacts: [ContactView] = []
     var activities: [ActivityView] = []
-    var settings = Settings(currency: "EUR", rottingDays: 14)
+    var settings = Settings(currency: "EUR", rotting_days: 14)
     var failRead: Error?
 
     func answer(_ call: RecordedContractCall) throws -> Data? {

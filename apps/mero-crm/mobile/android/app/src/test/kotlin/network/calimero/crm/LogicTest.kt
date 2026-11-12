@@ -34,6 +34,7 @@ import network.calimero.crm.core.Money
 import network.calimero.crm.core.SuggestedActivity
 import network.calimero.crm.generated.DealDetail
 import network.calimero.crm.generated.NoteView
+import network.calimero.crm.generated.wonValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

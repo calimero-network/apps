@@ -4,6 +4,17 @@ import network.calimero.crm.generated.ActivityView
 import network.calimero.crm.generated.ContactView
 import network.calimero.crm.generated.DealView
 import network.calimero.crm.generated.StageView
+import network.calimero.crm.generated.closedAt
+import network.calimero.crm.generated.contactName
+import network.calimero.crm.generated.createdAt
+import network.calimero.crm.generated.dealTitle
+import network.calimero.crm.generated.doneAt
+import network.calimero.crm.generated.dueAt
+import network.calimero.crm.generated.expectedClose
+import network.calimero.crm.generated.jobTitle
+import network.calimero.crm.generated.lostReason
+import network.calimero.crm.generated.stageId
+import network.calimero.crm.generated.wonValue
 import java.time.Instant
 import java.time.Month
 import java.time.ZoneId

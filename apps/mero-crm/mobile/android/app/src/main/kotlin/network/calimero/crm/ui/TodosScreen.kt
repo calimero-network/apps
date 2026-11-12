@@ -62,6 +62,11 @@ import network.calimero.crm.core.ActivityKind
 import network.calimero.crm.core.Days
 import network.calimero.crm.core.Insights
 import network.calimero.crm.generated.ActivityView
+import network.calimero.crm.generated.automationId
+import network.calimero.crm.generated.dealId
+import network.calimero.crm.generated.dealTitle
+import network.calimero.crm.generated.doneAt
+import network.calimero.crm.generated.dueAt
 
 /**
  * The to-do list: every call, meeting and task across the pipeline, grouped by when it is due.
