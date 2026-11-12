@@ -20,5 +20,5 @@ passkey needs the `webcredentials:<rp-id>` associated domain. The node's consent
 `mero-sheets://consent` (set `SheetsCallbackHost` for a verified https return); invitation links
 arrive on `calimero://com.calimero.mero-sheets/join?invitation=…`.
 
-The swift-sdk is pinned to its `v0.5.0` release (`exactVersion` / `exact:`) in `project.yml`, `Core/Package.swift` and
+The swift-sdk is pinned to its `v2.0.0` release (`exactVersion` / `exact:`) in `project.yml`, `Core/Package.swift` and
 `Core/Package.resolved`; keep them equal.

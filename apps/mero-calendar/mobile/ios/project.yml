@@ -6,7 +6,7 @@
 #
 # Everything that is not SwiftUI (the generated contract client, the calendar
 # layer and the view models) is the local package in Core/, which `swift test`
-# checks on macOS. The swift-sdk is pinned to its v0.5.0 release
+# checks on macOS. The swift-sdk is pinned to its v2.0.0 release
 # (`exactVersion`). Keep it equal to the one in Core/Package.swift (and
 # Core/Package.resolved).
 name: MeroCalendar
@@ -20,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 2.0.0
   CalendarCore:
     path: Core
 

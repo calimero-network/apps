@@ -17,10 +17,10 @@ let package = Package(
         .library(name: "VoteCore", targets: ["VoteCore", "VoteCrypto"]),
     ],
     dependencies: [
-        // swift-sdk v0.5.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        // swift-sdk v2.0.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "0.5.0"),
+            exact: "2.0.0"),
     ],
     targets: [
         // ristretto255 and the mero-vote protocol, with no dependencies but

@@ -11,11 +11,11 @@ let package = Package(
         .library(name: "SheetsCore", targets: ["SheetsCore"])
     ],
     dependencies: [
-        // swift-sdk v0.5.0 (Calimero 1.0); keep in step with
+        // swift-sdk v2.0.0 (Calimero 1.0); keep in step with
         // `packages.MeroKit.exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            exact: "0.5.0")
+            exact: "2.0.0")
     ],
     targets: [
         .target(
