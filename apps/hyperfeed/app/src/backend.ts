@@ -23,7 +23,7 @@ import type {
   WatchView,
   Folder,
 } from "./hyperfeedTypes";
-import type { HyperfeedClient } from "./hyperfeed";
+import type { HyperfeedClient } from "./generated/client";
 import type { OtherApps } from "./otherApps";
 import { mergeWatchInput } from "./watches";
 
@@ -161,72 +161,87 @@ export interface FeedBackend {
 /** Rows per read. The contract's own default; the feed pages beyond it. */
 export const PAGE_SIZE = 50;
 
+/** A 64-bit integer argument (`u64`) as the contract takes it: a decimal string. */
+export function u64(n: number): string {
+  return String(Math.trunc(n));
+}
+
 /**
- * The feed in an app instance on the cluster, through the typed adapter
- * ({@link HyperfeedClient}); `apps` is how a row is answered in another app.
+ * The contract's answer as the screens read it. The ABI names its records
+ * without their shapes, so the generated client answers `unknown`; the
+ * records are `hyperfeedTypes`' (v1's, field for field), and each answer is
+ * read as the type of the {@link FeedBackend} method returning it.
+ */
+function as<T>(answer: Promise<unknown>): Promise<T> {
+  return answer as Promise<T>;
+}
+
+/**
+ * The feed in an app instance on the cluster, through its generated client
+ * ({@link HyperfeedClient}, `src/generated/client.ts`); `apps` is how a row is
+ * answered in another app.
  */
 export function clusterBackend(client: HyperfeedClient, apps: OtherApps, images: BlobStore | null = null): FeedBackend {
   return {
     kind: "node",
     images,
-    feed: (filter, appKey) => client.feed({ filter, app_key: appKey, limit: PAGE_SIZE, before: 0 }),
-    settings: () => client.settings(),
-    resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
-    answerNotification: (id, answer) => client.answerNotification({ id, answer }),
-    completeAnswer: (id, outcome, note) => client.completeAnswer({ id, outcome, note }),
-    completeAction: (id, outcome, note) => client.completeAction({ id, outcome, note }),
+    feed: (filter, appKey) => as(client.feed({ filter, appKey, limit: PAGE_SIZE, before: u64(0) })),
+    settings: () => as(client.settings()),
+    resolveAction: (id, decision, answer = "") => as(client.resolveAction({ id, decision, answer })),
+    answerNotification: (id, answer) => as(client.answerNotification({ id, answer })),
+    completeAnswer: (id, outcome, note) => as(client.completeAnswer({ id, outcome, note })),
+    completeAction: (id, outcome, note) => as(client.completeAction({ id, outcome, note })),
     callApp: (app, method, args) => apps.call(app, method, args),
-    lenses: () => client.lenses(),
-    decideLens: (appKey, applicationId, decision) =>
-      client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
-    actionSets: () => client.actionSets(),
+    lenses: () => as(client.lenses()),
+    decideLens: (appKey, applicationId, decision) => as(client.decideLens({ appKey, applicationId, decision })),
+    actionSets: () => as(client.actionSets()),
     decideActions: (appKey, applicationId, decision) =>
-      client.decideActions({ app_key: appKey, application_id: applicationId, decision }),
-    setActionMode: (appKey, action, mode) =>
-      client.setActionMode({ app_key: appKey, action, mode }).then(() => undefined),
-    chain: (chain) => client.chain({ chain }),
-    checkpoint: (chain) => client.checkpoint({ chain }).then((c) => c ?? null),
-    situations: () => client.situations(),
-    autoruns: () => client.autoruns(),
-    stopAutorun: (id) => client.stopAutorun({ id }),
-    watches: (chain) => client.watches({ chain }),
-    cancelWatch: (id) => client.cancelWatch({ id, note: null }),
-    mergeWhenGreen: (chain, repo, pr) => client.addWatch({ input: mergeWatchInput(chain, repo, pr) }),
-    prs: (chain) => client.prs({ chain }),
-    links: (chain) => client.links({ chain }),
-    addLink: (chain, subject, label) => client.addLink({ chain, input: { subject, label, by: "you" } }),
+      as(client.decideActions({ appKey, applicationId, decision })),
+    setActionMode: (appKey, action, mode) => client.setActionMode({ appKey, action, mode }).then(() => undefined),
+    chain: (chain) => as(client.chain({ chain })),
+    checkpoint: (chain) => client.checkpoint({ chain }).then((c) => (c ?? null) as CheckpointView | null),
+    situations: () => as(client.situations()),
+    autoruns: () => as(client.autoruns()),
+    stopAutorun: (id) => as(client.stopAutorun({ id })),
+    watches: (chain) => as(client.watches({ chain })),
+    cancelWatch: (id) => as(client.cancelWatch({ id, note: null })),
+    mergeWhenGreen: (chain, repo, pr) => as(client.addWatch({ input: mergeWatchInput(chain, repo, pr) })),
+    prs: (chain) => as(client.prs({ chain })),
+    links: (chain) => as(client.links({ chain })),
+    addLink: (chain, subject, label) => as(client.addLink({ chain, input: { subject, label, by: "you" } })),
     removeLink: (chain, subject) => client.removeLink({ chain, subject }).then(() => undefined),
-    pushKey: () => client.pushKey(),
-    pushDevices: () => client.pushDevices(),
-    addPushDevice: (input) => client.addPushDevice({ input }),
+    pushKey: () => as(client.pushKey()),
+    pushDevices: () => as(client.pushDevices()),
+    addPushDevice: (input) => as(client.addPushDevice({ input })),
     removePushDevice: (endpoint) => client.removePushDevice({ endpoint }).then(() => undefined),
     // Text alone keeps to `say`; only images need `sayWith`. `headline` and
     // `mode` are optional arguments, sent only when given.
     say: (chain, text, attachments = [], mode) =>
-      attachments.length
-        ? client.sayWith({ chain, text, attachments, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["sayWith"]>[0])
-        : client.say({ chain, text, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["say"]>[0]),
-    answerAsk: (id, _chain, text) => client.answerAsk({ id, text }),
-    stop: (id) => client.stop({ id }),
-    markSeen: (ids) => client.markSeen({ ids }),
-    markAllSeen: () => client.markAllSeen(),
-    setPolicy: (appKey, agent, notifications) =>
-      client.setPolicy({ app_key: appKey, agent, notifications }),
-    setGuard: (category, enabled) => client.setGuard({ category, enabled }),
-    setPaused: (paused) => client.setPaused({ paused }),
-    setAccess: (agent, folders, shell, web) => client.setAccess({ agent, folders, shell, web }),
-    setAssignment: (app, agent) => client.setAssignment({ app_key: app, agent }),
-    addAgentAccount: (account, name) => client.addAgentAccount({ account, name }),
-    removeAgentAccount: (account) => client.removeAgentAccount({ account }),
-    addRule: (text) => client.addRule({ text }),
-    removeRule: (id) => client.removeRule({ id }),
-    addAgentRule: (agent, text) => client.addAgentRule({ agent, text }),
-    removeAgentRule: (id) => client.removeAgentRule({ id }),
-    approveRule: (id) => client.approveRule({ id }),
-    dismissRule: (id) => client.dismissRule({ id }),
-    archive: (chains, until = 0) => client.archive({ chains, until }),
-    unarchive: (chains) => client.unarchive({ chains }),
-    recordNotification: (input) => client.recordNotification({ input }),
-    recordAction: (input) => client.recordAction({ input }),
+      as(
+        attachments.length
+          ? client.sayWith({ chain, text, attachments, ...(mode ? { mode } : {}) })
+          : client.say({ chain, text, ...(mode ? { mode } : {}) }),
+      ),
+    answerAsk: (id, _chain, text) => as(client.answerAsk({ id, text })),
+    stop: (id) => as(client.stop({ id })),
+    markSeen: (ids) => as(client.markSeen({ ids })),
+    markAllSeen: () => as(client.markAllSeen()),
+    setPolicy: (appKey, agent, notifications) => as(client.setPolicy({ appKey, agent, notifications })),
+    setGuard: (category, enabled) => as(client.setGuard({ category, enabled })),
+    setPaused: (paused) => as(client.setPaused({ paused })),
+    setAccess: (agent, folders, shell, web) => as(client.setAccess({ agent, folders, shell, web })),
+    setAssignment: (app, agent) => as(client.setAssignment({ appKey: app, agent })),
+    addAgentAccount: (account, name) => as(client.addAgentAccount({ account, name })),
+    removeAgentAccount: (account) => as(client.removeAgentAccount({ account })),
+    addRule: (text) => as(client.addRule({ text })),
+    removeRule: (id) => as(client.removeRule({ id })),
+    addAgentRule: (agent, text) => as(client.addAgentRule({ agent, text })),
+    removeAgentRule: (id) => as(client.removeAgentRule({ id })),
+    approveRule: (id) => as(client.approveRule({ id })),
+    dismissRule: (id) => as(client.dismissRule({ id })),
+    archive: (chains, until = 0) => as(client.archive({ chains, until: u64(until) })),
+    unarchive: (chains) => as(client.unarchive({ chains })),
+    recordNotification: (input) => as(client.recordNotification({ input })),
+    recordAction: (input) => as(client.recordAction({ input })),
   };
 }
