@@ -640,5 +640,681 @@
     },
     "version": 1
   },
+  "types": {
+    "AskInput": {
+      "fields": [
+        [
+          "id",
+          "option<string>"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "detail",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AskView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "postId",
+          "string"
+        ],
+        [
+          "postTitle",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "detail",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "offerCount",
+          "u64"
+        ],
+        [
+          "offers",
+          "list<OfferView>"
+        ],
+        [
+          "myOffer",
+          "option<OfferView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CategoryView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "emoji",
+          "string"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "updateCount",
+          "u64"
+        ],
+        [
+          "unreadCount",
+          "u64"
+        ],
+        [
+          "muted",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CommentView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "postId",
+          "string"
+        ],
+        [
+          "parentId",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "authorIsTeam",
+          "bool"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ContributionView": {
+      "fields": [
+        [
+          "askId",
+          "string"
+        ],
+        [
+          "askTitle",
+          "string"
+        ],
+        [
+          "askKind",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "firm",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "acceptedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DraftView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "payload",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "EngagementRow": {
+      "fields": [
+        [
+          "postId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "categoryId",
+          "string"
+        ],
+        [
+          "publishedAt",
+          "u64"
+        ],
+        [
+          "readers",
+          "list<ReaderView>"
+        ],
+        [
+          "notRead",
+          "list<ReaderView>"
+        ],
+        [
+          "reactions",
+          "u64"
+        ],
+        [
+          "comments",
+          "u64"
+        ],
+        [
+          "offers",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MeView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "firm",
+          "string"
+        ],
+        [
+          "isAdmin",
+          "bool"
+        ],
+        [
+          "isTeam",
+          "bool"
+        ],
+        [
+          "muted",
+          "list<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Metric": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ],
+        [
+          "unit",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MetricPoint": {
+      "fields": [
+        [
+          "postId",
+          "string"
+        ],
+        [
+          "postTitle",
+          "string"
+        ],
+        [
+          "at",
+          "u64"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MetricSeries": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "unit",
+          "string"
+        ],
+        [
+          "points",
+          "list<MetricPoint>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "OfferView": {
+      "fields": [
+        [
+          "askId",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "firm",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Overview": {
+      "fields": [
+        [
+          "companyName",
+          "string"
+        ],
+        [
+          "cadenceDays",
+          "u32"
+        ],
+        [
+          "lastUpdateAt",
+          "u64"
+        ],
+        [
+          "nextDueAt",
+          "u64"
+        ],
+        [
+          "updatesTotal",
+          "u64"
+        ],
+        [
+          "unreadUpdates",
+          "u64"
+        ],
+        [
+          "openAsks",
+          "u64"
+        ],
+        [
+          "openQuestions",
+          "u64"
+        ],
+        [
+          "people",
+          "u64"
+        ],
+        [
+          "isTeam",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PersonView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "firm",
+          "string"
+        ],
+        [
+          "isAdmin",
+          "bool"
+        ],
+        [
+          "isTeam",
+          "bool"
+        ],
+        [
+          "joinedAt",
+          "u64"
+        ],
+        [
+          "updatesRead",
+          "u64"
+        ],
+        [
+          "updatesTotal",
+          "u64"
+        ],
+        [
+          "lastReadAt",
+          "u64"
+        ],
+        [
+          "comments",
+          "u64"
+        ],
+        [
+          "offers",
+          "u64"
+        ],
+        [
+          "acceptedOffers",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PostCard": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "authorName",
+          "string"
+        ],
+        [
+          "authorIsTeam",
+          "bool"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "categoryId",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "editedAt",
+          "u64"
+        ],
+        [
+          "commentCount",
+          "u64"
+        ],
+        [
+          "askCount",
+          "u64"
+        ],
+        [
+          "openAskCount",
+          "u64"
+        ],
+        [
+          "metricCount",
+          "u64"
+        ],
+        [
+          "readCount",
+          "u64"
+        ],
+        [
+          "readByMe",
+          "bool"
+        ],
+        [
+          "reactions",
+          "list<ReactionCount>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PostPage": {
+      "fields": [
+        [
+          "items",
+          "list<PostCard>"
+        ],
+        [
+          "nextCursor",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PostView": {
+      "fields": [
+        [
+          "card",
+          "PostCard"
+        ],
+        [
+          "sections",
+          "list<Section>"
+        ],
+        [
+          "metrics",
+          "list<Metric>"
+        ],
+        [
+          "asks",
+          "list<AskView>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ReactionCount": {
+      "fields": [
+        [
+          "emoji",
+          "string"
+        ],
+        [
+          "count",
+          "u64"
+        ],
+        [
+          "mine",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ReaderView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "firm",
+          "string"
+        ],
+        [
+          "firstAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Section": {
+      "fields": [
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Settings": {
+      "fields": [
+        [
+          "companyName",
+          "string"
+        ],
+        [
+          "cadenceDays",
+          "u32"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "UpdateInput": {
+      "fields": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "categoryId",
+          "string"
+        ],
+        [
+          "sections",
+          "list<Section>"
+        ],
+        [
+          "metrics",
+          "list<Metric>"
+        ],
+        [
+          "asks",
+          "list<AskInput>"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.1"
 }

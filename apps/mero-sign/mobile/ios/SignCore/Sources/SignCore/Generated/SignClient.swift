@@ -15,29 +15,563 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct SignClient: Sendable {
-    /// The app type `ContextDetails`: the ABI names it without its shape, so it is its JSON.
-    public typealias ContextDetails = JSONValue
 
-    /// The app type `ContextMetadata`: the ABI names it without its shape, so it is its JSON.
-    public typealias ContextMetadata = JSONValue
+    /// The app type `ContextDetails`.
+    public struct ContextDetails: Codable, Sendable, Equatable {
+        public var contextId: String
+        public var contextName: String
+        public var owner: String
+        public var isPrivate: Bool
+        public var participantCount: UInt64
+        public var participants: [ParticipantInfo]
+        public var documentCount: UInt64
+        public var createdAt: UInt64
 
-    /// The app type `DocumentChunk`: the ABI names it without its shape, so it is its JSON.
-    public typealias DocumentChunk = JSONValue
+        public init(
+            contextId: String,
+            contextName: String,
+            owner: String,
+            isPrivate: Bool,
+            participantCount: UInt64,
+            participants: [ParticipantInfo],
+            documentCount: UInt64,
+            createdAt: UInt64
+        ) {
+            self.contextId = contextId
+            self.contextName = contextName
+            self.owner = owner
+            self.isPrivate = isPrivate
+            self.participantCount = participantCount
+            self.participants = participants
+            self.documentCount = documentCount
+            self.createdAt = createdAt
+        }
 
-    /// The app type `DocumentInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias DocumentInfo = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("contextId"))
+            let v1 = try fields.decode(String.self, forKey: Key("contextName"))
+            let v2 = try fields.decode(String.self, forKey: Key("owner"))
+            let v3 = try fields.decode(Bool.self, forKey: Key("isPrivate"))
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("participantCount")).value
+            let v5 = try fields.decode([ParticipantInfo].self, forKey: Key("participants"))
+            let v6 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("documentCount")).value
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.contextId = v0
+            self.contextName = v1
+            self.owner = v2
+            self.isPrivate = v3
+            self.participantCount = v4
+            self.participants = v5
+            self.documentCount = v6
+            self.createdAt = v7
+        }
 
-    /// The app type `DocumentSignature`: the ABI names it without its shape, so it is its JSON.
-    public typealias DocumentSignature = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.contextId, forKey: Key("contextId"))
+            try fields.encode(self.contextName, forKey: Key("contextName"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+            try fields.encode(self.isPrivate, forKey: Key("isPrivate"))
+            try fields.encode(DecimalString(self.participantCount), forKey: Key("participantCount"))
+            try fields.encode(self.participants, forKey: Key("participants"))
+            try fields.encode(DecimalString(self.documentCount), forKey: Key("documentCount"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
 
-    /// The app type `IdentityMapping`: the ABI names it without its shape, so it is its JSON.
-    public typealias IdentityMapping = JSONValue
+    /// The app type `ContextMetadata`.
+    public struct ContextMetadata: Codable, Sendable, Equatable {
+        public var contextId: String
+        public var contextName: String
+        public var role: ParticipantRole
+        public var joinedAt: UInt64
+        public var privateIdentity: String
+        public var sharedIdentity: String
 
-    /// The app type `PermissionLevel`: the ABI names it without its shape, so it is its JSON.
-    public typealias PermissionLevel = JSONValue
+        public init(
+            contextId: String,
+            contextName: String,
+            role: ParticipantRole,
+            joinedAt: UInt64,
+            privateIdentity: String,
+            sharedIdentity: String
+        ) {
+            self.contextId = contextId
+            self.contextName = contextName
+            self.role = role
+            self.joinedAt = joinedAt
+            self.privateIdentity = privateIdentity
+            self.sharedIdentity = sharedIdentity
+        }
 
-    /// The app type `SignatureRecord`: the ABI names it without its shape, so it is its JSON.
-    public typealias SignatureRecord = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("contextId"))
+            let v1 = try fields.decode(String.self, forKey: Key("contextName"))
+            let v2 = try fields.decode(ParticipantRole.self, forKey: Key("role"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("joinedAt")).value
+            let v4 = try fields.decode(String.self, forKey: Key("privateIdentity"))
+            let v5 = try fields.decode(String.self, forKey: Key("sharedIdentity"))
+            self.contextId = v0
+            self.contextName = v1
+            self.role = v2
+            self.joinedAt = v3
+            self.privateIdentity = v4
+            self.sharedIdentity = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.contextId, forKey: Key("contextId"))
+            try fields.encode(self.contextName, forKey: Key("contextName"))
+            try fields.encode(self.role, forKey: Key("role"))
+            try fields.encode(DecimalString(self.joinedAt), forKey: Key("joinedAt"))
+            try fields.encode(self.privateIdentity, forKey: Key("privateIdentity"))
+            try fields.encode(self.sharedIdentity, forKey: Key("sharedIdentity"))
+        }
+    }
+
+    /// The app type `DocumentChunk`.
+    public struct DocumentChunk: Codable, Sendable, Equatable {
+        public var text: String
+        public var embedding: [Float]
+        public var startPosition: UInt32
+        public var endPosition: UInt32
+
+        public init(
+            text: String,
+            embedding: [Float],
+            startPosition: UInt32,
+            endPosition: UInt32
+        ) {
+            self.text = text
+            self.embedding = embedding
+            self.startPosition = startPosition
+            self.endPosition = endPosition
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("text"))
+            let v1 = try fields.decode([Float].self, forKey: Key("embedding"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("startPosition"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("endPosition"))
+            self.text = v0
+            self.embedding = v1
+            self.startPosition = v2
+            self.endPosition = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.text, forKey: Key("text"))
+            try fields.encode(self.embedding, forKey: Key("embedding"))
+            try fields.encode(self.startPosition, forKey: Key("startPosition"))
+            try fields.encode(self.endPosition, forKey: Key("endPosition"))
+        }
+    }
+
+    /// The app type `DocumentInfo`.
+    public struct DocumentInfo: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var hash: String
+        public var uploadedBy: String
+        public var uploadedAt: UInt64
+        public var status: DocumentStatus
+        public var pdfBlobId: String
+        public var size: UInt64
+        public var requiredSigners: [String]
+        public var embeddings: [Float]?
+        public var extractedText: String?
+        public var chunks: [DocumentChunk]?
+
+        public init(
+            id: String,
+            name: String,
+            hash: String,
+            uploadedBy: String,
+            uploadedAt: UInt64,
+            status: DocumentStatus,
+            pdfBlobId: String,
+            size: UInt64,
+            requiredSigners: [String],
+            embeddings: [Float]? = nil,
+            extractedText: String? = nil,
+            chunks: [DocumentChunk]? = nil
+        ) {
+            self.id = id
+            self.name = name
+            self.hash = hash
+            self.uploadedBy = uploadedBy
+            self.uploadedAt = uploadedAt
+            self.status = status
+            self.pdfBlobId = pdfBlobId
+            self.size = size
+            self.requiredSigners = requiredSigners
+            self.embeddings = embeddings
+            self.extractedText = extractedText
+            self.chunks = chunks
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("hash"))
+            let v3 = try fields.decode(String.self, forKey: Key("uploadedBy"))
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("uploadedAt")).value
+            let v5 = try fields.decode(DocumentStatus.self, forKey: Key("status"))
+            let v6 = try fields.decode(String.self, forKey: Key("pdfBlobId"))
+            let v7 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("size")).value
+            let v8 = try fields.decode([String].self, forKey: Key("requiredSigners"))
+            let v9 = try fields.decodeIfPresent([Float].self, forKey: Key("embeddings"))
+            let v10 = try fields.decodeIfPresent(String.self, forKey: Key("extractedText"))
+            let v11 = try fields.decodeIfPresent([DocumentChunk].self, forKey: Key("chunks"))
+            self.id = v0
+            self.name = v1
+            self.hash = v2
+            self.uploadedBy = v3
+            self.uploadedAt = v4
+            self.status = v5
+            self.pdfBlobId = v6
+            self.size = v7
+            self.requiredSigners = v8
+            self.embeddings = v9
+            self.extractedText = v10
+            self.chunks = v11
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.hash, forKey: Key("hash"))
+            try fields.encode(self.uploadedBy, forKey: Key("uploadedBy"))
+            try fields.encode(DecimalString(self.uploadedAt), forKey: Key("uploadedAt"))
+            try fields.encode(self.status, forKey: Key("status"))
+            try fields.encode(self.pdfBlobId, forKey: Key("pdfBlobId"))
+            try fields.encode(DecimalString(self.size), forKey: Key("size"))
+            try fields.encode(self.requiredSigners, forKey: Key("requiredSigners"))
+            try fields.encode(self.embeddings, forKey: Key("embeddings"))
+            try fields.encode(self.extractedText, forKey: Key("extractedText"))
+            try fields.encode(self.chunks, forKey: Key("chunks"))
+        }
+    }
+
+    /// The app type `DocumentSignature`.
+    public struct DocumentSignature: Codable, Sendable, Equatable {
+        public var signer: String
+        public var signedAt: UInt64
+
+        public init(
+            signer: String,
+            signedAt: UInt64
+        ) {
+            self.signer = signer
+            self.signedAt = signedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("signer"))
+            let v1 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("signedAt")).value
+            self.signer = v0
+            self.signedAt = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.signer, forKey: Key("signer"))
+            try fields.encode(DecimalString(self.signedAt), forKey: Key("signedAt"))
+        }
+    }
+
+    /// The app type `DocumentStatus`.
+    public enum DocumentStatus: Codable, Sendable, Equatable {
+        /// `Pending`.
+        case pending
+        /// `PartiallySigned`.
+        case partiallySigned
+        /// `FullySigned`.
+        case fullySigned
+
+        public init(from decoder: Decoder) throws {
+            if let name = try? decoder.singleValueContainer().decode(String.self) {
+                switch name {
+                case "Pending":
+                    self = .pending
+                case "PartiallySigned":
+                    self = .partiallySigned
+                case "FullySigned":
+                    self = .fullySigned
+                default:
+                    throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "DocumentStatus: unknown variant \(name)"))
+                }
+                return
+            }
+            let container = try decoder.container(keyedBy: Key.self)
+            guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "DocumentStatus: expected one variant"))
+            }
+            switch key.stringValue {
+            case "Pending":
+                self = .pending
+            case "PartiallySigned":
+                self = .partiallySigned
+            case "FullySigned":
+                self = .fullySigned
+            default:
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "DocumentStatus: unknown variant \(key.stringValue)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .pending:
+                var single = encoder.singleValueContainer()
+                try single.encode("Pending")
+            case .partiallySigned:
+                var single = encoder.singleValueContainer()
+                try single.encode("PartiallySigned")
+            case .fullySigned:
+                var single = encoder.singleValueContainer()
+                try single.encode("FullySigned")
+            }
+        }
+    }
+
+    /// The app type `IdentityMapping`.
+    public struct IdentityMapping: Codable, Sendable, Equatable {
+        public var privateIdentity: String
+        public var sharedIdentity: String
+        public var contextId: String
+        public var createdAt: UInt64
+
+        public init(
+            privateIdentity: String,
+            sharedIdentity: String,
+            contextId: String,
+            createdAt: UInt64
+        ) {
+            self.privateIdentity = privateIdentity
+            self.sharedIdentity = sharedIdentity
+            self.contextId = contextId
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("privateIdentity"))
+            let v1 = try fields.decode(String.self, forKey: Key("sharedIdentity"))
+            let v2 = try fields.decode(String.self, forKey: Key("contextId"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.privateIdentity = v0
+            self.sharedIdentity = v1
+            self.contextId = v2
+            self.createdAt = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.privateIdentity, forKey: Key("privateIdentity"))
+            try fields.encode(self.sharedIdentity, forKey: Key("sharedIdentity"))
+            try fields.encode(self.contextId, forKey: Key("contextId"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
+
+    /// The app type `ParticipantInfo`.
+    public struct ParticipantInfo: Codable, Sendable, Equatable {
+        public var userId: String
+        public var permissionLevel: PermissionLevel
+
+        public init(
+            userId: String,
+            permissionLevel: PermissionLevel
+        ) {
+            self.userId = userId
+            self.permissionLevel = permissionLevel
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("userId"))
+            let v1 = try fields.decode(PermissionLevel.self, forKey: Key("permissionLevel"))
+            self.userId = v0
+            self.permissionLevel = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.userId, forKey: Key("userId"))
+            try fields.encode(self.permissionLevel, forKey: Key("permissionLevel"))
+        }
+    }
+
+    /// The app type `ParticipantRole`.
+    public enum ParticipantRole: Codable, Sendable, Equatable {
+        /// `Owner`.
+        case owner
+        /// `Signer`.
+        case signer
+        /// `Viewer`.
+        case viewer
+        /// `Unknown`.
+        case unknown
+
+        public init(from decoder: Decoder) throws {
+            if let name = try? decoder.singleValueContainer().decode(String.self) {
+                switch name {
+                case "Owner":
+                    self = .owner
+                case "Signer":
+                    self = .signer
+                case "Viewer":
+                    self = .viewer
+                case "Unknown":
+                    self = .unknown
+                default:
+                    throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "ParticipantRole: unknown variant \(name)"))
+                }
+                return
+            }
+            let container = try decoder.container(keyedBy: Key.self)
+            guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "ParticipantRole: expected one variant"))
+            }
+            switch key.stringValue {
+            case "Owner":
+                self = .owner
+            case "Signer":
+                self = .signer
+            case "Viewer":
+                self = .viewer
+            case "Unknown":
+                self = .unknown
+            default:
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "ParticipantRole: unknown variant \(key.stringValue)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .owner:
+                var single = encoder.singleValueContainer()
+                try single.encode("Owner")
+            case .signer:
+                var single = encoder.singleValueContainer()
+                try single.encode("Signer")
+            case .viewer:
+                var single = encoder.singleValueContainer()
+                try single.encode("Viewer")
+            case .unknown:
+                var single = encoder.singleValueContainer()
+                try single.encode("Unknown")
+            }
+        }
+    }
+
+    /// The app type `PermissionLevel`.
+    public enum PermissionLevel: Codable, Sendable, Equatable {
+        /// `Read`.
+        case read
+        /// `Sign`.
+        case sign
+        /// `Admin`.
+        case admin
+
+        public init(from decoder: Decoder) throws {
+            if let name = try? decoder.singleValueContainer().decode(String.self) {
+                switch name {
+                case "Read":
+                    self = .read
+                case "Sign":
+                    self = .sign
+                case "Admin":
+                    self = .admin
+                default:
+                    throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "PermissionLevel: unknown variant \(name)"))
+                }
+                return
+            }
+            let container = try decoder.container(keyedBy: Key.self)
+            guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "PermissionLevel: expected one variant"))
+            }
+            switch key.stringValue {
+            case "Read":
+                self = .read
+            case "Sign":
+                self = .sign
+            case "Admin":
+                self = .admin
+            default:
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "PermissionLevel: unknown variant \(key.stringValue)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .read:
+                var single = encoder.singleValueContainer()
+                try single.encode("Read")
+            case .sign:
+                var single = encoder.singleValueContainer()
+                try single.encode("Sign")
+            case .admin:
+                var single = encoder.singleValueContainer()
+                try single.encode("Admin")
+            }
+        }
+    }
+
+    /// The app type `SignatureRecord`.
+    public struct SignatureRecord: Codable, Sendable, Equatable {
+        public var id: UInt64
+        public var name: String
+        public var blobId: String
+        public var size: UInt64
+        public var createdAt: UInt64
+
+        public init(
+            id: UInt64,
+            name: String,
+            blobId: String,
+            size: UInt64,
+            createdAt: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.blobId = blobId
+            self.size = size
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("id")).value
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("blobId"))
+            let v3 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("size")).value
+            let v4 = try fields.decode(DecimalString<UInt64>.self, forKey: Key("createdAt")).value
+            self.id = v0
+            self.name = v1
+            self.blobId = v2
+            self.size = v3
+            self.createdAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(DecimalString(self.id), forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.blobId, forKey: Key("blobId"))
+            try fields.encode(DecimalString(self.size), forKey: Key("size"))
+            try fields.encode(DecimalString(self.createdAt), forKey: Key("createdAt"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

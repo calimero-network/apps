@@ -424,6 +424,37 @@
         ],
         "type": "object"
       },
+      "AskInput": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "detail"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "AskInput"
+      },
       "AskQuestionArgs": {
         "description": "The arguments of `askQuestion`, by name.",
         "properties": {
@@ -495,7 +526,71 @@
         "type": "object"
       },
       "AskView": {
-        "description": "The app type `AskView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "myOffer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "offerCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/OfferView"
+            },
+            "type": "array"
+          },
+          "postId": {
+            "type": "string"
+          },
+          "postTitle": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "postId",
+          "postTitle",
+          "kind",
+          "title",
+          "detail",
+          "status",
+          "createdAt",
+          "offerCount",
+          "offers",
+          "myOffer"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AskView"
       },
       "CallEvent": {
@@ -724,11 +819,95 @@
         "type": "object"
       },
       "CategoryView": {
-        "description": "The app type `CategoryView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "emoji": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unreadCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updateCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "emoji",
+          "color",
+          "updateCount",
+          "unreadCount",
+          "muted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CategoryView"
       },
       "CommentView": {
-        "description": "The app type `CommentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "authorIsTeam": {
+            "type": "boolean"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "editedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "postId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "postId",
+          "parentId",
+          "author",
+          "authorName",
+          "authorIsTeam",
+          "body",
+          "createdAt",
+          "editedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CommentView"
       },
       "CommentedEvent": {
@@ -826,7 +1005,46 @@
         "type": "object"
       },
       "ContributionView": {
-        "description": "The app type `ContributionView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "acceptedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "account": {
+            "type": "string"
+          },
+          "askId": {
+            "type": "string"
+          },
+          "askKind": {
+            "type": "string"
+          },
+          "askTitle": {
+            "type": "string"
+          },
+          "firm": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "askId",
+          "askTitle",
+          "askKind",
+          "account",
+          "name",
+          "firm",
+          "note",
+          "acceptedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ContributionView"
       },
       "CreateCategoryArgs": {
@@ -1062,7 +1280,30 @@
         "type": "object"
       },
       "DraftView": {
-        "description": "The app type `DraftView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "payload",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "DraftView"
       },
       "EditCategoryArgs": {
@@ -1254,7 +1495,65 @@
         "type": "object"
       },
       "EngagementRow": {
-        "description": "The app type `EngagementRow`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "categoryId": {
+            "type": "string"
+          },
+          "comments": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "notRead": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderView"
+            },
+            "type": "array"
+          },
+          "offers": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "postId": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "reactions": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "readers": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderView"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "postId",
+          "title",
+          "categoryId",
+          "publishedAt",
+          "readers",
+          "notRead",
+          "reactions",
+          "comments",
+          "offers"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "EngagementRow"
       },
       "EventFrame": {
@@ -2373,11 +2672,108 @@
         "type": "object"
       },
       "MeView": {
-        "description": "The app type `MeView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "firm": {
+            "type": "string"
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "isTeam": {
+            "type": "boolean"
+          },
+          "muted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "firm",
+          "isAdmin",
+          "isTeam",
+          "muted"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MeView"
       },
+      "Metric": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Metric"
+      },
+      "MetricPoint": {
+        "properties": {
+          "at": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "postId": {
+            "type": "string"
+          },
+          "postTitle": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "postId",
+          "postTitle",
+          "at",
+          "value"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "MetricPoint"
+      },
       "MetricSeries": {
-        "description": "The app type `MetricSeries`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MetricPoint"
+            },
+            "type": "array"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit",
+          "points"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MetricSeries"
       },
       "NotFoundError": {
@@ -2466,13 +2862,304 @@
         ],
         "type": "object"
       },
+      "OfferView": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "askId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "firm": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "askId",
+          "account",
+          "name",
+          "firm",
+          "note",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "OfferView"
+      },
       "Overview": {
-        "description": "The app type `Overview`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "cadenceDays": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "isTeam": {
+            "type": "boolean"
+          },
+          "lastUpdateAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "nextDueAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "openAsks": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "openQuestions": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "people": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "unreadUpdates": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatesTotal": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "companyName",
+          "cadenceDays",
+          "lastUpdateAt",
+          "nextDueAt",
+          "updatesTotal",
+          "unreadUpdates",
+          "openAsks",
+          "openQuestions",
+          "people",
+          "isTeam"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Overview"
       },
       "PersonView": {
-        "description": "The app type `PersonView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "acceptedOffers": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "account": {
+            "type": "string"
+          },
+          "comments": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "firm": {
+            "type": "string"
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "isTeam": {
+            "type": "boolean"
+          },
+          "joinedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "lastReadAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "offers": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatesRead": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatesTotal": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "firm",
+          "isAdmin",
+          "isTeam",
+          "joinedAt",
+          "updatesRead",
+          "updatesTotal",
+          "lastReadAt",
+          "comments",
+          "offers",
+          "acceptedOffers"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PersonView"
+      },
+      "PostCard": {
+        "properties": {
+          "askCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "author": {
+            "type": "string"
+          },
+          "authorIsTeam": {
+            "type": "boolean"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "commentCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "createdAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "editedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metricCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "openAskCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/ReactionCount"
+            },
+            "type": "array"
+          },
+          "readByMe": {
+            "type": "boolean"
+          },
+          "readCount": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "author",
+          "authorName",
+          "authorIsTeam",
+          "title",
+          "summary",
+          "categoryId",
+          "status",
+          "createdAt",
+          "editedAt",
+          "commentCount",
+          "askCount",
+          "openAskCount",
+          "metricCount",
+          "readCount",
+          "readByMe",
+          "reactions"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PostCard"
       },
       "PostDeletedEvent": {
         "properties": {
@@ -2497,11 +3184,62 @@
         "type": "object"
       },
       "PostPage": {
-        "description": "The app type `PostPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostCard"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PostPage"
       },
       "PostView": {
-        "description": "The app type `PostView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/AskView"
+            },
+            "type": "array"
+          },
+          "card": {
+            "$ref": "#/components/schemas/PostCard"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/Section"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "card",
+          "sections",
+          "metrics",
+          "asks"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PostView"
       },
       "ProfileSetEvent": {
@@ -2657,6 +3395,29 @@
         ],
         "type": "object"
       },
+      "ReactionCount": {
+        "properties": {
+          "count": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "emoji": {
+            "type": "string"
+          },
+          "mine": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "emoji",
+          "count",
+          "mine"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "ReactionCount"
+      },
       "ReadEvent": {
         "properties": {
           "postId": {
@@ -2667,6 +3428,33 @@
           "postId"
         ],
         "type": "object"
+      },
+      "ReaderView": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "firm": {
+            "type": "string"
+          },
+          "firstAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "firm",
+          "firstAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "ReaderView"
       },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
@@ -2827,6 +3615,26 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "Section": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "body"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Section"
       },
       "SetAskStatusArgs": {
         "description": "The arguments of `setAskStatus`, by name.",
@@ -3195,7 +4003,29 @@
         "type": "object"
       },
       "Settings": {
-        "description": "The app type `Settings`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "cadenceDays": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          }
+        },
+        "required": [
+          "companyName",
+          "cadenceDays",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Settings"
       },
       "SettingsChangedEvent": {
@@ -3254,7 +4084,44 @@
         "type": "object"
       },
       "UpdateInput": {
-        "description": "The app type `UpdateInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/AskInput"
+            },
+            "type": "array"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/Section"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "categoryId",
+          "sections",
+          "metrics",
+          "asks"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "UpdateInput"
       },
       "UpdatePublishedEvent": {

@@ -41,30 +41,6 @@ import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-/** The app type `ContextDetails`: the ABI names it without its shape, so it is its JSON. */
-typealias ContextDetails = JsonElement
-
-/** The app type `ContextMetadata`: the ABI names it without its shape, so it is its JSON. */
-typealias ContextMetadata = JsonElement
-
-/** The app type `DocumentChunk`: the ABI names it without its shape, so it is its JSON. */
-typealias DocumentChunk = JsonElement
-
-/** The app type `DocumentInfo`: the ABI names it without its shape, so it is its JSON. */
-typealias DocumentInfo = JsonElement
-
-/** The app type `DocumentSignature`: the ABI names it without its shape, so it is its JSON. */
-typealias DocumentSignature = JsonElement
-
-/** The app type `IdentityMapping`: the ABI names it without its shape, so it is its JSON. */
-typealias IdentityMapping = JsonElement
-
-/** The app type `PermissionLevel`: the ABI names it without its shape, so it is its JSON. */
-typealias PermissionLevel = JsonElement
-
-/** The app type `SignatureRecord`: the ABI names it without its shape, so it is its JSON. */
-typealias SignatureRecord = JsonElement
-
 /**
  * The app's methods.
  *
@@ -98,7 +74,7 @@ class SignClient private constructor(
             "addParticipant",
             buildJsonObject {
                 put("userIdStr", encode(String.serializer(), userIdStr))
-                put("permission", encode(JsonElement.serializer(), permission))
+                put("permission", encode(PermissionLevel.serializer(), permission))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -166,7 +142,7 @@ class SignClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            ContextDetails.serializer(),
         )
 
     /** view `getContextId`. */
@@ -195,7 +171,7 @@ class SignClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(DocumentSignature.serializer()),
         )
 
     /** view `getIdentityMapping`. */
@@ -211,7 +187,7 @@ class SignClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            IdentityMapping.serializer(),
         )
 
     /** view `getSharedIdentity`. */
@@ -243,7 +219,7 @@ class SignClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            PermissionLevel.serializer(),
         )
 
     /** view `hasConsented`. */
@@ -321,7 +297,7 @@ class SignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(DocumentInfo.serializer()),
         )
 
     /** view `listJoinedContexts`. */
@@ -334,7 +310,7 @@ class SignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(ContextMetadata.serializer()),
         )
 
     /** view `listParticipants`. */
@@ -360,7 +336,7 @@ class SignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(SignatureRecord.serializer()),
         )
 
     /** call `markParticipantSigned`. */
@@ -464,7 +440,7 @@ class SignClient private constructor(
             "setParticipantPermission",
             buildJsonObject {
                 put("userIdStr", encode(String.serializer(), userIdStr))
-                put("permission", encode(JsonElement.serializer(), permission))
+                put("permission", encode(PermissionLevel.serializer(), permission))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -531,7 +507,7 @@ class SignClient private constructor(
                 put("fileSize", encode(U64AsString, fileSize))
                 put("embeddings", encode(ListSerializer(Float.serializer()).nullable, embeddings))
                 put("extractedText", encode(String.serializer().nullable, extractedText))
-                put("chunks", encode(ListSerializer(JsonElement.serializer()).nullable, chunks))
+                put("chunks", encode(ListSerializer(DocumentChunk.serializer()).nullable, chunks))
             },
             idempotencyKey,
             String.serializer(),
@@ -680,7 +656,7 @@ class SignClient private constructor(
                     "DocumentUploaded" -> DocumentUploaded(id = field(data, "id", String.serializer()), name = field(data, "name", String.serializer()), uploadedBy = field(data, "uploadedBy", String.serializer()))
                     "ParticipantJoined" -> ParticipantJoined(userId = field(data, "userId", String.serializer()))
                     "ParticipantLeft" -> ParticipantLeft(userId = field(data, "userId", String.serializer()))
-                    "ParticipantPermissionChanged" -> ParticipantPermissionChanged(permission = field(data, "permission", JsonElement.serializer()), userId = field(data, "userId", String.serializer()))
+                    "ParticipantPermissionChanged" -> ParticipantPermissionChanged(permission = field(data, "permission", PermissionLevel.serializer()), userId = field(data, "userId", String.serializer()))
                     "SignatureCreated" -> SignatureCreated(id = field(data, "id", U64AsString), name = field(data, "name", String.serializer()), size = field(data, "size", U64AsString))
                     "SignatureDeleted" -> SignatureDeleted(id = field(data, "id", U64AsString))
                     else -> Unknown(kind, data)
@@ -737,6 +713,515 @@ class SignClient private constructor(
                 } catch (e: IllegalArgumentException) {
                     Unknown(error.appCode, error.fields)
                 }
+        }
+    }
+
+    /** The app type `ContextDetails`. */
+    data class ContextDetails(
+        val contextId: String,
+        val contextName: String,
+        val owner: String,
+        val isPrivate: Boolean,
+        val participantCount: ULong,
+        val participants: List<ParticipantInfo>,
+        val documentCount: ULong,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            /** `ContextDetails`'s JSON form. */
+            fun serializer(): KSerializer<ContextDetails> = Wire
+
+            private object Wire : KSerializer<ContextDetails> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ContextDetails,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("contextId", encode(String.serializer(), value.contextId))
+                            put("contextName", encode(String.serializer(), value.contextName))
+                            put("owner", encode(String.serializer(), value.owner))
+                            put("isPrivate", encode(Boolean.serializer(), value.isPrivate))
+                            put("participantCount", encode(U64AsString, value.participantCount))
+                            put("participants", encode(ListSerializer(ParticipantInfo.serializer()), value.participants))
+                            put("documentCount", encode(U64AsString, value.documentCount))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ContextDetails {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ContextDetails")
+                    return ContextDetails(
+                        contextId = field(fields, "contextId", String.serializer()),
+                        contextName = field(fields, "contextName", String.serializer()),
+                        owner = field(fields, "owner", String.serializer()),
+                        isPrivate = field(fields, "isPrivate", Boolean.serializer()),
+                        participantCount = field(fields, "participantCount", U64AsString),
+                        participants = field(fields, "participants", ListSerializer(ParticipantInfo.serializer())),
+                        documentCount = field(fields, "documentCount", U64AsString),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ContextMetadata`. */
+    data class ContextMetadata(
+        val contextId: String,
+        val contextName: String,
+        val role: ParticipantRole,
+        val joinedAt: ULong,
+        val privateIdentity: String,
+        val sharedIdentity: String,
+    ) {
+        companion object {
+            /** `ContextMetadata`'s JSON form. */
+            fun serializer(): KSerializer<ContextMetadata> = Wire
+
+            private object Wire : KSerializer<ContextMetadata> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ContextMetadata,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("contextId", encode(String.serializer(), value.contextId))
+                            put("contextName", encode(String.serializer(), value.contextName))
+                            put("role", encode(ParticipantRole.serializer(), value.role))
+                            put("joinedAt", encode(U64AsString, value.joinedAt))
+                            put("privateIdentity", encode(String.serializer(), value.privateIdentity))
+                            put("sharedIdentity", encode(String.serializer(), value.sharedIdentity))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ContextMetadata {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ContextMetadata")
+                    return ContextMetadata(
+                        contextId = field(fields, "contextId", String.serializer()),
+                        contextName = field(fields, "contextName", String.serializer()),
+                        role = field(fields, "role", ParticipantRole.serializer()),
+                        joinedAt = field(fields, "joinedAt", U64AsString),
+                        privateIdentity = field(fields, "privateIdentity", String.serializer()),
+                        sharedIdentity = field(fields, "sharedIdentity", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DocumentChunk`. */
+    data class DocumentChunk(
+        val text: String,
+        val embedding: List<Float>,
+        val startPosition: UInt,
+        val endPosition: UInt,
+    ) {
+        companion object {
+            /** `DocumentChunk`'s JSON form. */
+            fun serializer(): KSerializer<DocumentChunk> = Wire
+
+            private object Wire : KSerializer<DocumentChunk> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DocumentChunk,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("text", encode(String.serializer(), value.text))
+                            put("embedding", encode(ListSerializer(Float.serializer()), value.embedding))
+                            put("startPosition", encode(UInt.serializer(), value.startPosition))
+                            put("endPosition", encode(UInt.serializer(), value.endPosition))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DocumentChunk {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DocumentChunk")
+                    return DocumentChunk(
+                        text = field(fields, "text", String.serializer()),
+                        embedding = field(fields, "embedding", ListSerializer(Float.serializer())),
+                        startPosition = field(fields, "startPosition", UInt.serializer()),
+                        endPosition = field(fields, "endPosition", UInt.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DocumentInfo`. */
+    data class DocumentInfo(
+        val id: String,
+        val name: String,
+        val hash: String,
+        val uploadedBy: String,
+        val uploadedAt: ULong,
+        val status: DocumentStatus,
+        val pdfBlobId: String,
+        val size: ULong,
+        val requiredSigners: List<String>,
+        val embeddings: List<Float>? = null,
+        val extractedText: String? = null,
+        val chunks: List<DocumentChunk>? = null,
+    ) {
+        companion object {
+            /** `DocumentInfo`'s JSON form. */
+            fun serializer(): KSerializer<DocumentInfo> = Wire
+
+            private object Wire : KSerializer<DocumentInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DocumentInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("hash", encode(String.serializer(), value.hash))
+                            put("uploadedBy", encode(String.serializer(), value.uploadedBy))
+                            put("uploadedAt", encode(U64AsString, value.uploadedAt))
+                            put("status", encode(DocumentStatus.serializer(), value.status))
+                            put("pdfBlobId", encode(String.serializer(), value.pdfBlobId))
+                            put("size", encode(U64AsString, value.size))
+                            put("requiredSigners", encode(ListSerializer(String.serializer()), value.requiredSigners))
+                            put("embeddings", encode(ListSerializer(Float.serializer()).nullable, value.embeddings))
+                            put("extractedText", encode(String.serializer().nullable, value.extractedText))
+                            put("chunks", encode(ListSerializer(DocumentChunk.serializer()).nullable, value.chunks))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DocumentInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DocumentInfo")
+                    return DocumentInfo(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        hash = field(fields, "hash", String.serializer()),
+                        uploadedBy = field(fields, "uploadedBy", String.serializer()),
+                        uploadedAt = field(fields, "uploadedAt", U64AsString),
+                        status = field(fields, "status", DocumentStatus.serializer()),
+                        pdfBlobId = field(fields, "pdfBlobId", String.serializer()),
+                        size = field(fields, "size", U64AsString),
+                        requiredSigners = field(fields, "requiredSigners", ListSerializer(String.serializer())),
+                        embeddings = field(fields, "embeddings", ListSerializer(Float.serializer()).nullable),
+                        extractedText = field(fields, "extractedText", String.serializer().nullable),
+                        chunks = field(fields, "chunks", ListSerializer(DocumentChunk.serializer()).nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DocumentSignature`. */
+    data class DocumentSignature(
+        val signer: String,
+        val signedAt: ULong,
+    ) {
+        companion object {
+            /** `DocumentSignature`'s JSON form. */
+            fun serializer(): KSerializer<DocumentSignature> = Wire
+
+            private object Wire : KSerializer<DocumentSignature> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DocumentSignature,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("signer", encode(String.serializer(), value.signer))
+                            put("signedAt", encode(U64AsString, value.signedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DocumentSignature {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "DocumentSignature")
+                    return DocumentSignature(
+                        signer = field(fields, "signer", String.serializer()),
+                        signedAt = field(fields, "signedAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `DocumentStatus`. */
+    sealed interface DocumentStatus {
+        /** `Pending`. */
+        data object Pending : DocumentStatus
+
+        /** `PartiallySigned`. */
+        data object PartiallySigned : DocumentStatus
+
+        /** `FullySigned`. */
+        data object FullySigned : DocumentStatus
+
+        companion object {
+            /** `DocumentStatus`'s JSON form. */
+            fun serializer(): KSerializer<DocumentStatus> = Wire
+
+            private object Wire : KSerializer<DocumentStatus> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: DocumentStatus,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is Pending -> JsonPrimitive("Pending")
+                            is PartiallySigned -> JsonPrimitive("PartiallySigned")
+                            is FullySigned -> JsonPrimitive("FullySigned")
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): DocumentStatus {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = external(data, "DocumentStatus").first
+                    return when (name) {
+                        "Pending" -> Pending
+                        "PartiallySigned" -> PartiallySigned
+                        "FullySigned" -> FullySigned
+                        else -> throw SerializationException("DocumentStatus: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
+    /** The app type `IdentityMapping`. */
+    data class IdentityMapping(
+        val privateIdentity: String,
+        val sharedIdentity: String,
+        val contextId: String,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            /** `IdentityMapping`'s JSON form. */
+            fun serializer(): KSerializer<IdentityMapping> = Wire
+
+            private object Wire : KSerializer<IdentityMapping> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: IdentityMapping,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("privateIdentity", encode(String.serializer(), value.privateIdentity))
+                            put("sharedIdentity", encode(String.serializer(), value.sharedIdentity))
+                            put("contextId", encode(String.serializer(), value.contextId))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): IdentityMapping {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "IdentityMapping")
+                    return IdentityMapping(
+                        privateIdentity = field(fields, "privateIdentity", String.serializer()),
+                        sharedIdentity = field(fields, "sharedIdentity", String.serializer()),
+                        contextId = field(fields, "contextId", String.serializer()),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ParticipantInfo`. */
+    data class ParticipantInfo(
+        val userId: String,
+        val permissionLevel: PermissionLevel,
+    ) {
+        companion object {
+            /** `ParticipantInfo`'s JSON form. */
+            fun serializer(): KSerializer<ParticipantInfo> = Wire
+
+            private object Wire : KSerializer<ParticipantInfo> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ParticipantInfo,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("userId", encode(String.serializer(), value.userId))
+                            put("permissionLevel", encode(PermissionLevel.serializer(), value.permissionLevel))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ParticipantInfo {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ParticipantInfo")
+                    return ParticipantInfo(
+                        userId = field(fields, "userId", String.serializer()),
+                        permissionLevel = field(fields, "permissionLevel", PermissionLevel.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ParticipantRole`. */
+    sealed interface ParticipantRole {
+        /** `Owner`. */
+        data object Owner : ParticipantRole
+
+        /** `Signer`. */
+        data object Signer : ParticipantRole
+
+        /** `Viewer`. */
+        data object Viewer : ParticipantRole
+
+        /** `Unknown`. */
+        data object Unknown : ParticipantRole
+
+        companion object {
+            /** `ParticipantRole`'s JSON form. */
+            fun serializer(): KSerializer<ParticipantRole> = Wire
+
+            private object Wire : KSerializer<ParticipantRole> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ParticipantRole,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is Owner -> JsonPrimitive("Owner")
+                            is Signer -> JsonPrimitive("Signer")
+                            is Viewer -> JsonPrimitive("Viewer")
+                            is Unknown -> JsonPrimitive("Unknown")
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ParticipantRole {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = external(data, "ParticipantRole").first
+                    return when (name) {
+                        "Owner" -> Owner
+                        "Signer" -> Signer
+                        "Viewer" -> Viewer
+                        "Unknown" -> Unknown
+                        else -> throw SerializationException("ParticipantRole: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
+    /** The app type `PermissionLevel`. */
+    sealed interface PermissionLevel {
+        /** `Read`. */
+        data object Read : PermissionLevel
+
+        /** `Sign`. */
+        data object Sign : PermissionLevel
+
+        /** `Admin`. */
+        data object Admin : PermissionLevel
+
+        companion object {
+            /** `PermissionLevel`'s JSON form. */
+            fun serializer(): KSerializer<PermissionLevel> = Wire
+
+            private object Wire : KSerializer<PermissionLevel> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: PermissionLevel,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is Read -> JsonPrimitive("Read")
+                            is Sign -> JsonPrimitive("Sign")
+                            is Admin -> JsonPrimitive("Admin")
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): PermissionLevel {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = external(data, "PermissionLevel").first
+                    return when (name) {
+                        "Read" -> Read
+                        "Sign" -> Sign
+                        "Admin" -> Admin
+                        else -> throw SerializationException("PermissionLevel: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
+    /** The app type `SignatureRecord`. */
+    data class SignatureRecord(
+        val id: ULong,
+        val name: String,
+        val blobId: String,
+        val size: ULong,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            /** `SignatureRecord`'s JSON form. */
+            fun serializer(): KSerializer<SignatureRecord> = Wire
+
+            private object Wire : KSerializer<SignatureRecord> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SignatureRecord,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(U64AsString, value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("blobId", encode(String.serializer(), value.blobId))
+                            put("size", encode(U64AsString, value.size))
+                            put("createdAt", encode(U64AsString, value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SignatureRecord {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SignatureRecord")
+                    return SignatureRecord(
+                        id = field(fields, "id", U64AsString),
+                        name = field(fields, "name", String.serializer()),
+                        blobId = field(fields, "blobId", String.serializer()),
+                        size = field(fields, "size", U64AsString),
+                        createdAt = field(fields, "createdAt", U64AsString),
+                    )
+                }
+            }
         }
     }
 
@@ -806,5 +1291,22 @@ class SignClient private constructor(
             name: String,
             serializer: KSerializer<T>,
         ): T = json.decodeFromJsonElement(serializer, (data as? JsonObject)?.get(name) ?: JsonNull)
+
+        /** An externally tagged variant's name and data: `"Name"`, or `{ "Name": data }`. */
+        private fun external(
+            data: JsonElement,
+            what: String,
+        ): Pair<String, JsonElement> =
+            when {
+                data is JsonPrimitive && data.isString -> data.content to JsonNull
+                data is JsonObject && data.size == 1 -> data.entries.first().let { it.key to it.value }
+                else -> throw SerializationException("$what: expected a variant name or an object with one key")
+            }
+
+        /** [data] as an object. */
+        private fun obj(
+            data: JsonElement,
+            what: String,
+        ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
     }
 }

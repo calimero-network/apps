@@ -1,9 +1,9 @@
 /**
  * The contract is called through `MeroSignClient`, which `mero-app-build
- * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`). The
- * ABI names its records without their shapes, so the generated types are
- * `unknown`: this file turns each answer back into the snake_case,
- * number-valued shapes the screens have always used (`src/api/clientApi.ts`).
+ * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`) and
+ * types its records from the ABI: this file turns each answer back into the
+ * snake_case, number-valued shapes the screens have always used
+ * (`src/api/clientApi.ts`).
  *
  * What the wire looks like now (and what this file undoes):
  *
@@ -29,62 +29,23 @@ import {
   type DocumentInfo,
   type SignatureRecord,
 } from '../api/clientApi';
-import type { AppTransport } from '../generated/client';
+import type {
+  AppTransport,
+  ContextDetails as WireContextDetails,
+  ContextMetadata as WireContextMetadata,
+  DocumentChunk as WireDocumentChunk,
+  DocumentInfo as WireDocumentInfo,
+  DocumentSignature as WireDocumentSignature,
+  IdentityMapping as WireIdentityMapping,
+  SignatureRecord as WireSignature,
+} from '../generated/client';
 
 /** What the generated client is built over: a signed-in `CalimeroClient` in the app. */
 export type Transport = AppTransport;
 
-// ── wire shapes ──────────────────────────────────────────────────────────────
+// ── wire shapes: the generated client's types ────────────────────────────────
 
-export interface WireSignature {
-  id: string;
-  name: string;
-  blobId: string;
-  size: string;
-  createdAt: string;
-}
-
-export interface WireContextMetadata {
-  contextId: string;
-  contextName: string;
-  role: string;
-  joinedAt: string;
-  privateIdentity: string;
-  sharedIdentity: string;
-}
-
-export interface WireIdentityMapping {
-  privateIdentity: string;
-  sharedIdentity: string;
-  contextId: string;
-  createdAt: string;
-}
-
-export interface WireDocumentInfo {
-  id: string;
-  name: string;
-  hash: string;
-  uploadedBy: string;
-  uploadedAt: string;
-  status: string;
-  pdfBlobId: string;
-  size: string;
-  requiredSigners: string[];
-  embeddings: number[] | null;
-  extractedText: string | null;
-  chunks: unknown[] | null;
-}
-
-export interface WireContextDetails {
-  contextId: string;
-  contextName: string;
-  owner: string;
-  isPrivate: boolean;
-  participantCount: string;
-  participants: { userId: string; permissionLevel: string }[];
-  documentCount: string;
-  createdAt: string;
-}
+export type { WireContextDetails, WireContextMetadata, WireDocumentInfo, WireIdentityMapping, WireSignature };
 
 export interface IdentityMapping {
   private_identity: string;
@@ -165,7 +126,7 @@ export function toContextDetails(d: WireContextDetails): ContextDetails {
   };
 }
 
-export function toWireChunk(c: DocumentChunk) {
+export function toWireChunk(c: DocumentChunk): WireDocumentChunk {
   return {
     text: c.text,
     embedding: c.embedding,
@@ -177,18 +138,18 @@ export function toWireChunk(c: DocumentChunk) {
 // ── answers, in the screens' shapes ──────────────────────────────────────────
 
 /** `listSignatures`'s answer. */
-export const toSignatures = (v: unknown): SignatureRecord[] => ((v as WireSignature[] | null) ?? []).map(toSignature);
+export const toSignatures = (v: WireSignature[] | null): SignatureRecord[] => (v ?? []).map(toSignature);
 /** `listJoinedContexts`'s answer. */
-export const toContexts = (v: unknown): ContextMetadata[] =>
-  ((v as WireContextMetadata[] | null) ?? []).map(toContextMetadata);
+export const toContexts = (v: WireContextMetadata[] | null): ContextMetadata[] =>
+  (v ?? []).map(toContextMetadata);
 /** `getIdentityMapping`'s answer. */
-export const toMapping = (v: unknown): IdentityMapping => toIdentityMapping(v as WireIdentityMapping);
+export const toMapping = (v: WireIdentityMapping): IdentityMapping => toIdentityMapping(v);
 /** `getContextDetails`'s answer. */
-export const toDetails = (v: unknown): ContextDetails => toContextDetails(v as WireContextDetails);
+export const toDetails = (v: WireContextDetails): ContextDetails => toContextDetails(v);
 /** `listDocuments`'s answer. */
-export const toDocuments = (v: unknown): DocumentInfo[] => ((v as WireDocumentInfo[] | null) ?? []).map(toDocumentInfo);
+export const toDocuments = (v: WireDocumentInfo[] | null): DocumentInfo[] => (v ?? []).map(toDocumentInfo);
 /** `getDocumentSignatures`'s answer. */
-export const toDocumentSignatures = (v: unknown): DocumentSignature[] =>
-  ((v as { signer: string; signedAt: string }[] | null) ?? []).map((r) => ({ signer: r.signer, signed_at: num(r.signedAt) }));
+export const toDocumentSignatures = (v: WireDocumentSignature[] | null): DocumentSignature[] =>
+  (v ?? []).map((r) => ({ signer: r.signer, signed_at: num(r.signedAt) }));
 /** A u64 answer (`createSignature`'s id) as a number. */
-export const toNumber = (v: unknown): number => num(v as string);
+export const toNumber = (v: string): number => num(v);

@@ -90,7 +90,7 @@ const OFFER_STATUSES: &[&str] = &["offered", "accepted", "declined"];
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One block of an update: "Highlights", "Lowlights", "Product", "Thanks"…
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct Section {
     /// A template hint ("highlights", "product", "text"…), free text.
@@ -101,7 +101,7 @@ pub struct Section {
 
 /// One KPI as reported in one update. `value` is a string on purpose ("$1.2M",
 /// "38%"): the contract keeps what was reported, exactly as reported.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
 #[serde(deny_unknown_fields)]
 pub struct Metric {
     pub name: String,
@@ -269,7 +269,7 @@ struct Draft {
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
 /// One ask in an update being published or edited.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AskInput {
     /// Set to edit an existing ask of this update; `null` creates one.
@@ -281,7 +281,7 @@ pub struct AskInput {
 }
 
 /// The content of an update.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateInput {
     pub title: String,
@@ -297,7 +297,7 @@ pub struct UpdateInput {
 // Plain serde structs with camelCase names; every `u64` is a decimal string
 // (`json::u64_str`), as the component ABI sends 64-bit integers.
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub company_name: String,
@@ -306,7 +306,7 @@ pub struct Settings {
     pub updated_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MeView {
     pub account: String,
@@ -317,7 +317,7 @@ pub struct MeView {
     pub muted: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonView {
     pub account: String,
@@ -342,7 +342,7 @@ pub struct PersonView {
     pub accepted_offers: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryView {
     pub id: String,
@@ -356,7 +356,7 @@ pub struct CategoryView {
     pub muted: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ReactionCount {
     pub emoji: String,
@@ -365,7 +365,7 @@ pub struct ReactionCount {
     pub mine: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct OfferView {
     pub ask_id: String,
@@ -380,7 +380,7 @@ pub struct OfferView {
     pub updated_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct AskView {
     pub id: String,
@@ -400,7 +400,7 @@ pub struct AskView {
     pub my_offer: Option<OfferView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PostCard {
     pub id: String,
@@ -430,7 +430,7 @@ pub struct PostCard {
     pub reactions: Vec<ReactionCount>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PostView {
     pub card: PostCard,
@@ -439,14 +439,14 @@ pub struct PostView {
     pub asks: Vec<AskView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct PostPage {
     pub items: Vec<PostCard>,
     pub next_cursor: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentView {
     pub id: String,
@@ -462,7 +462,7 @@ pub struct CommentView {
     pub edited_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricPoint {
     pub post_id: String,
@@ -472,7 +472,7 @@ pub struct MetricPoint {
     pub value: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricSeries {
     pub name: String,
@@ -481,7 +481,7 @@ pub struct MetricSeries {
     pub points: Vec<MetricPoint>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionView {
     pub ask_id: String,
@@ -495,7 +495,7 @@ pub struct ContributionView {
     pub accepted_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Overview {
     pub company_name: String,
@@ -520,7 +520,7 @@ pub struct Overview {
     pub is_team: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct ReaderView {
     pub account: String,
@@ -530,7 +530,7 @@ pub struct ReaderView {
     pub first_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct EngagementRow {
     pub post_id: String,
@@ -549,7 +549,7 @@ pub struct EngagementRow {
     pub offers: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct DraftView {
     pub id: String,

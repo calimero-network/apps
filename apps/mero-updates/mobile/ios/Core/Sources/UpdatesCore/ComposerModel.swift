@@ -132,10 +132,10 @@ public final class ComposerModel: ObservableObject {
             let input = state.toInput()
             let id: String
             if let editId {
-                try await audience.act { try await $0.editUpdate(postId: editId, input: try .wire(input)) }
+                try await audience.act { try await $0.editUpdate(postId: editId, input: try JSONValue.wire(input).converted()) }
                 id = editId
             } else {
-                id = try await audience.act { try await $0.publishUpdate(input: try .wire(input)) }
+                id = try await audience.act { try await $0.publishUpdate(input: try JSONValue.wire(input).converted()) }
                 if let draftId { try? await audience.client.deleteDraft(draftId: draftId) }
                 draftId = nil
             }

@@ -90,7 +90,7 @@ final class ContractSurfaceTests: XCTestCase {
     func testEveryMethodIsTheABIsNameWithItsParameters() async throws {
         let r = Recorder()
         let c = SignClient(contract: r)
-        try await c.addParticipant(userIdStr: IDs.bob, permission: try JSONValue(encoding: PermissionLevel.sign))
+        try await c.addParticipant(userIdStr: IDs.bob, permission: try PermissionLevel.sign.converted())
         _ = try await c.createSignature(name: "S", blobIdStr: IDs.blob, dataSize: 3)
         try await c.deleteDocument(documentId: "d")
         try await c.deleteSignature(signatureId: 7)
@@ -114,7 +114,7 @@ final class ContractSurfaceTests: XCTestCase {
         _ = try await c.resolvePrivateIdentity(sharedIdentityStr: IDs.me)
         _ = try await c.searchDocumentByEmbedding(queryEmbedding: [0.5], documentId: "d")
         try await c.setConsent(documentId: "d")
-        try await c.setParticipantPermission(userIdStr: IDs.bob, permission: try JSONValue(encoding: PermissionLevel.read))
+        try await c.setParticipantPermission(userIdStr: IDs.bob, permission: try PermissionLevel.read.converted())
         try await c.setup(isPrivate: false, contextName: "Lease")
         try await c.signDocument(documentId: "d", baseHash: "a", pdfBlobIdStr: IDs.blob, fileSize: 9, newHash: "b")
         _ = try await c.uploadDocument(name: "n", hash: "h", pdfBlobIdStr: IDs.blob, fileSize: 9)

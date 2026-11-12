@@ -24,10 +24,15 @@ extension SignClient {
     ]
 }
 
-extension JSONValue {
-    /// This answer as the app type `T` (one of the types below).
+extension Encodable {
+    /// This answer as the app type `T` (one of the types below), read through its JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
+    }
+
+    /// This value as the generated client's type `T` (an argument), through its JSON.
+    public func converted<T: Decodable>() throws -> T {
+        try MeroJSON.decode(T.self, from: MeroJSON.encode(self))
     }
 }
 

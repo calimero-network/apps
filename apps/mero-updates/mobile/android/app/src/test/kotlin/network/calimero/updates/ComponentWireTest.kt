@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.updates.core.ComponentWire
+import network.calimero.updates.core.asContractArg
 import network.calimero.updates.generated.AskInput
 import network.calimero.updates.generated.MetricPoint
 import network.calimero.updates.generated.PostPage
@@ -72,10 +73,10 @@ class ComponentWireTest {
             runCatching { c.deletePost("p") }
             runCatching { c.editCategory("c", "n", "e", "c") }
             runCatching { c.editComment("c", "b") }
-            runCatching { c.editUpdate("p", ComponentWire.wire(input)) }
+            runCatching { c.editUpdate("p", ComponentWire.wire(input).asContractArg()) }
             runCatching { c.markRead("p") }
             runCatching { c.offerHelp("a", "n") }
-            runCatching { c.publishUpdate(ComponentWire.wire(input)) }
+            runCatching { c.publishUpdate(ComponentWire.wire(input).asContractArg()) }
             runCatching { c.react("p", "e", true) }
             runCatching { c.removeTeammate("a") }
             runCatching { c.saveDraft(title = "t", payload = "{}") }
