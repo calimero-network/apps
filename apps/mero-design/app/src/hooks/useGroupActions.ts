@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { v4 as uuid } from "uuid";
-import { rpcCall } from "../api/rpc";
+import { design, wireElement } from "../api/rpc";
 import { useCanvasStore } from "../store/canvasStore";
 import { useToast } from "../contexts/ToastContext";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -106,7 +106,7 @@ export function useGroupActions(contextId: string, readOnly = false) {
     };
     store.snapshot();
     store.upsertElement(backdrop);
-    await rpcCall(contextId, "add_element", { element: backdrop })
+    await design(contextId).addElement({ element: wireElement(backdrop) })
       .catch((e) => report.current("add_element", e));
 
     const next = useCanvasStore.getState();

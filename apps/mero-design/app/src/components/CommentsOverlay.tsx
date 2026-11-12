@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { v4 as uuid } from "uuid";
-import { rpcCall } from "../api/rpc";
+import { design, i64 } from "../api/rpc";
 import { clampText, MAX_COMMENT_LEN, MAX_REPLY_LEN } from "../utils/sanitize";
 import type { Member, CanvasComment } from "../types";
 import { resolveName, type TeamNameLookup } from "../hooks/useMemberNames";
@@ -69,9 +69,9 @@ export default function CommentsOverlay({
     };
     onCommentAdded(c);
     // author is derived server-side from the signer; not client-supplied.
-    await rpcCall(contextId, "add_comment", {
-      id: c.id, x: c.x, y: c.y, content: c.content,
-      created_at: c.createdAt,
+    await design(contextId).addComment({
+      id: c.id, x: i64(c.x), y: i64(c.y), content: c.content,
+      createdAt: i64(c.createdAt),
     }).catch(() => {});
     setAddText("");
     setPendingPos(null);
@@ -83,9 +83,9 @@ export default function CommentsOverlay({
     const replyId = uuid();
     const reply = { id: replyId, content: clampText(replyText, MAX_REPLY_LEN), author: myIdentity, createdAt: Date.now() };
     onReplyAdded(commentId, reply);
-    await rpcCall(contextId, "add_reply", {
-      comment_id: commentId, reply_id: replyId,
-      content: reply.content, created_at: reply.createdAt,
+    await design(contextId).addReply({
+      commentId, replyId,
+      content: reply.content, createdAt: i64(reply.createdAt),
     }).catch(() => {});
     setReplyText("");
   }
@@ -94,13 +94,13 @@ export default function CommentsOverlay({
     if (readOnly) return;
     onCommentDeleted(commentId);
     setOpenId(null);
-    await rpcCall(contextId, "delete_comment", { id: commentId }).catch(() => {});
+    await design(contextId).deleteComment({ id: commentId }).catch(() => {});
   }
 
   async function deleteReply(commentId: string, replyId: string) {
     if (readOnly) return;
     onReplyDeleted(commentId, replyId);
-    await rpcCall(contextId, "delete_reply", { comment_id: commentId, reply_id: replyId }).catch(() => {});
+    await design(contextId).deleteReply({ commentId, replyId }).catch(() => {});
   }
 
   /** Username when we know it, a short id when we do not. */

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMemberNames, useMyName } from "../api/names";
-import { PRODUCT_NAME, getNodeIdentity, listGroupMembers, removeTeamMember, rpcCall, updateMemberRole } from "../api/rpc";
+import { PRODUCT_NAME, getNodeIdentity, listGroupMembers, removeTeamMember, updateMemberRole, design } from "../api/rpc";
 import { APP_PACKAGE } from "../config";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -77,9 +77,9 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     if (type !== "project") return;
     let cancelled = false;
     Promise.all([
-      rpcCall<ContractRole[]>(id, "list_roles", {}).catch(() => [] as ContractRole[]),
-      rpcCall<string>(id, "my_role", {}).catch(() => ""),
-      rpcCall<CanvasMember[]>(id, "get_members", {}).catch(() => [] as CanvasMember[]),
+      (design(id).listRoles() as Promise<ContractRole[]>).catch(() => [] as ContractRole[]),
+      (design(id).myRole() as Promise<string>).catch(() => ""),
+      (design(id).getMembers() as Promise<CanvasMember[]>).catch(() => [] as CanvasMember[]),
     ]).then(([roles, mine, canvasMembers]) => {
       if (cancelled) return;
       // Re-key both contract sources by ACCOUNT — see boardMembers.ts for why
@@ -103,7 +103,7 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
   async function setEditor(identity: string, makeEditor: boolean) {
     setPendingEditor(identity);
     try {
-      await rpcCall(id, makeEditor ? "grant_editor" : "revoke_editor", { member: identity });
+      await (makeEditor ? design(id).grantEditor({ member: identity }) : design(id).revokeEditor({ member: identity }));
       setContractRoles((prev) => ({ ...prev, [identity]: makeEditor ? "editor" : "viewer" }));
       showToast(makeEditor ? "Member can now edit the canvas." : "Member set to view-only.", "success");
     } catch (err) {
