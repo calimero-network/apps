@@ -128,6 +128,8 @@ jobs:
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
               - 'scripts/check-service-workers.py'
+              # The generator every app's `codegen` runs, at its pinned tag.
+              - 'scripts/install-mero-app-build.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
             # contract, so it must not start merod containers.
             #
@@ -841,20 +843,36 @@ jobs:
       # --noEmit on a solution file checks nothing and exits 0.
       - run: pnpm -r $PNPM_FILTER typecheck
 
+      # A component app's `codegen` is core's `mero-app-build codegen` (its typed
+      # client from the committed ABI), at the tag scripts/install-mero-app-build.sh
+      # pins. Cached by that script's hash, so a run that does not move the tag
+      # does not compile it.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mero-app-build
+          key: mero-app-build-${{ runner.os }}-${{ hashFiles('scripts/install-mero-app-build.sh') }}
+      - name: Install mero-app-build
+        env:
+          MERO_APP_BUILD_ROOT: ${{ runner.temp }}/mero-app-build
+        run: |
+          scripts/install-mero-app-build.sh
+          echo "$MERO_APP_BUILD_ROOT/bin" >> "$GITHUB_PATH"
+
       # Regenerating and diffing is what turns a contract/frontend mismatch into
       # a failed build rather than a runtime 500. It needs no node and no wasm —
-      # it reads the committed ABI, which the `wasm` job proves is current.
+      # it reads the committed ABI, which the `wasm` job (`rust` in
+      # components.yml for a component app) proves is current.
       - name: Assert the generated clients are current
         run: |
-          # `--if-present`: a component app has no v1 codegen (its client is
-          # mero-js's CalimeroClient), and pnpm refuses a filtered run in which
-          # no selected package has the script.
+          # `--if-present`: only an app that calls its contract through a
+          # generated client has the script, and pnpm refuses a filtered run in
+          # which no selected package has it.
           pnpm -r $PNPM_FILTER --if-present run codegen
           # Same reason as the ABI gate: untracked generated output is invisible
           # to `git diff`, so a new app could pass with no client committed.
           git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
           if ! git diff --quiet -- 'apps/*/app/src/generated'; then
-            echo "::error::a generated client is stale. Run 'pnpm -r codegen' and commit."
+            echo "::error::a generated client is stale. Run 'scripts/install-mero-app-build.sh', then 'pnpm -r codegen', and commit."
             git --no-pager diff -- 'apps/*/app/src/generated'
             exit 1
           fi

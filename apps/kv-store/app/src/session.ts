@@ -8,9 +8,11 @@ import {
   type SessionApi,
   type SessionDeps,
 } from "@calimero-apps/passkey";
-import { PACKAGE } from "./kvStore";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
+
+/** The package a production instance is created from (`[package.metadata.calimero]`). */
+export const PACKAGE = "com.calimero.kv-store";
 
 /** The app's name in stored keys. */
 export const APP = "kv-store";

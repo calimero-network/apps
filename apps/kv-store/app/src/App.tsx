@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appSource,
   askAnOwnerCopy,
@@ -11,11 +11,11 @@ import {
 import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
+import { KvStoreClient } from "./generated/client";
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
-import { PACKAGE, kvStore } from "./kvStore";
 import { StorePicker } from "./StorePicker";
-import { LISTING, ONBOARDING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { LISTING, ONBOARDING, PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
 import { instanceIn, invites as appInvites, listStores, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
@@ -33,14 +33,14 @@ function readSelection(storage: KeyValueStorage, key: string): Opened | null {
   return null;
 }
 
-/** Calls `onChange` (at most every 200 ms) for each event of `app`, until the returned stop. */
-function subscribeTo(client: CalimeroClient, app: string) {
+/** Calls `onChange` (at most every 200 ms) for each event of the store, until the returned stop. */
+function subscribeTo(kv: KvStoreClient) {
   return (onChange: () => void) => {
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
       try {
-        for await (const _event of client.events(app, 0, abort.signal)) {
+        for await (const _event of kv.events(0, abort.signal)) {
           clearTimeout(timer);
           timer = setTimeout(onChange, 200);
         }
@@ -148,11 +148,13 @@ export function App({
     })();
   }, [client, landing, source, key, storage, after, open]);
 
+  // The store's contract, through the client `mero-app-build codegen` generated
+  // from logic/res/abi.json; `after` keeps the stored session current.
   const kv = useMemo(
-    () => (client && opened ? kvStore(client, opened.appId, after) : null),
+    () => (client && opened ? new KvStoreClient(client, opened.appId, { after }) : null),
     [client, opened, after],
   );
-  const subscribe = useMemo(() => (client && opened ? subscribeTo(client, opened.appId) : undefined), [client, opened]);
+  const subscribe = useMemo(() => (kv ? subscribeTo(kv) : undefined), [kv]);
 
   return (
     <div className="wrap">

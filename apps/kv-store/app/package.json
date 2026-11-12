@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name kv-store -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

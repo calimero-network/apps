@@ -16,6 +16,7 @@ apps/kv-store/
 │   ├── scenarios/           simple-store, converge, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 └── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
+    └── src/generated/       KvStoreClient: `mero-app-build codegen` from res/abi.json (committed)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -40,7 +41,7 @@ browser profile with its own passkey and the invitation link is a second member.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/kv-store/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's convergence tests as what they become under one log, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F kv-store test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the panel, sign-in, stores, invitations, session restore (mocked client) | no |
+| `pnpm -F kv-store test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the panel, sign-in, stores, invitations, session restore (mocked client) | no |
 | `pnpm merod-local e2e kv-store` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios are ported from the two merobox workflows: `simple-store.json`
@@ -81,16 +82,31 @@ Same methods, same arguments, same events. What a client sees differently:
 | `Option` results in the ABI | lost (`get` typed `string`) | kept (`option<string>`) | the component ABI records it |
 
 The frontend changed with it: mero-react's provider, the node login, the
-context picker, the namespace invitations, the desktop SSO hand-off and the
-generated `KvStoreClient` are gone. It now resolves its target from the build
+context picker, the namespace invitations and the desktop SSO hand-off are
+gone, and v1's abi-codegen `KvStoreClient` is now core's. It now resolves its target from the build
 (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
 `vite build`), signs in with a **passkey**, lists and creates **stores** (app
 instances: v1's contexts), shares one through an **organization** (v1's
 namespace) with an **invite link** (making it is approved with your passkey;
 opening it after signing in redeems it and opens the shared store; the pending
-invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the contract by method
-name through a small typed wrapper (`src/kvStore.ts`) whose method list a test
-checks against `logic/res/abi.json`.
+invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the contract through
+`KvStoreClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+writes from `logic/res/abi.json`.
+
+## The generated client
+
+```bash
+scripts/install-mero-app-build.sh   # once, from the repo root: mero-app-build at its pinned tag
+pnpm -F kv-store codegen            # logic/res/abi.json -> app/src/generated/
+```
+
+`App.tsx` builds `new KvStoreClient(client, appId, { after })`, where `after`
+syncs the stored session after every call and view; `KvPanel` calls its
+methods (`kv.set({ key, value })`) and the event stream is `kv.events()`. The
+directory is committed and CI regenerates it and fails when it is stale (see
+[docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
+After a contract change: `mero-component build`, `pnpm -F kv-store codegen`,
+then `tsc -b` shows every call site to fix.
 
 ## Production
 
