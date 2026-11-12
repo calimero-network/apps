@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import { describeError, listAppInfos, type ClientRoutes } from "@calimero-apps/connect";
 import { useInstanceRelease } from "@calimero-apps/passkey";
-import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
+import { HyperfeedClient } from "./generated/client";
 import type { LensView } from "./hyperfeedTypes";
 import { clusterBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";
@@ -139,7 +139,7 @@ export function useNodeFeed(appId: string): NodeFeed {
       },
       read: async (blobId) => new Blob([(await client.downloadBlob(appId, blobId)) as BlobPart]),
     };
-    return clusterBackend(new HyperfeedClient(calimeroTransport(client), appId), otherApps(client), images);
+    return clusterBackend(new HyperfeedClient(client, appId), otherApps(client), images);
   }, [client, appId]);
   const [nudge, setNudge] = useState(0);
 

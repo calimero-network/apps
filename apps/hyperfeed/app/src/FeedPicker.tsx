@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
 import { feedSource, openFeed, signedIn, useNewFeed } from "./newFeed";
-import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
+import { HyperfeedClient } from "./generated/client";
+import { u64 } from "./backend";
+import type { FeedPage } from "./hyperfeedTypes";
 import { useSessionApi } from "./session";
 import {
   confirmText,
@@ -61,8 +63,11 @@ function useFeedFacts(ids: string[], open: boolean) {
     if (!open || !client) return;
     let live = true;
     for (const id of key.split(",").filter(Boolean)) {
-      new HyperfeedClient(calimeroTransport(client), id)
-        .feed({ filter: "all", app_key: "", limit: 1, before: 0 })
+      new HyperfeedClient(client, id)
+        .feed({ filter: "all", appKey: "", limit: 1, before: u64(0) })
+        .then(
+          (answer) => answer as FeedPage,
+        )
         .then(
           (p) => ({ rows: p.counts.all + p.counts.archived, at: p.items[0]?.chain_at ?? 0 }),
           () => ({ rows: null, at: 0 }),
