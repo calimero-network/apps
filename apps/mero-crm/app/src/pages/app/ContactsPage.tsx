@@ -24,17 +24,34 @@ export default function ContactsPage(): React.ReactElement {
 
   const save = async (draft: Draft) => {
     if (editing === 'new') {
-      await data.act((c) => c.createContact(draft));
+      await data.act((c) =>
+        c.createContact({
+          name: draft.name,
+          email: draft.email,
+          phone: draft.phone,
+          organization: draft.organization,
+          jobTitle: draft.job_title,
+        }),
+      );
       toast.show({ variant: 'success', description: `Added ${draft.name}` });
     } else if (editing) {
-      await data.act((c) => c.updateContact({ contact_id: editing.id, ...draft }));
+      await data.act((c) =>
+        c.updateContact({
+          contactId: editing.id,
+          name: draft.name,
+          email: draft.email,
+          phone: draft.phone,
+          organization: draft.organization,
+          jobTitle: draft.job_title,
+        }),
+      );
     }
   };
 
   const remove = async (c: ContactView) => {
     if (!window.confirm(`Delete ${c.name}? Their deals stay, without a contact person.`)) return;
     try {
-      await data.act((x) => x.deleteContact({ contact_id: c.id }));
+      await data.act((x) => x.deleteContact({ contactId: c.id }));
       setEditing(null);
     } catch (err) {
       toast.show({ variant: 'error', description: describeError(err) });

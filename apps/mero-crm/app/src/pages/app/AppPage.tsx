@@ -22,6 +22,7 @@ import AddPipelineDialog from "../../components/AddPipelineDialog";
 import NsEmptyState from "../../components/NsEmptyState";
 import AliasGate from "../../components/AliasGate";
 import type { AppCtx, NewDealDefaults } from "./appContext";
+import { optU64, u64 } from '../../crm';
 
 /**
  * CRM root: owns workspace resolution (namespace + pipeline), the pipeline
@@ -154,17 +155,17 @@ export default function AppPage(): React.ReactElement | null {
               email: input.newContact.email,
               phone: "",
               organization: input.organization,
-              job_title: "",
+              jobTitle: "",
             });
           }
           return c.createDeal({
             title: input.title,
-            value: input.value,
+            value: u64(input.value),
             organization: input.organization,
-            contact_id: contactId,
-            stage_id: input.stageId,
+            contactId,
+            stageId: input.stageId,
             owner: input.owner,
-            expected_close: input.expectedClose,
+            expectedClose: optU64(input.expectedClose),
             source: input.source,
           });
         });

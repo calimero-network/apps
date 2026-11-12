@@ -151,7 +151,7 @@ with its own passkey opening that link is a second member.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-crm/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules (`Authored` notes, `WriteOnce` creation stamps) as the same calls made by other accounts; v1's convergence test under one log; access, API keys, wire checks, list sizes; and every `scenarios/*.json` | no |
-| `pnpm -F mero-crm test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the wire-to-view mapping (u64 strings to numbers); sign-in, the remembered workspace and its pipelines, the invitation prompt (mocked client); the deal assistant, roles, names, theme | no |
+| `pnpm -F mero-crm test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the wire-to-view mapping (u64 strings to numbers); sign-in, the remembered workspace and its pipelines, the invitation prompt (mocked client); the deal assistant, roles, names, theme | no |
 | `pnpm merod-local e2e mero-crm` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 `smoke.json` is the v1 smoke workflow (`logic/workflows/smoke.yml`, removed) as two accounts (node 1
@@ -208,9 +208,12 @@ permissions, aliases, the light/dark theme. Behind them:
   `vite-plugin-node-polyfills`;
 - **new**: `src/session.ts` + `src/sessionContext.tsx` (target → client →
   passkey sign-in/up, the stored session), `src/workspaces.ts` (orgs, app
-  instances, invites, member names), `src/crm.ts` (the contract by method
-  name with v1's generated-client surface, so the screens did not change; a
-  test pins its method list to `logic/res/abi.json`), a passkey sign-in dialog
+  instances, invites, member names), `src/generated/` (`MeroCrmClient`:
+  `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F
+  mero-crm codegen` after a contract change, and CI fails when it is stale),
+  `src/crm.ts` (v1's shapes and the conversion of each answer to them: the ABI
+  names its records without their shapes, so the generated types are
+  `unknown`), a passkey sign-in dialog
   as the landing page's connect action, the invitation prompt after sign-in;
   teammates' changes arrive on the app's event stream (`client.events`), and
   org-level changes (a new pipeline, a new member) are re-read on window focus.

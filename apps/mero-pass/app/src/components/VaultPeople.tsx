@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useCalimero } from '../calimero';
-import type { MeroPass } from '../lib/meroPass';
+import type { MeroPassClient } from '../generated/client';
+import type { DeviceWire, MemberWire } from '../lib/meroPass';
 import { shortAccount, useMemberNames } from '../lib/names';
 import { toDevice, toMember } from '../lib/vaultApi';
 import { deviceKeeper } from '../lib/deviceKey';
@@ -35,7 +36,7 @@ export default function VaultPeople({
   team,
   onChanged,
 }: {
-  client: MeroPass;
+  client: MeroPassClient;
   session: VaultSession;
   team: { namespaceId: string; vaultId: string } | null;
   onChanged: () => void;
@@ -69,8 +70,8 @@ export default function VaultPeople({
         client.listMembers(),
         client.listDevices(),
       ]);
-      setMembers(m.map(toMember));
-      setDevices(d.map(toDevice));
+      setMembers((m as MemberWire[]).map(toMember));
+      setDevices((d as DeviceWire[]).map(toDevice));
       setError(null);
     } catch (e) {
       setError(describeError(e));
@@ -106,7 +107,7 @@ export default function VaultPeople({
 
   const remove = (account: string) =>
     act('Removing and rotating…', async () => {
-      await client.removeMember(account);
+      await client.removeMember({ account });
       // `remove_member` already stripped their roles and revoked their devices,
       // so the rotation below skips them even when the team listing is
       // unavailable; the audience narrows it further when it is.
@@ -154,7 +155,7 @@ export default function VaultPeople({
                 }
                 onChange={(e) =>
                   void act('Changing role…', () =>
-                    client.setRole(m.account, e.target.value),
+                    client.setRole({ account: m.account, role: e.target.value }),
                   )
                 }
                 aria-label="Role"
@@ -218,7 +219,7 @@ export default function VaultPeople({
                   className={shell.btnGhost}
                   onClick={() =>
                     void act('Revoking…', async () => {
-                      await client.revokeDevice(d.fingerprint);
+                      await client.revokeDevice({ fingerprint: d.fingerprint });
                       if (isAdmin) {
                         const allowed = await audience();
                         await session.rotate(allowed);
@@ -248,7 +249,7 @@ export default function VaultPeople({
               onChange={(e) => {
                 const role = e.target.value;
                 setDefaultRole(role);
-                void act('Saving…', () => client.setDefaultRole(role));
+                void act('Saving…', () => client.setDefaultRole({ role }));
               }}
             >
               <option value="editor">Editor</option>

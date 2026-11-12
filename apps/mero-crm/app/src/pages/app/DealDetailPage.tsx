@@ -17,6 +17,7 @@ import { describeError } from '../../utils/errors';
 import { formatDate, relativeTime } from '../../utils/display';
 import type { DealDetail } from '../../hooks/useCrm';
 import { useAppCtx } from './appContext';
+import { optU64, u64 } from '../../crm';
 
 interface Form {
   title: string;
@@ -107,13 +108,13 @@ export default function DealDetailPage(): React.ReactElement {
   const save = () => run(async () => {
     if (parsedValue === null) throw new Error('Value must be a number, e.g. 12000 or 12k');
     await data.act((c) => c.updateDeal({
-      deal_id: deal.id,
+      dealId: deal.id,
       title: form.title,
-      value: parsedValue,
+      value: u64(parsedValue),
       organization: form.organization,
-      contact_id: form.contactId || null,
+      contactId: form.contactId || null,
       owner: form.owner || null,
-      expected_close: fromDateInput(form.close),
+      expectedClose: optU64(fromDateInput(form.close)),
       source: form.source,
     }));
     setDirty(false);
@@ -121,7 +122,7 @@ export default function DealDetailPage(): React.ReactElement {
 
   const schedule = (kind: string, subject: string, due: number, note = '') => run(
     () => data.act((c) => c.addActivity({
-      deal_id: deal.id, contact_id: deal.contact_id, kind, subject, due_at: due, owner: deal.owner ?? (myOwner || null), note,
+      dealId: deal.id, contactId: deal.contact_id, kind, subject, dueAt: u64(due), owner: deal.owner ?? (myOwner || null), note,
     })),
     `Scheduled: ${subject}`,
   );
@@ -157,11 +158,11 @@ export default function DealDetailPage(): React.ReactElement {
         <Row $gap={8}>
           {isOpen ? (
             <>
-              <Button $variant="won" data-testid="mark-won" onClick={() => run(() => data.act((c) => c.markWon({ deal_id: deal.id })), `Won — ${formatMoney(deal.value, currency)}`)}>Won</Button>
+              <Button $variant="won" data-testid="mark-won" onClick={() => run(() => data.act((c) => c.markWon({ dealId: deal.id })), `Won — ${formatMoney(deal.value, currency)}`)}>Won</Button>
               <Button $variant="lost" data-testid="mark-lost" onClick={() => setLosing(true)}>Lost</Button>
             </>
           ) : (
-            <Button data-testid="reopen-deal" onClick={() => run(() => data.act((c) => c.reopenDeal({ deal_id: deal.id })), 'Deal reopened')}>Reopen</Button>
+            <Button data-testid="reopen-deal" onClick={() => run(() => data.act((c) => c.reopenDeal({ dealId: deal.id })), 'Deal reopened')}>Reopen</Button>
           )}
           {deal.created_by === currentUser && (
             <Button
@@ -170,7 +171,7 @@ export default function DealDetailPage(): React.ReactElement {
               onClick={() => {
                 if (!window.confirm(`Delete “${deal.title}” with its activities and notes? This cannot be undone.`)) return;
                 void run(async () => {
-                  await data.act((c) => c.deleteDeal({ deal_id: deal.id }));
+                  await data.act((c) => c.deleteDeal({ dealId: deal.id }));
                   navigate(APP_ROUTE);
                 }, 'Deal deleted');
               }}
@@ -188,7 +189,7 @@ export default function DealDetailPage(): React.ReactElement {
             className={`${i < stageIdx ? 'past' : ''} ${i === stageIdx ? 'current' : ''}`}
             disabled={!isOpen || i === stageIdx}
             title={isOpen ? `Move to ${s.name} (${s.probability}%)` : 'Reopen the deal to move it'}
-            onClick={() => run(() => data.act((c) => c.moveDeal({ deal_id: deal.id, stage_id: s.id })))}
+            onClick={() => run(() => data.act((c) => c.moveDeal({ dealId: deal.id, stageId: s.id })))}
           >
             {s.name}
           </button>
@@ -342,7 +343,7 @@ export default function DealDetailPage(): React.ReactElement {
                     checked={a.done}
                     aria-label={`Mark “${a.subject}” ${a.done ? 'not done' : 'done'}`}
                     data-testid="activity-done-toggle"
-                    onChange={() => run(() => data.act((c) => c.setActivityDone({ activity_id: a.id, done: !a.done })))}
+                    onChange={() => run(() => data.act((c) => c.setActivityDone({ activityId: a.id, done: !a.done })))}
                   />
                   <KindIcon kind={a.kind} />
                   <div className="body">
@@ -350,7 +351,7 @@ export default function DealDetailPage(): React.ReactElement {
                     {a.note && <div className="note">{a.note}</div>}
                   </div>
                   {a.done ? <span className="muted">done {relativeTime(a.done_at ?? 0, now)} ago</span> : <DueChip kind={a.kind} dueAt={a.due_at} now={now} />}
-                  <button className="x" aria-label="Delete activity" onClick={() => run(() => data.act((c) => c.deleteActivity({ activity_id: a.id })))}>×</button>
+                  <button className="x" aria-label="Delete activity" onClick={() => run(() => data.act((c) => c.deleteActivity({ activityId: a.id })))}>×</button>
                 </li>
               ))}
             </List>
@@ -358,7 +359,7 @@ export default function DealDetailPage(): React.ReactElement {
 
           <Panel>
             <h3>Notes</h3>
-            <NoteForm onAdd={(body) => run(() => data.act((c) => c.addNote({ deal_id: deal.id, body })))} />
+            <NoteForm onAdd={(body) => run(() => data.act((c) => c.addNote({ dealId: deal.id, body })))} />
             <List>
               {notes.map((n) => (
                 <li key={n.id} data-testid="deal-note" className="note-item">
@@ -367,7 +368,7 @@ export default function DealDetailPage(): React.ReactElement {
                     <div className="muted">{relativeTime(n.created_at, now)} ago</div>
                   </div>
                   {n.author === currentUser && (
-                    <button className="x" aria-label="Delete note" onClick={() => run(() => data.act((c) => c.deleteNote({ note_id: n.id })))}>×</button>
+                    <button className="x" aria-label="Delete note" onClick={() => run(() => data.act((c) => c.deleteNote({ noteId: n.id })))}>×</button>
                   )}
                 </li>
               ))}
@@ -379,7 +380,7 @@ export default function DealDetailPage(): React.ReactElement {
       {losing && (
         <LostReasonModal
           dealTitle={deal.title}
-          onConfirm={(reason) => data.act((c) => c.markLost({ deal_id: deal.id, reason }))}
+          onConfirm={async (reason) => { await data.act((c) => c.markLost({ dealId: deal.id, reason })); }}
           onClose={() => setLosing(false)}
         />
       )}

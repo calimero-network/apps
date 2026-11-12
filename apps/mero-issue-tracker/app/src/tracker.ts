@@ -1,33 +1,10 @@
-import { type ClientRoutes } from '@calimero-apps/connect';
-
 /**
- * The contract's methods by their ABI names (camelCase), split the way the node
- * runs them: a call goes through the app's log, a view is answered by a node
- * without writing. `tracker.test.ts` asserts these lists are exactly the
- * committed `logic/res/abi.json`'s, so a method the contract drops or renames
- * fails a test rather than a request.
+ * The board's contract is called through `MeroIssueTrackerClient`, which
+ * `mero-app-build codegen` writes from logic/res/abi.json
+ * (`src/generated/client.ts`). The ABI names its records without their shapes,
+ * so the generated types are `unknown`: each answer passes through the
+ * `fromWire*` / `to*` below into the shapes the screens use.
  */
-export const CALLS = [
-  'setRepoUrl',
-  'createIssue',
-  'setStatus',
-  'setSummary',
-  'setImpact',
-  'setRepro',
-  'setResolutionCriteria',
-  'setPriority',
-  'setAssignee',
-  'addLabel',
-  'removeLabel',
-  'addComment',
-  'editComment',
-  'deleteComment',
-  'deleteIssue',
-] as const;
-export const VIEWS = ['getRepoInfo', 'listIssues', 'getIssue', 'getStatusCounts'] as const;
-
-export type Call = (typeof CALLS)[number];
-export type View = (typeof VIEWS)[number];
 
 // ── what the views render ────────────────────────────────────────────────────
 //
@@ -141,99 +118,20 @@ export function fromWireComment(w: WireComment): CommentView {
   };
 }
 
-// ── the client ───────────────────────────────────────────────────────────────
+// ── answers, in the screens' shapes ──────────────────────────────────────────
 
-/** The board, typed from the contract (no client is generated from a component ABI yet). */
-export interface Tracker {
-  setRepoUrl(url: string): Promise<void>;
-  getRepoInfo(): Promise<{ repoUrl: string }>;
-  /** The new issue's id. */
-  createIssue(issue: NewIssue): Promise<string>;
-  setStatus(issueId: string, status: string): Promise<void>;
-  setSummary(issueId: string, summary: string): Promise<void>;
-  setImpact(issueId: string, impact: string): Promise<void>;
-  setRepro(issueId: string, repro: string): Promise<void>;
-  setResolutionCriteria(issueId: string, resolutionCriteria: string): Promise<void>;
-  setPriority(issueId: string, priority: string): Promise<void>;
-  setAssignee(issueId: string, assignee: string | null): Promise<void>;
-  addLabel(issueId: string, label: string): Promise<void>;
-  removeLabel(issueId: string, label: string): Promise<void>;
-  /** Oldest first, at most the first 1,000 matches; `null` is no filter. */
-  listIssues(filter: { status: string | null; assignee: string | null; label: string | null }): Promise<IssueView[]>;
-  /** `AppError` `NotFound` for an unknown issue. */
-  getIssue(issueId: string): Promise<IssueDetail>;
-  /** Column order: Open, In progress, Blocked, Done. */
-  getStatusCounts(): Promise<StatusCount[]>;
-  /** The new comment's id. */
-  addComment(issueId: string, body: string): Promise<string>;
-  /** `AppError` `Forbidden` for anyone but the author. */
-  editComment(commentId: string, newBody: string): Promise<void>;
-  deleteComment(commentId: string): Promise<void>;
-  /** `AppError` `Forbidden` for anyone but the creator. */
-  deleteIssue(issueId: string): Promise<void>;
+/** `listIssues`'s answer. */
+export const toIssues = (v: unknown): IssueView[] => (v as WireIssue[]).map(fromWireIssue);
+
+/** `getIssue`'s answer. */
+export function toIssueDetail(v: unknown): IssueDetail {
+  const d = v as { issue: WireIssue; comments: WireComment[] };
+  return { issue: fromWireIssue(d.issue), comments: d.comments.map(fromWireComment) };
 }
 
-export type Transport = ClientRoutes<{ apps: 'call' | 'view' }>;
+/** `getStatusCounts`'s answer. */
+export const toStatusCounts = (v: unknown): StatusCount[] =>
+  (v as Array<{ status: string; count: string }>).map((c) => ({ status: c.status, count: int(c.count) }));
 
-/**
- * The board at app instance `app` through `client`. `after` runs after every
- * request (the session store keeps a refreshed session there).
- */
-export function tracker(client: Transport, app: string, after: () => void = () => {}): Tracker {
-  const call = async <T>(method: Call, args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return (await client.apps.call({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const view = async <T>(method: View, args: Record<string, unknown> = {}): Promise<T> => {
-    try {
-      return (await client.apps.view({ app, method, args })).result as T;
-    } finally {
-      after();
-    }
-  };
-  const done = async (p: Promise<unknown>): Promise<void> => {
-    await p;
-  };
-  return {
-    setRepoUrl: (url) => done(call('setRepoUrl', { url })),
-    getRepoInfo: () => view('getRepoInfo'),
-    createIssue: (i) =>
-      call('createIssue', {
-        title: i.title,
-        summary: i.summary,
-        impact: i.impact,
-        repro: i.repro,
-        resolutionCriteria: i.resolutionCriteria,
-        priority: i.priority,
-        labels: i.labels,
-      }),
-    setStatus: (issueId, status) => done(call('setStatus', { issueId, status })),
-    setSummary: (issueId, summary) => done(call('setSummary', { issueId, summary })),
-    setImpact: (issueId, impact) => done(call('setImpact', { issueId, impact })),
-    setRepro: (issueId, repro) => done(call('setRepro', { issueId, repro })),
-    setResolutionCriteria: (issueId, resolutionCriteria) =>
-      done(call('setResolutionCriteria', { issueId, resolutionCriteria })),
-    setPriority: (issueId, priority) => done(call('setPriority', { issueId, priority })),
-    setAssignee: (issueId, assignee) => done(call('setAssignee', { issueId, assignee })),
-    addLabel: (issueId, label) => done(call('addLabel', { issueId, label })),
-    removeLabel: (issueId, label) => done(call('removeLabel', { issueId, label })),
-    listIssues: async (filter) =>
-      (await view<WireIssue[]>('listIssues', { ...filter })).map(fromWireIssue),
-    getIssue: async (issueId) => {
-      const d = await view<{ issue: WireIssue; comments: WireComment[] }>('getIssue', { issueId });
-      return { issue: fromWireIssue(d.issue), comments: d.comments.map(fromWireComment) };
-    },
-    getStatusCounts: async () =>
-      (await view<Array<{ status: string; count: string }>>('getStatusCounts')).map((c) => ({
-        status: c.status,
-        count: int(c.count),
-      })),
-    addComment: (issueId, body) => call('addComment', { issueId, body }),
-    editComment: (commentId, newBody) => done(call('editComment', { commentId, newBody })),
-    deleteComment: (commentId) => done(call('deleteComment', { commentId })),
-    deleteIssue: (issueId) => done(call('deleteIssue', { issueId })),
-  };
-}
+/** `getRepoInfo`'s answer. */
+export const toRepoInfo = (v: unknown): { repoUrl: string } => v as { repoUrl: string };

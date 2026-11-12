@@ -52,13 +52,13 @@ export default function PipelinePage(): React.ReactElement {
     if (!deal) return;
     if (target === '__won') {
       void run(async () => {
-        await data.act((c) => c.markWon({ deal_id: id }));
+        await data.act((c) => c.markWon({ dealId: id }));
         toast.show({ variant: 'success', description: `Won “${deal.title}” — ${formatMoney(deal.value, currency)}` });
       });
     } else if (target === '__lost') {
       setLosing(deal);
     } else if (target !== deal.stage_id) {
-      void run(() => data.act((c) => c.moveDeal({ deal_id: id, stage_id: target })));
+      void run(() => data.act((c) => c.moveDeal({ dealId: id, stageId: target })));
     }
   };
 
@@ -186,7 +186,7 @@ export default function PipelinePage(): React.ReactElement {
       {losing && (
         <LostReasonModal
           dealTitle={losing.title}
-          onConfirm={(reason) => data.act((c) => c.markLost({ deal_id: losing.id, reason }))}
+          onConfirm={async (reason) => { await data.act((c) => c.markLost({ dealId: losing.id, reason })); }}
           onClose={() => setLosing(null)}
         />
       )}

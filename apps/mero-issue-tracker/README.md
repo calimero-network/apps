@@ -119,7 +119,7 @@ you may.
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-issue-tracker/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules (`Authored`) as the same calls made by other accounts; v1's convergence test under one log; access, API keys, wire checks, list sizes; and every `scenarios/*.json` | no |
-| `pnpm -F mero-issue-tracker test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the wire-to-view mapping; sign-in, the remembered workspace and its repos, the invitation prompt (mocked client); roles, names, search, fix prompt | no |
+| `pnpm -F mero-issue-tracker test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the wire-to-view mapping; sign-in, the remembered workspace and its repos, the invitation prompt (mocked client); roles, names, search, fix prompt | no |
 | `cd mcp && npm test` | the MCP tools' requests (method names, call vs view, arguments), workspace/repo resolution, config | no |
 | `pnpm merod-local e2e mero-issue-tracker` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
@@ -172,9 +172,12 @@ light/dark theme. Behind them:
   drove v1 nodes (Docker, `merod` 0.x), and `vite-plugin-node-polyfills`;
 - **new**: `src/session.ts` + `src/sessionContext.tsx` (target -> client ->
   passkey sign-in/up, the stored session), `src/workspaces.ts` (orgs, app
-  instances, invites, member names), `src/tracker.ts` (the contract by method
-  name, mapped onto the shapes the screens render; a test pins its method list
-  to `logic/res/abi.json`), a passkey sign-in dialog as the landing page's
+  instances, invites, member names), `src/generated/` (`MeroIssueTrackerClient`:
+  `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F
+  mero-issue-tracker codegen` after a contract change, and CI fails when it is
+  stale), `src/tracker.ts` (its answers mapped onto the shapes the screens
+  render: the ABI names its records without their shapes, so the generated
+  types are `unknown`), a passkey sign-in dialog as the landing page's
   connect action, the invitation prompt after sign-in, and **Members -> Agent
   key** for the MCP server;
 - **URLs**: the app still lives at `/issue-tracker` (`/issue-tracker/board`,

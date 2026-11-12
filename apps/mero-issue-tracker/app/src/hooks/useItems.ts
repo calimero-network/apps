@@ -1,7 +1,7 @@
 /**
  * useIssues: the active repository's board.
  *
- * Reads go through the typed `tracker` client (`listIssues` filtered on the
+ * Reads go through `MeroIssueTrackerClient` (generated from logic/res/abi.json) (`listIssues` filtered on the
  * node, `getStatusCounts` from the contract's maintained counts); every write
  * refetches. Changes by teammates arrive on the app's event stream
  * (`client.events`), coalesced into one refetch. v1 waited for a joined
@@ -11,7 +11,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
 
-import { tracker, type CommentView, type IssueDetail, type IssueView, type Tracker } from '../tracker';
+import { MeroIssueTrackerClient } from '../generated/client';
+import { toIssueDetail, toIssues, toStatusCounts, type CommentView, type IssueDetail, type IssueView } from '../tracker';
 
 export type { IssueView, CommentView, IssueDetail };
 
@@ -94,8 +95,8 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
 
-  const board: Tracker | null = useMemo(
-    () => (appId ? tracker(client, appId, after) : null),
+  const board: MeroIssueTrackerClient | null = useMemo(
+    () => (appId ? new MeroIssueTrackerClient(client, appId, { after }) : null),
     [client, appId, after],
   );
 
@@ -112,8 +113,10 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
     setLoading(true);
     try {
       const [list, statusCounts] = await Promise.all([
-        board.listIssues({ status: status || null, assignee: assignee || null, label: label || null }),
-        board.getStatusCounts(),
+        board
+          .listIssues({ status: status || null, assignee: assignee || null, label: label || null })
+          .then(toIssues),
+        board.getStatusCounts().then(toStatusCounts),
       ]);
       setIssues(list);
       setCounts(Object.fromEntries(statusCounts.map((c) => [c.status, c.count])));
@@ -148,7 +151,7 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
   }, [client, appId]);
 
   const write = useCallback(
-    async (op: (t: Tracker) => Promise<unknown>) => {
+    async (op: (t: MeroIssueTrackerClient) => Promise<unknown>) => {
       if (!board) return;
       await op(board);
       await refresh();
@@ -159,7 +162,7 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
   const getIssue = useCallback(
     async (issueId: string) => {
       if (!board) throw new Error('No repository is open');
-      return board.getIssue(issueId);
+      return toIssueDetail(await board.getIssue({ issueId }));
     },
     [board],
   );
@@ -173,19 +176,20 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
     refresh,
     createIssue: (title, summary, impact, repro, resolutionCriteria, priority, labels) =>
       write((t) => t.createIssue({ title, summary, impact, repro, resolutionCriteria, priority, labels })),
-    setStatus: (id, next) => write((t) => t.setStatus(id, next)),
-    setSummary: (id, next) => write((t) => t.setSummary(id, next)),
-    setImpact: (id, next) => write((t) => t.setImpact(id, next)),
-    setRepro: (id, next) => write((t) => t.setRepro(id, next)),
-    setResolutionCriteria: (id, next) => write((t) => t.setResolutionCriteria(id, next)),
-    setPriority: (id, next) => write((t) => t.setPriority(id, next)),
-    setAssignee: (id, next) => write((t) => t.setAssignee(id, next)),
-    addLabel: (id, l) => write((t) => t.addLabel(id, l)),
-    removeLabel: (id, l) => write((t) => t.removeLabel(id, l)),
+    setStatus: (id, next) => write((t) => t.setStatus({ issueId: id, status: next })),
+    setSummary: (id, next) => write((t) => t.setSummary({ issueId: id, summary: next })),
+    setImpact: (id, next) => write((t) => t.setImpact({ issueId: id, impact: next })),
+    setRepro: (id, next) => write((t) => t.setRepro({ issueId: id, repro: next })),
+    setResolutionCriteria: (id, next) =>
+      write((t) => t.setResolutionCriteria({ issueId: id, resolutionCriteria: next })),
+    setPriority: (id, next) => write((t) => t.setPriority({ issueId: id, priority: next })),
+    setAssignee: (id, next) => write((t) => t.setAssignee({ issueId: id, assignee: next })),
+    addLabel: (id, l) => write((t) => t.addLabel({ issueId: id, label: l })),
+    removeLabel: (id, l) => write((t) => t.removeLabel({ issueId: id, label: l })),
     getIssue,
-    deleteIssue: (id) => write((t) => t.deleteIssue(id)),
-    addComment: (id, body) => write((t) => t.addComment(id, body)),
-    editComment: (id, body) => write((t) => t.editComment(id, body)),
-    deleteComment: (id) => write((t) => t.deleteComment(id)),
+    deleteIssue: (id) => write((t) => t.deleteIssue({ issueId: id })),
+    addComment: (id, body) => write((t) => t.addComment({ issueId: id, body })),
+    editComment: (id, body) => write((t) => t.editComment({ commentId: id, newBody: body })),
+    deleteComment: (id) => write((t) => t.deleteComment({ commentId: id })),
   };
 }

@@ -21,13 +21,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
 
+import { MeroCrmClient } from '../generated/client';
 import {
-  crm,
+  toActivities,
+  toAutomations,
+  toContacts,
+  toDealDetail,
+  toDeals,
+  toSettings,
+  toStages,
   type ActivityView,
   type AutomationView,
   type ContactView,
-  type Crm,
-  type CrmClient,
   type DealDetail,
   type DealView,
   type Settings,
@@ -62,7 +67,7 @@ export interface UseCrmReturn {
   version: number;
   refresh: () => Promise<void>;
   /** Run a mutation against the pipeline, then re-read. Throws on failure. */
-  act: <T>(fn: (client: CrmClient) => Promise<T>) => Promise<T>;
+  act: <T>(fn: (client: MeroCrmClient) => Promise<T>) => Promise<T>;
   getDeal: (dealId: string) => Promise<DealDetail>;
 }
 
@@ -104,7 +109,10 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
 
-  const pipeline: Crm | null = useMemo(() => (appId ? crm(client, appId, after) : null), [client, appId, after]);
+  const pipeline: MeroCrmClient | null = useMemo(
+    () => (appId ? new MeroCrmClient(client, appId, { after }) : null),
+    [client, appId, after],
+  );
 
   // A pipeline switch must not show the previous pipeline's deals for a beat.
   useEffect(() => {
@@ -119,12 +127,12 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
     setLoading(true);
     try {
       const [st, ds, cs, as, au, se] = await Promise.all([
-        pipeline.listStages(),
-        pipeline.listDeals({ status: null, stage_id: null, owner: null }),
-        pipeline.listContacts(),
-        pipeline.listActivities({ deal_id: null, done: null }),
-        pipeline.listAutomations(),
-        pipeline.getSettings(),
+        pipeline.listStages().then(toStages),
+        pipeline.listDeals({ status: null, stageId: null, owner: null }).then(toDeals),
+        pipeline.listContacts().then(toContacts),
+        pipeline.listActivities({ dealId: null, done: null }).then(toActivities),
+        pipeline.listAutomations().then(toAutomations),
+        pipeline.getSettings().then(toSettings),
       ]);
       setStages(st ?? []);
       setDeals(ds ?? []);
@@ -158,7 +166,7 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
   }, [client, appId]);
 
   const act = useCallback(
-    async <T,>(fn: (c: CrmClient) => Promise<T>): Promise<T> => {
+    async <T,>(fn: (c: MeroCrmClient) => Promise<T>): Promise<T> => {
       if (!pipeline) throw new Error('Pipeline not ready yet');
       const result = await fn(pipeline);
       await refresh();
@@ -170,7 +178,7 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
   const getDeal = useCallback(
     async (dealId: string) => {
       if (!pipeline) throw new Error('Pipeline not ready yet');
-      return pipeline.getDeal({ deal_id: dealId });
+      return toDealDetail(await pipeline.getDeal({ dealId }));
     },
     [pipeline],
   );

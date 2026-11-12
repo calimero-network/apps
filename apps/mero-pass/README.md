@@ -264,7 +264,8 @@ logic/              the contract: a standalone crate on calimero-sdk (wasm32-was
   res/abi.json      the component's ABI, committed, diffed in CI
 app/                React + Vite frontend
   src/calimero.tsx  the session: local nodes in dev, the Cloud cluster in production, passkeys
-  src/lib/meroPass.ts  the contract, typed (its method list is checked against res/abi.json)
+  src/generated/       MeroPassClient: `mero-app-build codegen` from res/abi.json (committed; `pnpm -F mero-pass codegen`)
+  src/lib/meroPass.ts  the shapes of its answers (the ABI names its records without their shapes, so the generated types are `unknown`)
   src/lib/vaultApi.ts  the one adapter from the contract's answers to the vault core's records
   src/lib/vaults.ts    teams (orgs), vaults (app instances), invites, members
   src/lib/          deviceKey, recoveryKey, totp, health, portability, shareLink
