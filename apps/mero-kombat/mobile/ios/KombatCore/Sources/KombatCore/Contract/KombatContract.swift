@@ -2,7 +2,7 @@ import Foundation
 import MeroKit
 
 // The arena contract's component ABI (`logic/res/abi.json`). The calls are `KombatClient`, generated
-// from it into `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this
+// from it into `Generated/` by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`); this
 // file keeps the method lists `ContractTests` checks against the ABI, `initArgs` and the refusal
 // sentences of the web app's `app/src/kombat.ts`. (Kotlin
 // `network.calimero.kombat.contract.KombatContract`.)

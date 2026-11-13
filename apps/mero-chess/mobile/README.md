@@ -26,7 +26,7 @@ over the sealed channel to an attested node:
   `claimDraw`, `rematch`, `heartbeat`. Every `now` and every `u64` in an answer is a decimal string;
   refusals are `APP_ERROR {code, fields}`, shown in the web app's words. The typed client,
   `MeroChessClient` (`ChessCore/Sources/ChessCore/Generated/` / `chess/generated/`), is generated
-  from the ABI by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo root;
+  from the ABI by core's `meroctl app codegen` (`scripts/mobile-codegen.sh` at the repo root;
   CI's `Mobile clients` workflow fails on a stale one). Until the logic derives `AbiType`, the ABI
   names `TableView` and `GameSummary` without their shape, so the client answers their JSON and
   `ChessContract` reads it into the types it keeps, with the method lists `ContractTests` checks

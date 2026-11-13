@@ -94,6 +94,7 @@ through `@calimero-apps/connect`'s org-app module
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-design     # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/mero-design  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, create a team and a board, and draw. To try a second
@@ -262,7 +263,7 @@ because a release with #4815 forgets a blob nothing references after an hour.
   session stored per app and per target. The rest of the app reaches the client
   through `src/api/client.ts`, as it reached v1's.
 - The contract is called through `MeroDesignClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-design codegen` after a contract change, and CI fails when it
   is stale): `design(board).updateElement({ …, updatedAt: i64(now) })`.
   `src/api/rpc.ts` builds it over the signed-in client (`design`), folds the

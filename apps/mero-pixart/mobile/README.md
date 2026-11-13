@@ -110,7 +110,7 @@ once into a cache shared by the gallery and the artwork.
 
 `PixartClient` (`ios/PixartCore/Sources/PixartCore/Generated/PixartClient.swift`,
 `android/app/src/main/kotlin/network/calimero/pixart/generated/client/PixartClient.kt`) is generated
-from the component contract's ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+from the component contract's ABI (`../logic/res/abi.json`) by core's `meroctl app codegen`: run
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). It speaks camelCase method and argument names
 (`updateLayer { id, blendMode, scaleX, updatedAt, … }`), sends the u64 / i64 arguments (`updatedAt`,

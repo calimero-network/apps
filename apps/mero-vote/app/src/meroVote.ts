@@ -265,7 +265,7 @@ export type {
 
 // ── Calling the contract ────────────────────────────────────────────────────
 //
-// The contract is called through `MeroVoteClient`, which `mero-app-build
+// The contract is called through `MeroVoteClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`): camelCase
 // arguments (`pollId`, `minChoices`, ...) and 64-bit ones as decimal strings
 // (`closesAt`). The generated client types the records from the ABI (64-bit

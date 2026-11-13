@@ -154,7 +154,7 @@ Left out, and why:
 
 `VoteClient` (`ios/VoteCore/Sources/VoteCore/Generated/VoteClient.swift`,
 `android/app/src/main/kotlin/network/calimero/vote/generated/client/VoteClient.kt`) is generated
-from the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+from the component ABI (`../logic/res/abi.json`) by core's `meroctl app codegen`: run
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). It takes the SDK's `ContextContractCalling`
 (`contract.bound(to: contextId)`). Until the logic derives `AbiType`, the ABI names the vote's types

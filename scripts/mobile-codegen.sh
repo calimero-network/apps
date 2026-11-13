@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Writes each native app's typed contract client from its committed ABI
-# (`apps/<app>/logic/res/abi.json`) with core's `mero-app-build codegen`:
+# (`apps/<app>/logic/res/abi.json`) with core's `meroctl app codegen`:
 # `<Name>Client.swift` over swift-sdk's MeroKit for iOS, `<Name>Client.kt` over
 # kotlin-sdk's mero-core for Android. `--check` (CI: .github/workflows/mobile-clients.yml)
 # regenerates them and fails when a committed client differs or is missing.
 #
 #   scripts/mobile-codegen.sh            # regenerate every client below
 #   scripts/mobile-codegen.sh --check    # regenerate, then fail on any difference
-#   scripts/mobile-codegen.sh --install  # put the pinned generator in $MERO_APP_BUILD_ROOT/bin first
+#   scripts/mobile-codegen.sh --install  # put the pinned meroctl in $MEROCTL_ROOT/bin first
 #
-# The generator is core's `mero-app-build` at REF below, the same tag
-# scripts/install-mero-app-build.sh pins (which `--install` runs): keep the two
-# equal. Moving REF changes what every client looks like, so regenerate them all
+# The generator is core's `meroctl` at the release scripts/install-meroctl.sh
+# pins (which `--install` runs), the same one the web apps' `codegen` uses.
+# Moving that pin changes what every client looks like, so regenerate them all
 # in the same PR.
 #
 # Every Android module applies the kotlinx.serialization compiler plugin, so the
@@ -22,8 +22,7 @@
 # The web apps' clients are the frontend job's (`pnpm -r codegen`, ci.yml).
 set -euo pipefail
 
-REF=1.0.0-rc.23
-ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
+ROOT="${MEROCTL_ROOT:-$HOME/.local}"
 
 # app | lang | output directory | client name | Kotlin package
 CLIENTS=(
@@ -78,22 +77,22 @@ for arg in "$@"; do
   case "$arg" in
     --check) check=true ;;
     --install)
-      MERO_APP_BUILD_REF="$REF" MERO_APP_BUILD_ROOT="$ROOT" scripts/install-mero-app-build.sh
+      MEROCTL_ROOT="$ROOT" scripts/install-meroctl.sh
       export PATH="$ROOT/bin:$PATH"
       ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
-command -v mero-app-build >/dev/null || { echo "mero-app-build is not on PATH (run with --install)" >&2; exit 1; }
+command -v meroctl >/dev/null || { echo "meroctl is not on PATH (run with --install)" >&2; exit 1; }
 
 outs=()
 for entry in "${CLIENTS[@]}"; do
   IFS='|' read -r app lang out name package <<<"$entry"
-  args=(codegen --abi "apps/$app/logic/res/abi.json" --lang "$lang" --name "$name" --no-openapi -o "$out")
+  args=(app codegen --abi "apps/$app/logic/res/abi.json" --lang "$lang" --name "$name" --no-openapi -o "$out")
   [ -n "$package" ] && args+=(--package "$package")
   [ "$lang" = kotlin ] && args+=(--kotlin-serialization-plugin)
-  mero-app-build "${args[@]}"
+  meroctl "${args[@]}"
   outs+=("$out")
 done
 

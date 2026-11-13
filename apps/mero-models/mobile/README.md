@@ -125,7 +125,7 @@ writes. Tests run the same view models on the SDKs' in-memory backend (`MeroKitT
 
 ## Contract client
 
-`ModelsClient` is generated from `../logic/res/abi.json` by core's `mero-app-build codegen`
+`ModelsClient` is generated from `../logic/res/abi.json` by core's `meroctl app codegen`
 (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale
 client), into `ios/ModelsCore/Sources/ModelsCore/Generated/ModelsClient.swift` and
 `android/app/src/main/kotlin/network/calimero/models/generated/client/ModelsClient.kt`. The apps

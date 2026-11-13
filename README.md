@@ -35,9 +35,11 @@ The apps are independent products, but they are not independent codebases. They 
 - **The same SDKs** — [`calimero-sdk`](https://github.com/calimero-network/core) (Rust, the
   component SDK) and [`mero-js`](https://github.com/calimero-network/mero-js)'s `CalimeroClient`.
 - **The same design language** — [`design-system`](https://github.com/calimero-network/design-system).
-- **The same build tooling** — [`tools/component-bundle`](tools/component-bundle) (`mero-component`,
-  over core's `calimero-app-build`) builds each contract for `wasm32-wasip2` and packs it, core's
-  `mero-app-build codegen` writes the typed client, Vite + TypeScript for frontends.
+- **The same build tooling** — core's `meroctl`: `meroctl app pack` builds each contract for
+  `wasm32-wasip2` and packs it from its `[package.metadata.calimero]`, `meroctl app codegen` writes
+  the typed client, `meroctl local dev` runs it on a local cluster; Vite + TypeScript for
+  frontends. (CI still packs with [`tools/component-bundle`](tools/component-bundle), which
+  writes the same `.mpk` from the same table.)
 - **The same release path** — signed `.mpk` packages published to the
   [app registry](https://apps.calimero.network/).
 - **The same integration surface** — passkey sign-in, organizations and invitations, a local
@@ -139,10 +141,15 @@ frontend: a Calimero Cloud cluster in production, the local nodes in
 development.
 
 ```bash
-pnpm dev:local kv-store        # merod local + build + deploy + the app's dev server on :5173
-pnpm dev:local hyperfeed
-pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the cluster
+meroctl app new my-app             # start a new app: a copy of apps/kv-store (the default template)
+meroctl local dev apps/kv-store    # cluster + build + upload + the app's dev server on :5173, rebuilt on save
+pnpm dev:local kv-store            # the monorepo's own equivalent (packages/merod-local)
+pnpm merod-local e2e kv-store      # the app's scenarios as real accounts on the cluster
 ```
+
+`meroctl` is core's command line (1.0.0-rc.24 or later):
+`curl -fsSL https://raw.githubusercontent.com/calimero-network/core/master/scripts/install.sh | sh`
+puts it in `~/.local/bin` (`sh -s -- merod meroctl` adds `merod`, Linux only).
 
 [**`docs/COMPONENT-APPS.md`**](docs/COMPONENT-APPS.md) has the layout, the
 build and bundle tool (`tools/component-bundle`), local development
@@ -165,7 +172,7 @@ apps/my-app/
 │   └── res/abi.json      #   the component's ABI, emitted by mero-component build, committed
 └── app/                  # Frontend. Vite + React (or vanilla) + TypeScript.
     ├── src/              #   mero-js CalimeroClient, through @calimero-apps/connect
-    │   └── generated/    #   typed client, mero-app-build codegen from ../logic/res/abi.json
+    │   └── generated/    #   typed client, meroctl app codegen from ../logic/res/abi.json
     ├── e2e/              #   Playwright, against merod local (where the app has a suite)
     ├── public/           #   icon-512.png and friends — the registry icon
     └── vercel.json       #   outputDirectory + the SPA rewrite
@@ -210,7 +217,7 @@ scripts/
   tests/                    unit tests for the gates above
 
 tools/
-  component-bundle/         mero-component: build a component app, pack a signed .mpk
+  component-bundle/         writes res/abi.json; CI packs releases with it (locally: meroctl app pack)
 
 packages/
   connect/                  frontend: merod local in dev, Calimero Cloud in production
@@ -270,13 +277,15 @@ lint, and **never ran**. One repo has one default branch.
 ```bash
 pnpm install                          # whole workspace, one lockfile
 rustup target add wasm32-wasip2       # once
-scripts/install-mero-app-build.sh     # once: core's mero-app-build, for codegen
+scripts/install-meroctl.sh            # once: core's meroctl at the pinned release, for codegen
 
 M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/<app>/logic/Cargo.toml                 # TestApp harness + scenarios
 cargo run --release --manifest-path $M -- build apps/<app>/logic        # component + res/abi.json
-pnpm -F <app> codegen                 # ABI → typed client (mero-app-build codegen)
-pnpm dev:local <app>                  # merod local + build + deploy + the dev server on :5173
+pnpm -F <app> codegen                 # ABI → typed client (meroctl app codegen)
+meroctl local dev apps/<app>          # local cluster + build + upload + the dev server on :5173
+pnpm dev:local <app>                  # the same through packages/merod-local
+meroctl app pack apps/<app>/logic     # a dev-signed .mpk in logic/dist/ (--key for a release)
 
 pnpm -r typecheck                     # `tsc -b`, never --noEmit (see below)
 pnpm -r test
@@ -435,7 +444,7 @@ checking on any future one: merobox scenarios landing at a path CI never globs
 
 ## Related
 
-- [core](https://github.com/calimero-network/core) — the node (`merod`), the Rust SDK, `mero-app-build` and `meroctl`; its docs are at [calimero-network.github.io/core](https://calimero-network.github.io/core/)
+- [core](https://github.com/calimero-network/core) — the node (`merod`), the Rust SDK and `meroctl` (app build, pack, codegen, the local cluster); its docs are at [calimero-network.github.io/core](https://calimero-network.github.io/core/)
 - [mero-js](https://github.com/calimero-network/mero-js) — the JS/TS client (`CalimeroClient`); [mero-react](https://github.com/calimero-network/mero-react) only in the conformance app's 0.x rig
 - [swift-sdk](https://github.com/calimero-network/swift-sdk) · [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) — native mobile SDKs
 - [design-system](https://github.com/calimero-network/design-system) — shared UI primitives

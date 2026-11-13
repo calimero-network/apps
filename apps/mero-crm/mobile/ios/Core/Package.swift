@@ -20,7 +20,7 @@ let package = Package(
             exact: "4.1.0")
     ],
     targets: [
-        // Generated from ../../../logic/res/abi.json by core's mero-app-build codegen
+        // Generated from ../../../logic/res/abi.json by core's meroctl app codegen
         // (scripts/mobile-codegen.sh at the repo root); see ../../README.md "The contract client".
         .target(
             name: "CrmGenerated",

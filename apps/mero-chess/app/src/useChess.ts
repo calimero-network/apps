@@ -50,7 +50,7 @@ export interface ChessClient {
 /**
  * The typed contract, bound to this table.
  *
- * Everything the UI calls goes through `MeroChessClient`, which `mero-app-build
+ * Everything the UI calls goes through `MeroChessClient`, which `meroctl app
  * codegen` writes from the committed `logic/res/abi.json`; its answers are
  * converted back to the shapes the screens were written against
  * (`toTableView`, `toGameSummary`) where they are read.

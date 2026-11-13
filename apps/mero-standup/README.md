@@ -30,6 +30,7 @@ What using it looks like:
 rustup target add wasm32-wasip2
 # merod at component-core-tag (docs/COMPONENT-APPS.md), then:
 pnpm dev:local mero-standup        # merod local + build + deploy + Vite on http://localhost:5173/
+meroctl local dev apps/mero-standup  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, press **Start a new team**, and invite teammates from
@@ -148,7 +149,7 @@ The frontend keeps every screen; what changed underneath:
   (`createInviteStore`, captured in `main.tsx`): joining, or being in the org
   already, opens that org's team, and signing out drops the invite.
 - v1's abi-codegen `StandupClient` is now core's `MeroStandupClient`
-  (`src/generated/client.ts`: `mero-app-build codegen` from
+  (`src/generated/client.ts`: `meroctl app codegen` from
   `logic/res/abi.json`, committed; `pnpm -F mero-standup codegen` after a
   contract change, and CI fails when it is stale). The ABI names its records
   without their shapes, so the generated types are `unknown`: each read passes

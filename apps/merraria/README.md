@@ -87,6 +87,7 @@ apps/merraria/
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local merraria          # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/merraria  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -159,7 +160,7 @@ in an **organization** of their own (v1's namespace), invites with an **org
 invite link** (`?invite=&org=&world=&from=`, kept in `@calimero-apps/connect`'s
 invite store and redeemed only when the signed-in person says Join), and calls
 the contract through `MerrariaClient` (`src/generated/client.ts`), which
-`mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F merraria
+`meroctl app codegen` writes from `logic/res/abi.json` (`pnpm -F merraria
 codegen` after a contract change; CI fails when the committed copy is stale).
 The sync engine takes its methods (`WorldCalls`), which the mobile bridge
 (`src/native/host.ts`) answers too. The ABI names its records (`WorldMeta`,
@@ -199,8 +200,7 @@ not where people sign in.
 
 ```bash
 pnpm -F merraria build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/merraria/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/merraria/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

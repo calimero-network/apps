@@ -2,7 +2,7 @@ import Foundation
 import MeroKit
 
 // The tracker contract's component ABI (`logic/res/abi.json`). The calls are `IssueTrackerClient`,
-// generated from it into `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`
+// generated from it into `Generated/` by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`
 // at the repo root), and so are the answer types; this file keeps the method lists
 // `ContractWireTests` pins, in step with the web client (`app/src/tracker.ts`) and the Kotlin
 // `contract/IssueTrackerContract.kt`.

@@ -107,8 +107,8 @@ jobs:
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
               - 'scripts/check-service-workers.py'
-              # The generator every app's `codegen` runs, at its pinned tag.
-              - 'scripts/install-mero-app-build.sh'
+              # The generator every app's `codegen` runs, at its pinned release.
+              - 'scripts/install-meroctl.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
             # contract.
             #
@@ -483,20 +483,20 @@ jobs:
       # --noEmit on a solution file checks nothing and exits 0.
       - run: pnpm -r $PNPM_FILTER typecheck
 
-      # A component app's `codegen` is core's `mero-app-build codegen` (its typed
-      # client from the committed ABI), at the ref scripts/install-mero-app-build.sh
-      # pins. Cached by that script's hash, so a run that does not move the ref
-      # does not compile it.
+      # A component app's `codegen` is core's `meroctl app codegen` (its typed
+      # client from the committed ABI), at the release scripts/install-meroctl.sh
+      # pins. Cached by that script's hash, so a run that does not move the pin
+      # does not download it.
       - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/mero-app-build
-          key: mero-app-build-${{ runner.os }}-${{ hashFiles('scripts/install-mero-app-build.sh') }}
-      - name: Install mero-app-build
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
         env:
-          MERO_APP_BUILD_ROOT: ${{ runner.temp }}/mero-app-build
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
         run: |
-          scripts/install-mero-app-build.sh
-          echo "$MERO_APP_BUILD_ROOT/bin" >> "$GITHUB_PATH"
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
 
       # Regenerating and diffing is what turns a contract/frontend mismatch into
       # a failed build rather than a runtime 500. It needs no node and no wasm —
@@ -512,7 +512,7 @@ jobs:
           # to `git diff`, so a new app could pass with no client committed.
           git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
           if ! git diff --quiet -- 'apps/*/app/src/generated'; then
-            echo "::error::a generated client is stale. Run 'scripts/install-mero-app-build.sh', then 'pnpm -r codegen', and commit."
+            echo "::error::a generated client is stale. Run 'scripts/install-meroctl.sh', then 'pnpm -r codegen', and commit."
             git --no-pager diff -- 'apps/*/app/src/generated'
             exit 1
           fi

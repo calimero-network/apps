@@ -61,6 +61,7 @@ through `@calimero-apps/connect`'s org-app module
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-forum     # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/mero-forum  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, create a space, a forum in it, and post. To try a second
@@ -136,7 +137,7 @@ v1.
   session is `@calimero-apps/connect` (`src/session.ts`, `src/sessionContext.tsx`):
   passkey sign-in/up, the session stored per app and per target.
 - The contract is called through `MeroForumClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-forum codegen` after a contract change, and CI fails when it is
   stale). `src/client.test.ts` checks it has exactly the ABI's methods, sends
   each as a call or a view with its parameter names, and syncs the session after

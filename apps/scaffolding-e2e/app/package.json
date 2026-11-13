@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name scaffolding-e2e -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name scaffolding-e2e -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

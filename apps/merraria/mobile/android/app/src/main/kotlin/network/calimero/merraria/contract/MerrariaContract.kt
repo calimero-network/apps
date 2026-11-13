@@ -6,7 +6,7 @@ import kotlinx.serialization.json.intOrNull
 import network.calimero.merraria.generated.MerrariaClient
 
 // The world contract's component ABI (`logic/res/abi.json`). The calls are [MerrariaClient],
-// generated from it by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this file
+// generated from it by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`); this file
 // keeps the method lists `ContractTest` checks against the ABI, the paging of `getOverrides` and
 // the refusal sentences of the web app's `app/src/net/merraria.ts`; the world's types are the
 // generated ones. (Swift `Contract/MerrariaContract.swift`.)

@@ -10,7 +10,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "lint": "eslint .",
-    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-vote -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-vote -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

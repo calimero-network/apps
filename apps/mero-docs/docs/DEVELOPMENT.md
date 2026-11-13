@@ -14,6 +14,7 @@ From the repository root, with `merod` at the pinned core tag on `PATH` (or in
 ```bash
 pnpm install
 pnpm dev:local mero-docs
+meroctl local dev apps/mero-docs   # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 That starts `merod local` (three nodes on `127.0.0.1:2501-2503`), builds the

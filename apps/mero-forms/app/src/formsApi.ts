@@ -10,7 +10,7 @@ import {
 
 /**
  * The forms contract is called through `MeroFormsClient`
- * (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+ * (`src/generated/client.ts`, which `meroctl app codegen` writes from
  * `logic/res/abi.json`): camelCase arguments, 64-bit integers as decimal
  * strings. This file is what sits around it:
  *

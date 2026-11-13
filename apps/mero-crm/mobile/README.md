@@ -148,7 +148,7 @@ each path-filtered to its folder.
 
 `CrmClient` (Swift `ios/Core/Sources/CrmGenerated/`, Kotlin
 `android/.../crm/generated/client/`) is generated from `../logic/res/abi.json` by core's
-`mero-app-build codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
+`meroctl app codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
 commit, and update the method table in `ContractSurfaceTests` / `ContractSurfaceTest`; CI's
 `Mobile clients` workflow fails on a stale client. Until the logic derives `AbiType`, the ABI names
 the answer types (`DealView`, `StageView`, ...) without their shape, so the client answers their

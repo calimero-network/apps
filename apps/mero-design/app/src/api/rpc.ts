@@ -59,7 +59,7 @@ export const PRODUCT_NAME = "Mero Design";
 // ── Contract calls ───────────────────────────────────────────────────────────
 //
 // The board's contract is called through `MeroDesignClient`
-// (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+// (`src/generated/client.ts`, which `meroctl app codegen` writes from
 // `logic/res/abi.json`): `design(board).updateElement({ id, strokeWidth,
 // updatedAt: i64(now) })`. Its arguments are the ABI's (camelCase, 64-bit
 // integers as decimal strings, `i64` below). Its answers are v1's shapes

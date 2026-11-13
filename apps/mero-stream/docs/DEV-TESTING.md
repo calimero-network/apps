@@ -12,6 +12,7 @@ and the Docker workflows.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-stream       # cluster + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-stream  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 1. In a Chrome profile, **create an account** (a passkey), **create a stream**,

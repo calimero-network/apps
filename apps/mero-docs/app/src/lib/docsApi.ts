@@ -1,7 +1,7 @@
 // The shapes the hooks and screens read, and the conversions to them.
 //
 // The contract is called through `MeroDocsClient` (`src/generated/client.ts`,
-// which `mero-app-build codegen` writes from `logic/res/abi.json`). One
+// which `meroctl app codegen` writes from `logic/res/abi.json`). One
 // component serves both kinds of instance, a folder's docs instance and a
 // workspace's registry instance, so the same class reaches both.
 //

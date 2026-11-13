@@ -5,7 +5,7 @@ import { MeroPixartClient, type AppTransport } from "../generated/client";
 
 /**
  * The document contract is called through `MeroPixartClient`
- * (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+ * (`src/generated/client.ts`, which `meroctl app codegen` writes from
  * `logic/res/abi.json`): camelCase method and argument names, `u64`/`i64`
  * arguments as decimal strings (`i64` below), views as views.
  *

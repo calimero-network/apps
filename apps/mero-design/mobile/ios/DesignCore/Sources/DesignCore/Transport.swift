@@ -2,7 +2,7 @@ import Foundation
 import MeroKit
 
 // The board's contract is `DesignClient`, generated from the component ABI by core's
-// `mero-app-build codegen` (`scripts/mobile-codegen.sh`): camelCase methods and arguments, 64-bit
+// `meroctl app codegen` (`scripts/mobile-codegen.sh`): camelCase methods and arguments, 64-bit
 // integers as decimal strings. `getElements` answers at most 1,000 elements, so the board is read
 // page by page through `getElementsPage` (`allElements()`), as the web app's
 // `src/api/meroDesign.ts` does.

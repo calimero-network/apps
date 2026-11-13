@@ -45,6 +45,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-issue-tracker -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-issue-tracker -o src/generated"
   }
 }

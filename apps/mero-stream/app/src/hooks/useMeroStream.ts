@@ -23,7 +23,7 @@ import type { SenderCursor } from "../types";
  * The contract of the active room, for the screens.
  *
  * v1 wrapped mero-react's `useExecute`; this calls `MeroStreamClient`, which
- * `mero-app-build codegen` writes from logic/res/abi.json, and turns its
+ * `meroctl app codegen` writes from logic/res/abi.json, and turns its
  * answers back into the shapes the screens were written against
  * (`lib/meroStream`'s `to*`). The API is the one the pages
  * already used:

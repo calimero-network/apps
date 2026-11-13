@@ -128,7 +128,7 @@ export function toGameSummary(w: WireGameSummary): GameSummary {
 
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
-// The contract is called through `MeroChessClient`, which `mero-app-build
+// The contract is called through `MeroChessClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`), which
 // types its records from the ABI; the answers are converted to the shapes the
 // screens use here, by `toTableView` / `toGameSummary`.

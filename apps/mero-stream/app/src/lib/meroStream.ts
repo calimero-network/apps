@@ -20,7 +20,7 @@ import type {
 /** The package a production instance is created from. */
 export const PACKAGE = "com.calimero.mero-stream";
 
-// The contract is called through `MeroStreamClient`, which `mero-app-build
+// The contract is called through `MeroStreamClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`): u64
 // arguments as decimal strings (`u64`), bytes as base64url (`toBase64Url`).
 // The ABI describes its records, so the generated client types each answer;

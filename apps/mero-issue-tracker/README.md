@@ -81,6 +81,7 @@ it; the contract checks both against the caller and answers `Forbidden`.
 pnpm install                              # once, at the repo root
 rustup target add wasm32-wasip2           # once
 pnpm dev:local mero-issue-tracker         # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-issue-tracker # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -147,7 +148,7 @@ light/dark theme. Behind them:
 - **new**: `src/session.ts` + `src/sessionContext.tsx` (target -> client ->
   passkey sign-in/up, the stored session), `src/workspaces.ts` (orgs, app
   instances, invites, member names), `src/generated/` (`MeroIssueTrackerClient`:
-  `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F
+  `meroctl app codegen` from `logic/res/abi.json`, committed; `pnpm -F
   mero-issue-tracker codegen` after a contract change, and CI fails when it is
   stale), `src/tracker.ts` (its answers mapped onto the shapes the screens
   render: the ABI names its records without their shapes, so the generated
@@ -186,8 +187,7 @@ and the Vercel project (`app/vercel.json`) stay as the listing's link.
 
 ```bash
 pnpm -F mero-issue-tracker build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-issue-tracker/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-issue-tracker/logic --key <production key> --app-version <x.y.z>
 ```
 
 The package id stays `com.calimero.mero-issue-tracker`, but a 1.0 cluster

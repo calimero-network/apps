@@ -37,7 +37,7 @@ web app's `app/src/tracker.ts` does:
 - a refusal is `422 APP_ERROR {code, fields}`: `NotFound {id}`, `Invalid {message}`,
   `Forbidden {message}`, shown in plain words.
 
-The typed clients are generated from `../logic/res/abi.json` by core's `mero-app-build codegen`
+The typed clients are generated from `../logic/res/abi.json` by core's `meroctl app codegen`
 (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale one):
 `ios/Core/Sources/IssueTrackerCore/Generated/IssueTrackerClient.swift` and
 `android/app/src/main/kotlin/network/calimero/issues/generated/IssueTrackerClient.kt`. Until the

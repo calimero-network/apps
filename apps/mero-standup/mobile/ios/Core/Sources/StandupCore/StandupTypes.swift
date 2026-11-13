@@ -1,5 +1,5 @@
 // The standup contract (`logic/`, a Calimero 1.0 component): the calls are `StandupClient`,
-// generated from `logic/res/abi.json` into `Generated/` by core's `mero-app-build codegen`
+// generated from `logic/res/abi.json` into `Generated/` by core's `meroctl app codegen`
 // (`scripts/mobile-codegen.sh` at the repo root), and so are the answer types. This file keeps the
 // method table of the web app's `app/src/standup.ts`; the Android app's
 // `contract/StandupContract.kt` is its twin.

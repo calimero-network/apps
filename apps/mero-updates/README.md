@@ -207,6 +207,7 @@ In rough priority order:
 pnpm install                       # once, at the repo root
 rustup target add wasm32-wasip2    # once
 pnpm dev:local mero-updates        # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-updates  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`); `pnpm dev:local` prints
@@ -276,7 +277,7 @@ thread, Q&A, asks, KPIs, people and engagement, settings, the light/dark theme. 
   suites that drove merod 0.x (`e2e/`, `tests/shell.spec.ts`, `tests/theme.spec.ts`);
 - **new**: `src/lib/session.ts` + `src/lib/sessionContext.tsx` (target → client → passkey sign-in/up,
   the stored session), `src/lib/companies.ts` (orgs, instances, invites, member names),
-  `src/generated/` (`MeroUpdatesClient`: `mero-app-build codegen` from `logic/res/abi.json`,
+  `src/generated/` (`MeroUpdatesClient`: `meroctl app codegen` from `logic/res/abi.json`,
   committed; `pnpm -F mero-updates codegen` after a contract change, and CI fails when it is
   stale), `src/lib/updatesClient.ts` (`fromWire`/`toWire`: its answers converted back to the
   shapes the screens render, as the ABI names its records without their shapes and the generated
@@ -308,8 +309,7 @@ and from frontends it serves from a bundle. Instances are created from the packa
 
 ```bash
 pnpm -F mero-updates build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-updates/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-updates/logic --key <production key> --app-version <x.y.z>
 ```
 
 The package id stays `com.calimero.mero-updates`, but a 1.0 cluster starts from no v1 data: v1

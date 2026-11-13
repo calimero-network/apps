@@ -114,6 +114,7 @@ through `@calimero-apps/connect`'s org-app module
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-sign     # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/mero-sign  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, create a workspace and an agreement in it. To try a
@@ -215,7 +216,7 @@ reads the bytes, as in v1. What moved is where the bytes go:
   (`src/session.ts`, `src/sessionContext.tsx`): passkey sign-in or sign-up, the
   session stored per app and per target.
 - The contract is called through `MeroSignClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-sign codegen` after a contract change, and CI fails when it is
   stale); `src/client.test.ts` checks it against the ABI. The ABI names its
   records without their shapes, so the generated types are `unknown`:

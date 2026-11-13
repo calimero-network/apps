@@ -571,8 +571,9 @@ rustup target add wasm32-wasip2
 M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/hyperfeed/logic/Cargo.toml                    # harness + scenarios
 cargo run --release --manifest-path $M -- build  apps/hyperfeed/logic           # res/hyperfeed.wasm + res/abi.json
-cargo run --release --manifest-path $M -- bundle apps/hyperfeed/logic --dev     # a dev-signed .mpk
+meroctl app pack apps/hyperfeed/logic                                           # a dev-signed .mpk
 pnpm dev:local hyperfeed            # merod local + build + deploy + the dev server on http://localhost:5173
+meroctl local dev apps/hyperfeed    # the same with core's meroctl (1.0.0-rc.24 or later)
 pnpm merod-local e2e hyperfeed      # scenarios/*.json as real accounts on the cluster
 pnpm -F hyperfeed lint typecheck test build
 ```
@@ -612,7 +613,7 @@ component SDK. What a client sees differently:
 
 Removed: the merobox workflow (`logic/workflows/feed.yml`, now `scenarios/`), the CRDT merge
 tests (each turned into what it means under one log), `res/state-schema.json`, the abi-codegen
-client (`src/generated/` again, now core's `mero-app-build codegen` from `res/abi.json`:
+client (`src/generated/` again, now core's `meroctl app codegen` from `res/abi.json`:
 `HyperfeedClient`, called by `clusterBackend` in `src/backend.ts` with the records typed by
 `src/hyperfeedTypes.ts`; `pnpm -F hyperfeed codegen` after a contract change, and
 `src/client.test.ts` checks it against the ABI), mero-react's provider and

@@ -1,6 +1,6 @@
 /**
  * The pipeline's contract is called through `MeroCrmClient`, which
- * `mero-app-build codegen` writes from logic/res/abi.json
+ * `meroctl app codegen` writes from logic/res/abi.json
  * (`src/generated/client.ts`): camelCase arguments, u64s as decimal strings
  * (`u64`, `optU64` below). It types the records from the ABI; each answer
  * passes through the `to*` below into v1's shapes, which the screens were

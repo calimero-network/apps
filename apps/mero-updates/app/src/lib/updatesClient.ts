@@ -3,7 +3,7 @@
  * snake_case fields, numbers), and the one place the component wire is turned
  * into them.
  *
- * The contract is called through `MeroUpdatesClient`, which `mero-app-build
+ * The contract is called through `MeroUpdatesClient`, which `meroctl app
  * codegen` writes from logic/res/abi.json (`src/generated/client.ts`), with
  * camelCase arguments (`UpdateInput` through `toWireInput`, a u64 through
  * `u64`), typed from the ABI's record shapes. Every answer goes through

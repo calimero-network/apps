@@ -25,7 +25,7 @@ apps/mero-chess/
 │   ├── scenarios/           play-a-game, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-│   ├── src/generated/       MeroChessClient: `mero-app-build codegen` from res/abi.json (committed)
+│   ├── src/generated/       MeroChessClient: `meroctl app codegen` from res/abi.json (committed)
 │   └── src/chess.ts         the screens' shapes and the adapter from the contract's answers
 ├── docs/trust-model.md      the v1 trust model, kept as a worked example (see below)
 └── mobile/                  native iOS / Android apps (moved to 1.0 in #686: see below)
@@ -40,6 +40,7 @@ apps are built, run and tested in this repo.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-chess        # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-chess  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -181,7 +182,7 @@ table, its org and the inviter (making it is approved with your passkey; the
 shared invite store in `@calimero-apps/connect` keeps the token; a signed-in
 player is asked before it is redeemed, then the table opens), re-reads the table on the table's **event
 stream** (and a 6-second poll for presence), and calls the contract through
-`MeroChessClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+`MeroChessClient` (`src/generated/client.ts`), which `meroctl app codegen`
 writes from `logic/res/abi.json`; `src/chess.ts` converts its answers back to the
 shapes the screens were written against, so the board, the seats, the game card and the
 scoresheet are unchanged. A seat with no name given shows a short account id
@@ -196,7 +197,7 @@ table's state does not carry over: a component table starts empty.
 ## The generated client
 
 ```bash
-scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+scripts/install-meroctl.sh            # once, from the repo root: meroctl at its pinned release
 pnpm -F mero-chess codegen            # logic/res/abi.json -> app/src/generated/
 ```
 
@@ -238,8 +239,7 @@ listing's link; they are not where people sign in.
 
 ```bash
 pnpm -F mero-chess build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-chess/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-chess/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

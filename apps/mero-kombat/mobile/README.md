@@ -114,7 +114,7 @@ confirmed transaction count and the last round trip.
 
 `KombatClient` (`ios/KombatCore/Sources/KombatCore/Generated/` and
 `android/app/src/main/kotlin/network/calimero/kombat/generated/`) is generated from
-`../logic/res/abi.json` by core's `mero-app-build codegen`: after an ABI change, run
+`../logic/res/abi.json` by core's `meroctl app codegen`: after an ABI change, run
 `scripts/mobile-codegen.sh` at the repo root and commit (CI's `Mobile clients` workflow fails on a
 stale client). The apps build it over the SDKs' `MeroAppBackend` (`KombatClient(backend, appId)`).
 Until the logic derives `AbiType`, the ABI names `ArenaView` and `MatchSummary` without their

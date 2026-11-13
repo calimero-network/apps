@@ -7,7 +7,7 @@ import kotlinx.serialization.json.put
 import network.calimero.kombat.generated.KombatClient
 
 // The arena contract's component ABI (`logic/res/abi.json`). The calls are [KombatClient],
-// generated from it by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`), and so are
+// generated from it by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`), and so are
 // the answer types; this file keeps the method lists `ContractTest` checks against the
 // ABI, `initArgs` and the refusal sentences of the web app's `app/src/kombat.ts`. (Swift
 // `Contract/KombatContract.swift`.)

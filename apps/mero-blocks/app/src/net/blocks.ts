@@ -1,4 +1,4 @@
-// The world's contract, through `MeroBlocksClient`, which `mero-app-build
+// The world's contract, through `MeroBlocksClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`;
 // tests/generatedClient.test.ts checks it covers exactly the committed ABI).
 // `blocks()` adapts it to what the game engine takes (`WorldApi`, sync.ts).

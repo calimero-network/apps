@@ -30,7 +30,7 @@ over the sealed channel to an attested node:
   `createdAt` / `editedAt` / `score` / `commentCount` as decimal strings. Refusals are
   `APP_ERROR` `NotFound {what, id}`, `Forbidden {message}`, `Invalid {message}`, shown in plain
   words. The typed client, `ForumClient` (`ForumCore/Sources/ForumCore/Generated/` /
-  `forum/generated/`), is generated from the ABI by core's `mero-app-build codegen`
+  `forum/generated/`), is generated from the ABI by core's `meroctl app codegen`
   (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale
   one). Until the logic derives `AbiType`, the ABI names the answer types without their shape, so
   `ForumContract.swift` / `contract/ForumContract.kt` keep them, with the method lists

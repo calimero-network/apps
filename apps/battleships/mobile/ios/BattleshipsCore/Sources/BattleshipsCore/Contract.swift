@@ -2,7 +2,7 @@ import Foundation
 import MeroKit
 
 // The Battleships component contract (`../logic/res/abi.json`). The calls are `BattleshipsClient`,
-// generated from it into `Generated/` by core's `mero-app-build codegen`
+// generated from it into `Generated/` by core's `meroctl app codegen`
 // (`scripts/mobile-codegen.sh`), and so are the answer types; this file keeps the
 // method lists of the web app's `src/battleships.ts`: camelCase method and argument names, snake_case result fields, 64-bit
 // integers as decimal strings, bytes as base64url, refusals as `422 APP_ERROR {code, fields}`.

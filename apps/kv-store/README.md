@@ -3,9 +3,24 @@
 The reference Calimero app, and the template every other app's port to the
 1.0 runtime follows. A string key-value store: a contract on core's **component
 SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
-wasmtime runtime), developed on **`merod local`**, with a frontend on mero-js's
-**`CalimeroClient`** that talks to a **Calimero Cloud** cluster in production
-and to the local nodes in development.
+wasmtime runtime), developed with core's **`meroctl`** on a local cluster
+(`merod local`), with a frontend on mero-js's **`CalimeroClient`** that talks
+to a **Calimero Cloud** cluster in production and to the local nodes in
+development. It is also `meroctl app new`'s default template.
+
+```bash
+meroctl app new my-app && cd my-app   # a copy of this app, ready to rename
+pnpm install
+meroctl local dev apps/kv-store       # cluster, build, upload, frontend on http://localhost:5173
+```
+
+`meroctl` is 1.0.0-rc.24 or later, from core's installer (into `~/.local/bin`,
+checked against the release's `SHA256SUMS`); `sh -s -- merod meroctl` also
+installs `merod` for the local cluster (Linux only; elsewhere add `--docker`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/calimero-network/core/master/scripts/install.sh | sh -s -- merod meroctl
+```
 
 ```
 apps/kv-store/
@@ -16,7 +31,7 @@ apps/kv-store/
 │   ├── scenarios/           simple-store, converge, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 └── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-    └── src/generated/       KvStoreClient: `mero-app-build codegen` from res/abi.json (committed)
+    └── src/generated/       KvStoreClient: `meroctl app codegen` from res/abi.json (committed)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -25,13 +40,18 @@ apps are built, run and tested in this repo.
 ## Run it
 
 ```bash
-pnpm install                     # once, at the repo root
-rustup target add wasm32-wasip2  # once
-pnpm dev:local kv-store          # merod local + build + deploy + http://localhost:5173/
+pnpm install                         # once, at the repo root
+rustup target add wasm32-wasip2      # once
+meroctl local dev apps/kv-store      # cluster, build, upload, http://localhost:5173/; rebuilds on save
 ```
 
-`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
-`pnpm dev:local` prints how to get it when it is missing. In the browser,
+`meroctl local dev` starts the local cluster unless one runs (`meroctl local
+up`, `meroctl local status`, `meroctl local down` drive it by hand), builds and
+uploads the contract, writes `app/.env.development.local` and runs `pnpm dev`.
+`merod` must be on the `PATH` (or in `MEROD`), or run it in Docker with
+`--docker`. Inside this repository, `pnpm dev:local kv-store` is the
+monorepo's own equivalent (`packages/merod-local`, `merod` on the `PATH` or in
+`MEROD_BIN`; it prints how to get it when it is missing). In the browser,
 **create an account** (a passkey), **create a store** (shared stores live in an
 organization of their own, so you can invite others), and use it. A second
 browser profile with its own passkey and the invitation link is a second member.
@@ -40,7 +60,7 @@ browser profile with its own passkey and the invitation link is a second member.
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test --manifest-path apps/kv-store/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's convergence tests as what they become under one log, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
+| `meroctl local test apps/kv-store/logic` (or `cargo test --manifest-path apps/kv-store/logic/Cargo.toml`) | v1's `TestHost` tests method for method, v1's convergence tests as what they become under one log, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
 | `pnpm -F kv-store test` | the generated client has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the panel, sign-in, stores, invitations, session restore (mocked client) | no |
 | `pnpm merod-local e2e kv-store` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
@@ -90,14 +110,14 @@ instances: v1's contexts), shares one through an **organization** (v1's
 namespace) with an **invite link** (making it is approved with your passkey;
 opening it after signing in redeems it and opens the shared store; the pending
 invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the contract through
-`KvStoreClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+`KvStoreClient` (`src/generated/client.ts`), which `meroctl app codegen`
 writes from `logic/res/abi.json`.
 
 ## The generated client
 
 ```bash
-scripts/install-mero-app-build.sh   # once, from the repo root: mero-app-build at its pinned tag
-pnpm -F kv-store codegen            # logic/res/abi.json -> app/src/generated/
+scripts/install-meroctl.sh          # once, from the repo root: meroctl at its pinned release
+pnpm -F kv-store codegen            # meroctl app codegen: logic/res/abi.json -> app/src/generated/
 ```
 
 `App.tsx` builds `new KvStoreClient(client, appId, { after })`, where `after`
@@ -105,8 +125,10 @@ syncs the stored session after every call and view; `KvPanel` calls its
 methods (`kv.set({ key, value })`) and the event stream is `kv.events()`. The
 directory is committed and CI regenerates it and fails when it is stale (see
 [docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
-After a contract change: `mero-component build`, `pnpm -F kv-store codegen`,
-then `tsc -b` shows every call site to fix.
+After a contract change: rebuild `logic/res/abi.json` (`cargo run --release
+--manifest-path tools/component-bundle/Cargo.toml -- build apps/kv-store/logic`,
+the build CI diffs it against), `pnpm -F kv-store codegen`, then `tsc -b`
+shows every call site to fix.
 
 ## Production
 
@@ -140,9 +162,16 @@ where people sign in.
 
 ```bash
 pnpm -F kv-store build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/kv-store/logic --key <production key> --app-version <x.y.z>
+meroctl app signer new release.key       # once: the production signing key; keep it secret
+meroctl app pack apps/kv-store/logic --key release.key --app-version <x.y.z>
+meroctl app inspect apps/kv-store/logic/dist/com.calimero.kv-store-<x.y.z>.mpk
+meroctl app publish apps/kv-store/logic/dist/com.calimero.kv-store-<x.y.z>.mpk   # CALIMERO_REGISTRY_API_KEY
 ```
+
+`meroctl app pack` reads the crate's `[package.metadata.calimero]` (`package`,
+`min-runtime-version`, `frontend-dir`), builds the component and packs the
+built frontend; without `--key` the development key signs, which the registry
+refuses. The repository's release workflow does the same in CI.
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against
 `cloud.calimero.network` mirrors, which the served page's CSP does not list
