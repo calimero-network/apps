@@ -66,6 +66,8 @@ export interface GroupMember {
   identity: string;
   alias?: string;
   role: GroupMemberRole;
+  /** Their role in the workspace's organization (`owner`, `admin`, `member`, `guest`), in a workspace's list. */
+  orgRole?: string;
 }
 
 export interface GroupUpgradeStatus {

@@ -29,6 +29,7 @@ import {
   appTeamIdIn,
   appTeamMembers,
   createAppOrg,
+  isAppOnly,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -519,6 +520,25 @@ export async function leaveChat(org: string): Promise<{ left: "app" | "org"; las
   return left;
 }
 
+/** Whether `org` has chat's app team: removing and leaving are then chat's own (its team rows). */
+export async function hasChatTeam(org: string): Promise<boolean> {
+  return !!chatTeamId(await getOrgRecord(org));
+}
+
+/**
+ * Takes `account` off chat's app team in `org`, and with it every channel and
+ * DM below it (core drops their rows there). A team call a session bound to
+ * Chat's frontend may make, with a passkey step-up; the organization is left
+ * as it is.
+ */
+export async function removeFromChatTeam(org: string, account: string): Promise<void> {
+  const team = chatTeamId(await getOrgRecord(org));
+  if (!team) throw new Error("This workspace has no Chat team; an admin adds it in Calimero Home.");
+  await run((c) => c.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+  invalidate(org);
+  invalidate();
+}
+
 /** The signed-in account leaves `org` altogether: every app in it. */
 export async function leaveChatOrg(org: string): Promise<void> {
   await run((c) => leaveOrg(c, org, passkey));
@@ -536,10 +556,20 @@ export async function setMemberName(org: string, account: string, name: string):
   invalidate(org);
 }
 
-export async function setOrgName(org: string, name: string): Promise<void> {
-  const current = await getOrgRecord(org).catch(() => null);
-  await run((c) => c.orgs.metadata({ org, metadata: { ...(current?.metadata ?? {}), name } }));
+/** Renames the organization (`POST /orgs/{org}/name`, a passkey step-up): the workspace's name everyone sees. */
+export async function renameOrg(org: string, name: string): Promise<void> {
+  await run((c) => c.orgs.rename({ org, name }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
+}
+
+/**
+ * Whether Chat keeps its own people in `org` (a shared org with chat's app
+ * team): then removing someone and leaving are Chat's, on its team, and not
+ * the organization's.
+ */
+export async function chatOnlyIn(org: string): Promise<boolean> {
+  const record = await getOrgRecord(org);
+  return isAppOnly(record as AppOrgView, chatPackage());
 }
 
 /**

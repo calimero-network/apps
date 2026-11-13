@@ -384,7 +384,8 @@ describe("CreateWorkspacePopup", () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("group-1"));
     expect(mockSetStoredGroupAlias).toHaveBeenCalledWith("group-1", "Team Space");
-    expect(mockSetGroupMetadata).toHaveBeenCalledWith("group-1", "Team Space");
+    // The organization is made under the name: nothing is renamed after.
+    expect(mockSetGroupMetadata).not.toHaveBeenCalled();
     // Switched only once the name, the member record and #general are done.
     expect(mockSetGroupId.mock.invocationCallOrder[0]).toBeGreaterThan(
       mockCreateChannel.mock.invocationCallOrder[0],

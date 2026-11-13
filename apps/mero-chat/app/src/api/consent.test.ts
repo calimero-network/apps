@@ -46,6 +46,27 @@ describe("Chat's consent page", () => {
     });
   });
 
+  it("asks for the organization-wide changes in core's kinds and fields", () => {
+    const returnTo = `${window.location.origin}/1.0.0/`;
+    expect(consentRequest({ kind: "setMemberRole", org: "o", account: "a", role: "admin" })).toEqual({
+      kind: "setMemberRole",
+      subject: { org: "o", account: "a", role: "admin" },
+      returnTo,
+    });
+    expect(consentRequest({ kind: "removeMember", org: "o", account: "a" })).toEqual({
+      kind: "removeMember",
+      subject: { org: "o", account: "a" },
+      returnTo,
+    });
+    expect(consentRequest({ kind: "leaveOrg", org: "o" })).toEqual({ kind: "leaveOrg", subject: { org: "o" }, returnTo });
+    expect(consentRequest({ kind: "renameOrg", org: "o", name: "Acme" })).toEqual({
+      kind: "renameOrg",
+      subject: { org: "o", name: "Acme" },
+      returnTo,
+    });
+    expect(consentRequest({ kind: "deleteOrg", org: "o" })).toEqual({ kind: "deleteOrg", subject: { org: "o" }, returnTo });
+  });
+
   it("tells the node's refusal of a frontend session from any other", () => {
     const refusal = {
       status: 403,
@@ -96,5 +117,59 @@ describe("Chat's consent page", () => {
 
     h.resumeConsent.mockResolvedValue(null);
     await expect(returnFromConsent()).resolves.toBeNull();
+  });
+
+  it("keeps an organization kind's intent for its return", async () => {
+    sessionStorage.setItem(CONSENT_INTENT_KEY, JSON.stringify({ kind: "renameOrg", org: "o", name: "Acme" }));
+    const result = {
+      requestId: "r1",
+      kind: "renameOrg",
+      status: "approved",
+      decidedAt: 1,
+      outcome: { orgId: "o", name: "Acme" },
+    };
+    h.resumeConsent.mockResolvedValue(result);
+    await expect(returnFromConsent()).resolves.toEqual({ intent: { kind: "renameOrg", org: "o", name: "Acme" }, result });
+  });
+});
+
+describe("askOrgConsent", () => {
+  // `frontendBound` is asked once per load: a fresh module per case.
+  async function load() {
+    vi.resetModules();
+    return import("./consent");
+  }
+
+  it("unbound: answers false and leaves the change to the caller", async () => {
+    h.me.mockResolvedValue({ accountId: "acct-me" });
+    const { askOrgConsent } = await load();
+    await expect(askOrgConsent({ kind: "deleteOrg", org: "o" })).resolves.toBe(false);
+    expect(h.openConsentPage).not.toHaveBeenCalled();
+  });
+
+  it("bound: sends the person to the consent page with the change's kind, keeping the intent", async () => {
+    h.me.mockResolvedValue({ accountId: "acct-me", app: "chat" });
+    h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
+      opts.confirm({ code: "ABC-DEF" });
+      return { requestId: "r1" };
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { askOrgConsent, consentIntent: kept } = await load();
+    void askOrgConsent({ kind: "leaveOrg", org: "o" });
+    await vi.waitFor(() => expect(h.openConsentPage).toHaveBeenCalled());
+    expect(h.openConsentPage.mock.calls[0]?.[0]).toMatchObject({ kind: "leaveOrg", subject: { org: "o" } });
+    expect(kept()).toEqual({ kind: "leaveOrg", org: "o" });
+  });
+
+  it("bound, and the person stays: nothing was changed, and says so", async () => {
+    h.me.mockResolvedValue({ accountId: "acct-me", app: "chat" });
+    h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
+      opts.confirm({ code: "ABC-DEF" });
+      return { requestId: "r1" };
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { askOrgConsent, StayedOnChat } = await load();
+    await expect(askOrgConsent({ kind: "renameOrg", org: "o", name: "Acme" })).rejects.toBeInstanceOf(StayedOnChat);
+    expect(consentIntent()).toBeNull();
   });
 });

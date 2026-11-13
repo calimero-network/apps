@@ -248,6 +248,7 @@ export default function AdminPanel({
               actionLoading={admin.actionLoading}
               onRemoveMember={admin.removeMember}
               onUpdateRole={admin.updateMemberRole}
+              onSetOrgAdmin={admin.setOrgAdmin}
               onSetCapabilities={admin.setMemberCapabilities}
               onGetCapabilities={admin.getMemberCapabilities}
               onRefresh={handleRefresh}

@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import { getStoredGroupAlias } from "../constants/config";
-import {
-  resolveWorkspaceName,
-  shouldBackfillWorkspaceName,
-} from "../utils/workspaceName";
+import { resolveWorkspaceName } from "../utils/workspaceName";
 
 /**
  * The name to show for one workspace.
@@ -19,12 +16,7 @@ import {
  * Starts from the local alias so a name already in hand renders on the first
  * paint — resolving to a truncated id and correcting it a moment later is a
  * flicker for something that was never unknown — then replaces it with the
- * replicated name when that arrives.
- *
- * A local-only name is promoted into the shared record once, so a workspace
- * named before metadata was used becomes visible to everyone. Best-effort: a
- * member without CAN_MANAGE_METADATA is refused and keeps seeing their own
- * label.
+ * replicated name (the organization's) when that arrives.
  */
 export function useWorkspaceName(groupId: string): string {
   const localAlias = groupId ? getStoredGroupAlias(groupId) : "";
@@ -39,19 +31,7 @@ export function useWorkspaceName(groupId: string): string {
       .getGroupMetadata(groupId)
       .then((record) => {
         if (cancelled) return;
-        const name = record?.data?.name ?? null;
-        setMetadataName(name);
-
-        if (
-          shouldBackfillWorkspaceName({
-            metadataName: name,
-            serverAlias: undefined,
-            localAlias,
-            groupId,
-          })
-        ) {
-          void api.setGroupMetadata(groupId, localAlias).catch(() => {});
-        }
+        setMetadataName(record?.data?.name ?? null);
       })
       // A workspace whose metadata cannot be read still shows its local name.
       .catch(() => {});

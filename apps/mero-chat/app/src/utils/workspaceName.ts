@@ -43,14 +43,3 @@ export function resolveWorkspaceName(sources: WorkspaceNameSources): string {
     (sources.groupId ? `${sources.groupId.slice(0, 8)}…` : "Workspace")
   );
 }
-
-/**
- * Whether a local-only name should be promoted into the shared record.
- *
- * True exactly when this browser knows a name and the workspace does not, which
- * is every workspace named before metadata was used. Promoting it once makes it
- * visible to everyone else; after that `metadataName` answers and this is false.
- */
-export function shouldBackfillWorkspaceName(sources: WorkspaceNameSources): boolean {
-  return !clean(sources.metadataName) && !!clean(sources.localAlias);
-}

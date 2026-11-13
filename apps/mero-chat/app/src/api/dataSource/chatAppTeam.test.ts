@@ -349,11 +349,11 @@ describe("removing someone", () => {
     expect(accessOf(secret.contextId)).toEqual({ kind: "accounts", accounts: [] });
   });
 
-  it("standalone: out of the organization, as before (the org is Chat's)", async () => {
+  it("standalone: off Chat's team, the organization left as it is", async () => {
     const { org } = await workspace({ "acct-bob": "member" });
     await api.removeMember(org, "acct-bob");
-    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-bob", expect.anything());
-    expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-bob", expect.anything());
+    expect(h.client.removeMember).not.toHaveBeenCalled();
   });
 });
 
@@ -375,12 +375,12 @@ describe("leaving", () => {
     expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
   });
 
-  it("standalone: leaving is leaving the organization, as before", async () => {
+  it("standalone: leaving Chat's team, then the organization is offered (lastApp)", async () => {
     const { org } = await workspace({ "acct-ana": "owner" });
     const res = await api.leaveNamespace(org);
-    expect(res.data).toMatchObject({ left: "org", lastApp: false });
-    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
-    expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+    expect(res.data).toMatchObject({ left: "app", lastApp: true });
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-me", expect.anything());
+    expect(h.client.removeMember).not.toHaveBeenCalled();
   });
 
   it("a legacy org: leaving is leaving the organization", async () => {
