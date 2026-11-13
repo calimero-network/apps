@@ -90,6 +90,29 @@ describe("the shared ceremony", () => {
     expect(made).toEqual({ accountId: "acct-new", joined: { invite: "tok", org: "org-1" } });
   });
 
+  it("finds the joined org beside the personal one every account has from core 1.0.0-rc.20", async () => {
+    const client = {
+      signUp: vi.fn(async () => ({ accountId: "acct-new" })),
+      me: vi.fn(async () => ({
+        orgs: [
+          { orgId: "org-personal", personal: true },
+          { orgId: "org-1", personal: false },
+        ],
+      })),
+      setMemberMetadata: vi.fn(async () => {}),
+    };
+    const made = await signUpHere(withRoutes(client), TARGET, pk(), {
+      name: "Eve",
+      invite: "tok",
+      policy: policy("open"),
+      join: true,
+      nameInOrg: true,
+      storage: memory(),
+    });
+    expect(made.joined).toEqual({ invite: "tok", org: "org-1" });
+    expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-new", { name: "Eve" });
+  });
+
   it("takes the joined org from the sign-up's answer when the node says it, and asks me() only when not (B4)", async () => {
     const client = {
       signUp: vi.fn(async () => ({ accountId: "acct-new", org: "org-said" })),
