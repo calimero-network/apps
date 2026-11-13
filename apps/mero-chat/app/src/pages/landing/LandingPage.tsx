@@ -27,6 +27,7 @@ import {
 
 import { nodeBasename } from '@calimero-apps/node-served';
 
+import { promptInstall, useCanInstall } from '../../pwa/installPrompt';
 import { CONFIG } from './landing.config';
 import type { IconComponent, OverviewExtras } from './landingTypes';
 import './landing.css';
@@ -387,6 +388,20 @@ export interface LandingPageProps {
   onOpenApp?: () => void;
 }
 
+/**
+ * Installs this web app in its own window (Chrome, Edge). Shown only when the
+ * browser offers it: never in Safari or Firefox, never once installed.
+ */
+function InstallCta() {
+  const canInstall = useCanInstall();
+  if (!canInstall) return null;
+  return (
+    <button type="button" className="cal-lp-btn cal-lp-btn--ghost" onClick={() => void promptInstall()}>
+      <Monitor size={17} /> Install {CONFIG.name}
+    </button>
+  );
+}
+
 export default function LandingPage({
   onConnect,
   isAuthenticated = false,
@@ -729,6 +744,7 @@ function OverviewView({
               ) : (
                 <>
                   <ConnectCta />
+                  <InstallCta />
                   {hasDesktop ? (
                     <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
                       <Download size={17} /> Get the desktop app
