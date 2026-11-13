@@ -6,6 +6,10 @@ import '@fontsource-variable/jetbrains-mono';
 import './index.css';
 import App from './App';
 import { basename, invites, migrateStoredInvite } from './lobbies';
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // Before React mounts: a person opening an invitation link is usually not
 // signed in yet, and the token has to survive the passkey sign-up. An invite an

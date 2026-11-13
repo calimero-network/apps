@@ -32,6 +32,10 @@ import {
   NativeGameClient,
   type NativeConfig,
 } from "./native/host";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
 //

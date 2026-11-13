@@ -10,6 +10,10 @@ import "./index.css";
 import "./app.css";
 import { captureInvite } from "./lib/companies";
 import { SessionProvider } from "./lib/sessionContext";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // An invitation reaches this app as an opened link (`?invite=<token>`, with
 // `&audience=<id>` to land in one audience). Taken off the address bar before

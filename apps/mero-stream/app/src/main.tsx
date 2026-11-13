@@ -8,6 +8,10 @@ import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
 import { captureInvite } from "./lib/streams";
 import "./index.css";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // Before React mounts: whoever opens an invitation link is usually not signed
 // in yet, and the token has to survive the passkey sign-up.

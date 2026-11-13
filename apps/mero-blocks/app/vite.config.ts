@@ -1,7 +1,9 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
+  plugins: [installableApp({ cacheId: "mero-blocks" })],
   // Relative, so the same build runs at / and under the path the cluster
   // serves the bundle's frontend from.
   base: "./",

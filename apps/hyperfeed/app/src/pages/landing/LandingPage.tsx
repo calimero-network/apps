@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { InstallAppButton } from "@calimero-apps/install";
 import "./landing.css";
 import { LandingShell, useConnect } from "./chrome";
 import { appLook } from "../../apps";
@@ -121,6 +122,7 @@ function Hero({ connect }: { connect: () => void }) {
           <Link className="hl-btn hl-btn-ghost" to="/demo">
             Try the demo, no node needed
           </Link>
+          <InstallAppButton className="hl-btn hl-btn-ghost">Install Hyperfeed</InstallAppButton>
         </div>
       </div>
 

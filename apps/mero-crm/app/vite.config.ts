@@ -3,12 +3,13 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/,
   // where the cluster serves the bundle's frontend.
   base: "./",
-  plugins: [react(), servedAssetsFallback()],
+  plugins: [installableApp({ cacheId: "mero-crm" }), react(), servedAssetsFallback()],
   // `pnpm dev:local` opens exactly http://localhost:5173/: the origin
   // `merod local` trusts passkey ceremonies from.
   server: { port: 5173, strictPort: true },

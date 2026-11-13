@@ -28,6 +28,10 @@ import { Hud } from "./ui/hud";
 import { Landing } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu, WorldMap } from "./ui/overlays";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
 //

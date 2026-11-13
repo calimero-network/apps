@@ -15,6 +15,7 @@
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/install": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-js": "catalog:component",
     "@noble/curves": "^2.4.0",

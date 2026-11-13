@@ -27,6 +27,7 @@ import {
 
 import { nodeBasename } from '@calimero-apps/node-served';
 
+import { InstallAppButton } from '@calimero-apps/install';
 import { CONFIG } from './landing.config';
 import type { IconComponent, OverviewExtras } from './landingTypes';
 import './landing.css';
@@ -729,6 +730,9 @@ function OverviewView({
               ) : (
                 <>
                   <ConnectCta />
+                  <InstallAppButton className="cal-lp-btn cal-lp-btn--ghost">
+                    <Monitor size={17} /> Install {CONFIG.name}
+                  </InstallAppButton>
                   {hasDesktop ? (
                     <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
                       <Download size={17} /> Get the desktop app
