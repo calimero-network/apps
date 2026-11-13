@@ -19,7 +19,7 @@ type Toast = (toast: Omit<ToastNotification, "id">) => string;
 export async function finishWorkspace(
   api: Pick<
     GroupApiDataSource,
-    "setGroupMetadata" | "letMembersCreateChannels" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
+    "setGroupMetadata" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
   >,
   groupId: string,
   name: string,
@@ -34,10 +34,6 @@ export async function finishWorkspace(
   // write it explicitly. The creator is the owner, so this succeeds and gives
   // the workspace a name everyone can see.
   await api.setGroupMetadata(groupId, name).catch(() => {});
-
-  // Members create channels and DMs: Chat's team's default, which a team
-  // made by a current node holds already. Never fatal.
-  await api.letMembersCreateChannels(groupId).catch(() => {});
 
   // Every workspace starts with #general: someone who joins from an
   // invitation lands in a channel rather than an empty workspace, and the

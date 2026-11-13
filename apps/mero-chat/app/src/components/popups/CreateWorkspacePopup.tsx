@@ -168,8 +168,6 @@ export default function CreateWorkspacePopup({
     // `createGroup` does not reach its metadata record.
     setStoredGroupAlias(groupId, trimmedWorkspaceName);
     await groupApi.setGroupMetadata(groupId, trimmedWorkspaceName).catch(() => undefined);
-    // Members create channels and DMs (Chat's team's default). Never fatal.
-    await groupApi.letMembersCreateChannels(groupId).catch(() => undefined);
     // An account's founding also asked the cloud to host the workspace; a
     // refusal means it exists but nobody can be invited until the cause is
     // fixed. Surface it here, not as a failed Invite later.

@@ -413,10 +413,10 @@ export default function MembersTab({
                       messages in the workspace.
                     </CapabilityDescription>
                   </CapabilityInfo>
-                  {/* A private channel or DM is a team below Chat's app team
-                      (CREATE_CHILD_TEAM on this person's row there); a channel
-                      on Chat's team itself is an app created on it
-                      (CREATE_APP). Both together, so the label matches. */}
+                  {/* A channel or DM is a team below Chat's app team:
+                      CREATE_CHILD_TEAM on this person's row there. Without
+                      Chat's team (an older workspace) it is CREATE_APP
+                      org-wide; the data source keeps what each needs. */}
                   <CapabilityToggle
                     type="checkbox"
                     checked={capToggles.canCreateSubgroup}

@@ -80,7 +80,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     createGroup = h.createGroup;
     listOtherOrgs = h.listOtherOrgs;
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
-    letMembersCreateChannels = () => Promise.resolve({ data: true, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
     syncGroup = () => Promise.resolve({ data: null, error: null });
   },

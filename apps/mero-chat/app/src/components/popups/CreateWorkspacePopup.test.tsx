@@ -87,7 +87,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     resolveCurrentMemberIdentity = mockResolveCurrentMemberIdentity;
     setMemberMetadata = mockSetMemberMetadata;
     setGroupMetadata = mockSetGroupMetadata;
-    letMembersCreateChannels = () => Promise.resolve({ data: true, error: null });
     createInvitation = mockCreateInvitation;
   },
 }));

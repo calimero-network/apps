@@ -178,7 +178,6 @@ import { createChannel } from "../../utils/createChannel";
 
 const api = new GroupApiDataSource();
 
-const CREATE_APP = 1 << 0;
 const CREATE_CHILD_TEAM = 1 << 11;
 
 /** A workspace made in Chat, with #general, and more people in its org. */
@@ -339,7 +338,7 @@ describe("the workspace's people are Chat's", () => {
       lead: false,
       role: "member",
       // Their org-wide capabilities, and channels and DMs.
-      capabilities: 4 | CREATE_APP | CREATE_CHILD_TEAM,
+      capabilities: 4 | CREATE_CHILD_TEAM,
     });
     expect(h.client.setMember).not.toHaveBeenCalled();
     expect(h.client.setCapabilities).not.toHaveBeenCalled();
@@ -519,30 +518,11 @@ describe("Chat's permissions are rows on its app team", () => {
   });
 });
 
-describe("members create channels and DMs by the team's default", () => {
-  it("an older team without CREATE_CHILD_TEAM in its default gets it", async () => {
+describe("a team's default capabilities", () => {
+  it("are never written from Chat", async () => {
     const { org } = await workspace();
-    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
-    team.defaultCapabilities = 2;
-    invalidate();
-    expect((await api.letMembersCreateChannels(org)).data).toBe(true);
-    expect(h.client.setCapabilities).toHaveBeenCalledWith(org, 2 | CREATE_CHILD_TEAM, expect.anything(), {
-      team: "team-chat",
-    });
-  });
-
-  it("a team that has it is left alone", async () => {
-    const { org } = await workspace();
-    h.state.orgs.get(org)!.teams["team-chat"]!.defaultCapabilities = CREATE_CHILD_TEAM;
-    invalidate();
-    expect((await api.letMembersCreateChannels(org)).data).toBe(true);
+    await api.addGroupMember(org, "acct-cy");
     expect(h.client.setCapabilities).not.toHaveBeenCalled();
   });
-
-  it("a node that refuses it leaves the workspace as it is", async () => {
-    const { org } = await workspace();
-    h.client.setCapabilities.mockRejectedValueOnce(Object.assign(new Error("app's frontend"), { status: 403 }));
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect((await api.letMembersCreateChannels(org)).data).toBe(false);
-  });
 });
+

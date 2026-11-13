@@ -475,12 +475,14 @@ export async function setMemberRole(org: string, account: string, role: "admin" 
   invalidate(org);
 }
 
-/** core's `CREATE_APP`: an instance on a team (a channel on chat's app team). */
-const CREATE_APP = 1 << 0;
-/** core's `CREATE_CHILD_TEAM`: a closed team below one the member writes (a private channel or DM below chat's). */
+/**
+ * core's `CREATE_CHILD_TEAM` on chat's app team: "may create channels and
+ * DMs". A channel is a team below chat's team, and its creator leads it, so
+ * they may create its instance there; nothing on chat's team itself is needed.
+ */
 const CREATE_CHILD_TEAM = 1 << 11;
 /** What chat gives every row it writes for someone joining it: they create channels and DMs. */
-export const CHAT_MEMBER_CREATES = CREATE_APP | CREATE_CHILD_TEAM;
+export const CHAT_MEMBER_CREATES = CREATE_CHILD_TEAM;
 
 const ORG_ADMIN = new Set(["owner", "admin"]);
 
@@ -552,36 +554,6 @@ export async function setChatRow(org: string, account: string, row: Partial<Chat
     c.orgs.teamSetMember({ org, team, account, lead, role, capabilities }, { confirm: passkeyConfirm(passkey()) }),
   );
   invalidate(org);
-}
-
-/**
- * Makes sure everyone in Chat in `org` may create channels and DMs: chat's
- * app team's default capabilities hold `CREATE_CHILD_TEAM` (a passkey
- * step-up for its leads and the org's admins). An app team made by a current
- * node already has it, so this writes only for an older one. A node that
- * refuses a frontend session a team's default leaves it as it was: an admin
- * turns it on in Calimero Home. Answers whether the default holds it now.
- */
-export async function chatTeamCreatesByDefault(org: string): Promise<boolean> {
-  const record = await getOrgRecord(org);
-  const team = chatTeamId(record);
-  if (!team) return false;
-  const current = record.teams[team]?.defaultCapabilities ?? 0;
-  if (current & CREATE_CHILD_TEAM) return true;
-  try {
-    await run((c) =>
-      c.orgs.capabilities(
-        { org, team, capabilities: current | CREATE_CHILD_TEAM },
-        { confirm: passkeyConfirm(passkey()) },
-      ),
-    );
-  } catch (e) {
-    console.warn("chat's team default: members may not create channels and DMs", e);
-    return false;
-  } finally {
-    invalidate(org);
-  }
-  return true;
 }
 
 /**

@@ -87,6 +87,8 @@ describe("MembersTab on Chat's app team", () => {
 
   it("saves Create channels on the person's Chat-team row, keeping them a member", async () => {
     const { org, team } = await renderWorkspace();
+    const before = (await api.getMemberCapabilities(org, "acct-bob")).data!.capabilities;
+    h.cluster.calls.length = 0;
     fireEvent.click(screen.getByRole("button", { name: /capabilities/i }));
     const toggle = await screen.findByRole("checkbox");
     if (!(toggle as HTMLInputElement).checked) fireEvent.click(toggle);
@@ -96,7 +98,9 @@ describe("MembersTab on Chat's app team", () => {
     expect(args!.slice(0, 3)).toEqual([org, team, "acct-bob"]);
     const row = args![4] as { lead: boolean; role: string; capabilities: number };
     expect(row).toMatchObject({ lead: false, role: "member" });
-    expect(row.capabilities & (CREATE_APP | CREATE_CHILD_TEAM)).toBe(CREATE_APP | CREATE_CHILD_TEAM);
+    expect(row.capabilities & CREATE_CHILD_TEAM).toBe(CREATE_CHILD_TEAM);
+    // CREATE_APP on Chat's team is never granted from this screen: kept as held.
+    expect(row.capabilities & CREATE_APP).toBe(before & CREATE_APP);
     expect(h.cluster.callsOf("setMember")).toEqual([]);
     expect(h.cluster.callsOf("setCapabilities")).toEqual([]);
   });

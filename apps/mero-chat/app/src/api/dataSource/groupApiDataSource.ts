@@ -47,7 +47,6 @@ import {
   changeAppAccounts,
   chatRole,
   chatRowIn,
-  chatTeamCreatesByDefault,
   chatMembers,
   chatTeamId,
   createOrg,
@@ -549,20 +548,18 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<void> {
     try {
       const org = await getOrgRecord(groupId);
-      if (chatTeamId(org)) await setChatRow(groupId, identity, { capabilities: request.capabilities });
-      else await setCapabilities(groupId, request.capabilities & ~CAN_CREATE_SUBGROUP, identity);
+      const team = chatTeamId(org);
+      if (team) {
+        // "Create channels" is CREATE_CHILD_TEAM on chat's team. CREATE_APP
+        // there (an instance on chat's team itself) is never granted from
+        // this screen: whatever the row holds is kept as it is.
+        const held = chatRowIn(org, team, identity).capabilities & CAN_CREATE_CONTEXT;
+        const capabilities = (request.capabilities & ~CAN_CREATE_CONTEXT) | held;
+        await setChatRow(groupId, identity, { capabilities });
+      } else await setCapabilities(groupId, request.capabilities & ~CAN_CREATE_SUBGROUP, identity);
       return ok(undefined);
     } catch (error) {
       return catchError("setMemberCapabilities", error);
-    }
-  }
-
-  /** Members of the workspace create channels and DMs by default (chat's app team's default). */
-  async letMembersCreateChannels(groupId: string): ApiResponse<boolean> {
-    try {
-      return ok(await chatTeamCreatesByDefault(groupId));
-    } catch (error) {
-      return catchError("letMembersCreateChannels", error);
     }
   }
 
