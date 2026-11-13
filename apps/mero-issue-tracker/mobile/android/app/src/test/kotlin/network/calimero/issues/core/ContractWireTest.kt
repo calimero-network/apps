@@ -17,7 +17,6 @@ import org.junit.Test
 
 /** The client speaks the component contract's wire (`logic/res/abi.json`): camelCase names, u64 as decimal strings. */
 class ContractWireTest {
-    /** `kind` and `params` of every method in the contract's ABI, minus `init`. */
     /** The ABI's `option` parameters, by method. */
     private val options =
         mapOf(
@@ -26,6 +25,7 @@ class ContractWireTest {
             "setAssignee" to setOf("assignee"),
         )
 
+    /** `kind` and `params` of every method in the contract's ABI, minus `init`. */
     private val abi =
         mapOf(
             "addComment" to ("call" to listOf("issueId", "body")),
