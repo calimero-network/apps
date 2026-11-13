@@ -3,14 +3,14 @@ import MeroKit
 
 // The board's types, as the contract (`../../../logic/res/abi.json`) answers them. The calls are the
 // generated `DesignClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root), and so are
-// the types the ABI describes (`BoardInfo`, `LabelUpdate`, `MemberRole`, below). The ABI still
-// leaves `Element`, `ElementPatch`, `Comment`, `CursorState` and `Member` `unknown`, so the client
-// takes and answers their JSON and the types here read and write it (`JSONValue.decoded(as:)`,
-// `JSONValue(encoding:)`).
+// the types aliased below (`BoardInfo`, `LabelUpdate`, `MemberRole`). The ABI also describes
+// `Element`, `ElementPatch`, `Comment`, `CursorState` and `Member` (their u64/i64 fields are JSON
+// numbers, `#[abi(plain)]`), but the screens still use the types here, which read each answer's
+// JSON (`decoded(as:)`, `JSONValue(encoding:)`).
 
 extension Encodable {
-    /// This answer as the app type `T`: one of the types below the ABI still leaves `unknown`
-    /// (their u64/i64 fields have no shape in it yet), which the generated client answers as JSON.
+    /// This answer of the generated client as the app type `T`, one of the types below, through
+    /// its JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }

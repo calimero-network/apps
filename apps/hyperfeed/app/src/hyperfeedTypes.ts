@@ -3,109 +3,106 @@
  * declares them: records keep v1's snake_case fields and JSON numbers (they are
  * plain serde structs, which the component SDK passes through as they are).
  *
- * First generated from v1's ABI by abi-codegen; hand-kept since, because a
- * component ABI names its types without their shapes. `hyperfeed.test.ts` pins
- * the method list to the committed `logic/res/abi.json`.
+ * What the contract takes and answers is the generated client's
+ * (`src/generated/client.ts`): the contract marks its records `#[abi(plain)]`,
+ * so the ABI describes their JSON numbers, and they are re-exported here. Three
+ * answers stay hand-kept, `FeedItem`, `FeedPage` and `SettingsView`: their
+ * `#[serde(default)]` fields (for rows older agents wrote) read as optional in
+ * the ABI, while the contract always writes them. So do `ActionInput` and
+ * `NotificationInput`, which the demo feed reads as the contract does, with
+ * every field present. The rest below is the
+ * contract's state and events, first generated from v1's ABI by abi-codegen.
+ * `hyperfeed.test.ts` pins the method list to the committed
+ * `logic/res/abi.json`.
  */
 
+import type {
+  AccessView,
+  ActionDef,
+  ActionModeView,
+  ActionSetView,
+  AgentAccountView,
+  AgentRuleView,
+  AgentView,
+  AppCount,
+  Ask,
+  AssignmentView,
+  Attachment,
+  AutorunView,
+  CheckpointInput,
+  CheckpointView,
+  FeedCounts,
+  Folder,
+  GuardView,
+  LeaseView,
+  LensView,
+  LinkInput,
+  LinkView,
+  MemoHits,
+  MemoInput,
+  MemoView,
+  PolicyView,
+  PrInput,
+  PrView,
+  PushDeviceInput,
+  PushDeviceView,
+  PushKeyView,
+  ReachLine,
+  ReachView,
+  RuleProposalView,
+  RuleView,
+  SituationInput,
+  SituationView,
+  Step,
+  TurnStep,
+  Verdict,
+  WatchInput,
+  WatchView,
+} from "./generated/client";
 
-/**
- * What you let one agent reach on its computer, beyond your Calimero apps:
- * these folders, a shell, the web. Yours to set (`set_access`); the agent's
- * runtime enforces it before any tool runs, and an agent with none set keeps
- * its runtime's default.
- */
-export interface Access {
-  folders: Folder[];
-  shell: boolean;
-  web: boolean;
-  updated_at: number;
-}
-
-/**
- * What you let one agent reach, as settings shows it.
- */
-export interface AccessView {
-  agent: string;
-  folders: Folder[];
-  shell: boolean;
-  web: boolean;
-  updated_at: number;
-}
-
-/**
- * One thing your agent did, or wants to do, on your behalf.
- *
- * Everything but `history` and `reviewed` is written once. `history` merges as
- * a union of steps, and `reviewed` only ever turns on.
- */
-export interface Action {
-  id: string;
-  app: string;
-  source_context: string;
-  source_label: string;
-  method: string;
-  category: string;
-  writes: boolean;
-  undoable: boolean;
-  title: string;
-  body: string;
-  why: string;
-  /**
-   * Hex `H(method ‖ args)` from the warrant. The arguments themselves never
-   * leave the agent: this is enough to match the feed row to the delta.
-   */
-  intent_hash: string;
-  /**
-   * The relay account that executed the warrant, as the agent was told.
-   */
-  executor: string;
-  created_at: number;
-  /**
-   * The chain this belongs to: the id of the row that started it.
-   */
-  chain: string;
-  ask: Ask;
-  /**
-   * Why the rules say this needed you, when the agent acted anyway. Empty
-   * when it did not.
-   */
-  breach: string;
-  reviewed: boolean;
-  reviewed_at: number;
-  history: Step[];
-}
-
-/**
- * One action, as your agent proposes it and settings shows it.
- */
-export interface ActionDef {
-  /**
-   * Stable within the app, e.g. `edit`; your setting for it is kept by it.
-   */
-  id: string;
-  /**
-   * What it is, for you: "Edit documents".
-   */
-  label: string;
-  /**
-   * One line on what it covers: "Write, format and reorder text".
-   */
-  description: string;
-  /**
-   * The guard that always covers it, or empty when that depends on the
-   * call (sending to someone new): then the category the agent names stands.
-   */
-  category: string;
-  /**
-   * Whether it changes anything. An action that only reads always may run.
-   */
-  writes: boolean;
-  /**
-   * The app's methods it covers, by name.
-   */
-  methods: string[];
-}
+export type {
+  AccessView,
+  ActionDef,
+  ActionModeView,
+  ActionSetView,
+  AgentAccountView,
+  AgentRuleView,
+  AgentView,
+  AppCount,
+  Ask,
+  AssignmentView,
+  Attachment,
+  AutorunView,
+  CheckpointInput,
+  CheckpointView,
+  FeedCounts,
+  Folder,
+  GuardView,
+  LeaseView,
+  LensView,
+  LinkInput,
+  LinkView,
+  MemoHits,
+  MemoInput,
+  MemoView,
+  PolicyView,
+  PrInput,
+  PrView,
+  PushDeviceInput,
+  PushDeviceView,
+  PushKeyView,
+  ReachLine,
+  ReachView,
+  RuleProposalView,
+  RuleView,
+  SituationInput,
+  SituationView,
+  Step,
+  TurnStep,
+  Verdict,
+  WatchInput,
+  WatchView,
+};
 
 /**
  * What the agent reports for one action.
@@ -171,12 +168,98 @@ export interface ActionInput {
 }
 
 /**
- * One action you set apart from its app's mode.
+ * What your client saw for one notification.
  */
-export interface ActionModeView {
+export interface NotificationInput {
+  /**
+   * Stable for the same event on every device, e.g.
+   * `<context>:<root hash>:<index>`.
+   */
+  key: string;
   app: string;
-  action: string;
-  mode: string;
+  source_context: string;
+  source_label: string;
+  from: string;
+  title: string;
+  body: string;
+  event: string;
+  needs_you: boolean;
+  /**
+   * Empty starts a chain of its own, which is usual for a notification.
+   */
+  chain: string;
+  /**
+   * How to answer it from the feed, if it can be.
+   */
+  ask: Ask;
+  /**
+   * What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these.
+   */
+  item_type: string;
+  /**
+   * The type's fields, a JSON object.
+   */
+  fields: string;
+  /**
+   * The call that answers it in its app, a JSON object; see [`Typed`].
+   */
+  reply_call: string;
+}
+
+/**
+ * What you let one agent reach on its computer, beyond your Calimero apps:
+ * these folders, a shell, the web. Yours to set (`set_access`); the agent's
+ * runtime enforces it before any tool runs, and an agent with none set keeps
+ * its runtime's default.
+ */
+export interface Access {
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
+ * One thing your agent did, or wants to do, on your behalf.
+ *
+ * Everything but `history` and `reviewed` is written once. `history` merges as
+ * a union of steps, and `reviewed` only ever turns on.
+ */
+export interface Action {
+  id: string;
+  app: string;
+  source_context: string;
+  source_label: string;
+  method: string;
+  category: string;
+  writes: boolean;
+  undoable: boolean;
+  title: string;
+  body: string;
+  why: string;
+  /**
+   * Hex `H(method ‖ args)` from the warrant. The arguments themselves never
+   * leave the agent: this is enough to match the feed row to the delta.
+   */
+  intent_hash: string;
+  /**
+   * The relay account that executed the warrant, as the agent was told.
+   */
+  executor: string;
+  created_at: number;
+  /**
+   * The chain this belongs to: the id of the row that started it.
+   */
+  chain: string;
+  ask: Ask;
+  /**
+   * Why the rules say this needed you, when the agent acted anyway. Empty
+   * when it did not.
+   */
+  breach: string;
+  reviewed: boolean;
+  reviewed_at: number;
+  history: Step[];
 }
 
 /**
@@ -209,15 +292,6 @@ export interface ActionSet {
   updated_at: number;
 }
 
-export interface ActionSetView {
-  app: string;
-  application_id: string;
-  actions: ActionDef[];
-  summary: string;
-  status: string;
-  updated_at: number;
-}
-
 /**
  * An agent's own account you added to the feed, by account.
  */
@@ -234,15 +308,6 @@ export interface AgentAccount {
    * Removed rows stay, so a removal is not undone by an older add merging in.
    */
   removed: boolean;
-}
-
-/**
- * An agent account, as settings shows it.
- */
-export interface AgentAccountView {
-  account: string;
-  name: string;
-  added_at: number;
 }
 
 /**
@@ -263,16 +328,6 @@ export interface AgentRule {
 }
 
 /**
- * One of your rules for one agent, as settings shows it.
- */
-export interface AgentRuleView {
-  id: string;
-  agent: string;
-  text: string;
-  created_at: number;
-}
-
-/**
  * The agent's global switch, stored under the single key `"main"`.
  */
 export interface AgentState {
@@ -281,24 +336,11 @@ export interface AgentState {
 }
 
 /**
- * An agent and when it last said it was running (ms).
- */
-export interface AgentView {
-  name: string;
-  seen_at: number;
-}
-
-/**
  * The question of your agent's that one of your messages answers, when you
  * answered it from its buttons. Kept beside your message by its id.
  */
 export interface Answers {
   ask: string;
-}
-
-export interface AppCount {
-  app: string;
-  count: number;
 }
 
 /**
@@ -315,28 +357,6 @@ export interface Archived {
   at: number;
   until: number;
   updated_at: number;
-}
-
-/**
- * How a row is best resolved in place. See [`ASK_KINDS`].
- */
-export interface Ask {
-  /**
-   * `""`, `confirm`, `reply` or `choose`.
-   */
-  kind: string;
-  /**
-   * What the control says: "Reply in #launch", "Pick a slot", "Join the call".
-   */
-  prompt: string;
-  /**
-   * `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
-   */
-  options: string[];
-  /**
-   * `reply`: a draft to start from, e.g. the agent's proposed text.
-   */
-  draft: string;
 }
 
 /**
@@ -362,35 +382,6 @@ export interface Assignment {
 }
 
 /**
- * Which agent works in one app, as settings shows it.
- */
-export interface AssignmentView {
-  app: string;
-  agent: string;
-  updated_at: number;
-}
-
-/**
- * An image on a message: a blob on your node, announced to the feed's
- * context, and what the client needs to show it before fetching it.
- */
-export interface Attachment {
-  blob_id: string;
-  /**
-   * The file's name as you picked it; may be empty for a pasted image.
-   */
-  name: string;
-  /**
-   * One of [`IMAGE_TYPES`].
-   */
-  mime: string;
-  /**
-   * Bytes, at most 10 MiB.
-   */
-  size: number;
-}
-
-/**
  * A message's attachments. Kept beside the message, keyed by its id, so
  * messages written before attachments existed keep their layout.
  */
@@ -412,29 +403,6 @@ export interface Autorun {
 }
 
 /**
- * A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.
- */
-export interface AutorunView {
-  /**
-   * The proposal's action id.
-   */
-  id: string;
-  chain: string;
-  /**
-   * When it goes ahead (ms).
-   */
-  at: number;
-  set_at: number;
-  /**
-   * One of [`AUTORUN_WAITING`], [`AUTORUN_STOPPED`], [`AUTORUN_FIRED`],
-   * [`AUTORUN_SETTLED`].
-   */
-  status: string;
-  stopped_at: number;
-  fired_at: number;
-}
-
-/**
  * The latest checkpoint on one chain, kept by chain id. A new one replaces
  * it whole: last writer wins.
  */
@@ -446,59 +414,6 @@ export interface Checkpoint {
   prs: string[];
   questions: string[];
   author: string;
-  updated_at: number;
-}
-
-/**
- * What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.
- * `done` and `next` are prose; the lists may be empty.
- */
-export interface CheckpointInput {
-  /**
-   * What is done so far.
-   */
-  done: string;
-  /**
-   * The next step, as the session that picks it up should take it.
-   */
-  next: string;
-  /**
-   * Git branches the task works on.
-   */
-  branches: string[];
-  /**
-   * Worktrees (absolute paths) the task works in.
-   */
-  worktrees: string[];
-  /**
-   * Pull requests: links, or `repo#number`.
-   */
-  prs: string[];
-  /**
-   * What is still open: questions for the user, or doubts to settle.
-   */
-  questions: string[];
-  /**
-   * Who writes it: "mero-bot@studio".
-   */
-  author: string;
-}
-
-/**
- * A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.
- */
-export interface CheckpointView {
-  chain: string;
-  done: string;
-  next: string;
-  branches: string[];
-  worktrees: string[];
-  prs: string[];
-  questions: string[];
-  author: string;
-  /**
-   * When it was written (ms).
-   */
   updated_at: number;
 }
 
@@ -587,17 +502,6 @@ export interface Event_WatchChanged {
   id: string;
   chain: string;
   status: string;
-}
-
-export interface FeedCounts {
-  all: number;
-  agent: number;
-  notifications: number;
-  needs_you: number;
-  /**
-   * Chains put away right now (shown only by the `archived` filter).
-   */
-  archived: number;
 }
 
 /**
@@ -750,26 +654,12 @@ export interface FeedPage {
 }
 
 /**
- * A folder an agent may use on its computer: an absolute path, or one under
- * `~`, and whether it may write there too.
- */
-export interface Folder {
-  path: string;
-  write: boolean;
-}
-
-/**
  * One "always ask me before" switch.
  */
 export interface Guard {
   category: string;
   enabled: boolean;
   updated_at: number;
-}
-
-export interface GuardView {
-  category: string;
-  enabled: boolean;
 }
 
 /**
@@ -968,20 +858,6 @@ export interface Lease {
 }
 
 /**
- * A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
- */
-export interface LeaseView {
-  chain: string;
-  session: string;
-  agent: string;
-  claimed_at: number;
-  /**
-   * 0 once released.
-   */
-  expires_at: number;
-}
-
-/**
  * How one app version's events become feed items, as your agent learned it
  * from the app's ABI. Nothing uses a lens until you approve it.
  */
@@ -1006,15 +882,6 @@ export interface Lens {
   updated_at: number;
 }
 
-export interface LensView {
-  app: string;
-  application_id: string;
-  spec: string;
-  summary: string;
-  status: string;
-  updated_at: number;
-}
-
 /**
  * One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the
  * row with `removed: true`, so your agent touching the thing again does not
@@ -1028,51 +895,6 @@ export interface Link {
   added_at: number;
   removed: boolean;
   updated_at: number;
-}
-
-/**
- * What [`crate::Hyperfeed::add_link`] takes.
- */
-export interface LinkInput {
-  /**
-   * `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
-   */
-  subject: string;
-  /**
-   * What the chip says ("Agent digest card"); `""` keeps the one it has,
-   * and a client names an unlabelled one from what it knows.
-   */
-  label: string;
-  /**
-   * `agent` or `you`.
-   */
-  by: string;
-}
-
-/**
- * A link as [`crate::Hyperfeed::links`] returns it.
- */
-export interface LinkView {
-  chain: string;
-  subject: string;
-  /**
-   * The subject's parts: the app's key, its context, and the one thing in
-   * it (`""` for the whole context: a chat, a board).
-   */
-  app: string;
-  context: string;
-  item: string;
-  label: string;
-  by: string;
-  added_at: number;
-  /**
-   * Notifications in the task about it: what teammates did there.
-   */
-  activity: number;
-  /**
-   * The latest of them (ms); 0 with none.
-   */
-  last_at: number;
 }
 
 /**
@@ -1099,88 +921,6 @@ export interface Memo {
    * When the feed last took a write to it (the feed's clock): what
    * [`crate::Hyperfeed::memos`] reads after.
    */
-  updated_at: number;
-}
-
-/**
- * How often one agent used a row.
- */
-export interface MemoHits {
-  agent: string;
-  hits: number;
-}
-
-/**
- * One row as [`crate::Hyperfeed::put_memos`] takes it.
- */
-export interface MemoInput {
-  /**
-   * A hex hash of scope, tool and arguments: the runtime's key for the read.
-   */
-  key: string;
-  /**
-   * What the read is about: `<app>:<context>`, `node`, `gh:<owner>/<name>`.
-   */
-  scope: string;
-  /**
-   * The tool, without its server's prefix: `chat_get_messages`, `gh`.
-   */
-  tool: string;
-  /**
-   * Its arguments, as canonical JSON or a command line.
-   */
-  args: string;
-  /**
-   * What it returned, at most [`MAX_MEMO_VALUE`].
-   */
-  value: string;
-  /**
-   * One of [`MEMO_CLASSES`].
-   */
-  class: string;
-  /**
-   * How long the value counts as fresh, as the runtime last judged it.
-   */
-  ttl_ms: number;
-  /**
-   * When it was read (ms).
-   */
-  fetched_at: number;
-  /**
-   * Refetches in a row that found the same value.
-   */
-  unchanged: number;
-  /**
-   * This agent's hits on it, in total: the feed keeps the largest it saw.
-   */
-  hits: number;
-  /**
-   * When this agent last used it (ms).
-   */
-  last_hit_at: number;
-  /**
-   * Read by an agent whose every model is attested: never shown to one that is not.
-   */
-  attested: boolean;
-}
-
-/**
- * A row as [`crate::Hyperfeed::memos`] returns it.
- */
-export interface MemoView {
-  key: string;
-  scope: string;
-  tool: string;
-  args: string;
-  value: string;
-  class: string;
-  ttl_ms: number;
-  fetched_at: number;
-  unchanged: number;
-  hits: MemoHits[];
-  last_hit_at: number;
-  agent: string;
-  attested: boolean;
   updated_at: number;
 }
 
@@ -1246,45 +986,6 @@ export interface Notification {
 }
 
 /**
- * What your client saw for one notification.
- */
-export interface NotificationInput {
-  /**
-   * Stable for the same event on every device, e.g.
-   * `<context>:<root hash>:<index>`.
-   */
-  key: string;
-  app: string;
-  source_context: string;
-  source_label: string;
-  from: string;
-  title: string;
-  body: string;
-  event: string;
-  needs_you: boolean;
-  /**
-   * Empty starts a chain of its own, which is usual for a notification.
-   */
-  chain: string;
-  /**
-   * How to answer it from the feed, if it can be.
-   */
-  ask: Ask;
-  /**
-   * What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these.
-   */
-  item_type: string;
-  /**
-   * The type's fields, a JSON object.
-   */
-  fields: string;
-  /**
-   * The call that answers it in its app, a JSON object; see [`Typed`].
-   */
-  reply_call: string;
-}
-
-/**
  * Your rules for one app.
  */
 export interface Policy {
@@ -1292,68 +993,6 @@ export interface Policy {
   agent: string;
   notifications: string;
   updated_at: number;
-}
-
-export interface PolicyView {
-  app: string;
-  agent: string;
-  notifications: string;
-}
-
-/**
- * What [`crate::Hyperfeed::record_pr`] takes: the PR as GitHub shows it now.
- */
-export interface PrInput {
-  /**
-   * The chain (task) that links to it; `""` keeps the one already recorded.
-   */
-  chain: string;
-  /**
-   * `owner/name`.
-   */
-  repo: string;
-  pr: number;
-  title: string;
-  /**
-   * `open`, `merged` or `closed`.
-   */
-  state: string;
-  draft: boolean;
-  /**
-   * The branch it merges into.
-   */
-  base: string;
-  /**
-   * The repository's default branch.
-   */
-  default_branch: string;
-  /**
-   * GitHub found conflicts with the base.
-   */
-  conflicts: boolean;
-  /**
-   * The head commit the checks are on.
-   */
-  head_sha: string;
-  /**
-   * `green` (every check passed), `red` (one failed) or `pending`.
-   */
-  checks: string;
-  checks_total: number;
-  checks_passed: number;
-  checks_pending: number;
-  /**
-   * The failing checks' names, at most [`MAX_FAILING`].
-   */
-  failing: string[];
-  /**
-   * When `base` is another PR's branch, that PR's number; 0 otherwise.
-   */
-  stacked_on: number;
-  /**
-   * Whether the PR it is stacked on is merged (its branch is dead).
-   */
-  stacked_merged: boolean;
 }
 
 /**
@@ -1377,33 +1016,6 @@ export interface PrSeen {
   failing: string[];
   stacked_on: number;
   stacked_merged: boolean;
-  seen_at: number;
-}
-
-/**
- * A PR as [`crate::Hyperfeed::prs`] returns it.
- */
-export interface PrView {
-  chain: string;
-  repo: string;
-  pr: number;
-  title: string;
-  state: string;
-  draft: boolean;
-  base: string;
-  default_branch: string;
-  conflicts: boolean;
-  head_sha: string;
-  checks: string;
-  checks_total: number;
-  checks_passed: number;
-  checks_pending: number;
-  failing: string[];
-  stacked_on: number;
-  stacked_merged: boolean;
-  /**
-   * When the runtime looked (ms).
-   */
   seen_at: number;
 }
 
@@ -1447,37 +1059,6 @@ export interface PushDevice {
 }
 
 /**
- * What [`crate::Hyperfeed::add_push_device`] takes: the browser's
- * `PushSubscription.toJSON()`, a name, and how much it may say.
- */
-export interface PushDeviceInput {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  /**
-   * "Sandi's iPhone"; `""` is named "A device".
-   */
-  name: string;
-  quiet: boolean;
-  /**
-   * The key it subscribed with: refused unless it is the current one.
-   */
-  key: string;
-}
-
-/**
- * A device as [`crate::Hyperfeed::push_devices`] returns it.
- */
-export interface PushDeviceView {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  name: string;
-  quiet: boolean;
-  added_at: number;
-}
-
-/**
  * The runtime's VAPID public key.
  */
 export interface PushKey {
@@ -1490,45 +1071,9 @@ export interface PushKey {
 }
 
 /**
- * The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
- */
-export interface PushKeyView {
-  public_key: string;
-  by: string;
-  updated_at: number;
-}
-
-/**
  * What one agent reported it can reach, latest report wins.
  */
 export interface Reach {
-  lines: ReachLine[];
-  at: number;
-}
-
-/**
- * One agent profile an agent runs, as it reports it: which mode or route
- * it serves, its model, whether its model is attested, and what it can reach
- * besides your Calimero apps.
- */
-export interface ReachLine {
-  /**
-   * What it runs: `default`, or the kind of work a profile is routed to.
-   */
-  serves: string;
-  profile: string;
-  model: string;
-  attested: boolean;
-  folders: Folder[];
-  shell: boolean;
-  web: boolean;
-}
-
-/**
- * What one agent reported it can reach, as settings shows it.
- */
-export interface ReachView {
-  agent: string;
   lines: ReachLine[];
   at: number;
 }
@@ -1566,27 +1111,6 @@ export interface RuleProposal {
   status: string;
   created_at: number;
   updated_at: number;
-}
-
-/**
- * A rule your agent suggested, as settings shows it.
- */
-export interface RuleProposalView {
-  id: string;
-  text: string;
-  why: string;
-  chain: string;
-  status: string;
-  created_at: number;
-}
-
-/**
- * One of your standing rules, as settings shows it.
- */
-export interface RuleView {
-  id: string;
-  text: string;
-  created_at: number;
 }
 
 /**
@@ -1671,80 +1195,6 @@ export interface Situation {
 }
 
 /**
- * What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.
- */
-export interface SituationInput {
-  /**
-   * The card's headline, as you would say it: "Launch date: the team
-   * settled on Thursday, and your calendar clashes".
-   */
-  headline: string;
-  /**
-   * What is going on, in a few sentences.
-   */
-  summary: string;
-  /**
-   * What your agent recommends you do; may be empty.
-   */
-  recommend: string;
-  /**
-   * Why it ranks where it does; may be empty.
-   */
-  reason: string;
-  /**
-   * How pressing your agent judges it, 0 (whenever) to 100 (now).
-   */
-  score: number;
-  /**
-   * When it is due (ms), or 0.
-   */
-  due_at: number;
-  /**
-   * How many things it read to write this, and in how many apps: "from 7
-   * things in 3 apps". 0 when it does not say.
-   */
-  sources: number;
-  apps: number;
-  /**
-   * Who writes it: "mero-bot@studio".
-   */
-  author: string;
-}
-
-/**
- * A chain's situation, as [`crate::Hyperfeed::situations`] returns it.
- */
-export interface SituationView {
-  chain: string;
-  headline: string;
-  summary: string;
-  recommend: string;
-  reason: string;
-  score: number;
-  due_at: number;
-  sources: number;
-  apps: number;
-  author: string;
-  /**
-   * When it was written (ms).
-   */
-  updated_at: number;
-}
-
-/**
- * One step in a row's history: a status, who said what about it, and when.
- */
-export interface Step {
-  status: string;
-  /**
-   * The note that came with it: the agent's ("NDA signed"), or your answer
-   * (the reply you sent, the option you picked).
-   */
-  note: string;
-  at: number;
-}
-
-/**
  * You asked your agent to stop working on one of your messages.
  */
 export interface StopRequest {
@@ -1779,30 +1229,6 @@ export interface Superseded {
 }
 
 /**
- * One step of your agent's turn on a message of yours: a tool it ran, a file
- * it edited, a write it made. Shown in the message's work block, never as a
- * row of its own.
- */
-export interface TurnStep {
-  /**
-   * The agent's own id for the step, unique within the turn.
-   */
-  id: string;
-  /**
-   * What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
-   */
-  title: string;
-  /**
-   * `running`, `waiting` (on your approval), `done` or `failed`.
-   */
-  status: string;
-  /**
-   * When the step started.
-   */
-  at: number;
-}
-
-/**
  * What a lens made of a notification: its type, the fields its card shows,
  * and the call that answers it in its app. Kept beside the notification, keyed
  * by its id, so rows recorded before lenses existed keep their layout.
@@ -1822,17 +1248,6 @@ export interface Typed {
    * Empty: answered by your agent, or not answerable from the feed.
    */
   reply_call: string;
-}
-
-/**
- * The rules' answer for one prospective action.
- */
-export interface Verdict {
-  /**
-   * `act`, `ask` or `refuse`.
-   */
-  decision: string;
-  reason: string;
 }
 
 /**
@@ -1874,70 +1289,6 @@ export interface Watch {
 }
 
 /**
- * What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use
- * `""` or `0` where it does not apply.
- */
-export interface WatchInput {
-  /**
-   * The chain it reports to: the task it belongs to.
-   */
-  chain: string;
-  /**
-   * One of [`WATCH_CONDITIONS`].
-   */
-  condition: string;
-  /**
-   * The GitHub repository, `owner/name`.
-   */
-  repo: string;
-  /**
-   * The pull request's number, for a `pr_*` condition; 0 otherwise.
-   */
-  pr: number;
-  /**
-   * The branch, for a `branch_*` condition; `""` is the repository's
-   * default branch. `""` for a `pr_*` condition.
-   */
-  branch: string;
-  /**
-   * One of [`WATCH_ACTIONS`]. `merge` goes with `pr_green` only.
-   */
-  action: string;
-  /**
-   * The prompt for a `turn`, or what a `notify` tells you; may be `""` for
-   * a `merge`.
-   */
-  text: string;
-  /**
-   * Who sets it: "mero-bot@studio"; `""` for you.
-   */
-  agent: string;
-}
-
-/**
- * A watch, as the feed returns it.
- */
-export interface WatchView {
-  id: string;
-  chain: string;
-  condition: string;
-  repo: string;
-  pr: number;
-  branch: string;
-  action: string;
-  text: string;
-  agent: string;
-  status: string;
-  note: string;
-  seen: string;
-  seen_at: number;
-  fired_by: string;
-  fired_at: number;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
  * Your agent's turn on one of your messages, as it goes: its steps, and the
  * answer it has written so far. Kept beside the message by id and replaced
  * whole by each report, so a long turn adds no rows.
@@ -1950,28 +1301,6 @@ export interface Work {
   draft: string;
   at: number;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }

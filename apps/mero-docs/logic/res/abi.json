@@ -1118,7 +1118,10 @@
             ],
             [
               "attributes",
-              "option<AttrDelta>"
+              "option<AttrDelta>",
+              {
+                "optional": true
+              }
             ]
           ],
           "name": "Retain"
@@ -1131,7 +1134,10 @@
             ],
             [
               "attributes",
-              "option<AttrDelta>"
+              "option<AttrDelta>",
+              {
+                "optional": true
+              }
             ]
           ],
           "name": "Insert"

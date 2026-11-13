@@ -4,6 +4,27 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `Adjustments`. */
+export interface Adjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  hue: number;
+  exposure: number;
+  blur: number;
+  invert: boolean;
+  curves?: string;
+}
+
+/** The app type `CursorState`. */
+export interface CursorState {
+  identity: string;
+  account: string;
+  x: number;
+  y: number;
+  updatedAt: number;
+}
+
 /** The app type `DocumentInfo`. */
 export interface DocumentInfo {
   name: string;
@@ -16,20 +37,64 @@ export interface DocumentInfo {
   owner: string | null;
 }
 
+/** The app type `Layer`. */
+export interface Layer {
+  id: string;
+  name: string;
+  kind: string;
+  parentId?: string | null;
+  layerIndex: number;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  blendMode: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+  skewX?: number;
+  skewY?: number;
+  flipH?: boolean;
+  flipV?: boolean;
+  warp?: string;
+  blobId?: string;
+  maskBlobId?: string | null;
+  fill?: string;
+  adjustments: Adjustments;
+  text?: TextProps | null;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** The app type `Member`. */
+export interface Member {
+  id: string;
+  username: string;
+  avatar: string | null;
+  joinedAt: number;
+  usernameUpdatedAt: number;
+}
+
 /** The app type `MemberRole`. */
 export interface MemberRole {
   member: string;
   role: string;
 }
 
-/** The app type `CursorState`: the ABI names it without its shape. */
-export type CursorState = unknown;
-
-/** The app type `Layer`: the ABI names it without its shape. */
-export type Layer = unknown;
-
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
+/** The app type `TextProps`. */
+export interface TextProps {
+  content: string;
+  fontFamily: string;
+  fontSize: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+  align?: string | null;
+}
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

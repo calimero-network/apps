@@ -621,12 +621,12 @@ public struct CrmClient: Sendable {
         idempotencyKey: String? = nil
     ) async throws -> String {
         var args = Args()
-        args.add("dealId", dealId)
-        args.add("contactId", contactId)
+        if let value = dealId { args.add("dealId", value) }
+        if let value = contactId { args.add("contactId", value) }
         args.add("kind", kind)
         args.add("subject", subject)
         args.add("dueAt", DecimalString(dueAt))
-        args.add("owner", owner)
+        if let value = owner { args.add("owner", value) }
         args.add("note", note)
         let result = try await invokeCall("addActivity", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
@@ -715,10 +715,10 @@ public struct CrmClient: Sendable {
         args.add("title", title)
         args.add("value", DecimalString(value))
         args.add("organization", organization)
-        args.add("contactId", contactId)
+        if let value = contactId { args.add("contactId", value) }
         args.add("stageId", stageId)
-        args.add("owner", owner)
-        args.add("expectedClose", expectedClose.map { DecimalString($0) })
+        if let value = owner { args.add("owner", value) }
+        if let value = expectedClose { args.add("expectedClose", DecimalString(value)) }
         args.add("source", source)
         let result = try await invokeCall("createDeal", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
@@ -814,8 +814,8 @@ public struct CrmClient: Sendable {
         minIndex: Int = 0
     ) async throws -> [ActivityView] {
         var args = Args()
-        args.add("dealId", dealId)
-        args.add("done", done)
+        if let value = dealId { args.add("dealId", value) }
+        if let value = done { args.add("done", value) }
         let result = try await invokeView("listActivities", args, stale: stale, minIndex: minIndex, as: [ActivityView].self)
         return result
     }
@@ -849,9 +849,9 @@ public struct CrmClient: Sendable {
         minIndex: Int = 0
     ) async throws -> [DealView] {
         var args = Args()
-        args.add("status", status)
-        args.add("stageId", stageId)
-        args.add("owner", owner)
+        if let value = status { args.add("status", value) }
+        if let value = stageId { args.add("stageId", value) }
+        if let value = owner { args.add("owner", value) }
         let result = try await invokeView("listDeals", args, stale: stale, minIndex: minIndex, as: [DealView].self)
         return result
     }
@@ -1013,9 +1013,9 @@ public struct CrmClient: Sendable {
         args.add("title", title)
         args.add("value", DecimalString(value))
         args.add("organization", organization)
-        args.add("contactId", contactId)
-        args.add("owner", owner)
-        args.add("expectedClose", expectedClose.map { DecimalString($0) })
+        if let value = contactId { args.add("contactId", value) }
+        if let value = owner { args.add("owner", value) }
+        if let value = expectedClose { args.add("expectedClose", DecimalString(value)) }
         args.add("source", source)
         _ = try await invokeCall("updateDeal", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }

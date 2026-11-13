@@ -488,7 +488,10 @@
         ],
         [
           "description",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "durationMinutes",
@@ -508,11 +511,17 @@
         ],
         [
           "minNoticeMinutes",
-          "u32"
+          "u32",
+          {
+            "optional": true
+          }
         ],
         [
           "expiresAtMs",
-          "option<u64>"
+          "option<u64>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -545,7 +554,10 @@
         ],
         [
           "peers",
-          "list<string>"
+          "list<string>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -562,7 +574,10 @@
         ],
         [
           "note",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -592,31 +607,52 @@
       "fields": [
         [
           "title",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "description",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "start",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "end",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "event_type",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "color",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "peers",
-          "option<list<string>>"
+          "option<list<string>>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"

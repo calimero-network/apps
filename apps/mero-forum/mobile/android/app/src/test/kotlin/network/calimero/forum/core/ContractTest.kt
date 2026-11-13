@@ -100,7 +100,6 @@ class ContractTest {
             assertEquals(
                 buildJsonObject {
                     put("sort", "top")
-                    put("cursor", JsonNull)
                     put("limit", 20)
                 },
                 call.args,

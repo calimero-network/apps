@@ -185,8 +185,7 @@ layer under them.
   `src/api/meroChat.ts` is the **one adapter** for it: `ClientApiDataSource`
   still calls v1 method names with v1 arguments, and each entry of its table
   calls the generated method with the ABI's arguments and turns the answer back
-  into v1's shape (snake_case, numbers; the ABI names its records without their
-  shapes, so the generated types are `unknown`). `meroChat.test.ts` checks the
+  into v1's shape (snake_case, numbers). `meroChat.test.ts` checks the
   table reaches every ABI method, as a call or a view, with its argument names.
 - `src/api/platform.ts` maps v1's namespaces, subgroups and contexts onto orgs
   and instances, and `GroupApiDataSource` / `ContextApiDataSource` keep the

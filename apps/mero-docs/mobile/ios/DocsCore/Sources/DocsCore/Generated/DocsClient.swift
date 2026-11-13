@@ -164,11 +164,11 @@ public struct DocsClient: Sendable {
             case .retain(let v0, let v1):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("retain"))
-                try fields.encode(v1, forKey: Key("attributes"))
+                try fields.encodeIfPresent(v1, forKey: Key("attributes"))
             case .insert(let v0, let v1):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("insert"))
-                try fields.encode(v1, forKey: Key("attributes"))
+                try fields.encodeIfPresent(v1, forKey: Key("attributes"))
             case .delete(let v0):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("delete"))
@@ -701,7 +701,7 @@ public struct DocsClient: Sendable {
         args.add("block", block)
         args.add("base", base)
         args.add("ops", ops)
-        args.add("anchor", anchor)
+        if let value = anchor { args.add("anchor", value) }
         let result = try await invokeCall("applyDeltaOn", args, idempotencyKey: idempotencyKey, as: Applied.self)
         return result
     }
@@ -961,7 +961,7 @@ public struct DocsClient: Sendable {
     ) async throws -> String {
         var args = Args()
         args.add("doc", doc)
-        args.add("after", after)
+        if let value = after { args.add("after", value) }
         args.add("kind", kind)
         args.add("depth", depth)
         let result = try await invokeCall("insertBlock", args, idempotencyKey: idempotencyKey, as: String.self)
@@ -1051,7 +1051,7 @@ public struct DocsClient: Sendable {
         args.add("start", start)
         args.add("end", end)
         args.add("key", key)
-        args.add("value", value)
+        if let value = value { args.add("value", value) }
         let result = try await invokeCall("mark", args, idempotencyKey: idempotencyKey, as: String?.self)
         return result
     }
@@ -1080,7 +1080,7 @@ public struct DocsClient: Sendable {
         var args = Args()
         args.add("doc", doc)
         args.add("block", block)
-        args.add("after", after)
+        if let value = after { args.add("after", value) }
         _ = try await invokeCall("moveBlock", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -1164,8 +1164,8 @@ public struct DocsClient: Sendable {
         var args = Args()
         args.add("query", query)
         args.add("includeArchived", includeArchived)
-        args.add("cursor", cursor)
-        args.add("limit", limit)
+        if let value = cursor { args.add("cursor", value) }
+        if let value = limit { args.add("limit", value) }
         let result = try await invokeView("searchDocs", args, stale: stale, minIndex: minIndex, as: DocSearchPage.self)
         return result
     }
@@ -1182,7 +1182,7 @@ public struct DocsClient: Sendable {
         args.add("doc", doc)
         args.add("block", block)
         args.add("key", key)
-        args.add("value", value)
+        if let value = value { args.add("value", value) }
         _ = try await invokeCall("setAttr", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -1287,7 +1287,7 @@ public struct DocsClient: Sendable {
         args.add("doc", doc)
         args.add("base", base)
         args.add("ops", ops)
-        args.add("anchor", anchor)
+        if let value = anchor { args.add("anchor", value) }
         let result = try await invokeCall("titleApplyDeltaOn", args, idempotencyKey: idempotencyKey, as: TitleApplied.self)
         return result
     }

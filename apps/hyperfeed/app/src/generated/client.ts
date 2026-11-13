@@ -4,6 +4,15 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `AccessView`. */
+export interface AccessView {
+  agent: string;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
 /** The app type `ActionDef`. */
 export interface ActionDef {
   id: string;
@@ -32,9 +41,9 @@ export interface ActionInput {
   note: string;
   chain: string;
   ask: Ask;
-  grant: string;
-  subject: string;
-  send_call: string;
+  grant?: string;
+  subject?: string;
+  send_call?: string;
 }
 
 /** The app type `ActionModeView`. */
@@ -44,12 +53,75 @@ export interface ActionModeView {
   mode: string;
 }
 
+/** The app type `ActionSetView`. */
+export interface ActionSetView {
+  app: string;
+  application_id: string;
+  actions: ActionDef[];
+  summary: string;
+  status: string;
+  updated_at: number;
+}
+
+/** The app type `AgentAccountView`. */
+export interface AgentAccountView {
+  account: string;
+  name: string;
+  added_at: number;
+}
+
+/** The app type `AgentRuleView`. */
+export interface AgentRuleView {
+  id: string;
+  agent: string;
+  text: string;
+  created_at: number;
+}
+
+/** The app type `AgentView`. */
+export interface AgentView {
+  name: string;
+  seen_at: number;
+}
+
+/** The app type `AppCount`. */
+export interface AppCount {
+  app: string;
+  count: number;
+}
+
 /** The app type `Ask`. */
 export interface Ask {
   kind: string;
   prompt: string;
   options: string[];
   draft: string;
+}
+
+/** The app type `AssignmentView`. */
+export interface AssignmentView {
+  app: string;
+  agent: string;
+  updated_at: number;
+}
+
+/** The app type `Attachment`. */
+export interface Attachment {
+  blob_id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+/** The app type `AutorunView`. */
+export interface AutorunView {
+  id: string;
+  chain: string;
+  at: number;
+  set_at: number;
+  status: string;
+  stopped_at: number;
+  fired_at: number;
 }
 
 /** The app type `CheckpointInput`. */
@@ -61,6 +133,86 @@ export interface CheckpointInput {
   prs: string[];
   questions: string[];
   author: string;
+}
+
+/** The app type `CheckpointView`. */
+export interface CheckpointView {
+  chain: string;
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  updated_at: number;
+}
+
+/** The app type `FeedCounts`. */
+export interface FeedCounts {
+  all: number;
+  agent: number;
+  notifications: number;
+  needs_you: number;
+  archived: number;
+}
+
+/** The app type `FeedItem`. */
+export interface FeedItem {
+  id: string;
+  kind: string;
+  chain: string;
+  chain_len: number;
+  chain_at: number;
+  app: string;
+  source_context: string;
+  source_label: string;
+  title: string;
+  body: string;
+  at: number;
+  needs_you: boolean;
+  status: string;
+  status_at: number;
+  note: string;
+  ask: Ask;
+  history: Step[];
+  method: string;
+  category: string;
+  why: string;
+  intent_hash: string;
+  executor: string;
+  undoable: boolean;
+  breach: string;
+  reviewed_at: number;
+  from: string;
+  event: string;
+  seen: boolean;
+  reply_to: string;
+  item_type: string;
+  fields: string;
+  reply_call: string;
+  doing?: string;
+  doing_at?: number;
+  attachments?: Attachment[];
+  steps?: TurnStep[];
+  draft?: string;
+  stop_at?: number;
+  headline?: string;
+  mode?: string;
+  superseded_by?: string;
+  answers?: string;
+  answers_superseded?: boolean;
+  held_by?: string;
+  held_since?: number;
+  subject?: string;
+}
+
+/** The app type `FeedPage`. */
+export interface FeedPage {
+  items: FeedItem[];
+  counts: FeedCounts;
+  apps: AppCount[];
+  next_before: number;
 }
 
 /** The app type `Folder`. */
@@ -75,11 +227,84 @@ export interface GuardView {
   enabled: boolean;
 }
 
+/** The app type `LeaseView`. */
+export interface LeaseView {
+  chain: string;
+  session: string;
+  agent: string;
+  claimed_at: number;
+  expires_at: number;
+}
+
+/** The app type `LensView`. */
+export interface LensView {
+  app: string;
+  application_id: string;
+  spec: string;
+  summary: string;
+  status: string;
+  updated_at: number;
+}
+
 /** The app type `LinkInput`. */
 export interface LinkInput {
   subject: string;
   label: string;
   by: string;
+}
+
+/** The app type `LinkView`. */
+export interface LinkView {
+  chain: string;
+  subject: string;
+  app: string;
+  context: string;
+  item: string;
+  label: string;
+  by: string;
+  added_at: number;
+  activity: number;
+  last_at: number;
+}
+
+/** The app type `MemoHits`. */
+export interface MemoHits {
+  agent: string;
+  hits: number;
+}
+
+/** The app type `MemoInput`. */
+export interface MemoInput {
+  key: string;
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  hits: number;
+  last_hit_at: number;
+  attested: boolean;
+}
+
+/** The app type `MemoView`. */
+export interface MemoView {
+  key: string;
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  hits: MemoHits[];
+  last_hit_at: number;
+  agent: string;
+  attested: boolean;
+  updated_at: number;
 }
 
 /** The app type `NotificationInput`. */
@@ -95,9 +320,9 @@ export interface NotificationInput {
   needs_you: boolean;
   chain: string;
   ask: Ask;
-  item_type: string;
-  fields: string;
-  reply_call: string;
+  item_type?: string;
+  fields?: string;
+  reply_call?: string;
 }
 
 /** The app type `PolicyView`. */
@@ -105,6 +330,49 @@ export interface PolicyView {
   app: string;
   agent: string;
   notifications: string;
+}
+
+/** The app type `PrInput`. */
+export interface PrInput {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+}
+
+/** The app type `PrView`. */
+export interface PrView {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  seen_at: number;
 }
 
 /** The app type `PushDeviceInput`. */
@@ -115,6 +383,23 @@ export interface PushDeviceInput {
   name: string;
   quiet: boolean;
   key: string;
+}
+
+/** The app type `PushDeviceView`. */
+export interface PushDeviceView {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  quiet: boolean;
+  added_at: number;
+}
+
+/** The app type `PushKeyView`. */
+export interface PushKeyView {
+  public_key: string;
+  by: string;
+  updated_at: number;
 }
 
 /** The app type `ReachLine`. */
@@ -128,6 +413,30 @@ export interface ReachLine {
   web: boolean;
 }
 
+/** The app type `ReachView`. */
+export interface ReachView {
+  agent: string;
+  lines: ReachLine[];
+  at: number;
+}
+
+/** The app type `RuleProposalView`. */
+export interface RuleProposalView {
+  id: string;
+  text: string;
+  why: string;
+  chain: string;
+  status: string;
+  created_at: number;
+}
+
+/** The app type `RuleView`. */
+export interface RuleView {
+  id: string;
+  text: string;
+  created_at: number;
+}
+
 /** The app type `SettingsView`. */
 export interface SettingsView {
   owner: string;
@@ -135,15 +444,58 @@ export interface SettingsView {
   policies: PolicyView[];
   guards: GuardView[];
   agents: AgentView[];
-  rules: RuleView[];
-  rule_proposals: RuleProposalView[];
-  message_modes: string[];
-  access: AccessView[];
-  reach: ReachView[];
-  assignments: AssignmentView[];
-  agent_rules: AgentRuleView[];
-  action_modes: ActionModeView[];
-  agent_accounts: AgentAccountView[];
+  rules?: RuleView[];
+  rule_proposals?: RuleProposalView[];
+  message_modes?: string[];
+  access?: AccessView[];
+  reach?: ReachView[];
+  assignments?: AssignmentView[];
+  agent_rules?: AgentRuleView[];
+  action_modes?: ActionModeView[];
+  agent_accounts?: AgentAccountView[];
+}
+
+/** The app type `SituationInput`. */
+export interface SituationInput {
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+}
+
+/** The app type `SituationView`. */
+export interface SituationView {
+  chain: string;
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+  updated_at: number;
+}
+
+/** The app type `Step`. */
+export interface Step {
+  status: string;
+  note: string;
+  at: number;
+}
+
+/** The app type `TurnStep`. */
+export interface TurnStep {
+  id: string;
+  title: string;
+  status: string;
+  at: number;
 }
 
 /** The app type `Verdict`. */
@@ -152,89 +504,38 @@ export interface Verdict {
   reason: string;
 }
 
-/** The app type `AccessView`: the ABI names it without its shape. */
-export type AccessView = unknown;
+/** The app type `WatchInput`. */
+export interface WatchInput {
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  agent: string;
+}
 
-/** The app type `ActionSetView`: the ABI names it without its shape. */
-export type ActionSetView = unknown;
-
-/** The app type `AgentAccountView`: the ABI names it without its shape. */
-export type AgentAccountView = unknown;
-
-/** The app type `AgentRuleView`: the ABI names it without its shape. */
-export type AgentRuleView = unknown;
-
-/** The app type `AgentView`: the ABI names it without its shape. */
-export type AgentView = unknown;
-
-/** The app type `AssignmentView`: the ABI names it without its shape. */
-export type AssignmentView = unknown;
-
-/** The app type `Attachment`: the ABI names it without its shape. */
-export type Attachment = unknown;
-
-/** The app type `AutorunView`: the ABI names it without its shape. */
-export type AutorunView = unknown;
-
-/** The app type `CheckpointView`: the ABI names it without its shape. */
-export type CheckpointView = unknown;
-
-/** The app type `FeedItem`: the ABI names it without its shape. */
-export type FeedItem = unknown;
-
-/** The app type `FeedPage`: the ABI names it without its shape. */
-export type FeedPage = unknown;
-
-/** The app type `LeaseView`: the ABI names it without its shape. */
-export type LeaseView = unknown;
-
-/** The app type `LensView`: the ABI names it without its shape. */
-export type LensView = unknown;
-
-/** The app type `LinkView`: the ABI names it without its shape. */
-export type LinkView = unknown;
-
-/** The app type `MemoInput`: the ABI names it without its shape. */
-export type MemoInput = unknown;
-
-/** The app type `MemoView`: the ABI names it without its shape. */
-export type MemoView = unknown;
-
-/** The app type `PrInput`: the ABI names it without its shape. */
-export type PrInput = unknown;
-
-/** The app type `PrView`: the ABI names it without its shape. */
-export type PrView = unknown;
-
-/** The app type `PushDeviceView`: the ABI names it without its shape. */
-export type PushDeviceView = unknown;
-
-/** The app type `PushKeyView`: the ABI names it without its shape. */
-export type PushKeyView = unknown;
-
-/** The app type `ReachView`: the ABI names it without its shape. */
-export type ReachView = unknown;
-
-/** The app type `RuleProposalView`: the ABI names it without its shape. */
-export type RuleProposalView = unknown;
-
-/** The app type `RuleView`: the ABI names it without its shape. */
-export type RuleView = unknown;
-
-/** The app type `SituationInput`: the ABI names it without its shape. */
-export type SituationInput = unknown;
-
-/** The app type `SituationView`: the ABI names it without its shape. */
-export type SituationView = unknown;
-
-/** The app type `TurnStep`: the ABI names it without its shape. */
-export type TurnStep = unknown;
-
-/** The app type `WatchInput`: the ABI names it without its shape. */
-export type WatchInput = unknown;
-
-/** The app type `WatchView`: the ABI names it without its shape. */
-export type WatchView = unknown;
+/** The app type `WatchView`. */
+export interface WatchView {
+  id: string;
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  agent: string;
+  status: string;
+  note: string;
+  seen: string;
+  seen_at: number;
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
 
 /** The arguments of `addAgentAccount`. */
 export interface AddAgentAccountArgs {

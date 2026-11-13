@@ -262,7 +262,31 @@
         "type": "object"
       },
       "AttachmentInput": {
-        "description": "The app type `AttachmentInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "blobIdStr": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "name",
+          "mimeType",
+          "size",
+          "blobIdStr"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AttachmentInput"
       },
       "AttachmentView": {

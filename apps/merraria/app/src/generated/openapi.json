@@ -1195,8 +1195,7 @@
           "x",
           "y",
           "dir",
-          "sel",
-          "action"
+          "sel"
         ],
         "type": "object",
         "x-calimero-abi-type": "Transform"

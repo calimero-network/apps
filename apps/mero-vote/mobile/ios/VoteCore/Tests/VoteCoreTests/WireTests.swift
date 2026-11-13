@@ -59,7 +59,7 @@ final class WireTests: XCTestCase {
         }
     }
 
-    func testClosesAtIsADecimalStringOrNull() async throws {
+    func testClosesAtIsADecimalStringOrLeftOut() async throws {
         let (backend, script) = makeBackend()
         script.on("createPoll") { _ in "p" }
         let client = VoteClient.make(contract: backend.contract, contextId: ctx)
@@ -72,7 +72,7 @@ final class WireTests: XCTestCase {
         let calls = backend.recording.calls("createPoll")
         XCTAssertEqual(calls.first?.args["closesAt"], .string("1761000000123"))
         XCTAssertEqual(calls.first?.args["minChoices"]?.intValue, 0)
-        XCTAssertEqual(calls.last?.args["closesAt"], .null)
+        XCTAssertNil(calls.last?.args["closesAt"])
         XCTAssertNil(calls.first?.args["closes_at"])
     }
 

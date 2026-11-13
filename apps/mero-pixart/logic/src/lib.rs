@@ -105,7 +105,8 @@ impl Default for TextProps {
 }
 
 /// One layer. `kind` is "raster" | "group" | "text" | "adjustment" | "fill".
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct Layer {
     pub id: String,
@@ -160,7 +161,8 @@ pub struct Layer {
 }
 
 /// A member of the document's roster, stored under their account.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     /// The account. Filled from the row's key on read.
@@ -172,7 +174,8 @@ pub struct Member {
 }
 
 /// A pointer on the canvas, stored under the account that moved it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
     /// The pointer's key: the account (v1: the device).

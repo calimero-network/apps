@@ -6,8 +6,11 @@ import XCTest
 
 /// The client against the contract's component ABI (`logic/res/abi.json`): every
 /// method by its camelCase name, sent the right way (view or call), with exactly
-/// the ABI's parameters, `none` as an explicit null and a u64 as a decimal string.
+/// the ABI's parameters but an unset `option` (left out), and a u64 as a decimal string.
 final class ContractSurfaceTests: XCTestCase {
+    /// The `option` parameters the calls below leave unset: the client leaves them out.
+    static let unsetOptions: [String: Set<String>] = ["uploadDocument": ["embeddings", "extractedText", "chunks"]]
+
     /// `methods` of the ABI, without `init`: name → parameter names.
     static let abi: [String: [String]] = [
         "addParticipant": ["userIdStr", "permission"],
@@ -124,13 +127,16 @@ final class ContractSurfaceTests: XCTestCase {
         XCTAssertEqual(SignClient.views, Self.viewNames)
         XCTAssertEqual(SignClient.calls, Set(Self.abi.keys).subtracting(Self.viewNames))
         for request in r.sent {
-            XCTAssertEqual(Set(request.args.keys), Set(Self.abi[request.method] ?? []), request.method)
+            XCTAssertEqual(
+                Set(request.args.keys),
+                Set(Self.abi[request.method] ?? []).subtracting(Self.unsetOptions[request.method] ?? []),
+                request.method)
             XCTAssertEqual(request.view, Self.viewNames.contains(request.method), request.method)
         }
         let sign = try XCTUnwrap(r.sent.first { $0.method == "signDocument" }?.args)
         XCTAssertEqual(sign["fileSize"] as? String, "9", "a u64 goes as a decimal string")
         let upload = try XCTUnwrap(r.sent.first { $0.method == "uploadDocument" }?.args)
-        XCTAssertTrue(upload["embeddings"] is NSNull, "a none is an explicit null")
+        XCTAssertNil(upload["embeddings"], "an unset option is left out")
         XCTAssertEqual(r.sent.first { $0.method == "deleteSignature" }?.args["signatureId"] as? String, "7")
         XCTAssertEqual(r.sent.first { $0.method == "addParticipant" }?.args["permission"] as? String, "Sign")
     }

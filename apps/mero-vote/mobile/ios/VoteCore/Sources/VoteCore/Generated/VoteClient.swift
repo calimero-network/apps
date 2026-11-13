@@ -1330,7 +1330,7 @@ public struct VoteClient: Sendable {
         args.add("trustees", trustees)
         args.add("threshold", threshold)
         args.add("voters", voters)
-        args.add("closesAt", closesAt.map { DecimalString($0) })
+        if let value = closesAt { args.add("closesAt", DecimalString(value)) }
         let result = try await invokeCall("createPoll", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
     }

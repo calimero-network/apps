@@ -55,7 +55,8 @@ pub struct AgentAccount {
 }
 
 /// An agent account, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AgentAccountView {
     pub account: String,
     pub name: String,

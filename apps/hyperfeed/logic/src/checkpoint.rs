@@ -59,7 +59,8 @@ pub struct CheckpointInput {
 }
 
 /// A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct CheckpointView {
     pub chain: String,
     pub done: String,

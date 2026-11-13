@@ -101,8 +101,8 @@ class BridgeTest {
             when (call.method) {
                 // Two pages: the bridge reads both and answers v1's single array.
                 "getOverrides" ->
-                    // The generated client sends an unset `option` argument as `null`, which the
-                    // contract reads as none, as it does a missing key.
+                    // The generated client leaves an unset `option` argument out, which the
+                    // contract reads as none, as it does `null`.
                     if ((call.args as JsonObject)["cursor"].let { it == null || it is JsonNull }) {
                         Json.parseToJsonElement("""{"items":[{"k":"4,5","t":3}],"next":"c1"}""")
                     } else {
@@ -158,8 +158,8 @@ class BridgeTest {
                 calls.map { it.path },
             )
             assertEquals(listOf("ctx1", "ctx1", "ctx1", "ctx1"), calls.map { it.contextId })
-            assertEquals("the first page sends no cursor", JsonObject(mapOf("cursor" to JsonNull, "limit" to JsonNull)), calls[0].args)
-            assertEquals(JsonObject(mapOf("cursor" to JsonPrimitive("c1"), "limit" to JsonNull)), calls[1].args)
+            assertEquals("the first page sends no cursor", JsonObject(emptyMap()), calls[0].args)
+            assertEquals(JsonObject(mapOf("cursor" to JsonPrimitive("c1"))), calls[1].args)
             val edits = (calls[2].args as JsonObject)["edits"] as JsonArray
             assertEquals(Json.parseToJsonElement("""[{"x":4,"y":5,"t":0}]"""), edits)
             assertEquals("99", ((calls[2].args as JsonObject)["now"] as JsonPrimitive).content)

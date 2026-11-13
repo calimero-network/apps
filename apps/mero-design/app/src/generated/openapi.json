@@ -956,7 +956,53 @@
         "type": "object"
       },
       "Comment": {
-        "description": "The app type `Comment`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/CommentReply"
+            },
+            "type": "array"
+          },
+          "x": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          },
+          "y": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          }
+        },
+        "required": [
+          "id",
+          "x",
+          "y",
+          "content",
+          "author",
+          "createdAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Comment"
       },
       "CommentAddedEvent": {
@@ -980,6 +1026,34 @@
           "id"
         ],
         "type": "object"
+      },
+      "CommentReply": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "author",
+          "createdAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "CommentReply"
       },
       "CommentUpdatedEvent": {
         "properties": {
@@ -1083,7 +1157,42 @@
         "type": "object"
       },
       "CursorState": {
-        "description": "The app type `CursorState`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "identity": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "x": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          },
+          "y": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          }
+        },
+        "required": [
+          "identity",
+          "x",
+          "y",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CursorState"
       },
       "DeleteCommentArgs": {
@@ -1318,7 +1427,185 @@
         "type": "object"
       },
       "Element": {
-        "description": "The app type `Element`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "cornerRadius": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ElementData"
+          },
+          "fill": {
+            "type": "string"
+          },
+          "height": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "layerIndex": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "opacity": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "rotation": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "shadowBlur": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shadowColor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shadowOffsetX": {
+            "anyOf": [
+              {
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648,
+                "type": "integer",
+                "x-calimero-type": "i32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shadowOffsetY": {
+            "anyOf": [
+              {
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648,
+                "type": "integer",
+                "x-calimero-type": "i32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stroke": {
+            "type": "string"
+          },
+          "strokeWidth": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "updatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "width": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "x": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          },
+          "y": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          }
+        },
+        "required": [
+          "id",
+          "data",
+          "x",
+          "y",
+          "width",
+          "height",
+          "rotation",
+          "fill",
+          "stroke",
+          "strokeWidth",
+          "opacity",
+          "layerIndex",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "shadowColor",
+          "shadowOffsetX",
+          "shadowOffsetY",
+          "shadowBlur",
+          "label"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Element"
       },
       "ElementAddedEvent": {
@@ -1331,6 +1618,186 @@
           "id"
         ],
         "type": "object"
+      },
+      "ElementData": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "rect"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "circle"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "line"
+              },
+              "points": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "arrow"
+              },
+              "points": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "path"
+              },
+              "points": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "points"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "bold": {
+                "type": "boolean"
+              },
+              "content": {
+                "type": "string"
+              },
+              "fontFamily": {
+                "type": "string"
+              },
+              "fontSize": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              "italic": {
+                "type": "boolean"
+              },
+              "kind": {
+                "const": "text"
+              },
+              "text_align": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "vertical_align": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "content",
+              "fontSize",
+              "fontFamily",
+              "bold",
+              "italic"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "blobId": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "image"
+              },
+              "naturalHeight": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              "naturalWidth": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              }
+            },
+            "required": [
+              "kind",
+              "naturalWidth",
+              "naturalHeight"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "blobId": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "svg"
+              },
+              "naturalHeight": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              "naturalWidth": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              }
+            },
+            "required": [
+              "kind",
+              "naturalWidth",
+              "naturalHeight"
+            ],
+            "type": "object"
+          }
+        ],
+        "x-calimero-abi-type": "ElementData"
       },
       "ElementDeletedEvent": {
         "properties": {
@@ -1370,7 +1837,142 @@
         "x-calimero-abi-type": "ElementPage"
       },
       "ElementPatch": {
-        "description": "The app type `ElementPatch`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "corner_radius": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fill": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "opacity": {
+            "anyOf": [
+              {
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u8"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rotation": {
+            "anyOf": [
+              {
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648,
+                "type": "integer",
+                "x-calimero-type": "i32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stroke": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stroke_width": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "x": {
+            "anyOf": [
+              {
+                "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer",
+                "x-calimero-type": "i64_number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "y": {
+            "anyOf": [
+              {
+                "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer",
+                "x-calimero-type": "i64_number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ElementPatch"
       },
       "ElementUpdatedEvent": {
@@ -2503,7 +3105,46 @@
         "type": "object"
       },
       "Member": {
-        "description": "The app type `Member`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "username": {
+            "type": "string"
+          },
+          "usernameUpdatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "avatar",
+          "joinedAt",
+          "usernameUpdatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Member"
       },
       "MemberJoinedEvent": {

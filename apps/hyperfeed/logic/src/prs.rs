@@ -57,7 +57,8 @@ pub struct PrSeen {
 }
 
 /// What [`crate::Hyperfeed::record_pr`] takes: the PR as GitHub shows it now.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct PrInput {
     /// The chain (task) that links to it; `""` keeps the one already recorded.
     pub chain: String,
@@ -90,7 +91,8 @@ pub struct PrInput {
 }
 
 /// A PR as [`crate::Hyperfeed::prs`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct PrView {
     pub chain: String,
     pub repo: String,

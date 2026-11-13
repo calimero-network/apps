@@ -74,7 +74,8 @@ pub struct ActionRule {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct ActionSetView {
     pub app: String,
     pub application_id: String,

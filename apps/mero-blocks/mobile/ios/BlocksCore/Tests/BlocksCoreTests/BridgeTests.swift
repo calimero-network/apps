@@ -119,8 +119,8 @@ final class BridgeRouterTests: XCTestCase {
             case "worldMeta": return .object(["name": "Lime Valley", "seed": "1337", "createdAt": "1730000000"])
             case "getOverrides":
                 // Two pages: the router follows `next`.
-                // The generated client sends an unset `option` argument as `null`, which the
-                // contract reads as none, as it does a missing key.
+                // The generated client leaves an unset `option` argument out, which the
+                // contract reads as none, as it does `null`.
                 if call.args["cursor"] == nil || call.args["cursor"] == .null { return .object(["items": .array([.object(["k": "1,2,3", "b": 8])]), "next": "p2"]) }
                 return .object(["items": .array([.object(["k": "4,5,6", "b": 2])]), "next": .null])
             case "getPlayers":
@@ -163,14 +163,14 @@ final class BridgeRouterTests: XCTestCase {
         XCTAssertEqual(rows.first?["online"] as? Bool, true)
         // u64 on the component wire is a decimal string.
         XCTAssertEqual(
-            recording.calls("getPlayers").first?.args, .object(["now": "1730000001", "cursor": .null, "limit": .null]))
+            recording.calls("getPlayers").first?.args, .object(["now": "1730000001"]))
 
         // Both pages, as one list: the page's shape.
         let overrides = try await router.handle(op: .query, method: "get_overrides", argsJSON: Data("{}".utf8))
         XCTAssertEqual((try json(overrides) as? [[String: Any]])?.compactMap { $0["b"] as? Int }, [8, 2])
         XCTAssertEqual(
             recording.calls("getOverrides").map(\.args),
-            [.object(["cursor": .null, "limit": .null]), .object(["cursor": "p2", "limit": .null])])
+            [.object([:]), .object(["cursor": "p2"])])
 
         // A page built against the component ABI may use its names.
         _ = try await router.handle(op: .query, method: "worldMeta", argsJSON: Data("{}".utf8))

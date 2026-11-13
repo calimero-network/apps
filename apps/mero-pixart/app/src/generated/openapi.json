@@ -266,6 +266,68 @@
         ],
         "type": "object"
       },
+      "Adjustments": {
+        "properties": {
+          "blur": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "brightness": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "contrast": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "curves": {
+            "type": "string"
+          },
+          "exposure": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "hue": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "invert": {
+            "type": "boolean"
+          },
+          "saturation": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          }
+        },
+        "required": [
+          "brightness",
+          "contrast",
+          "saturation",
+          "hue",
+          "exposure",
+          "blur",
+          "invert"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Adjustments"
+      },
       "ApiError": {
         "properties": {
           "details": {},
@@ -689,7 +751,43 @@
         "type": "object"
       },
       "CursorState": {
-        "description": "The app type `CursorState`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "identity": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "x": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          },
+          "y": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          }
+        },
+        "required": [
+          "identity",
+          "account",
+          "x",
+          "y",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CursorState"
       },
       "DeleteLayerArgs": {
@@ -1489,7 +1587,186 @@
         "type": "object"
       },
       "Layer": {
-        "description": "The app type `Layer`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "adjustments": {
+            "$ref": "#/components/schemas/Adjustments"
+          },
+          "blendMode": {
+            "type": "string"
+          },
+          "blobId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "fill": {
+            "type": "string"
+          },
+          "flipH": {
+            "type": "boolean"
+          },
+          "flipV": {
+            "type": "boolean"
+          },
+          "height": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "layerIndex": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "maskBlobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "opacity": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rotation": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "scaleX": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "scaleY": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "skewX": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "skewY": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "integer",
+            "x-calimero-type": "i32"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextProps"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "warp": {
+            "type": "string"
+          },
+          "width": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "x": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          },
+          "y": {
+            "description": "A i64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer",
+            "x-calimero-type": "i64_number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "layerIndex",
+          "visible",
+          "locked",
+          "opacity",
+          "blendMode",
+          "x",
+          "y",
+          "width",
+          "height",
+          "rotation",
+          "scaleX",
+          "scaleY",
+          "adjustments",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Layer"
       },
       "LayerAddedEvent": {
@@ -1584,7 +1861,46 @@
         "type": "object"
       },
       "Member": {
-        "description": "The app type `Member`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "username": {
+            "type": "string"
+          },
+          "usernameUpdatedAt": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "avatar",
+          "joinedAt",
+          "usernameUpdatedAt"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Member"
       },
       "MemberJoinedEvent": {
@@ -2098,6 +2414,51 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "TextProps": {
+        "properties": {
+          "align": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bold": {
+            "type": "boolean"
+          },
+          "color": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "fontFamily": {
+            "type": "string"
+          },
+          "fontSize": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "italic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content",
+          "fontFamily",
+          "fontSize",
+          "color",
+          "bold",
+          "italic"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "TextProps"
       },
       "TransferOwnershipArgs": {
         "description": "The arguments of `transferOwnership`, by name.",

@@ -14,7 +14,7 @@ import org.junit.Test
 /**
  * What [ChatRepository] sends through the generated client, key for key against the component ABI
  * (`logic/res/abi.json`) and what the web app sends (`src/api/meroChat.ts`): camelCase names, `u64`s
- * as decimal strings, an optional the app leaves unset as `null` (the contract reads it as `None`).
+ * as decimal strings, an optional the app leaves unset left out (the contract reads it as `None`).
  */
 class ChatArgsTest {
     private val contract = RecordingChatContract()
@@ -34,9 +34,9 @@ class ChatArgsTest {
         runBlocking {
             answering { ChatAbi.page(ChatMessagePage()) }
             repo.newestMessages("ctx")
-            assertJson("""{"parentMessage":null,"limit":20,"offset":0,"searchTerm":null}""", contract.last("getMessages"))
+            assertJson("""{"limit":20,"offset":0}""", contract.last("getMessages"))
             repo.newestMessages("ctx", limit = 10)
-            assertJson("""{"parentMessage":null,"limit":10,"offset":0,"searchTerm":null}""", contract.last("getMessages"))
+            assertJson("""{"limit":10,"offset":0}""", contract.last("getMessages"))
             assertTrue(contract.calls.all { it.isView })
         }
 
@@ -56,7 +56,7 @@ class ChatArgsTest {
             answering { ChatAbi.messageJson(ChatMessage(id = "m_1", text = "hi")) }
             val sent = repo.send("ctx", "hi")
             assertJson(
-                """{"message":"hi","mentions":[],"mentionsUsernames":[],"parentMessage":null,"timestamp":"1760900000","files":null,"images":null}""",
+                """{"message":"hi","mentions":[],"mentionsUsernames":[],"timestamp":"1760900000"}""",
                 contract.last("sendMessage"),
             )
             assertEquals("m_1", sent?.id)
@@ -76,9 +76,9 @@ class ChatArgsTest {
         runBlocking {
             answering { if (it == "editMessage") ChatAbi.messageJson(ChatMessage(id = "m_1", text = "fixed")) else JsonPrimitive("ok") }
             repo.edit("ctx", "m_1", "fixed")
-            assertJson("""{"messageId":"m_1","newMessage":"fixed","timestamp":"1760900000","parentId":null}""", contract.last("editMessage"))
+            assertJson("""{"messageId":"m_1","newMessage":"fixed","timestamp":"1760900000"}""", contract.last("editMessage"))
             repo.delete("ctx", "m_1")
-            assertJson("""{"messageId":"m_1","parentId":null}""", contract.last("deleteMessage"))
+            assertJson("""{"messageId":"m_1"}""", contract.last("deleteMessage"))
             repo.react("ctx", "m_1", "👍", add = true)
             assertJson("""{"messageId":"m_1","emoji":"👍","add":true}""", contract.last("updateReaction"))
             repo.react("ctx", "m_1", "👍", add = false)
@@ -86,10 +86,10 @@ class ChatArgsTest {
         }
 
     @Test
-    fun `setProfile sends an explicit null avatar, markAsRead a timestamp`() =
+    fun `setProfile leaves an unset avatar out, markAsRead sends a timestamp`() =
         runBlocking {
             repo.setProfile("ctx", " droid ")
-            assertJson("""{"username":"droid","avatar":null}""", contract.last("setProfile"))
+            assertJson("""{"username":"droid"}""", contract.last("setProfile"))
             repo.markRead("ctx")
             assertJson("""{"timestamp":"1760900000"}""", contract.last("markAsRead"))
         }

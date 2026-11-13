@@ -44,11 +44,11 @@ class CalendarClientTest {
         )
     }
 
-    /** The fields an update does not name go as `null`, which the contract leaves alone. */
+    /** The fields an update does not name are left out, which the contract leaves alone. */
     @Test
     fun `an update changes only the fields it names`() {
         assertEquals(
-            """{"title":"New","description":null,"start":null,"end":null,"event_type":null,"color":null,"peers":null}""",
+            """{"title":"New"}""",
             Json.encodeToString(UpdateCalendarEvent.serializer(), UpdateCalendarEvent(title = "New")),
         )
     }

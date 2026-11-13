@@ -2,6 +2,7 @@ import { AppError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { i64, messageOf, optI64, pixartClient } from "./pixart";
+import type { Layer } from "../generated/client";
 import { isMethodNotFoundError } from "./compat";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
@@ -27,7 +28,7 @@ describe("the wire", () => {
     const doc = pixartClient(client, "app", after);
     expect(await doc.getLayers()).toEqual([]);
     expect(client.view).toHaveBeenCalledWith("app", "getLayers", {});
-    expect(await doc.addLayer({ layer: { id: "l1" } })).toBe("l1");
+    expect(await doc.addLayer({ layer: { id: "l1" } as Layer })).toBe("l1");
     expect(client.call).toHaveBeenCalledWith("app", "addLayer", { layer: { id: "l1" } });
     expect(after).toHaveBeenCalledTimes(2);
   });

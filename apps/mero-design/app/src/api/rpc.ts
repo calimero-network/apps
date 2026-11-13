@@ -23,7 +23,7 @@ import {
 } from "@calimero-apps/connect";
 import { setOrgName } from "@calimero-apps/names";
 import { getApi, peekApi } from "./client";
-import { MeroDesignClient, type AppTransport } from "../generated/client";
+import { MeroDesignClient, type AppTransport, type Element as WireElement } from "../generated/client";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire as elementToWire } from "../utils/elementMeta";
 import { useCanvasStore } from "../store/canvasStore";
@@ -64,9 +64,11 @@ export const PRODUCT_NAME = "Mero Design";
 // updatedAt: i64(now) })`. Its arguments are the ABI's (camelCase, 64-bit
 // integers as decimal strings, `i64` below). Its answers are v1's shapes
 // unchanged: the element, member, comment and cursor types are plain serde
-// structs, whose 64-bit fields stay JSON numbers. The ABI names those records
-// without their shapes, so the generated types are `unknown` and the callers
-// cast them to `types/`.
+// structs, whose 64-bit fields stay JSON numbers, which the contract marks
+// `#[abi(plain)]` so the generated types describe them. Members and cursors
+// read straight into `types/`; an element (whose `data` the app keeps as one
+// loose object) and a comment (whose `replies` the ABI leaves optional, as old
+// rows may lack them) are cast where they are read.
 //
 // What the wire still needs around the class lives here: the element extras
 // folded into `label` (`wireElement`, `wireLabel`, `wireLabels`, and
@@ -91,9 +93,14 @@ export function optI64(value: number | bigint | string | null | undefined): stri
   return value === null || value === undefined ? null : i64(value);
 }
 
-/** An element as the contract stores it: the client-side extras folded into `label`. */
-export function wireElement(element: Element): Element {
-  return elementToWire(element);
+/**
+ * An element as the contract stores it: the client-side extras folded into
+ * `label`. The app's `Element` is looser than the contract's (its `data` is
+ * one object with every kind's fields optional), so this is where it becomes
+ * the generated type.
+ */
+export function wireElement(element: Element): WireElement {
+  return elementToWire(element) as WireElement;
 }
 
 /**

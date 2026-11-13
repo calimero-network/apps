@@ -32,7 +32,7 @@ final class IssueDetailModelTests: XCTestCase {
         XCTAssertNil(m.issue?.assignee)
         XCTAssertEqual(
             String(data: fake.backend.recording.calls("setAssignee").last?.argsJSON ?? Data(), encoding: .utf8)?
-                .contains("\"assignee\":null"), true)  // an explicit null (`option<string>`) unassigns
+                .contains("\"assignee\""), false)  // an unset `option<string>`, left out, unassigns
     }
 
     func testCommentsAreAuthorGated() async {

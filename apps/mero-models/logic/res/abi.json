@@ -349,6 +349,171 @@
     "version": 1
   },
   "types": {
+    "Environment": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "background",
+          "string"
+        ],
+        [
+          "ambient_color",
+          "string"
+        ],
+        [
+          "ambient_intensity",
+          "f64"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LockView": {
+      "fields": [
+        [
+          "asset_id",
+          "string"
+        ],
+        [
+          "holder",
+          "string"
+        ],
+        [
+          "since",
+          "u64_number"
+        ],
+        [
+          "expires_at",
+          "u64_number"
+        ],
+        [
+          "mine",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Material": {
+      "fields": [
+        [
+          "color",
+          "string"
+        ],
+        [
+          "metalness",
+          "f64"
+        ],
+        [
+          "roughness",
+          "f64"
+        ],
+        [
+          "opacity",
+          "f64"
+        ],
+        [
+          "emissive",
+          "string"
+        ],
+        [
+          "wireframe",
+          "bool"
+        ],
+        [
+          "flat_shading",
+          "bool"
+        ],
+        [
+          "base_color_map",
+          "string"
+        ],
+        [
+          "normal_map",
+          "string"
+        ],
+        [
+          "normal_scale",
+          "f64"
+        ],
+        [
+          "orm_map",
+          "string"
+        ],
+        [
+          "emissive_map",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ],
+        [
+          "joined_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MeshRef": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "blob_id",
+          "string"
+        ],
+        [
+          "size",
+          "u64_number"
+        ],
+        [
+          "vertex_count",
+          "u32"
+        ],
+        [
+          "triangle_count",
+          "u32"
+        ],
+        [
+          "has_uvs",
+          "bool"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "message",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "SceneInfo": {
       "fields": [
         [
@@ -382,6 +547,178 @@
         [
           "my_role",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SceneObject": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "parent",
+          "string"
+        ],
+        [
+          "position",
+          "Vec3"
+        ],
+        [
+          "rotation",
+          "Vec3"
+        ],
+        [
+          "scale",
+          "Vec3"
+        ],
+        [
+          "visible",
+          "bool"
+        ],
+        [
+          "material",
+          "Material"
+        ],
+        [
+          "segments",
+          "u32"
+        ],
+        [
+          "intensity",
+          "f64"
+        ],
+        [
+          "created_by",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TextureRef": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "blob_id",
+          "string"
+        ],
+        [
+          "size",
+          "u64_number"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "mime",
+          "string"
+        ],
+        [
+          "color_space",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "message",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Vec3": {
+      "fields": [
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "z",
+          "f64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "VersionView": {
+      "fields": [
+        [
+          "number",
+          "u32"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "blob_id",
+          "string"
+        ],
+        [
+          "size",
+          "u64_number"
+        ],
+        [
+          "a",
+          "u32"
+        ],
+        [
+          "b",
+          "u32"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "message",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ],
+        [
+          "current",
+          "bool"
         ]
       ],
       "kind": "record"

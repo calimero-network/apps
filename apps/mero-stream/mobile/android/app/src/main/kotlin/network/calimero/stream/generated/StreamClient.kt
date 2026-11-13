@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -467,6 +468,7 @@ class StreamClient private constructor(
     }
 
     /** The app type `ChunkView`. */
+    @Serializable(with = ChunkView.Companion.Wire::class)
     data class ChunkView(
         val seq: ULong,
         val from: String,
@@ -481,9 +483,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `ChunkView`'s JSON form. */
-            fun serializer(): KSerializer<ChunkView> = Wire
-
-            private object Wire : KSerializer<ChunkView> {
+            internal object Wire : KSerializer<ChunkView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -528,6 +528,7 @@ class StreamClient private constructor(
 
     /** The app type `DecodedFrame`. */
     @Suppress("ArrayInDataClass")
+    @Serializable(with = DecodedFrame.Companion.Wire::class)
     data class DecodedFrame(
         val seq: ULong,
         val from: String,
@@ -540,9 +541,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `DecodedFrame`'s JSON form. */
-            fun serializer(): KSerializer<DecodedFrame> = Wire
-
-            private object Wire : KSerializer<DecodedFrame> {
+            internal object Wire : KSerializer<DecodedFrame> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -582,6 +581,7 @@ class StreamClient private constructor(
     }
 
     /** The app type `LiveStats`. */
+    @Serializable(with = LiveStats.Companion.Wire::class)
     data class LiveStats(
         val liveChunks: UInt,
         val liveBytes: ULong,
@@ -590,9 +590,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `LiveStats`'s JSON form. */
-            fun serializer(): KSerializer<LiveStats> = Wire
-
-            private object Wire : KSerializer<LiveStats> {
+            internal object Wire : KSerializer<LiveStats> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -624,6 +622,7 @@ class StreamClient private constructor(
     }
 
     /** The app type `Member`. */
+    @Serializable(with = Member.Companion.Wire::class)
     data class Member(
         val memberId: String,
         val username: String,
@@ -632,9 +631,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `Member`'s JSON form. */
-            fun serializer(): KSerializer<Member> = Wire
-
-            private object Wire : KSerializer<Member> {
+            internal object Wire : KSerializer<Member> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -666,15 +663,14 @@ class StreamClient private constructor(
     }
 
     /** The app type `SenderCursor`. */
+    @Serializable(with = SenderCursor.Companion.Wire::class)
     data class SenderCursor(
         val from: String,
         val afterSeq: ULong,
     ) {
         companion object {
             /** `SenderCursor`'s JSON form. */
-            fun serializer(): KSerializer<SenderCursor> = Wire
-
-            private object Wire : KSerializer<SenderCursor> {
+            internal object Wire : KSerializer<SenderCursor> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -702,6 +698,7 @@ class StreamClient private constructor(
     }
 
     /** The app type `SenderStats`. */
+    @Serializable(with = SenderStats.Companion.Wire::class)
     data class SenderStats(
         val from: String,
         val nextSeq: ULong,
@@ -714,9 +711,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `SenderStats`'s JSON form. */
-            fun serializer(): KSerializer<SenderStats> = Wire
-
-            private object Wire : KSerializer<SenderStats> {
+            internal object Wire : KSerializer<SenderStats> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -756,6 +751,7 @@ class StreamClient private constructor(
     }
 
     /** The app type `StreamStats`. */
+    @Serializable(with = StreamStats.Companion.Wire::class)
     data class StreamStats(
         val name: String,
         val memberCount: UInt,
@@ -766,9 +762,7 @@ class StreamClient private constructor(
     ) {
         companion object {
             /** `StreamStats`'s JSON form. */
-            fun serializer(): KSerializer<StreamStats> = Wire
-
-            private object Wire : KSerializer<StreamStats> {
+            internal object Wire : KSerializer<StreamStats> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

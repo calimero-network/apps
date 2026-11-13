@@ -245,15 +245,14 @@ export function messageOf(error: unknown): string {
 /**
  * Only the fields an update names: the contract refuses unknown keys, and null
  * means "unchanged". Every field of `UpdateCalendarEvent` is `#[serde(default)]`,
- * so the contract takes one left out, but the ABI does not record `default` and
- * types each as present: the one cast below says what the contract accepts.
+ * which the ABI records, so the generated type has each one optional.
  */
 export function updateArgs(update: EventUpdate): UpdateCalendarEvent {
-  const out: Partial<UpdateCalendarEvent> = {};
+  const out: UpdateCalendarEvent = {};
   for (const key of ["title", "description", "start", "end", "event_type", "color", "peers"] as const) {
     if (update[key] !== undefined) (out as Raw)[key] = update[key];
   }
-  return out as UpdateCalendarEvent;
+  return out;
 }
 
 export function eventArgs(event: EventFields): CreateCalendarEvent {

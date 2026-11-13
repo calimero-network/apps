@@ -15,21 +15,6 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct DesignClient: Sendable {
-    /// The app type `Comment`: the ABI names it without its shape, so it is its JSON.
-    public typealias Comment = JSONValue
-
-    /// The app type `CursorState`: the ABI names it without its shape, so it is its JSON.
-    public typealias CursorState = JSONValue
-
-    /// The app type `Element`: the ABI names it without its shape, so it is its JSON.
-    public typealias Element = JSONValue
-
-    /// The app type `ElementPatch`: the ABI names it without its shape, so it is its JSON.
-    public typealias ElementPatch = JSONValue
-
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
-
 
     /// The app type `BoardInfo`.
     public struct BoardInfo: Codable, Sendable, Equatable {
@@ -77,6 +62,398 @@ public struct DesignClient: Sendable {
         }
     }
 
+    /// The app type `Comment`.
+    public struct Comment: Codable, Sendable, Equatable {
+        public var id: String
+        public var x: Int64
+        public var y: Int64
+        public var content: String
+        public var author: String
+        public var createdAt: UInt64
+        public var replies: [CommentReply]?
+
+        public init(
+            id: String,
+            x: Int64,
+            y: Int64,
+            content: String,
+            author: String,
+            createdAt: UInt64,
+            replies: [CommentReply]? = nil
+        ) {
+            self.id = id
+            self.x = x
+            self.y = y
+            self.content = content
+            self.author = author
+            self.createdAt = createdAt
+            self.replies = replies
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(Int64.self, forKey: Key("x"))
+            let v2 = try fields.decode(Int64.self, forKey: Key("y"))
+            let v3 = try fields.decode(String.self, forKey: Key("content"))
+            let v4 = try fields.decode(String.self, forKey: Key("author"))
+            let v5 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            let v6 = try fields.decodeIfPresent([CommentReply].self, forKey: Key("replies"))
+            self.id = v0
+            self.x = v1
+            self.y = v2
+            self.content = v3
+            self.author = v4
+            self.createdAt = v5
+            self.replies = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.content, forKey: Key("content"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+            try fields.encodeIfPresent(self.replies, forKey: Key("replies"))
+        }
+    }
+
+    /// The app type `CommentReply`.
+    public struct CommentReply: Codable, Sendable, Equatable {
+        public var id: String
+        public var content: String
+        public var author: String
+        public var createdAt: UInt64
+
+        public init(
+            id: String,
+            content: String,
+            author: String,
+            createdAt: UInt64
+        ) {
+            self.id = id
+            self.content = content
+            self.author = author
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("content"))
+            let v2 = try fields.decode(String.self, forKey: Key("author"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            self.id = v0
+            self.content = v1
+            self.author = v2
+            self.createdAt = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.content, forKey: Key("content"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+        }
+    }
+
+    /// The app type `CursorState`.
+    public struct CursorState: Codable, Sendable, Equatable {
+        public var identity: String
+        public var account: String?
+        public var x: Int64
+        public var y: Int64
+        public var updatedAt: UInt64
+
+        public init(
+            identity: String,
+            account: String? = nil,
+            x: Int64,
+            y: Int64,
+            updatedAt: UInt64
+        ) {
+            self.identity = identity
+            self.account = account
+            self.x = x
+            self.y = y
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("identity"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("account"))
+            let v2 = try fields.decode(Int64.self, forKey: Key("x"))
+            let v3 = try fields.decode(Int64.self, forKey: Key("y"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.identity = v0
+            self.account = v1
+            self.x = v2
+            self.y = v3
+            self.updatedAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.identity, forKey: Key("identity"))
+            try fields.encodeIfPresent(self.account, forKey: Key("account"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
+
+    /// The app type `Element`.
+    public struct Element: Codable, Sendable, Equatable {
+        public var id: String
+        public var data: ElementData
+        public var x: Int64
+        public var y: Int64
+        public var width: UInt32
+        public var height: UInt32
+        public var rotation: Int32
+        public var fill: String
+        public var stroke: String
+        public var strokeWidth: UInt32
+        public var opacity: UInt8
+        public var layerIndex: UInt32
+        public var createdBy: String
+        public var createdAt: UInt64
+        public var updatedAt: UInt64
+        public var shadowColor: String?
+        public var shadowOffsetX: Int32?
+        public var shadowOffsetY: Int32?
+        public var shadowBlur: UInt32?
+        public var label: String?
+        public var cornerRadius: UInt32?
+
+        public init(
+            id: String,
+            data: ElementData,
+            x: Int64,
+            y: Int64,
+            width: UInt32,
+            height: UInt32,
+            rotation: Int32,
+            fill: String,
+            stroke: String,
+            strokeWidth: UInt32,
+            opacity: UInt8,
+            layerIndex: UInt32,
+            createdBy: String,
+            createdAt: UInt64,
+            updatedAt: UInt64,
+            shadowColor: String? = nil,
+            shadowOffsetX: Int32? = nil,
+            shadowOffsetY: Int32? = nil,
+            shadowBlur: UInt32? = nil,
+            label: String? = nil,
+            cornerRadius: UInt32? = nil
+        ) {
+            self.id = id
+            self.data = data
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.rotation = rotation
+            self.fill = fill
+            self.stroke = stroke
+            self.strokeWidth = strokeWidth
+            self.opacity = opacity
+            self.layerIndex = layerIndex
+            self.createdBy = createdBy
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.shadowColor = shadowColor
+            self.shadowOffsetX = shadowOffsetX
+            self.shadowOffsetY = shadowOffsetY
+            self.shadowBlur = shadowBlur
+            self.label = label
+            self.cornerRadius = cornerRadius
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(ElementData.self, forKey: Key("data"))
+            let v2 = try fields.decode(Int64.self, forKey: Key("x"))
+            let v3 = try fields.decode(Int64.self, forKey: Key("y"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("width"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("height"))
+            let v6 = try fields.decode(Int32.self, forKey: Key("rotation"))
+            let v7 = try fields.decode(String.self, forKey: Key("fill"))
+            let v8 = try fields.decode(String.self, forKey: Key("stroke"))
+            let v9 = try fields.decode(UInt32.self, forKey: Key("strokeWidth"))
+            let v10 = try fields.decode(UInt8.self, forKey: Key("opacity"))
+            let v11 = try fields.decode(UInt32.self, forKey: Key("layerIndex"))
+            let v12 = try fields.decode(String.self, forKey: Key("createdBy"))
+            let v13 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            let v14 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            let v15 = try fields.decodeIfPresent(String.self, forKey: Key("shadowColor"))
+            let v16 = try fields.decodeIfPresent(Int32.self, forKey: Key("shadowOffsetX"))
+            let v17 = try fields.decodeIfPresent(Int32.self, forKey: Key("shadowOffsetY"))
+            let v18 = try fields.decodeIfPresent(UInt32.self, forKey: Key("shadowBlur"))
+            let v19 = try fields.decodeIfPresent(String.self, forKey: Key("label"))
+            let v20 = try fields.decodeIfPresent(UInt32.self, forKey: Key("cornerRadius"))
+            self.id = v0
+            self.data = v1
+            self.x = v2
+            self.y = v3
+            self.width = v4
+            self.height = v5
+            self.rotation = v6
+            self.fill = v7
+            self.stroke = v8
+            self.strokeWidth = v9
+            self.opacity = v10
+            self.layerIndex = v11
+            self.createdBy = v12
+            self.createdAt = v13
+            self.updatedAt = v14
+            self.shadowColor = v15
+            self.shadowOffsetX = v16
+            self.shadowOffsetY = v17
+            self.shadowBlur = v18
+            self.label = v19
+            self.cornerRadius = v20
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.data, forKey: Key("data"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(self.rotation, forKey: Key("rotation"))
+            try fields.encode(self.fill, forKey: Key("fill"))
+            try fields.encode(self.stroke, forKey: Key("stroke"))
+            try fields.encode(self.strokeWidth, forKey: Key("strokeWidth"))
+            try fields.encode(self.opacity, forKey: Key("opacity"))
+            try fields.encode(self.layerIndex, forKey: Key("layerIndex"))
+            try fields.encode(self.createdBy, forKey: Key("createdBy"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+            try fields.encode(self.shadowColor, forKey: Key("shadowColor"))
+            try fields.encode(self.shadowOffsetX, forKey: Key("shadowOffsetX"))
+            try fields.encode(self.shadowOffsetY, forKey: Key("shadowOffsetY"))
+            try fields.encode(self.shadowBlur, forKey: Key("shadowBlur"))
+            try fields.encode(self.label, forKey: Key("label"))
+            try fields.encodeIfPresent(self.cornerRadius, forKey: Key("cornerRadius"))
+        }
+    }
+
+    /// The app type `ElementData`.
+    public enum ElementData: Codable, Sendable, Equatable {
+        /// `rect`.
+        case rect
+        /// `circle`.
+        case circle
+        /// `line`.
+        case line(points: String?)
+        /// `arrow`.
+        case arrow(points: String?)
+        /// `path`.
+        case path(points: String)
+        /// `text`.
+        case text(content: String, fontSize: UInt32, fontFamily: String, bold: Bool, italic: Bool, text_align: String?, vertical_align: String?)
+        /// `image`.
+        case image(naturalWidth: UInt32, naturalHeight: UInt32, blobId: String?)
+        /// `svg`.
+        case svg(naturalWidth: UInt32, naturalHeight: UInt32, blobId: String?)
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            let tag = try container.decode(String.self, forKey: Key("kind"))
+            switch tag {
+            case "rect":
+                self = .rect
+            case "circle":
+                self = .circle
+            case "line":
+                let v0 = try container.decodeIfPresent(String.self, forKey: Key("points"))
+                self = .line(points: v0)
+            case "arrow":
+                let v0 = try container.decodeIfPresent(String.self, forKey: Key("points"))
+                self = .arrow(points: v0)
+            case "path":
+                let v0 = try container.decode(String.self, forKey: Key("points"))
+                self = .path(points: v0)
+            case "text":
+                let v0 = try container.decode(String.self, forKey: Key("content"))
+                let v1 = try container.decode(UInt32.self, forKey: Key("fontSize"))
+                let v2 = try container.decode(String.self, forKey: Key("fontFamily"))
+                let v3 = try container.decode(Bool.self, forKey: Key("bold"))
+                let v4 = try container.decode(Bool.self, forKey: Key("italic"))
+                let v5 = try container.decodeIfPresent(String.self, forKey: Key("text_align"))
+                let v6 = try container.decodeIfPresent(String.self, forKey: Key("vertical_align"))
+                self = .text(content: v0, fontSize: v1, fontFamily: v2, bold: v3, italic: v4, text_align: v5, vertical_align: v6)
+            case "image":
+                let v0 = try container.decode(UInt32.self, forKey: Key("naturalWidth"))
+                let v1 = try container.decode(UInt32.self, forKey: Key("naturalHeight"))
+                let v2 = try container.decodeIfPresent(String.self, forKey: Key("blobId"))
+                self = .image(naturalWidth: v0, naturalHeight: v1, blobId: v2)
+            case "svg":
+                let v0 = try container.decode(UInt32.self, forKey: Key("naturalWidth"))
+                let v1 = try container.decode(UInt32.self, forKey: Key("naturalHeight"))
+                let v2 = try container.decodeIfPresent(String.self, forKey: Key("blobId"))
+                self = .svg(naturalWidth: v0, naturalHeight: v1, blobId: v2)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: Key("kind"), in: container, debugDescription: "ElementData: unknown variant \(tag)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .rect:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("rect", forKey: Key("kind"))
+            case .circle:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("circle", forKey: Key("kind"))
+            case .line(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("line", forKey: Key("kind"))
+                try container.encodeIfPresent(v0, forKey: Key("points"))
+            case .arrow(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("arrow", forKey: Key("kind"))
+                try container.encodeIfPresent(v0, forKey: Key("points"))
+            case .path(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("path", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("points"))
+            case .text(let v0, let v1, let v2, let v3, let v4, let v5, let v6):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("text", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("content"))
+                try container.encode(v1, forKey: Key("fontSize"))
+                try container.encode(v2, forKey: Key("fontFamily"))
+                try container.encode(v3, forKey: Key("bold"))
+                try container.encode(v4, forKey: Key("italic"))
+                try container.encodeIfPresent(v5, forKey: Key("text_align"))
+                try container.encodeIfPresent(v6, forKey: Key("vertical_align"))
+            case .image(let v0, let v1, let v2):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("image", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("naturalWidth"))
+                try container.encode(v1, forKey: Key("naturalHeight"))
+                try container.encodeIfPresent(v2, forKey: Key("blobId"))
+            case .svg(let v0, let v1, let v2):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("svg", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("naturalWidth"))
+                try container.encode(v1, forKey: Key("naturalHeight"))
+                try container.encodeIfPresent(v2, forKey: Key("blobId"))
+            }
+        }
+    }
+
     /// The app type `ElementPage`.
     public struct ElementPage: Codable, Sendable, Equatable {
         public var items: [Element]
@@ -105,6 +482,88 @@ public struct DesignClient: Sendable {
         }
     }
 
+    /// The app type `ElementPatch`.
+    public struct ElementPatch: Codable, Sendable, Equatable {
+        public var id: String
+        public var x: Int64?
+        public var y: Int64?
+        public var width: UInt32?
+        public var height: UInt32?
+        public var rotation: Int32?
+        public var fill: String?
+        public var stroke: String?
+        public var stroke_width: UInt32?
+        public var opacity: UInt8?
+        public var corner_radius: UInt32?
+
+        public init(
+            id: String,
+            x: Int64? = nil,
+            y: Int64? = nil,
+            width: UInt32? = nil,
+            height: UInt32? = nil,
+            rotation: Int32? = nil,
+            fill: String? = nil,
+            stroke: String? = nil,
+            stroke_width: UInt32? = nil,
+            opacity: UInt8? = nil,
+            corner_radius: UInt32? = nil
+        ) {
+            self.id = id
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.rotation = rotation
+            self.fill = fill
+            self.stroke = stroke
+            self.stroke_width = stroke_width
+            self.opacity = opacity
+            self.corner_radius = corner_radius
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decodeIfPresent(Int64.self, forKey: Key("x"))
+            let v2 = try fields.decodeIfPresent(Int64.self, forKey: Key("y"))
+            let v3 = try fields.decodeIfPresent(UInt32.self, forKey: Key("width"))
+            let v4 = try fields.decodeIfPresent(UInt32.self, forKey: Key("height"))
+            let v5 = try fields.decodeIfPresent(Int32.self, forKey: Key("rotation"))
+            let v6 = try fields.decodeIfPresent(String.self, forKey: Key("fill"))
+            let v7 = try fields.decodeIfPresent(String.self, forKey: Key("stroke"))
+            let v8 = try fields.decodeIfPresent(UInt32.self, forKey: Key("stroke_width"))
+            let v9 = try fields.decodeIfPresent(UInt8.self, forKey: Key("opacity"))
+            let v10 = try fields.decodeIfPresent(UInt32.self, forKey: Key("corner_radius"))
+            self.id = v0
+            self.x = v1
+            self.y = v2
+            self.width = v3
+            self.height = v4
+            self.rotation = v5
+            self.fill = v6
+            self.stroke = v7
+            self.stroke_width = v8
+            self.opacity = v9
+            self.corner_radius = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encodeIfPresent(self.x, forKey: Key("x"))
+            try fields.encodeIfPresent(self.y, forKey: Key("y"))
+            try fields.encodeIfPresent(self.width, forKey: Key("width"))
+            try fields.encodeIfPresent(self.height, forKey: Key("height"))
+            try fields.encodeIfPresent(self.rotation, forKey: Key("rotation"))
+            try fields.encodeIfPresent(self.fill, forKey: Key("fill"))
+            try fields.encodeIfPresent(self.stroke, forKey: Key("stroke"))
+            try fields.encodeIfPresent(self.stroke_width, forKey: Key("stroke_width"))
+            try fields.encodeIfPresent(self.opacity, forKey: Key("opacity"))
+            try fields.encodeIfPresent(self.corner_radius, forKey: Key("corner_radius"))
+        }
+    }
+
     /// The app type `LabelUpdate`.
     public struct LabelUpdate: Codable, Sendable, Equatable {
         public var id: String
@@ -130,6 +589,52 @@ public struct DesignClient: Sendable {
             var fields = encoder.container(keyedBy: Key.self)
             try fields.encode(self.id, forKey: Key("id"))
             try fields.encode(self.label, forKey: Key("label"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var username: String
+        public var avatar: String?
+        public var joinedAt: UInt64
+        public var usernameUpdatedAt: UInt64
+
+        public init(
+            id: String,
+            username: String,
+            avatar: String? = nil,
+            joinedAt: UInt64,
+            usernameUpdatedAt: UInt64
+        ) {
+            self.id = id
+            self.username = username
+            self.avatar = avatar
+            self.joinedAt = joinedAt
+            self.usernameUpdatedAt = usernameUpdatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("avatar"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("joinedAt"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("usernameUpdatedAt"))
+            self.id = v0
+            self.username = v1
+            self.avatar = v2
+            self.joinedAt = v3
+            self.usernameUpdatedAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(self.avatar, forKey: Key("avatar"))
+            try fields.encode(self.joinedAt, forKey: Key("joinedAt"))
+            try fields.encode(self.usernameUpdatedAt, forKey: Key("usernameUpdatedAt"))
         }
     }
 
@@ -397,7 +902,7 @@ public struct DesignClient: Sendable {
         minIndex: Int = 0
     ) async throws -> ElementPage {
         var args = Args()
-        args.add("cursor", cursor)
+        if let value = cursor { args.add("cursor", value) }
         args.add("limit", limit)
         let result = try await invokeView("getElementsPage", args, stale: stale, minIndex: minIndex, as: ElementPage.self)
         return result
@@ -444,7 +949,7 @@ public struct DesignClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("username", username)
-        args.add("avatar", avatar)
+        if let value = avatar { args.add("avatar", value) }
         args.add("timestamp", DecimalString(timestamp))
         _ = try await invokeCall("join", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -520,8 +1025,8 @@ public struct DesignClient: Sendable {
         idempotencyKey: String? = nil
     ) async throws {
         var args = Args()
-        args.add("name", name)
-        args.add("description", description)
+        if let value = name { args.add("name", value) }
+        if let value = description { args.add("description", value) }
         _ = try await invokeCall("updateBoard", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -557,16 +1062,16 @@ public struct DesignClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("x", x.map { DecimalString($0) })
-        args.add("y", y.map { DecimalString($0) })
-        args.add("width", width)
-        args.add("height", height)
-        args.add("rotation", rotation)
-        args.add("fill", fill)
-        args.add("stroke", stroke)
-        args.add("strokeWidth", strokeWidth)
-        args.add("opacity", opacity)
-        args.add("cornerRadius", cornerRadius)
+        if let value = x { args.add("x", DecimalString(value)) }
+        if let value = y { args.add("y", DecimalString(value)) }
+        if let value = width { args.add("width", value) }
+        if let value = height { args.add("height", value) }
+        if let value = rotation { args.add("rotation", value) }
+        if let value = fill { args.add("fill", value) }
+        if let value = stroke { args.add("stroke", value) }
+        if let value = strokeWidth { args.add("strokeWidth", value) }
+        if let value = opacity { args.add("opacity", value) }
+        if let value = cornerRadius { args.add("cornerRadius", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateElement", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -580,7 +1085,7 @@ public struct DesignClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("label", label)
+        if let value = label { args.add("label", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateElementLabel", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -633,10 +1138,10 @@ public struct DesignClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("shadowColor", shadowColor)
-        args.add("shadowOffsetX", shadowOffsetX)
-        args.add("shadowOffsetY", shadowOffsetY)
-        args.add("shadowBlur", shadowBlur)
+        if let value = shadowColor { args.add("shadowColor", value) }
+        if let value = shadowOffsetX { args.add("shadowOffsetX", value) }
+        if let value = shadowOffsetY { args.add("shadowOffsetY", value) }
+        if let value = shadowBlur { args.add("shadowBlur", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateShadow", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -656,13 +1161,13 @@ public struct DesignClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("content", content)
-        args.add("fontFamily", fontFamily)
-        args.add("fontSize", fontSize)
-        args.add("bold", bold)
-        args.add("italic", italic)
-        args.add("textAlign", textAlign)
-        args.add("verticalAlign", verticalAlign)
+        if let value = content { args.add("content", value) }
+        if let value = fontFamily { args.add("fontFamily", value) }
+        if let value = fontSize { args.add("fontSize", value) }
+        if let value = bold { args.add("bold", value) }
+        if let value = italic { args.add("italic", value) }
+        if let value = textAlign { args.add("textAlign", value) }
+        if let value = verticalAlign { args.add("verticalAlign", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateTextStyle", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }

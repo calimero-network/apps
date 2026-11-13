@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,15 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `CursorState`: the ABI names it without its shape, so it is its JSON. */
-typealias CursorState = JsonElement
-
-/** The app type `Layer`: the ABI names it without its shape, so it is its JSON. */
-typealias Layer = JsonElement
-
-/** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
-typealias Member = JsonElement
 
 /**
  * The app's methods.
@@ -81,7 +73,7 @@ class PixartClient private constructor(
         invokeCall(
             "addLayer",
             buildJsonObject {
-                put("layer", encode(JsonElement.serializer(), layer))
+                put("layer", encode(Layer.serializer(), layer))
             },
             idempotencyKey,
             String.serializer(),
@@ -154,7 +146,7 @@ class PixartClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CursorState.serializer()),
         )
 
     /** view `getDocument`. */
@@ -183,7 +175,7 @@ class PixartClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer().nullable,
+            Layer.serializer().nullable,
         )
 
     /** view `getLayers`. */
@@ -196,7 +188,7 @@ class PixartClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Layer.serializer()),
         )
 
     /** view `getMembers`. */
@@ -209,7 +201,7 @@ class PixartClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Member.serializer()),
         )
 
     /** view `getRole`. */
@@ -254,7 +246,7 @@ class PixartClient private constructor(
             "join",
             buildJsonObject {
                 put("username", encode(String.serializer(), username))
-                put("avatar", encode(String.serializer().nullable, avatar))
+                if (avatar != null) put("avatar", encode(String.serializer().nullable, avatar))
                 put("timestamp", encode(U64AsString, timestamp))
             },
             idempotencyKey,
@@ -287,7 +279,7 @@ class PixartClient private constructor(
             "moveLayer",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("parentId", encode(String.serializer().nullable, parentId))
+                if (parentId != null) put("parentId", encode(String.serializer().nullable, parentId))
                 put("layerIndex", encode(UInt.serializer(), layerIndex))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
@@ -408,14 +400,14 @@ class PixartClient private constructor(
             "updateAdjustments",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("brightness", encode(Int.serializer().nullable, brightness))
-                put("contrast", encode(Int.serializer().nullable, contrast))
-                put("saturation", encode(Int.serializer().nullable, saturation))
-                put("hue", encode(Int.serializer().nullable, hue))
-                put("exposure", encode(Int.serializer().nullable, exposure))
-                put("blur", encode(UInt.serializer().nullable, blur))
-                put("invert", encode(Boolean.serializer().nullable, invert))
-                put("curves", encode(String.serializer().nullable, curves))
+                if (brightness != null) put("brightness", encode(Int.serializer().nullable, brightness))
+                if (contrast != null) put("contrast", encode(Int.serializer().nullable, contrast))
+                if (saturation != null) put("saturation", encode(Int.serializer().nullable, saturation))
+                if (hue != null) put("hue", encode(Int.serializer().nullable, hue))
+                if (exposure != null) put("exposure", encode(Int.serializer().nullable, exposure))
+                if (blur != null) put("blur", encode(UInt.serializer().nullable, blur))
+                if (invert != null) put("invert", encode(Boolean.serializer().nullable, invert))
+                if (curves != null) put("curves", encode(String.serializer().nullable, curves))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -454,11 +446,11 @@ class PixartClient private constructor(
         invokeCall(
             "updateDocument",
             buildJsonObject {
-                put("name", encode(String.serializer().nullable, name))
-                put("description", encode(String.serializer().nullable, description))
-                put("width", encode(UInt.serializer().nullable, width))
-                put("height", encode(UInt.serializer().nullable, height))
-                put("background", encode(String.serializer().nullable, background))
+                if (name != null) put("name", encode(String.serializer().nullable, name))
+                if (description != null) put("description", encode(String.serializer().nullable, description))
+                if (width != null) put("width", encode(UInt.serializer().nullable, width))
+                if (height != null) put("height", encode(UInt.serializer().nullable, height))
+                if (background != null) put("background", encode(String.serializer().nullable, background))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -488,19 +480,19 @@ class PixartClient private constructor(
             "updateLayer",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("name", encode(String.serializer().nullable, name))
-                put("visible", encode(Boolean.serializer().nullable, visible))
-                put("locked", encode(Boolean.serializer().nullable, locked))
-                put("opacity", encode(UByte.serializer().nullable, opacity))
-                put("blendMode", encode(String.serializer().nullable, blendMode))
-                put("x", encode(I64AsString.nullable, x))
-                put("y", encode(I64AsString.nullable, y))
-                put("width", encode(UInt.serializer().nullable, width))
-                put("height", encode(UInt.serializer().nullable, height))
-                put("rotation", encode(Int.serializer().nullable, rotation))
-                put("scaleX", encode(Int.serializer().nullable, scaleX))
-                put("scaleY", encode(Int.serializer().nullable, scaleY))
-                put("fill", encode(String.serializer().nullable, fill))
+                if (name != null) put("name", encode(String.serializer().nullable, name))
+                if (visible != null) put("visible", encode(Boolean.serializer().nullable, visible))
+                if (locked != null) put("locked", encode(Boolean.serializer().nullable, locked))
+                if (opacity != null) put("opacity", encode(UByte.serializer().nullable, opacity))
+                if (blendMode != null) put("blendMode", encode(String.serializer().nullable, blendMode))
+                if (x != null) put("x", encode(I64AsString.nullable, x))
+                if (y != null) put("y", encode(I64AsString.nullable, y))
+                if (width != null) put("width", encode(UInt.serializer().nullable, width))
+                if (height != null) put("height", encode(UInt.serializer().nullable, height))
+                if (rotation != null) put("rotation", encode(Int.serializer().nullable, rotation))
+                if (scaleX != null) put("scaleX", encode(Int.serializer().nullable, scaleX))
+                if (scaleY != null) put("scaleY", encode(Int.serializer().nullable, scaleY))
+                if (fill != null) put("fill", encode(String.serializer().nullable, fill))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -542,7 +534,7 @@ class PixartClient private constructor(
             "updateLayerMask",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("maskBlobId", encode(String.serializer().nullable, maskBlobId))
+                if (maskBlobId != null) put("maskBlobId", encode(String.serializer().nullable, maskBlobId))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -584,13 +576,13 @@ class PixartClient private constructor(
             "updateText",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("content", encode(String.serializer().nullable, content))
-                put("fontFamily", encode(String.serializer().nullable, fontFamily))
-                put("fontSize", encode(UInt.serializer().nullable, fontSize))
-                put("color", encode(String.serializer().nullable, color))
-                put("bold", encode(Boolean.serializer().nullable, bold))
-                put("italic", encode(Boolean.serializer().nullable, italic))
-                put("align", encode(String.serializer().nullable, align))
+                if (content != null) put("content", encode(String.serializer().nullable, content))
+                if (fontFamily != null) put("fontFamily", encode(String.serializer().nullable, fontFamily))
+                if (fontSize != null) put("fontSize", encode(UInt.serializer().nullable, fontSize))
+                if (color != null) put("color", encode(String.serializer().nullable, color))
+                if (bold != null) put("bold", encode(Boolean.serializer().nullable, bold))
+                if (italic != null) put("italic", encode(Boolean.serializer().nullable, italic))
+                if (align != null) put("align", encode(String.serializer().nullable, align))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -616,14 +608,14 @@ class PixartClient private constructor(
             "updateTransform",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("rotation", encode(Int.serializer().nullable, rotation))
-                put("scaleX", encode(Int.serializer().nullable, scaleX))
-                put("scaleY", encode(Int.serializer().nullable, scaleY))
-                put("skewX", encode(Int.serializer().nullable, skewX))
-                put("skewY", encode(Int.serializer().nullable, skewY))
-                put("flipH", encode(Boolean.serializer().nullable, flipH))
-                put("flipV", encode(Boolean.serializer().nullable, flipV))
-                put("warp", encode(String.serializer().nullable, warp))
+                if (rotation != null) put("rotation", encode(Int.serializer().nullable, rotation))
+                if (scaleX != null) put("scaleX", encode(Int.serializer().nullable, scaleX))
+                if (scaleY != null) put("scaleY", encode(Int.serializer().nullable, scaleY))
+                if (skewX != null) put("skewX", encode(Int.serializer().nullable, skewX))
+                if (skewY != null) put("skewY", encode(Int.serializer().nullable, skewY))
+                if (flipH != null) put("flipH", encode(Boolean.serializer().nullable, flipH))
+                if (flipV != null) put("flipV", encode(Boolean.serializer().nullable, flipV))
+                if (warp != null) put("warp", encode(String.serializer().nullable, warp))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -799,7 +791,105 @@ class PixartClient private constructor(
         }
     }
 
+    /** The app type `Adjustments`. */
+    @Serializable(with = Adjustments.Companion.Wire::class)
+    data class Adjustments(
+        val brightness: Int,
+        val contrast: Int,
+        val saturation: Int,
+        val hue: Int,
+        val exposure: Int,
+        val blur: UInt,
+        val invert: Boolean,
+        val curves: String? = null,
+    ) {
+        companion object {
+            /** `Adjustments`'s JSON form. */
+            internal object Wire : KSerializer<Adjustments> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Adjustments,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("brightness", encode(Int.serializer(), value.brightness))
+                            put("contrast", encode(Int.serializer(), value.contrast))
+                            put("saturation", encode(Int.serializer(), value.saturation))
+                            put("hue", encode(Int.serializer(), value.hue))
+                            put("exposure", encode(Int.serializer(), value.exposure))
+                            put("blur", encode(UInt.serializer(), value.blur))
+                            put("invert", encode(Boolean.serializer(), value.invert))
+                            if (value.curves != null) put("curves", encode(String.serializer().nullable, value.curves))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Adjustments {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Adjustments")
+                    return Adjustments(
+                        brightness = field(fields, "brightness", Int.serializer()),
+                        contrast = field(fields, "contrast", Int.serializer()),
+                        saturation = field(fields, "saturation", Int.serializer()),
+                        hue = field(fields, "hue", Int.serializer()),
+                        exposure = field(fields, "exposure", Int.serializer()),
+                        blur = field(fields, "blur", UInt.serializer()),
+                        invert = field(fields, "invert", Boolean.serializer()),
+                        curves = field(fields, "curves", String.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CursorState`. */
+    @Serializable(with = CursorState.Companion.Wire::class)
+    data class CursorState(
+        val identity: String,
+        val account: String,
+        val x: Long,
+        val y: Long,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `CursorState`'s JSON form. */
+            internal object Wire : KSerializer<CursorState> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CursorState,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("identity", encode(String.serializer(), value.identity))
+                            put("account", encode(String.serializer(), value.account))
+                            put("x", encode(Long.serializer(), value.x))
+                            put("y", encode(Long.serializer(), value.y))
+                            put("updatedAt", encode(ULong.serializer(), value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CursorState {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CursorState")
+                    return CursorState(
+                        identity = field(fields, "identity", String.serializer()),
+                        account = field(fields, "account", String.serializer()),
+                        x = field(fields, "x", Long.serializer()),
+                        y = field(fields, "y", Long.serializer()),
+                        updatedAt = field(fields, "updatedAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `DocumentInfo`. */
+    @Serializable(with = DocumentInfo.Companion.Wire::class)
     data class DocumentInfo(
         val name: String,
         val description: String,
@@ -812,9 +902,7 @@ class PixartClient private constructor(
     ) {
         companion object {
             /** `DocumentInfo`'s JSON form. */
-            fun serializer(): KSerializer<DocumentInfo> = Wire
-
-            private object Wire : KSerializer<DocumentInfo> {
+            internal object Wire : KSerializer<DocumentInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -853,16 +941,175 @@ class PixartClient private constructor(
         }
     }
 
+    /** The app type `Layer`. */
+    @Serializable(with = Layer.Companion.Wire::class)
+    data class Layer(
+        val id: String,
+        val name: String,
+        val kind: String,
+        val parentId: String? = null,
+        val layerIndex: UInt,
+        val visible: Boolean,
+        val locked: Boolean,
+        val opacity: UByte,
+        val blendMode: String,
+        val x: Long,
+        val y: Long,
+        val width: UInt,
+        val height: UInt,
+        val rotation: Int,
+        val scaleX: Int,
+        val scaleY: Int,
+        val skewX: Int? = null,
+        val skewY: Int? = null,
+        val flipH: Boolean? = null,
+        val flipV: Boolean? = null,
+        val warp: String? = null,
+        val blobId: String? = null,
+        val maskBlobId: String? = null,
+        val fill: String? = null,
+        val adjustments: Adjustments,
+        val text: TextProps? = null,
+        val createdBy: String,
+        val createdAt: ULong,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `Layer`'s JSON form. */
+            internal object Wire : KSerializer<Layer> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Layer,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("kind", encode(String.serializer(), value.kind))
+                            if (value.parentId != null) put("parentId", encode(String.serializer().nullable, value.parentId))
+                            put("layerIndex", encode(UInt.serializer(), value.layerIndex))
+                            put("visible", encode(Boolean.serializer(), value.visible))
+                            put("locked", encode(Boolean.serializer(), value.locked))
+                            put("opacity", encode(UByte.serializer(), value.opacity))
+                            put("blendMode", encode(String.serializer(), value.blendMode))
+                            put("x", encode(Long.serializer(), value.x))
+                            put("y", encode(Long.serializer(), value.y))
+                            put("width", encode(UInt.serializer(), value.width))
+                            put("height", encode(UInt.serializer(), value.height))
+                            put("rotation", encode(Int.serializer(), value.rotation))
+                            put("scaleX", encode(Int.serializer(), value.scaleX))
+                            put("scaleY", encode(Int.serializer(), value.scaleY))
+                            if (value.skewX != null) put("skewX", encode(Int.serializer().nullable, value.skewX))
+                            if (value.skewY != null) put("skewY", encode(Int.serializer().nullable, value.skewY))
+                            if (value.flipH != null) put("flipH", encode(Boolean.serializer().nullable, value.flipH))
+                            if (value.flipV != null) put("flipV", encode(Boolean.serializer().nullable, value.flipV))
+                            if (value.warp != null) put("warp", encode(String.serializer().nullable, value.warp))
+                            if (value.blobId != null) put("blobId", encode(String.serializer().nullable, value.blobId))
+                            if (value.maskBlobId != null) put("maskBlobId", encode(String.serializer().nullable, value.maskBlobId))
+                            if (value.fill != null) put("fill", encode(String.serializer().nullable, value.fill))
+                            put("adjustments", encode(Adjustments.serializer(), value.adjustments))
+                            if (value.text != null) put("text", encode(TextProps.serializer().nullable, value.text))
+                            put("createdBy", encode(String.serializer(), value.createdBy))
+                            put("createdAt", encode(ULong.serializer(), value.createdAt))
+                            put("updatedAt", encode(ULong.serializer(), value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Layer {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Layer")
+                    return Layer(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        parentId = field(fields, "parentId", String.serializer().nullable),
+                        layerIndex = field(fields, "layerIndex", UInt.serializer()),
+                        visible = field(fields, "visible", Boolean.serializer()),
+                        locked = field(fields, "locked", Boolean.serializer()),
+                        opacity = field(fields, "opacity", UByte.serializer()),
+                        blendMode = field(fields, "blendMode", String.serializer()),
+                        x = field(fields, "x", Long.serializer()),
+                        y = field(fields, "y", Long.serializer()),
+                        width = field(fields, "width", UInt.serializer()),
+                        height = field(fields, "height", UInt.serializer()),
+                        rotation = field(fields, "rotation", Int.serializer()),
+                        scaleX = field(fields, "scaleX", Int.serializer()),
+                        scaleY = field(fields, "scaleY", Int.serializer()),
+                        skewX = field(fields, "skewX", Int.serializer().nullable),
+                        skewY = field(fields, "skewY", Int.serializer().nullable),
+                        flipH = field(fields, "flipH", Boolean.serializer().nullable),
+                        flipV = field(fields, "flipV", Boolean.serializer().nullable),
+                        warp = field(fields, "warp", String.serializer().nullable),
+                        blobId = field(fields, "blobId", String.serializer().nullable),
+                        maskBlobId = field(fields, "maskBlobId", String.serializer().nullable),
+                        fill = field(fields, "fill", String.serializer().nullable),
+                        adjustments = field(fields, "adjustments", Adjustments.serializer()),
+                        text = field(fields, "text", TextProps.serializer().nullable),
+                        createdBy = field(fields, "createdBy", String.serializer()),
+                        createdAt = field(fields, "createdAt", ULong.serializer()),
+                        updatedAt = field(fields, "updatedAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Member`. */
+    @Serializable(with = Member.Companion.Wire::class)
+    data class Member(
+        val id: String,
+        val username: String,
+        val avatar: String? = null,
+        val joinedAt: ULong,
+        val usernameUpdatedAt: ULong,
+    ) {
+        companion object {
+            /** `Member`'s JSON form. */
+            internal object Wire : KSerializer<Member> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Member,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("username", encode(String.serializer(), value.username))
+                            put("avatar", encode(String.serializer().nullable, value.avatar))
+                            put("joinedAt", encode(ULong.serializer(), value.joinedAt))
+                            put("usernameUpdatedAt", encode(ULong.serializer(), value.usernameUpdatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Member {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Member")
+                    return Member(
+                        id = field(fields, "id", String.serializer()),
+                        username = field(fields, "username", String.serializer()),
+                        avatar = field(fields, "avatar", String.serializer().nullable),
+                        joinedAt = field(fields, "joinedAt", ULong.serializer()),
+                        usernameUpdatedAt = field(fields, "usernameUpdatedAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `MemberRole`. */
+    @Serializable(with = MemberRole.Companion.Wire::class)
     data class MemberRole(
         val member: String,
         val role: String,
     ) {
         companion object {
             /** `MemberRole`'s JSON form. */
-            fun serializer(): KSerializer<MemberRole> = Wire
-
-            private object Wire : KSerializer<MemberRole> {
+            internal object Wire : KSerializer<MemberRole> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -883,6 +1130,56 @@ class PixartClient private constructor(
                     return MemberRole(
                         member = field(fields, "member", String.serializer()),
                         role = field(fields, "role", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TextProps`. */
+    @Serializable(with = TextProps.Companion.Wire::class)
+    data class TextProps(
+        val content: String,
+        val fontFamily: String,
+        val fontSize: UInt,
+        val color: String,
+        val bold: Boolean,
+        val italic: Boolean,
+        val align: String? = null,
+    ) {
+        companion object {
+            /** `TextProps`'s JSON form. */
+            internal object Wire : KSerializer<TextProps> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TextProps,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("content", encode(String.serializer(), value.content))
+                            put("fontFamily", encode(String.serializer(), value.fontFamily))
+                            put("fontSize", encode(UInt.serializer(), value.fontSize))
+                            put("color", encode(String.serializer(), value.color))
+                            put("bold", encode(Boolean.serializer(), value.bold))
+                            put("italic", encode(Boolean.serializer(), value.italic))
+                            if (value.align != null) put("align", encode(String.serializer().nullable, value.align))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TextProps {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TextProps")
+                    return TextProps(
+                        content = field(fields, "content", String.serializer()),
+                        fontFamily = field(fields, "fontFamily", String.serializer()),
+                        fontSize = field(fields, "fontSize", UInt.serializer()),
+                        color = field(fields, "color", String.serializer()),
+                        bold = field(fields, "bold", Boolean.serializer()),
+                        italic = field(fields, "italic", Boolean.serializer()),
+                        align = field(fields, "align", String.serializer().nullable),
                     )
                 }
             }

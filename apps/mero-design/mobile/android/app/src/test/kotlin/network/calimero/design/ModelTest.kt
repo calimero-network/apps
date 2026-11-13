@@ -94,7 +94,7 @@ class ModelTest {
             assertEquals(BoardModel.Phase.Ready, model.phase.value)
             assertTrue("org members reach the board as is", backend.log.none { it.startsWith("joinContext") })
             assertEquals(
-                """{"cursor":null,"limit":1000}""",
+                """{"limit":1000}""",
                 backend.recording
                     .calls("getElementsPage")
                     .first()
@@ -129,7 +129,7 @@ class ModelTest {
             assertEquals(RecordedContractCall.Path.EXECUTE, join.path)
             assertEquals(JsonPrimitive("Fran"), join.arg("username"))
             assertEquals("u64 arguments travel as decimal strings", JsonPrimitive("1700000000000"), join.arg("timestamp"))
-            assertEquals(JsonNull, join.arg("avatar"))
+            assertNull(join.arg("avatar"))
             val add = backend.recording.calls("addComment").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, add.path)
             assertEquals(JsonPrimitive("Bigger logo?"), add.arg("content"))
@@ -219,14 +219,14 @@ class ModelTest {
                     .InMemoryAppBackend()
             val el = Fixtures.element("a", Fixtures.RECT)
             backend.recording.handler = { call ->
-                val first = call.args.jsonObject["cursor"] == JsonNull
+                val first = call.args.jsonObject["cursor"] == null
                 kotlinx.serialization.json.Json.parseToJsonElement(
                     """{"items":[$el],"nextCursor":${if (first) "\"c1\"" else "null"}}""",
                 )
             }
             val elements = backend.designClient("board").allElements()
             assertEquals(2, elements.size)
-            assertEquals(listOf(JsonNull, JsonPrimitive("c1")), backend.recording.calls("getElementsPage").map { it.arg("cursor") })
+            assertEquals(listOf(null, JsonPrimitive("c1")), backend.recording.calls("getElementsPage").map { it.arg("cursor") })
         }
 
     @Test

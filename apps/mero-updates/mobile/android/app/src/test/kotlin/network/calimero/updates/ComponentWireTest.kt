@@ -3,7 +3,6 @@ package network.calimero.updates
 import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -15,6 +14,7 @@ import network.calimero.updates.generated.UpdateInput
 import network.calimero.updates.generated.client.UpdatesClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The generated client's calls reach the contract as its component ABI takes them. (Swift `ComponentWireTests`.) */
@@ -91,10 +91,11 @@ class ComponentWireTest {
             for ((method, view, args) in wire.sent) {
                 val spec = ComponentWire.METHODS.getValue(method)
                 assertEquals(method, spec.view, view)
-                assertEquals(method, spec.params.toSet(), args.keys)
+                // An unset optional argument is left out, so the keys sent are some of the ABI's.
+                assertTrue(method, spec.params.toSet().containsAll(args.keys))
             }
             assertEquals(JsonPrimitive("42"), wire.sent.first { it.first == "listContributions" }.third["since"])
-            assertEquals(JsonNull, wire.sent.first { it.first == "saveDraft" }.third["draftId"])
+            assertNull(wire.sent.first { it.first == "saveDraft" }.third["draftId"])
             val published = wire.sent.first { it.first == "publishUpdate" }.third["input"] as JsonObject
             assertEquals(JsonPrimitive("c"), published["categoryId"])
         }

@@ -447,7 +447,6 @@
           }
         },
         "required": [
-          "id",
           "kind",
           "title",
           "detail"

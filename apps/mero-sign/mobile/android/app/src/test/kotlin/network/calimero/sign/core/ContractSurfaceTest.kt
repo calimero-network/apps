@@ -3,7 +3,6 @@ package network.calimero.sign.core
 import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -17,8 +16,8 @@ import org.junit.Test
 
 /**
  * The client against the contract's component ABI (`logic/res/abi.json`): every method by its
- * camelCase name, sent the right way (view or call), with exactly the ABI's parameters, `none` as an
- * explicit null and a u64 as a decimal string. (iOS: `ContractSurfaceTests`.)
+ * camelCase name, sent the right way (view or call), with exactly the ABI's parameters but an unset
+ * `option` (left out), and a u64 as a decimal string. (iOS: `ContractSurfaceTests`.)
  */
 class ContractSurfaceTest {
     private class Sent(
@@ -86,11 +85,11 @@ class ContractSurfaceTest {
             assertEquals(VIEWS, SignContract.VIEWS)
             assertEquals(ABI.keys - VIEWS, SignContract.CALLS)
             for (request in r.sent) {
-                assertEquals(request.method, ABI[request.method]!!.toSet(), request.args.keys)
+                assertEquals(request.method, ABI[request.method]!!.toSet() - UNSET_OPTIONS[request.method].orEmpty(), request.args.keys)
                 assertEquals(request.method, request.method in VIEWS, request.view)
             }
             assertEquals(JsonPrimitive("9"), r.sent.first { it.method == "signDocument" }.args["fileSize"])
-            assertEquals(JsonNull, r.sent.first { it.method == "uploadDocument" }.args["embeddings"])
+            assertNull(r.sent.first { it.method == "uploadDocument" }.args["embeddings"])
             assertEquals(JsonPrimitive("7"), r.sent.first { it.method == "deleteSignature" }.args["signatureId"])
             assertEquals(JsonPrimitive("Sign"), r.sent.first { it.method == "addParticipant" }.args["permission"])
         }
@@ -112,6 +111,9 @@ class ContractSurfaceTest {
         }
 
     private companion object {
+        /** The `option` parameters the calls above leave unset: the client leaves them out. */
+        val UNSET_OPTIONS: Map<String, Set<String>> = mapOf("uploadDocument" to setOf("embeddings", "extractedText", "chunks"))
+
         val ABI: Map<String, List<String>> =
             mapOf(
                 "addParticipant" to listOf("userIdStr", "permission"),

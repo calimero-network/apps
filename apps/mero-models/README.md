@@ -289,9 +289,9 @@ with `client.events`, streams presence with `publishPresence` /
 `presenceStream`, and calls the contract through `MeroModelsClient` (`src/generated/client.ts`),
 which `mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F
 mero-models codegen` after a contract change; CI fails when the committed copy
-is stale). The ABI names its records without their shapes, so the generated
-types are `unknown`: `src/meroModels.ts` keeps v1's answer shapes, which the
-sync (`editor/sync.ts`) types each answer with, so the editor did not change;
+is stale). The records keep v1's snake_case fields and JSON-number `u64`s,
+which the contract marks `#[abi(plain)]`, so the generated types describe them
+and `src/meroModels.ts` re-exports them for the editor;
 `src/client.test.ts` checks the class against `logic/res/abi.json`. The landing page's sign-in is the app's own
 (`ownConnect`).
 

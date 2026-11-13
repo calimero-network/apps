@@ -95,8 +95,8 @@ final class BridgeTests: XCTestCase {
             switch call.method {
             case "getOverrides":
                 // Two pages: the bridge reads both and answers v1's single array.
-                // The generated client sends an unset `option` argument as `null`, which the
-                // contract reads as none, as it does a missing key.
+                // The generated client leaves an unset `option` argument out, which the
+                // contract reads as none, as it does `null`.
                 if call.args["cursor"] == nil || call.args["cursor"] == .null {
                     return .object(["items": .array([.object(["k": .string("4,5"), "t": .number(3)])]), "next": .string("c1")])
                 }
@@ -132,8 +132,8 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(calls.map(\.method), ["getOverrides", "getOverrides", "setTiles", "heartbeat"])
         XCTAssertEqual(calls.map(\.path), [.query, .query, .execute, .execute])
         XCTAssertEqual(calls.map(\.contextId), ["ctx1", "ctx1", "ctx1", "ctx1"])
-        XCTAssertEqual(calls[0].args, .object(["cursor": .null, "limit": .null]), "the first page sends no cursor")
-        XCTAssertEqual(calls[1].args, .object(["cursor": .string("c1"), "limit": .null]))
+        XCTAssertEqual(calls[0].args, .object([:]), "the first page sends no cursor")
+        XCTAssertEqual(calls[1].args, .object(["cursor": .string("c1")]))
         XCTAssertEqual(
             calls[2].args,
             .object(["edits": .array([.object(["x": .number(4), "y": .number(5), "t": .number(0)])]), "now": .number(99)]))
