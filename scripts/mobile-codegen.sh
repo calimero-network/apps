@@ -22,7 +22,7 @@
 # The web apps' clients are the frontend job's (`pnpm -r codegen`, ci.yml).
 set -euo pipefail
 
-REF=1.0.0-rc.22
+REF=1.0.0-rc.23
 ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 
 # app | lang | output directory | client name | Kotlin package
