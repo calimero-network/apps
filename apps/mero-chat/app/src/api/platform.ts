@@ -42,6 +42,7 @@ import {
   type OtherOrg,
 } from "@calimero-apps/connect";
 
+import { setOrgName as setOwnOrgName } from "@calimero-apps/names";
 import { after, chatSource, getAccountId, getClient, passkey } from "./calimero";
 
 export type Visibility = "open" | "restricted";
@@ -318,10 +319,30 @@ export function memberRole(orgRole: string | undefined): "Admin" | "Member" | "R
   return "Member";
 }
 
-/** The name an account set for the workspace, if any. */
+/**
+ * The name an account goes by in the workspace, if it chose one.
+ *
+ * The org's member metadata is the one place a person's name lives: every
+ * channel, DM, mention and message author reads it from here, by account. The
+ * conversations themselves never carry a name.
+ */
 export function memberName(org: OrgRecord, account: string): string | undefined {
   const name = org.memberMetadata[account]?.name;
   return typeof name === "string" && name.trim() ? name.trim() : undefined;
+}
+
+/** A member's picture: a blob, and the conversation (app) that holds it. */
+export interface MemberAvatar {
+  blob: string;
+  app: string;
+}
+
+/** The picture an account set for the workspace, if any (member metadata, as the name). */
+export function memberAvatar(org: OrgRecord, account: string): MemberAvatar | undefined {
+  const v = org.memberMetadata[account]?.avatar as { blob?: unknown; app?: unknown } | undefined;
+  return v && typeof v.blob === "string" && v.blob && typeof v.app === "string" && v.app
+    ? { blob: v.blob, app: v.app }
+    : undefined;
 }
 
 /**
@@ -531,9 +552,25 @@ export async function deleteOrg(org: string): Promise<void> {
   invalidate();
 }
 
-export async function setMemberName(org: string, account: string, name: string): Promise<void> {
-  await run((c) => c.orgs.memberMetadata({ org, account, metadata: { name } }));
+/**
+ * Sets some of `account`'s member metadata in `org`, keeping the rest: the
+ * node replaces the whole object, so a picture change must not drop the name.
+ */
+async function patchMemberMetadata(org: string, account: string, patch: Record<string, unknown>): Promise<void> {
   invalidate(org);
+  const current = await getOrgRecord(org).catch(() => null);
+  const metadata = { ...(current?.memberMetadata[account] ?? {}), ...patch };
+  await run((c) => c.orgs.memberMetadata({ org, account, metadata }));
+  invalidate(org);
+}
+
+export async function setMemberName(org: string, account: string, name: string): Promise<void> {
+  await run((c) => setOwnOrgName(c, org, account, name));
+  invalidate(org);
+}
+
+export async function setMemberAvatar(org: string, account: string, avatar: MemberAvatar): Promise<void> {
+  await patchMemberMetadata(org, account, { avatar });
 }
 
 export async function setOrgName(org: string, name: string): Promise<void> {

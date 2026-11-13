@@ -39,7 +39,7 @@ vi.mock("../popups/ConfirmPopup", () => ({
 }));
 
 describe("UserItem", () => {
-  it("shows truncated identity when no username or alias exists", () => {
+  it("shows a truncated account when the member has no workspace name", () => {
     render(
       <UserItem
         dm={{
@@ -47,7 +47,6 @@ describe("UserItem", () => {
           info: null,
           otherIdentity: "user-2",
           otherAlias: "",
-          otherUsername: "",
           namespaceMemberIdentity: "",
           contextIdentity: "identity-1",
           myIdentity: "identity-1",
@@ -62,7 +61,7 @@ describe("UserItem", () => {
     expect(screen.getAllByText("user-2")).toHaveLength(2);
   });
 
-  it("prefers the member alias when no DM profile username exists", () => {
+  it("shows the member's workspace name", () => {
     render(
       <UserItem
         dm={{
@@ -70,7 +69,6 @@ describe("UserItem", () => {
           info: null,
           otherIdentity: "user-4",
           otherAlias: "Taylor",
-          otherUsername: "",
           namespaceMemberIdentity: "",
           contextIdentity: "identity-1",
           myIdentity: "identity-1",
@@ -93,8 +91,7 @@ describe("UserItem", () => {
           contextId: "dm-3",
           info: null,
           otherIdentity: "user-3",
-          otherAlias: "",
-          otherUsername: "Sam",
+          otherAlias: "Sam",
           namespaceMemberIdentity: "",
           contextIdentity: undefined,
           myIdentity: "",

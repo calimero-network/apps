@@ -12,7 +12,6 @@ import { setStoredGroupAlias, setGroupMemberIdentity } from "../constants/config
 import { createChannel, GENERAL_CHANNEL } from "./createChannel";
 import { enterWorkspace } from "./enterWorkspace";
 import { DEFAULT_MEMBER_CAPABILITIES } from "./groupCapabilities";
-import { setMessengerDisplayName } from "./messengerName";
 
 type Toast = (toast: Omit<ToastNotification, "id">) => string;
 
@@ -27,8 +26,6 @@ export async function finishWorkspace(
   addToast: Toast,
 ): Promise<void> {
   setStoredGroupAlias(groupId, name);
-  // Before #general, so the channel is made under your name in it.
-  setMessengerDisplayName(selfName, groupId);
   // The `name` the org was created with does not reach the group's metadata
   // record — a freshly created namespace reads back `metadata: null` — so
   // write it explicitly. The creator is the owner, so this succeeds and gives
@@ -61,6 +58,6 @@ export async function finishWorkspace(
   if (memberIdentity) setGroupMemberIdentity(groupId, memberIdentity);
 
   // Named in the same step: straight in. `enterWorkspace` publishes the name
-  // to the org's member record, and loads the app on this workspace.
-  enterWorkspace(api, groupId, selfName, memberIdentity);
+  // to the org's member record, and loads the app on #general.
+  await enterWorkspace(api, groupId, selfName, memberIdentity);
 }

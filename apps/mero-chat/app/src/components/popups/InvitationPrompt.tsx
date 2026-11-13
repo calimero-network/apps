@@ -4,6 +4,7 @@ import { styled } from "styled-components";
 import BaseModal from "../common/popups/BaseModal";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { setStoredGroupAlias } from "../../constants/config";
+import { lastUsedName } from "@calimero-apps/names";
 import { getMessengerDisplayName } from "../../utils/messengerName";
 import { myOrgs } from "../../api/platform";
 import { getAccountId } from "../../api/calimero";
@@ -20,20 +21,19 @@ import { log } from "../../utils/logger";
 import { askOnConsentPage, consentIntent, consentRequest, frontendBound } from "../../api/consent";
 
 /**
- * Offers an opened invitation link once the person is signed in: "Join" redeems
- * the org invite token and enters the workspace (asking for a name first if
- * they have none). The token was taken off the address bar before React
- * mounted (`captureInvite` in `main.tsx`), so it survives the passkey sign-up
- * on the invitation page (`pages/Login/InvitationPage`).
+ * An opened invitation link, once the person is signed in: one step. They see
+ * the invitation, choose their name in the workspace (offered: the one they
+ * last used) and press Join. Join redeems the token (on the node's consent
+ * page when the session is bound to Chat's frontend, see `ConsentReturn`),
+ * publishes the name as their member metadata, and opens #general.
  *
- * ⚠️ Someone already in the workspace is not offered Join. Redeeming spends
- * the link's single use, so the owner trying their own link used to leave the
- * person it was meant for with "unknown invite". When the link names its
- * workspace (`&org=`) and this account's orgs include it, the token is dropped
- * unspent and the prompt says so; when it cannot tell, it asks as before.
+ * The token was taken off the address bar before React mounted
+ * (`captureInvite` in `main.tsx`), so it survives the passkey sign-in on the
+ * invitation page (`pages/Login/InvitationPage`).
  *
- * v1 used mero-react's `InvitationDialog` over a signed namespace invitation;
- * the steps are the same, the dialog is this app's own.
+ * Someone already in the workspace is not offered Join: redeeming spends the
+ * link's single use. When the link names its workspace (`&org=`) and this
+ * account is in it, the token is dropped unspent and they are taken there.
  */
 
 const Container = styled.div`
@@ -53,6 +53,30 @@ const Message = styled.div`
   font-size: 0.85rem;
   line-height: 1.5;
   margin-bottom: 1.25rem;
+`;
+
+const Label = styled.label`
+  display: block;
+  color: color-mix(in srgb, var(--glass-ink) 70%, transparent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+`;
+
+const NameInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--glass-ink) 14%, transparent);
+  background: var(--glass-surface-solid);
+  color: var(--glass-ink);
+  font-size: 0.88rem;
+  &:focus {
+    outline: none;
+    border-color: var(--glass-accent);
+  }
 `;
 
 const ErrorText = styled.div`
@@ -88,6 +112,9 @@ interface Props {
   enabled: boolean;
 }
 
+/** The longest name a member may choose (the contract's old limit, kept). */
+const MAX_NAME = 50;
+
 export default function InvitationPrompt({ enabled }: Props) {
   const api = useRef(new GroupApiDataSource());
   const [token, setToken] = useState<string | null>(null);
@@ -96,11 +123,14 @@ export default function InvitationPrompt({ enabled }: Props) {
   const [spent, setSpent] = useState(false);
   /** null while it is being checked; the workspace when this account is already in it. */
   const [member, setMember] = useState<string | null | false>(null);
+  const [name, setName] = useState("");
 
   useEffect(() => {
     // While the consent page's return is being finished (`ConsentReturn`),
     // the invitation is its to settle.
-    setToken(enabled && consentIntent()?.kind !== "acceptInvite" ? pendingInvite() : null);
+    const pending = enabled && consentIntent()?.kind !== "acceptInvite" ? pendingInvite() : null;
+    setToken(pending);
+    if (pending) setName(getMessengerDisplayName(pendingInviteOrg() ?? "") || lastUsedName());
   }, [enabled]);
 
   // The workspace picker waits while this is on screen (`invitationInFlight`).
@@ -126,7 +156,7 @@ export default function InvitationPrompt({ enabled }: Props) {
           setMember(org);
         } else setMember(false);
       })
-      // Cannot tell: ask, as before.
+      // Cannot tell: offer Join.
       .catch(() => live && setMember(false));
     return () => {
       live = false;
@@ -146,13 +176,12 @@ export default function InvitationPrompt({ enabled }: Props) {
     close();
   };
 
-  const enter = (groupId: string, memberIdentity: string) => {
-    const name = getMessengerDisplayName(groupId);
-    if (name) enterWorkspace(api.current, groupId, name, memberIdentity);
-    else enterJoinedWorkspaceForName(groupId);
-  };
-
   if (member) {
+    const open = () => {
+      const known = getMessengerDisplayName(member);
+      if (known) void enterWorkspace(api.current, member, known, getAccountId());
+      else enterJoinedWorkspaceForName(member);
+    };
     return (
       <BaseModal
         toggle={<span />}
@@ -163,13 +192,10 @@ export default function InvitationPrompt({ enabled }: Props) {
         content={
           <Container>
             <Title>You're already in this workspace</Title>
-            <Message>
-              This account is already a member, so there is nothing to accept. The link is left unused for the
-              person it was meant for.
-            </Message>
+            <Message>The link stays unused for the person it was meant for.</Message>
             <Actions>
               <Button onClick={close}>Close</Button>
-              <Button $primary onClick={() => enter(member, getAccountId())}>
+              <Button $primary onClick={open}>
                 Open workspace
               </Button>
             </Actions>
@@ -179,15 +205,19 @@ export default function InvitationPrompt({ enabled }: Props) {
     );
   }
 
+  const chosen = name.trim();
+
   const join = async () => {
+    if (!chosen) return;
     setBusy(true);
     setError("");
     // A session opened on Chat's frontend may not redeem an invite
     // (core#4934): the node's consent page does, with the person's passkey,
-    // and `ConsentReturn` enters the workspace when it sends them back. The
-    // token stays where it is until then, so a decline leaves Join on offer.
+    // and `ConsentReturn` publishes the name and enters the workspace when it
+    // sends them back. The token stays where it is until then, so a decline
+    // leaves Join on offer.
     if (await frontendBound().catch(() => false)) {
-      const intent = { kind: "acceptInvite" as const, org: pendingInviteOrg() };
+      const intent = { kind: "acceptInvite" as const, org: pendingInviteOrg(), selfName: chosen };
       const went = await askOnConsentPage(intent, consentRequest(intent, { inviteToken: token })).catch((e: unknown) => {
         setError(e instanceof Error ? e.message : "Could not open the approval page");
         return false;
@@ -215,7 +245,7 @@ export default function InvitationPrompt({ enabled }: Props) {
     const alias = meta?.data?.name?.trim();
     if (alias) setStoredGroupAlias(groupId, alias);
     log.info("InvitationPrompt", `joined workspace ${groupId}`);
-    enter(groupId, memberIdentity);
+    await enterWorkspace(api.current, groupId, chosen, memberIdentity);
   };
 
   return (
@@ -228,15 +258,31 @@ export default function InvitationPrompt({ enabled }: Props) {
       content={
         <Container>
           <Title>You're invited to a workspace</Title>
-          <Message>Join it to see its channels and message its members in Mero Chat.</Message>
+          {!spent && (
+            <>
+              <Label htmlFor="invite-name">Your name</Label>
+              <NameInput
+                id="invite-name"
+                value={name}
+                maxLength={MAX_NAME}
+                placeholder="e.g. Alice"
+                autoFocus
+                disabled={busy}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void join();
+                }}
+              />
+            </>
+          )}
           {error && <ErrorText role="alert">{error}</ErrorText>}
           <Actions>
             <Button onClick={spent ? close : dismiss} disabled={busy}>
               {spent ? "Close" : "Not now"}
             </Button>
             {!spent && (
-              <Button $primary onClick={() => void join()} disabled={busy}>
-                {busy ? "Joining…" : "Join workspace"}
+              <Button $primary onClick={() => void join()} disabled={busy || !chosen}>
+                {busy ? "Joining…" : "Join"}
               </Button>
             )}
           </Actions>

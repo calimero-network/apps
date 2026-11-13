@@ -69,7 +69,7 @@ vi.mock("../calimero", () => ({
   passkey: () => ({ create: vi.fn(), get: vi.fn() }),
 }));
 
-import { invalidate } from "../platform";
+import { getOrgRecord, invalidate, memberAvatar, memberName, setMemberAvatar } from "../platform";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { ContextApiDataSource } from "./nodeApiDataSource";
 import { createChannel } from "../../utils/createChannel";
@@ -153,7 +153,6 @@ describe("a channel is a chat instance in the org", () => {
       createSubgroup: (...a) => api.createSubgroup(...a),
       setSubgroupVisibility: (...a) => api.setSubgroupVisibility(...a),
       createGroupContext: (...a) => new ContextApiDataSource().createGroupContext(...a),
-      joinChat: async () => ({ data: "ok", error: null }),
     });
     const id = (general as { contextId: string }).contextId;
     expect(h.state.apps.get(id)!.access).toEqual({ kind: "org" });
@@ -222,5 +221,42 @@ describe("an org made for another app is not a workspace", () => {
     expect((await api.listGroups()).data).toEqual([expect.objectContaining({ groupId: "ow", alias: "overworld" })]);
     expect(await api.listOtherOrgs()).toEqual([]);
     expect(h.client.createApp).toHaveBeenCalledWith("general", "bundle-hash", expect.objectContaining({ org: "ow" }));
+  });
+});
+
+describe("a person's name and picture are the workspace's member metadata", () => {
+  function store() {
+    vi.mocked(h.client.setMemberMetadata).mockImplementation((async (org: string, account: string, metadata: unknown) => {
+      (h.state.orgs.get(org)!.memberMetadata as Record<string, unknown>)[account] = metadata;
+    }) as never);
+  }
+
+  it("a rename keeps the picture, and a new picture keeps the name", async () => {
+    store();
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    await setMemberAvatar("org-1", "acct-me", { blob: "b".repeat(64), app: "app-9" });
+    await api.setMemberMetadata("org-1", "acct-me", { name: "Ann" });
+    expect(h.state.orgs.get("org-1")!.memberMetadata).toEqual({
+      "acct-me": { name: "Ann", avatar: { blob: "b".repeat(64), app: "app-9" } },
+    });
+    await setMemberAvatar("org-1", "acct-me", { blob: "c".repeat(64), app: "app-9" });
+    const org = await getOrgRecord("org-1");
+    expect(memberName(org, "acct-me")).toBe("Ann");
+    expect(memberAvatar(org, "acct-me")).toEqual({ blob: "c".repeat(64), app: "app-9" });
+  });
+
+  it("is written to the workspace even when asked from inside a channel", async () => {
+    store();
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const general = await createChannel("org-1", "general", true);
+    const id = (general as { contextId: string }).contextId;
+    await api.setMemberMetadata(id, "acct-me", { name: "Ann" });
+    expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-me", { name: "Ann" });
+  });
+
+  it("reads no picture from a malformed record", () => {
+    const org = { memberMetadata: { a: { avatar: "x" }, b: { avatar: { blob: "", app: "y" } } } } as never;
+    expect(memberAvatar(org, "a")).toBeUndefined();
+    expect(memberAvatar(org, "b")).toBeUndefined();
   });
 });

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDMs } from "./useDMs";
 import {
   clearRegisteredContextIdentities,
-  registerAccountIdentity,
 } from "../utils/selfIdentity";
 
 const {
@@ -229,11 +228,11 @@ describe("useDMs (1-group-per-context)", () => {
       throw new Error("not joined");
     });
     mockGetContextInfo.mockResolvedValue({
-      data: { name: "DM", context_type: "Dm" },
+      data: { name: "DM: Old", context_type: "Dm", creator: "member-me", description: JSON.stringify({ c: "Me", o: "Old" }) },
       error: null,
     });
     mockGetProfiles.mockResolvedValue({
-      data: [{ identity: "member-me", username: "Me" }],
+      data: [{ identity: "member-you", username: "Stale" }],
       error: null,
     });
 
@@ -251,7 +250,6 @@ describe("useDMs (1-group-per-context)", () => {
         contextId: "ctx-me-you",
         otherAlias: "",
         otherIdentity: "member-you",
-        otherUsername: "",
         isJoined: true,
       }),
     );
@@ -387,222 +385,6 @@ describe("useDMs (1-group-per-context)", () => {
     );
   });
 
-  it("reads otherUsername from description when current user is the creator", async () => {
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["member-me"] } },
-    });
-    mockGetContextInfo.mockResolvedValue({
-      data: {
-        name: "DM: Bob",
-        context_type: "Dm",
-        // creator matches joinedIdentity → current user is the creator
-        creator: "member-me",
-        // description encodes creator name (c) and other name (o)
-        description: JSON.stringify({ c: "Alice", o: "Bob" }),
-      },
-      error: null,
-    });
-    // get_profiles should NOT be called because description already resolved the name
-    mockGetProfiles.mockResolvedValue({ data: [], error: null });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms).toHaveLength(1);
-    expect(dms[0].otherUsername).toBe("Bob");
-    // get_profiles not called since description already provided the name
-    expect(mockGetProfiles).not.toHaveBeenCalled();
-  });
-
-  it("treats the creator's ACCOUNT id as self when the node's context identity is a device key", async () => {
-    // Real nodes: `info.creator` is stamped `UserId::new(env::account_id())`,
-    // while `contexts/{id}/identities` returns DEVICE keys. Comparing the two
-    // never matches, so the creator used to read slot "c" — their OWN name —
-    // and the DM they started with Bob rendered as a DM with themselves.
-    registerAccountIdentity("account-me");
-
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["device-me"] } },
-    });
-    mockGetContextInfo.mockResolvedValue({
-      data: {
-        name: "DM: Bob",
-        context_type: "Dm",
-        creator: "account-me",
-        description: JSON.stringify({ c: "Alice", o: "Bob" }),
-      },
-      error: null,
-    });
-    mockGetProfiles.mockResolvedValue({ data: [], error: null });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms).toHaveLength(1);
-    expect(dms[0].otherUsername).toBe("Bob");
-  });
-
-  it("reads otherUsername from description when current user is the recipient", async () => {
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-alice" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-alice" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["member-me"] } },
-    });
-    mockGetContextInfo.mockResolvedValue({
-      data: {
-        name: "DM: Bob",
-        context_type: "Dm",
-        // creator is a different identity → current user is the recipient
-        creator: "member-alice",
-        description: JSON.stringify({ c: "Alice", o: "Bob" }),
-      },
-      error: null,
-    });
-    mockGetProfiles.mockResolvedValue({ data: [], error: null });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms).toHaveLength(1);
-    // recipient sees the creator's name (slot "c")
-    expect(dms[0].otherUsername).toBe("Alice");
-  });
-
-  it("does not pick our own profile as the counterpart in the get_profiles fallback", async () => {
-    // get_profiles keys profiles by ACCOUNT (the contract inserts
-    // `UserId::new(env::account_id())`), while joinedIdentity is a device key.
-    // `p.identity !== joinedIdentity` is therefore true for every row, so a
-    // plain !== would return whichever came first — here, us.
-    registerAccountIdentity("account-me");
-
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["device-me"] } },
-    });
-    // No {c,o} description → the get_profiles fallback runs.
-    mockGetContextInfo.mockResolvedValue({
-      data: { name: "DM", context_type: "Dm", creator: "account-me", description: "" },
-      error: null,
-    });
-    // Our own profile is listed FIRST, so `.find` reaches it before the peer's.
-    mockGetProfiles.mockResolvedValue({
-      data: [
-        { identity: "account-me", username: "Me" },
-        { identity: "account-you", username: "You" },
-      ],
-      error: null,
-    });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms).toHaveLength(1);
-    expect(dms[0].otherUsername).toBe("You");
-    expect(dms[0].otherIdentity).toBe("account-you");
-  });
-
-  it("falls back to get_profiles when description is not participant metadata", async () => {
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["member-me"] } },
-    });
-    mockGetContextInfo.mockResolvedValue({
-      data: {
-        name: "DM: You",
-        context_type: "Dm",
-        creator: "member-me",
-        // Old DM — description is a freeform string, not our {c,o} format
-        description: "Legacy DM context",
-      },
-      error: null,
-    });
-    mockGetProfiles.mockResolvedValue({
-      data: [
-        { identity: "member-me", username: "Me" },
-        { identity: "member-you", username: "You via profiles" },
-      ],
-      error: null,
-    });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms).toHaveLength(1);
-    expect(dms[0].otherUsername).toBe("You via profiles");
-    expect(mockGetProfiles).toHaveBeenCalled();
-  });
-
   it("populates namespaceMemberIdentity from subgroup alias when context entry has no alias", async () => {
     // The server may not echo the alias back on context entries. Without the
     // subgroup alias fallback, namespaceMemberIdentity would be "" and the
@@ -644,49 +426,7 @@ describe("useDMs (1-group-per-context)", () => {
     expect(dms[0].namespaceMemberIdentity).toBe("member-you");
   });
 
-  it("falls back to get_profiles when description is empty", async () => {
-    mockListSubgroups.mockResolvedValue({
-      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
-      error: null,
-    });
-    mockListGroupContexts.mockImplementation(async (id: string) =>
-      id === "dm-sg-1"
-        ? {
-            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
-            error: null,
-          }
-        : { data: [], error: null },
-    );
-    mockFetchContextIdentities.mockResolvedValue({
-      data: { data: { identities: ["member-me"] } },
-    });
-    mockGetContextInfo.mockResolvedValue({
-      data: {
-        name: "DM",
-        context_type: "Dm",
-        creator: "member-me",
-        description: "",
-      },
-      error: null,
-    });
-    mockGetProfiles.mockResolvedValue({
-      data: [
-        { identity: "member-me", username: "Me" },
-        { identity: "member-you", username: "Fallback Name" },
-      ],
-      error: null,
-    });
-
-    const { result } = renderHook(() => useDMs());
-    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
-    await act(async () => {
-      dms = await result.current.fetchDms("namespace-1");
-    });
-
-    expect(dms[0].otherUsername).toBe("Fallback Name");
-  });
-
-  it("uses the member alias when DM profiles do not provide a username", async () => {
+  it("names the other person from the workspace member metadata only, never the DM or its profiles", async () => {
     mockListSubgroups.mockResolvedValue({
       data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
       error: null,
@@ -714,11 +454,11 @@ describe("useDMs (1-group-per-context)", () => {
       data: { data: { identities: ["member-me"] } },
     });
     mockGetContextInfo.mockResolvedValue({
-      data: { name: "DM", context_type: "Dm" },
+      data: { name: "DM: Old", context_type: "Dm", creator: "member-me", description: JSON.stringify({ c: "Me", o: "Old" }) },
       error: null,
     });
     mockGetProfiles.mockResolvedValue({
-      data: [{ identity: "member-me", username: "Me" }],
+      data: [{ identity: "member-you", username: "Stale" }],
       error: null,
     });
 
@@ -733,8 +473,9 @@ describe("useDMs (1-group-per-context)", () => {
       expect.objectContaining({
         otherAlias: "Taylor",
         otherIdentity: "member-you",
-        otherUsername: "",
       }),
     );
+    expect(dms[0]).not.toHaveProperty("otherUsername");
+    expect(mockGetProfiles).not.toHaveBeenCalled();
   });
 });

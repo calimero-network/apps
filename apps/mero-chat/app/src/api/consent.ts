@@ -35,8 +35,11 @@ export type ConsentIntent =
   | { kind: "createOrg"; name: string; selfName: string }
   /** "Invite" in the workspace `org`. */
   | { kind: "createInvite"; org: string }
-  /** "Join workspace" for the pending invitation (its token stays where `captureInvite` put it). */
-  | { kind: "acceptInvite"; org: string | null };
+  /**
+   * "Join" on the pending invitation (its token stays where `captureInvite`
+   * put it), with the name the person chose for the workspace.
+   */
+  | { kind: "acceptInvite"; org: string | null; selfName?: string };
 
 /** Where the intent waits while the person is on the consent page (this tab only). */
 export const CONSENT_INTENT_KEY = "mero-chat:consent-intent";

@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   enterWorkspace: vi.fn(),
   enterJoinedWorkspaceForName: vi.fn(),
   name: "Alice",
+  last: "",
   myOrgs: vi.fn(),
   bound: false,
   askOnConsentPage: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("../../utils/enterWorkspace", () => ({
 vi.mock("../../utils/messengerName", () => ({
   getMessengerDisplayName: () => h.name,
 }));
+vi.mock("@calimero-apps/names", () => ({ lastUsedName: () => h.last }));
 
 import InvitationPrompt from "./InvitationPrompt";
 import { INVITATION_ORG_STORAGE_KEY, INVITATION_STORAGE_KEY } from "../../utils/invitation";
@@ -43,6 +45,7 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   h.name = "Alice";
+  h.last = "";
   h.bound = false;
   h.askOnConsentPage.mockResolvedValue(false);
   h.joinGroup.mockResolvedValue({ data: { groupId: "org-1", memberIdentity: "acct-me" }, error: null });
@@ -59,10 +62,10 @@ describe("InvitationPrompt", () => {
     expect(screen.queryByText(/invited/i)).not.toBeInTheDocument();
   });
 
-  it("redeems the token on Join and enters the workspace under the stored name", async () => {
+  it("redeems the token on Join and enters the workspace under the name offered", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
     await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalled());
     expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok" });
     expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
@@ -74,41 +77,48 @@ describe("InvitationPrompt", () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
     await waitFor(() => expect(h.askOnConsentPage).toHaveBeenCalled());
-    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "acceptInvite", org: "org-1" });
+    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "acceptInvite", org: "org-1", selfName: "Alice" });
     expect(h.askOnConsentPage.mock.calls[0]?.[1]).toMatchObject({ terms: { inviteToken: "tok" } });
     expect(h.joinGroup).not.toHaveBeenCalled();
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
     // Staying here leaves Join on offer.
-    expect(await screen.findByRole("button", { name: /join workspace/i })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: /^join$/i })).toBeEnabled();
   });
 
-  it("asks for a name first when there is none", async () => {
+  it("asks for the name in the same step, offering the one last used", async () => {
     h.name = "";
+    h.last = "Sam";
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
-    await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
+    const input = await screen.findByLabelText(/your name/i);
+    expect(input).toHaveValue("Sam");
+    fireEvent.change(input, { target: { value: "  " } });
+    expect(screen.getByRole("button", { name: /^join$/i })).toBeDisabled();
+    fireEvent.change(input, { target: { value: " Sandi " } });
+    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
+    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Sandi", "acct-me"));
+    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
   });
 
   it("says plainly when the invite was already used or has expired, and drops it", async () => {
     h.joinGroup.mockResolvedValue({ data: null, error: { code: 404, message: "unknown invite" } });
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
-    expect(screen.queryByRole("button", { name: /join workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^join$/i })).not.toBeInTheDocument();
   });
 
   it("says why a token could not be redeemed for now, and keeps it", async () => {
     h.joinGroup.mockResolvedValue({ data: null, error: { code: 503, message: "cluster unavailable" } });
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("cluster unavailable");
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
   });
@@ -119,7 +129,7 @@ describe("InvitationPrompt", () => {
     localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
     render(<InvitationPrompt enabled />);
     expect(await screen.findByText("You're already in this workspace")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /join workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^join$/i })).not.toBeInTheDocument();
     expect(h.joinGroup).not.toHaveBeenCalled();
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /open workspace/i }));
