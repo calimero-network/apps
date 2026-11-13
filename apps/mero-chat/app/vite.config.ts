@@ -30,7 +30,12 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
       manifest: {
-        id: "./",
+        // Root-relative on purpose. A node serves each release under
+        // /{version}/ and redirects / to the latest, so "./" would tie an
+        // installed app to the release it was installed from: a new app per
+        // release, broken once that release is gone. On a root-hosted web
+        // deploy "/" and "./" are the same.
+        id: "/",
         name: "Mero Chat",
         short_name: "Mero Chat",
         description:
@@ -39,8 +44,8 @@ export default defineConfig({
         background_color: "#f6f7fb",
         display: "standalone",
         categories: ["social", "communication", "productivity"],
-        scope: "./",
-        start_url: "./",
+        scope: "/",
+        start_url: "/",
         icons: [
           {
             src: "icons/icon-72x72.png",
