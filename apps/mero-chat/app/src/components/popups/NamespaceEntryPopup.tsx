@@ -21,9 +21,7 @@ import {
 import {
   getMessengerDisplayName,
   setIdentityDisplayName,
-  setMessengerDisplayName,
 } from "../../utils/messengerName";
-import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
 import {
   AppNotInstalledError,
@@ -31,6 +29,8 @@ import {
   resolveInstalledAppId,
 } from "../../utils/installedApps";
 import { useToast } from "../../contexts/ToastContext";
+import { askOnConsentPage, consentRequest, frontendBound } from "../../api/consent";
+import { finishWorkspace } from "../../utils/finishWorkspace";
 import {
   enterWorkspace,
   forgetJoinedAwaitingName,
@@ -484,6 +484,16 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     setError("");
 
     try {
+      // A session opened on Chat's frontend may not create an organization
+      // (core#4934): the node's consent page does it, with the person's
+      // passkey, and `ConsentReturn` finishes the workspace when it sends
+      // them back.
+      if (await frontendBound()) {
+        const intent = { kind: "createOrg" as const, name: trimmedNs, selfName };
+        if (!(await askOnConsentPage(intent, consentRequest(intent)))) setStep("create");
+        return;
+      }
+
       const appId = await resolveInstalledAppId(getApplicationId());
       const createRes = await api.current.createGroup({
         applicationId: appId,
@@ -507,57 +517,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           duration: 12000,
         });
       }
-      setStoredGroupAlias(groupId, trimmedNs);
-      // Before #general, so the channel is made under your name in it.
-      setMessengerDisplayName(selfName, groupId);
-      // The `name` passed to createNamespace above does not reach the group's
-      // metadata record — a freshly created namespace reads back
-      // `metadata: null` — so write it explicitly. The creator is admin, so
-      // this is the call that actually succeeds and gives the workspace a name
-      // everyone can see.
-      await api.current.setGroupMetadata(groupId, trimmedNs).catch(() => {});
-
-      await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
-
-      // Every workspace starts with #general: someone who joins from an
-      // invitation lands in a channel rather than an empty workspace, and the
-      // join can wait for a channel to arrive instead of taking an empty list
-      // (not synced yet) for an empty workspace. The workspace stands without
-      // it, so a failure here is said, not fatal.
-      const general = await createChannel(groupId, GENERAL_CHANNEL, true).catch(
-        (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
-      );
-      if ("error" in general) {
-        addToast({
-          title: "Workspace created without #general",
-          message: `Create a channel before inviting anyone: ${general.error}`,
-          type: "channel",
-          duration: 12000,
-        });
-      }
-
-      const idRes = await api.current.resolveCurrentMemberIdentity(groupId);
-      if (idRes.data?.memberIdentity) {
-        setGroupMemberIdentity(groupId, idRes.data.memberIdentity);
-      }
-
-      // Added to the workspaces already listed, never in place of them.
-      setNamespaces((prev) => [
-        ...prev.filter((g) => g.groupId !== groupId),
-        {
-          groupId,
-          alias: trimmedNs,
-          appKey: "",
-          targetApplicationId: "",
-          upgradePolicy: "Automatic",
-          createdAt: Math.floor(Date.now() / 1000),
-        },
-      ]);
-      setSelectedId(groupId);
-
-      // Named in the same step: straight in. `enterWorkspace` publishes the
-      // name to the org's member record.
-      enterChat(groupId, selfName, idRes.data?.memberIdentity ?? "");
+      await finishWorkspace(api.current, groupId, trimmedNs, selfName, addToast);
     } catch (err) {
       if (err instanceof AppNotInstalledError) {
         setStep("not-installed");
@@ -566,7 +526,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setError(err instanceof Error ? err.message : "Failed to create namespace");
       setStep("create");
     }
-  }, [nsNameInput, selfNameInput, namespaces, enterChat, addToast]);
+  }, [nsNameInput, selfNameInput, namespaces, addToast]);
 
   // "Connect to an existing organization": an org the account is in that
   // holds no chat yet (one made for another app) becomes a workspace once

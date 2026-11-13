@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { styled, keyframes } from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { generateInvitationUrl } from "../../utils/invitation";
+import { askOnConsentPage, consentRequest, frontendBound } from "../../api/consent";
+import { chatTeamId, getOrgRecord } from "../../api/platform";
 
 const spin = keyframes`to { transform: rotate(360deg); }`;
 const fadeUp = keyframes`
@@ -225,6 +227,27 @@ export default function GroupInviteModal({
     const loadInvitation = async () => {
       setLoading(true);
       setErrorMessage("");
+
+      // A session opened on Chat's frontend may not mint an invite
+      // (core#4934): the node's consent page does it with the inviter's
+      // passkey, naming chat's app team where the workspace has one, and
+      // `ConsentReturn` shows the link when it sends them back.
+      if (await frontendBound()) {
+        const record = await getOrgRecord(groupId).catch(() => null);
+        const team = record ? chatTeamId(record) : null;
+        const intent = { kind: "createInvite" as const, org: groupId };
+        const went = await askOnConsentPage(intent, consentRequest(intent, { inviteTeams: team ? [team] : [] })).catch(
+          (e: unknown) => {
+            if (!cancelled) setErrorMessage(e instanceof Error ? e.message : "Could not open the approval page");
+            return false;
+          },
+        );
+        if (!went && !cancelled) {
+          setErrorMessage((m) => m || "Invitations are approved on your Calimero node's page. Open this again to go there.");
+          setLoading(false);
+        }
+        return;
+      }
 
       const response = await new GroupApiDataSource().createInvitation(groupId);
 
