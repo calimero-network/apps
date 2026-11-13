@@ -70,6 +70,12 @@ account, nothing to install, no permissions to grant.
   (the org the account was already in; `null` for "Not now" or a spent
   invite). `isSpent` defaults to `isSpentInvite`, so a lapsed session, a rate
   limit or a network failure keeps the token and says to try again.
+  Show it from `useAskedInvite(invites, signedIn)`: `invite` stays on screen
+  after `<JoinInvitation>` drops the token (so "already in" and "used up" can
+  be said) until `close()`, called from `onJoined` and `onClose`. It follows
+  the store during render; an app copying the pending invite into state from
+  an effect brings the prompt back for good when "Not now" lands before that
+  effect runs.
 - The hook reads the cluster's sign-up policy once it connects
   (`readSignUpPolicy`, `api.signUpAccess`). On a `closed` cluster, or an
   `invite` one when the page holds no invite token (pass

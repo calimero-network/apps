@@ -6,9 +6,8 @@ import {
   canCreateIn,
   type InviteStore,
   type KeyValueStorage,
-  type PendingInvite,
 } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
@@ -128,12 +127,7 @@ export function App({
   // The invitation a signed-in account is asked about stays on screen until it
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the page away with it.
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
-  const asking = client ? (pending ?? asked) : null;
+  const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
 
   // The org an invite joined (or the account was already in): its voting group opens
   // once there is a client to list it with. `org: null` when nothing said which.
@@ -284,11 +278,11 @@ export function App({
             drop={invites.drop}
             after={after}
             onJoined={({ org }) => {
-              setAsked(null);
+              closeInvite();
               setLanding({ org });
             }}
             onClose={({ member }) => {
-              setAsked(null);
+              closeInvite();
               if (member) setLanding({ org: member });
             }}
           />

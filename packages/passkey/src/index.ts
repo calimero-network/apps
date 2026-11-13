@@ -25,6 +25,8 @@ export {
   passkeyDeps,
   usePasskeySession,
   usePendingInvite,
+  useAskedInvite,
+  type AskedInvite,
   describeInviteRefused,
   type InviteRefused,
   type JoinedAtSignUp,

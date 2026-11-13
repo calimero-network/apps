@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { InviteStore, KeyValueStorage, PendingInvite } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite } from "@calimero-apps/passkey";
+import { useCallback, useMemo, useState } from "react";
+import type { InviteStore, KeyValueStorage } from "@calimero-apps/connect";
+import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 
 import { Home } from "./Home";
 import { invites as homeInvites } from "./invites";
@@ -41,12 +41,7 @@ export function App({
 
   // An invitation link: its own page while signed out, "Join" once signed in.
   const pending = usePendingInvite(invites);
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
-  const asking = client ? (pending ?? asked) : null;
+  const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
   const [inviteLater, setInviteLater] = useState(false);
 
   return (
@@ -95,11 +90,11 @@ export function App({
             drop={invites.drop}
             after={after}
             onJoined={({ org }) => {
-              setAsked(null);
+              closeInvite();
               if (org) setLanding(org);
             }}
             onClose={({ member }) => {
-              setAsked(null);
+              closeInvite();
               if (member) setLanding(member);
             }}
           />

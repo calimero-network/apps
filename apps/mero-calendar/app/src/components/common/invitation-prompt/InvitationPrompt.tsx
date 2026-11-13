@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { PendingInvite } from "@calimero-apps/connect";
 import { lastUsedName } from "@calimero-apps/names";
-import { JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
+import { JoinInvitation, useAskedInvite } from "@calimero-apps/passkey";
 
 import { useSessionApi } from "../../../api/sessionContext";
 import { dropInvite, inviteRoute, invites, readOrg, setMyTeamName, takeJoinedAtSignUp } from "../../../api/teams";
@@ -45,20 +44,10 @@ export default function InvitationPrompt() {
   const { showToast } = useToast();
   const { api } = useSessionApi();
   const signedIn = api.session.status === "signed-in" ? api.session : null;
-  const pending = usePendingInvite(invites);
-  const [asked, setAsked] = useState<PendingInvite | null>(null);
-  // The invitation this screen is done with (joined, "Not now", closed). An
-  // effect that held `pending` may still run once with the copy from before
-  // the drop, so closing is by token, not by clearing `asked`.
-  const [closed, setClosed] = useState<string | null>(null);
   /** Joined, and the team has no name for you yet: asked once, here. */
   const [naming, setNaming] = useState<{ org: string; to: string } | null>(null);
   const client = signedIn?.client ?? null;
-
-  useEffect(() => {
-    if (!client) setAsked(null);
-    else if (pending) setAsked(pending);
-  }, [client, pending]);
+  const { invite: asking, close } = useAskedInvite(invites, client !== null);
 
   // Signed up from a page holding the invite: already joined; open what it named.
   useEffect(() => {
@@ -88,8 +77,6 @@ export default function InvitationPrompt() {
     );
   }
 
-  const held = client ? (pending ?? asked) : null;
-  const asking = held && held.token !== closed ? held : null;
   if (!signedIn || !asking) return null;
 
   const destination = (org: string | null) => inviteRoute(asking) ?? (org ? `/teams/${org}` : "/teams");
@@ -108,7 +95,7 @@ export default function InvitationPrompt() {
         drop={dropInvite}
         after={() => api.store?.sync(signedIn.client)}
         onJoined={({ org }) => {
-          setClosed(asking.token);
+          close();
           showToast("You joined the team.", "success");
           if (!org) {
             open(org);
@@ -124,7 +111,7 @@ export default function InvitationPrompt() {
             });
         }}
         onClose={({ member }) => {
-          setClosed(asking.token);
+          close();
           if (member) open(member);
         }}
         classNames={CLASS_NAMES}

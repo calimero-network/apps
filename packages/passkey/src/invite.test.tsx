@@ -5,6 +5,7 @@
  * sign-up's join (B10), and the invite dropped on sign-out or another
  * account (B7).
  */
+import { useLayoutEffect, useRef } from "react";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -28,6 +29,7 @@ import {
 import { JoinInvitation, SignInPanel } from "./Onboarding";
 import {
   usePasskeySession,
+  useAskedInvite,
   usePendingInvite,
   type InviteRefused,
   type JoinedAtSignUp,
@@ -244,6 +246,62 @@ describe("the pending invite and who is signed in (B7)", () => {
     expect(result.current?.route).toBe("/deals/7");
     act(() => invites.drop());
     expect(result.current).toBeNull();
+  });
+});
+
+describe("useAskedInvite: the invitation a signed-in account is asked about", () => {
+  /**
+   * The prompt, with "Not now" pressed once as soon as it shows. A layout
+   * effect runs in the commit that put the prompt on screen, before that
+   * commit's passive effects: the same place a real click lands when it comes
+   * between the paint and those effects (a slow device, a long task).
+   */
+  function Prompt({ invites, notNow }: { invites: InviteStore; notNow: boolean }) {
+    const { invite, close } = useAskedInvite(invites, true);
+    const pressed = useRef(false);
+    useLayoutEffect(() => {
+      if (!notNow || !invite || pressed.current) return;
+      pressed.current = true;
+      // `JoinInvitation`'s "Not now": drop the token, then close.
+      invites.drop();
+      close();
+    }, [invites, notNow, invite, close]);
+    return invite ? <p data-testid="prompt">{invite.token}</p> : null;
+  }
+
+  it("Not now pressed before the showing commit's effects ran closes it for good", async () => {
+    const invites = storeWithLink();
+    render(<Prompt invites={invites} notNow />);
+    // Every effect and every update the press queued has run by now.
+    await act(async () => {});
+    expect(invites.token()).toBeNull();
+    expect(screen.queryByTestId("prompt")).toBeNull();
+  });
+
+  it("stays on screen once its token is dropped, until closed", () => {
+    const invites = storeWithLink();
+    const { result } = renderHook(() => useAskedInvite(invites, true));
+    expect(result.current.invite?.token).toBe("tok-1");
+    // `JoinInvitation` drops the token before it says "already in" or "used up".
+    act(() => invites.drop());
+    expect(result.current.invite?.token).toBe("tok-1");
+    act(() => result.current.close());
+    expect(result.current.invite).toBeNull();
+  });
+
+  it("asks nobody signed out, and forgets what it held at sign-out", () => {
+    const invites = storeWithLink();
+    const { result, rerender } = renderHook(({ signedIn }) => useAskedInvite(invites, signedIn), {
+      initialProps: { signedIn: false },
+    });
+    expect(result.current.invite).toBeNull();
+    rerender({ signedIn: true });
+    expect(result.current.invite?.token).toBe("tok-1");
+    act(() => invites.drop());
+    rerender({ signedIn: false });
+    expect(result.current.invite).toBeNull();
+    rerender({ signedIn: true });
+    expect(result.current.invite).toBeNull();
   });
 });
 
