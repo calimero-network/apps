@@ -6,10 +6,11 @@ wasmtime runtime), developed against **`merod local`**, and a frontend that
 talks to **Calimero Cloud** in production and to the local nodes in development
 through mero-js's **`CalimeroClient`**.
 
-Apps move one PR at a time. Until an app's own PR moves it, it stays a v1 app
-(`calimero-sdk`, wasmer, merobox, `MeroJs`) and its CI is unchanged.
-[`apps/kv-store`](../apps/kv-store) is the first component app and the template
-for the rest; [Porting an app](#porting-an-app-the-checklist) is the checklist.
+Every app in this repo is now a component app: each moved in a PR of its own
+from the v1 SDK (wasmer, merobox, `MeroJs`), and no v1 app remains.
+[`apps/kv-store`](../apps/kv-store) was the first and is the template for a new
+one; [Porting an app](#porting-an-app-the-checklist) is the checklist the ports
+followed.
 
 - [The pieces](#the-pieces)
 - [Layout of a component app](#layout-of-a-component-app)
@@ -27,12 +28,12 @@ for the rest; [Porting an app](#porting-an-app-the-checklist) is the checklist.
 
 | | what | where |
 |---|---|---|
-| core pin | `component-core-tag` (now `1.0.0-rc.8`: core#4813's collections, plus blobs, search, xcall, actions and outbound HTTP) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
+| core pin | `component-core-tag` (now `1.0.0-rc.20`) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
 | builder / bundler | `mero-component build \| bundle \| inspect \| abi`: core's `calimero-app-build` and `calimero-bundle` at the pinned tag | [`tools/component-bundle`](../tools/component-bundle) |
 | local cluster | `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
 | frontend helper | `@calimero-apps/connect`: target (local / cloud) from env, the client, the stored session | [`packages/connect`](../packages/connect) |
 | CI | `Components` workflow | [`.github/workflows/components.yml`](../.github/workflows/components.yml) |
-| JS client | `@calimero-network/mero-js` 28 via `"catalog:component"` | `pnpm-workspace.yaml` |
+| JS client | `@calimero-network/mero-js` 33 via `"catalog:component"` | `pnpm-workspace.yaml` |
 
 Why a separate builder: `cargo mero bundle` at the pinned tag builds
 `wasm32-unknown-unknown` (v1) only and cannot take a prebuilt component.
