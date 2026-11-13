@@ -267,13 +267,17 @@ final class SessionModel: ObservableObject {
             let app = CalimeroAppBackend(
                 client: cloud, account: account, packageName: ChatConstants.packageName,
                 packageVersion: client.config.packageVersion,
-                // Invites and member changes are approved on Mero Chat's page,
-                // where the node takes this session's approvals from.
-                passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback))
+                // Step-ups over Mero Chat's own apps are approved on Mero Chat's page.
+                passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback),
+                // Creating a workspace, inviting and joining are approved on the
+                // node's consent page, which returns through Mero Chat's page.
+                consent: client.servedPageConsent(cluster: AppConfig.cluster, callback: AppConfig.callback))
             backend = CloudChatBackend(
                 app: app,
                 privateTeams: { org in
-                    guard let info = try? await cloud.getOrg(org) else { return [] }
+                    guard let raw = try? await cloud.orgs.get(org: org), let json = try? JSONValue(encoding: raw)
+                    else { return [] }
+                    let info = OrgInfo(json: json)
                     return Set(info.teams.values.filter { $0.join == .invite }.map { teamGroupId(org: org, team: $0.teamId) })
                 })
         } else {
