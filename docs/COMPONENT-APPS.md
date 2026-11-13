@@ -28,7 +28,7 @@ followed.
 
 | | what | where |
 |---|---|---|
-| core pin | `component-core-tag` (now `1.0.0-rc.20`) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
+| core pin | `component-core-tag` (now `1.0.0-rc.23`) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
 | builder / bundler | `mero-component build \| bundle \| inspect \| abi`: core's `calimero-app-build` and `calimero-bundle` at the pinned tag | [`tools/component-bundle`](../tools/component-bundle) |
 | local cluster | `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
 | frontend helper | `@calimero-apps/connect`: target (local / cloud) from env, the client, the stored session | [`packages/connect`](../packages/connect) |
