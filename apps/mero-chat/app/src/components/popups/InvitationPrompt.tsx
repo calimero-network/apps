@@ -17,6 +17,7 @@ import {
 } from "../../utils/invitation";
 import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
+import { askOnConsentPage, consentIntent, consentRequest, frontendBound } from "../../api/consent";
 
 /**
  * Offers an opened invitation link once the person is signed in: "Join" redeems
@@ -97,7 +98,9 @@ export default function InvitationPrompt({ enabled }: Props) {
   const [member, setMember] = useState<string | null | false>(null);
 
   useEffect(() => {
-    setToken(enabled ? pendingInvite() : null);
+    // While the consent page's return is being finished (`ConsentReturn`),
+    // the invitation is its to settle.
+    setToken(enabled && consentIntent()?.kind !== "acceptInvite" ? pendingInvite() : null);
   }, [enabled]);
 
   // The workspace picker waits while this is on screen (`invitationInFlight`).
@@ -179,6 +182,19 @@ export default function InvitationPrompt({ enabled }: Props) {
   const join = async () => {
     setBusy(true);
     setError("");
+    // A session opened on Chat's frontend may not redeem an invite
+    // (core#4934): the node's consent page does, with the person's passkey,
+    // and `ConsentReturn` enters the workspace when it sends them back. The
+    // token stays where it is until then, so a decline leaves Join on offer.
+    if (await frontendBound().catch(() => false)) {
+      const intent = { kind: "acceptInvite" as const, org: pendingInviteOrg() };
+      const went = await askOnConsentPage(intent, consentRequest(intent, { inviteToken: token })).catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Could not open the approval page");
+        return false;
+      });
+      if (!went) setBusy(false);
+      return;
+    }
     const res = await api.current.joinGroup({ invitation: token });
     if (res.error || !res.data) {
       setBusy(false);

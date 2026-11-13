@@ -8,6 +8,15 @@ const h = vi.hoisted(() => ({
   enterJoinedWorkspaceForName: vi.fn(),
   name: "Alice",
   myOrgs: vi.fn(),
+  bound: false,
+  askOnConsentPage: vi.fn(),
+}));
+
+vi.mock("../../api/consent", () => ({
+  frontendBound: async () => h.bound,
+  askOnConsentPage: h.askOnConsentPage,
+  consentIntent: () => null,
+  consentRequest: (intent: unknown, terms: { inviteToken?: string }) => ({ kind: "acceptInvite", intent, terms }),
 }));
 
 vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));
@@ -34,6 +43,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   h.name = "Alice";
+  h.bound = false;
+  h.askOnConsentPage.mockResolvedValue(false);
   h.joinGroup.mockResolvedValue({ data: { groupId: "org-1", memberIdentity: "acct-me" }, error: null });
   h.getGroupMetadata.mockResolvedValue({ data: { name: "Team" }, error: null });
   h.myOrgs.mockResolvedValue([]);
@@ -56,6 +67,21 @@ describe("InvitationPrompt", () => {
     expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok" });
     expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("on Chat's frontend, sends Join to the node's consent page and keeps the token until it decides", async () => {
+    h.bound = true;
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    await waitFor(() => expect(h.askOnConsentPage).toHaveBeenCalled());
+    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "acceptInvite", org: "org-1" });
+    expect(h.askOnConsentPage.mock.calls[0]?.[1]).toMatchObject({ terms: { inviteToken: "tok" } });
+    expect(h.joinGroup).not.toHaveBeenCalled();
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
+    // Staying here leaves Join on offer.
+    expect(await screen.findByRole("button", { name: /join workspace/i })).toBeEnabled();
   });
 
   it("asks for a name first when there is none", async () => {
