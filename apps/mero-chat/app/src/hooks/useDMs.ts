@@ -29,6 +29,9 @@ export interface DMContextInfo extends GroupContextChannel {
  * DM hook backed by group contexts: lists group contexts, filters those with
  * type === "dm", and enriches each with identity and metadata.
  */
+/** Contexts get_info reported as channels (not DMs); their type never changes. */
+const KNOWN_NON_DM_CONTEXTS = new Set<string>();
+
 export function useDMs() {
   const [dms, setDms] = useState<DMContextInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,6 +138,9 @@ export function useDMs() {
       const enriched: (DMContextInfo | null)[] = await Promise.all(
         contextEntries.map(async (entry) => {
           const { contextId: ctxId, alias } = entry;
+          // A context's type never changes: once get_info said "not a DM",
+          // later polls skip it instead of reading its identities and info.
+          if (KNOWN_NON_DM_CONTEXTS.has(ctxId)) return null;
           const discovery = currentMemberIdentity
             ? resolveSharedDmDiscovery(entry, currentMemberIdentity)
             : null;
@@ -171,6 +177,7 @@ export function useDMs() {
           }
 
           if (info && info.context_type !== "Dm") {
+            KNOWN_NON_DM_CONTEXTS.add(ctxId);
             return null;
           }
 

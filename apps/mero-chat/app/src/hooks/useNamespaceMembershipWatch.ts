@@ -6,6 +6,7 @@ import { clearNamespaceReady } from "../utils/session";
 import { useToast } from "../contexts/ToastContext";
 import { log } from "../utils/logger";
 import { nodeBasename } from "../utils/servedByNode";
+import { visibleInterval } from "../utils/visibleInterval";
 
 const POLL_INTERVAL_MS = 30_000;
 /** Polls in a row that must say "removed" before the user is bounced. */
@@ -124,10 +125,10 @@ export function useNamespaceMembershipWatch(): void {
     };
 
     void check();
-    const interval = setInterval(() => void check(), POLL_INTERVAL_MS);
+    const stop = visibleInterval(() => void check(), POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
     };
   }, [addToast]);
 }

@@ -4,12 +4,11 @@ import type { Role } from "../api/clientApi";
 import { useWebSocketEvents } from "../contexts/WebSocketContext";
 import type { WebSocketEvent } from "../types/WebSocketTypes";
 
-const POLL_INTERVAL_MS = 30_000;
-
 /**
  * Resolve the current user's app-level moderation role inside a channel
- * context. Reacts immediately to `RoleUpdated` SSE events in the context
- * and falls back to a 30s poll for any missed events.
+ * context. Reacts immediately to `RoleUpdated` SSE events in the context,
+ * and re-reads when the tab becomes visible again (events missed while it
+ * was hidden). There is no timer: the events already cover every change.
  *
  * Default is `"User"` (matches the WASM semantics: absence ↔ `User`).
  *
@@ -46,10 +45,13 @@ export function useMyChannelRole(
     refreshRef.current = refresh;
 
     void refresh();
-    const interval = setInterval(() => void refresh(), POLL_INTERVAL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [contextId, executorPublicKey]);
 

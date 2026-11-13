@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
+import { visibleInterval } from "../utils/visibleInterval";
 import {
   getGroupMemberIdentity,
   setGroupMemberIdentity,
@@ -196,13 +197,13 @@ export function useCurrentGroupPermissions(groupId: string) {
     };
 
     void loadPermissions();
-    const interval = setInterval(() => {
+    const stop = visibleInterval(() => {
       void loadPermissions(true);
     }, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
     };
   }, [groupId, attempt]);
 

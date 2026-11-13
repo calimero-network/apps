@@ -5,8 +5,9 @@
  *   - loads draft from WASM on mount / channel change
  *   - hasDraft reflects whether draft is non-empty
  *   - setDraft debounces WASM save by 4s
- *   - setDraft("") calls deleteDraft immediately, skips debounce
- *   - clearDraft calls deleteDraft immediately and resets state
+ *   - setDraft("") deletes a stored draft immediately, skips debounce
+ *   - clearDraft deletes a stored draft immediately and resets state
+ *   - nothing stored (never loaded or saved) → no deleteDraft at all
  *   - switching channels cancels any pending debounce for the old channel
  *   - undefined channelName keeps draft empty, never calls API
  *
@@ -224,6 +225,7 @@ describe("useDraft — setDraft debounce", () => {
   });
 
   it("calls deleteDraft immediately when setDraft is called with empty string", async () => {
+    mockGetDraft.mockResolvedValueOnce({ data: "saved earlier" });
     const { result } = renderHook(() => useDraft("general"));
     await flushPromises();
 
@@ -284,6 +286,7 @@ describe("useDraft — clearDraft", () => {
   });
 
   it("calls deleteDraft immediately", async () => {
+    mockGetDraft.mockResolvedValueOnce({ data: "saved earlier" });
     const { result } = renderHook(() => useDraft("general"));
     await flushPromises();
 
@@ -294,6 +297,7 @@ describe("useDraft — clearDraft", () => {
   });
 
   it("cancels any pending debounced save — saveDraft must not fire", async () => {
+    mockGetDraft.mockResolvedValueOnce({ data: "saved earlier" });
     const { result } = renderHook(() => useDraft("general"));
     await flushPromises();
 
@@ -302,6 +306,29 @@ describe("useDraft — clearDraft", () => {
     act(() => vi.advanceTimersByTime(DEBOUNCE_MS));
 
     expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(mockDeleteDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends no deleteDraft when no draft was ever stored", async () => {
+    const { result } = renderHook(() => useDraft("general"));
+    await flushPromises();
+
+    act(() => result.current.setDraft("typed, not saved yet"));
+    act(() => result.current.setDraft(""));
+    act(() => result.current.clearDraft());
+
+    expect(mockDeleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("deletes a draft it saved itself", async () => {
+    const { result } = renderHook(() => useDraft("general"));
+    await flushPromises();
+
+    act(() => result.current.setDraft("hello"));
+    act(() => vi.advanceTimersByTime(DEBOUNCE_MS));
+    act(() => result.current.clearDraft());
+
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     expect(mockDeleteDraft).toHaveBeenCalledTimes(1);
   });
 });

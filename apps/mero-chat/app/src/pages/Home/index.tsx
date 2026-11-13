@@ -11,6 +11,8 @@ import {
   getStoredSession,
   updateSessionChat,
 } from "../../utils/session";
+import { ensureAdminRole } from "../../hooks/ensureAdminRole";
+import { visibleInterval } from "../../utils/visibleInterval";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
@@ -80,6 +82,9 @@ import ChatAccessGate from "./ChatAccessGate";
  * The selected workspace, behind {@link ChatAccessGate}: someone who no
  * longer has Chat there is told so instead of getting an empty shell.
  */
+/** Event kinds that can add to or change an open thread. */
+const THREAD_EVENT_KINDS = new Set(["MessageSentThread", "MessageEdited", "ReactionUpdated"]);
+
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   return (
     <ChatAccessGate>
@@ -335,9 +340,8 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       void clearUnread(resolvedChat.contextId, resolvedChat.contextIdentity);
     }
 
-    // Bootstrap WASM admin role for namespace admins. set_member_role allows
-    // a self-promotion to Admin when no admin exists in the WASM roles map yet.
-    // After the first call this is a no-op (Admin → Admin is idempotent).
+    // Bootstrap the contract's Admin role for namespace admins: read once per
+    // channel per session, write only when missing (ensureAdminRole).
     const selfAccount = getSelfAccountBase58();
     if (
       currentGroupPermissions.isAdmin &&
@@ -345,14 +349,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       resolvedChat.contextIdentity &&
       selfAccount
     ) {
-      new ClientApiDataSource()
-        .setMemberRole({
-          contextId: resolvedChat.contextId,
-          executorPublicKey: resolvedChat.contextIdentity,
-          target: selfAccount,
-          role: "Admin",
-        })
-        .catch(() => {});
+      void ensureAdminRole(resolvedChat.contextId, resolvedChat.contextIdentity, selfAccount).catch(() => {});
     }
 
     const chatId = resolvedChat.id || resolvedChat.name;
@@ -976,7 +973,14 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
 
       await handleStateMutation(event);
 
-      if (openThread) {
+      // A thread re-read only for events from the open chat that can change a
+      // thread; any event from any channel used to cost a getMessages.
+      const touchesThread =
+        event.contextId === activeChatRef.current?.contextId &&
+        (event.data?.events ?? []).some((e: { kind?: string }) =>
+          THREAD_EVENT_KINDS.has(e.kind ?? ""),
+        );
+      if (openThread && touchesThread) {
         const sessionChat = getStoredSession();
         const useDM = sessionChat?.type === "direct_message";
 
@@ -1120,22 +1124,19 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
     void fetchMembersRef.current();
   });
 
-  // Poll DMs every 30s — catches deletions and new DMs on both nodes
+  // Poll DMs every 30s while visible — catches deletions and new DMs on both nodes
   useEffect(() => {
-    const interval = setInterval(() => { void fetchDmsRef.current(); }, 30000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void fetchDmsRef.current(); }, 30000);
   }, []);
 
-  // Poll channel list every 30s — catches channel deletions for all members
+  // Poll channel list every 30s while visible — catches channel deletions for all members
   useEffect(() => {
-    const interval = setInterval(() => { void fetchChannelsRef.current(); }, 30000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void fetchChannelsRef.current(); }, 30000);
   }, []);
 
-  // Poll namespace members every 60s — catches new members joining the workspace
+  // Poll namespace members every 60s while visible — catches new members joining the workspace
   useEffect(() => {
-    const interval = setInterval(() => { void debouncedFetchGroupMembers(); }, 60000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void debouncedFetchGroupMembers(); }, 60000);
   }, [debouncedFetchGroupMembers]);
 
   const onJoinedChat = async () => {
