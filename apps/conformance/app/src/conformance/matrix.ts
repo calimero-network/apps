@@ -815,19 +815,23 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(A, REL, "releaseRules", OK, () => A.client.public.releasesPublic(), (r) => Object.keys(r));
   await row(A, REL, "pendingApprovals (the org)", OK, () => A.client.pendingApprovals(orgId()), (r) => Object.keys(r));
   await row(A, REL, "appsReport (the org)", OK, () => A.client.orgs.apps({ org: orgId() }), (r) => Object.keys(r));
-  await row(A, REL, "approveRelease (the org, then the account; withdrawn)", OK, async () => {
+  // Since core#5015 (1.0.0-rc.20) every account has a personal organization
+  // from sign-up, and an account holds no approvals of its own: the old
+  // `POST /auth/releases` is gone, and the personal organization's are
+  // approved like any organization's.
+  await row(A, REL, "approveRelease (the org, then the personal org; withdrawn)", OK, async () => {
     await A.client.orgs.releaseApproval(
       { org: orgId(), version: "2.3.200", approved: true },
       { confirm: passkeyConfirm(A.passkey) },
     );
-    await A.client.auth.accountReleaseApproval(
-      { version: "2.3.200", approved: true },
-      { confirm: passkeyConfirm(A.passkey) },
-    );
-    await A.client.auth.accountReleaseApproval(
-      { version: "2.3.200", approved: false },
-      { confirm: passkeyConfirm(A.passkey) },
-    );
+    const orgs = (await A.client.auth.me()).orgs as { orgId: string; personal?: boolean }[];
+    const personal = need(orgs.find((o) => o.personal)?.orgId, "A's personal organization");
+    for (const approved of [true, false]) {
+      await A.client.orgs.releaseApproval(
+        { org: personal, version: "2.3.200", approved },
+        { confirm: passkeyConfirm(A.passkey) },
+      );
+    }
   });
   await row(A, REL, "approveOutbound (the package's declared prefixes, then none)", OK, async () => {
     await A.client.orgs.outboundApproval(
