@@ -62,7 +62,7 @@ export const APP_PACKAGE = "com.calimero.chat";
 
 /** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Chat",
+  name: "Hyperfeed Chat",
   description: "Private team chat for your organization: channels, threads and direct messages.",
   package: APP_PACKAGE,
   dir: "mero-chat",
@@ -137,7 +137,7 @@ function offerUpgrades(): void {
   if (signedIn && !stopUpgrades) {
     stopUpgrades = {
       ...signedIn,
-      stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Mero Chat", accountId: signedIn.accountId }),
+      stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Hyperfeed Chat", accountId: signedIn.accountId }),
     };
   }
 }

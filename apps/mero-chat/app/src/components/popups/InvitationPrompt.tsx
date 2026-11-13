@@ -228,7 +228,7 @@ export default function InvitationPrompt({ enabled }: Props) {
       content={
         <Container>
           <Title>You're invited to a workspace</Title>
-          <Message>Join it to see its channels and message its members in Mero Chat.</Message>
+          <Message>Join it to see its channels and message its members in Hyperfeed Chat.</Message>
           {error && <ErrorText role="alert">{error}</ErrorText>}
           <Actions>
             <Button onClick={spent ? close : dismiss} disabled={busy}>

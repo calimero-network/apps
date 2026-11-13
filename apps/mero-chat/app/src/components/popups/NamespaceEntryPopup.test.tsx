@@ -161,7 +161,7 @@ describe("NamespaceEntryPopup", () => {
   it("says how to join when the node has no workspace yet", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
     open();
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
     expect(screen.getByTestId("join-hint")).toBeInTheDocument();
     expect(
       screen.queryByText("Join existing workspace"),
@@ -241,7 +241,7 @@ describe("NamespaceEntryPopup", () => {
     it("is neither listed nor preselected: create is primary", async () => {
       h.listGroups.mockResolvedValue({ data: [], error: null });
       open();
-      expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+      expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
       expect(screen.queryByText("Select workspace")).not.toBeInTheDocument();
       expect(screen.getAllByRole("button")[0]).toHaveTextContent("Create workspace");
       expect(screen.queryByTestId("connect-org-ow")).not.toBeInTheDocument();

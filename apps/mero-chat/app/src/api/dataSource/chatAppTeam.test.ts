@@ -419,7 +419,7 @@ describe("connecting chat to an organization made for another app", () => {
   it("a member of an org with app teams cannot add Chat: told so, nothing made", async () => {
     const org = otherOrg("standalone", "member");
     const made = await createChannel(org, "general", true);
-    expect(made).toEqual({ error: expect.stringMatching(/owners and admins can add Mero Chat/) });
+    expect(made).toEqual({ error: expect.stringMatching(/owners and admins can add Hyperfeed Chat/) });
     expect(h.client.scopeApps).not.toHaveBeenCalled();
     expect(h.client.createApp).not.toHaveBeenCalled();
   });

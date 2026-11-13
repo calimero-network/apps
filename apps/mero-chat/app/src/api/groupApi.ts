@@ -100,7 +100,7 @@ export interface CreateInvitationResponse {
   invitation: string;
   groupAlias?: string;
   /**
-   * The invite gives Mero Chat only: it names chat's app team in an org whose
+   * The invite gives Hyperfeed Chat only: it names chat's app team in an org whose
    * apps keep separate people (shared, core#4890), so the organization's
    * other apps are not opened to the person.
    */

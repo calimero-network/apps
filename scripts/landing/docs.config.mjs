@@ -409,7 +409,7 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.',
+          'Hyperfeed Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.',
         ],
         concepts: [
           { term: 'Organization', def: 'A workspace — the team you invite people into. Joining it is what makes you a member.' },

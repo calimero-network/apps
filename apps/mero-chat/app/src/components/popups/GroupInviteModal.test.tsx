@@ -61,13 +61,13 @@ describe("GroupInviteModal", () => {
     expect(await screen.findByText(/copy invite link/i)).toBeInTheDocument();
   });
 
-  it("says when the link gives Mero Chat only (a shared org)", async () => {
+  it("says when the link gives Hyperfeed Chat only (a shared org)", async () => {
     mockCreateInvitation.mockResolvedValue({
       data: { invitation: "tok-9", groupAlias: "Acme", chatOnly: true },
       error: null,
     });
     render(<GroupInviteModal groupId="org-1" isOpen={true} onClose={vi.fn()} />);
-    expect(await screen.findByTestId("invite-chat-only")).toHaveTextContent(/Mero Chat only/);
+    expect(await screen.findByTestId("invite-chat-only")).toHaveTextContent(/Hyperfeed Chat only/);
   });
 
   it("says nothing of the kind for a workspace-wide invite", async () => {

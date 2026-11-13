@@ -565,7 +565,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   const connectExisting = (
     <ConnectExistingOrg
-      appName="Mero Chat"
+      appName="Hyperfeed Chat"
       load={loadOtherOrgs}
       onConnect={handleConnect}
       className="chat-connect-existing"
@@ -720,8 +720,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         {step === "no-workspace" && (
           <>
             <Header>
-              <Title>Welcome to MeroChat</Title>
-              <Sub>You have no Mero Chat workspace yet. Create one to get started.</Sub>
+              <Title>Welcome to Hyperfeed Chat</Title>
+              <Sub>You have no Hyperfeed Chat workspace yet. Create one to get started.</Sub>
             </Header>
             {error && <Err>{error}</Err>}
             <Button

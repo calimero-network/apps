@@ -2,7 +2,7 @@
   "name": "mero-chat",
   "private": true,
   "version": "0.0.1",
-  "description": "Mero Chat — team chat on Calimero (component SDK, CalimeroClient)",
+  "description": "Hyperfeed Chat — private team chat on Calimero (component SDK, CalimeroClient)",
   "keywords": [
     "calimero",
     "chat",

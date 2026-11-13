@@ -130,10 +130,10 @@ export default function SignInPanel({
 
   return (
     <Container data-testid={testId}>
-      <Title>{invited ? "You're invited" : "Sign in to Mero Chat"}</Title>
+      <Title>{invited ? "You're invited" : "Sign in to Hyperfeed Chat"}</Title>
       <Hint data-testid="signin-desc">
         {invited
-          ? "You've been invited to join the workspace in Mero Chat. "
+          ? "You've been invited to join the workspace in Hyperfeed Chat. "
           : ""}
         Your account is a passkey: nothing to remember, nothing to leak.
       </Hint>
