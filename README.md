@@ -1,18 +1,21 @@
 # Mero Apps
 
-**Monorepo for every application built on the [Calimero network](https://github.com/calimero-network/core).**
+**Twenty-seven real apps on [Calimero](https://github.com/calimero-network/core), built so the host
+can't read them.**
 
-Calimero 1.0 is a confidential cloud for collaborative apps, and these apps have no backend server of
-their own. A Rust contract on `calimero-sdk`, compiled to a `calimero:app` WebAssembly component, *is*
-the backend. Each instance of an app lives in an organization (every account has a personal one) and
-is replicated by its own Raft log across attested Intel TDX nodes: the leader runs each call against
-the contract and the replicas apply its result. Clients verify a node's attestation before they send
-anything and talk to it over a sealed channel; people sign in with passkeys. There is no API tier to
-write, and nobody operating the nodes — Calimero included — can read your data. Every app in here is a
-demonstration of what that architecture makes possible — design tools, spreadsheets, video calls, a
-secret manager, document signing, games — built the same way, on the same stack.
+Calimero is your app's whole backend, like Firebase. Except nobody can read your data, not even us.
+An app gets auth (passkeys, sessions, scoped API keys), a database (replicated app state: maps, sets,
+tables with indexes, rich text), functions, realtime (events, presence), storage (sealed blobs),
+search, hosting (its frontend served from the node) and typed clients, all running inside attested
+Intel TDX hardware; clients verify the node before they send anything.
 
-This repository consolidates apps that used to live in their own repos, so they share one toolchain,
+This repository is the apps built on it: chat, documents, spreadsheets, a design canvas, a CRM, a
+secret manager, document signing, private polls, games. Each is a Rust contract on `calimero-sdk`,
+compiled to a `calimero:app` WebAssembly component that *is* its backend, plus a frontend on
+[mero-js](https://github.com/calimero-network/mero-js)'s `CalimeroClient`. [Apps](#apps) is the
+catalogue; [Anatomy of a Mero app](#anatomy-of-a-mero-app) shows how the two halves fit.
+
+It consolidates apps that used to live in their own repos, so they share one toolchain,
 one dependency graph, one CI pipeline, and one release process instead of drifting apart in sixteen
 places.
 
@@ -342,7 +345,8 @@ the narrower question of which apps a given lockfile diff can actually affect.
 
 ### Bumping core
 
-The fleet currently sits on **`1.0.0-rc.20`**. Every core crate must carry the
+The fleet currently sits on **`1.0.0-rc.23`** (`component-core-tag`; bundles still
+declare `1.0.0-rc.20` as their `component-min-runtime-version`, see below). Every core crate must carry the
 *exact* same tag — a version string cannot express it, because core's workspace
 version at a tag is `0.0.0`. The steps (`docs/COMPONENT-APPS.md`, "Moving to a
 new core release"):
@@ -362,7 +366,8 @@ new core release"):
 CI rebuilds every app and the release workflow republishes all of them, because
 the SDK pin changes every contract's bytes.
 
-⚠️ **Keep `min-runtime-version` equal to the tag.** A newer SDK can import host
+⚠️ **Keep `min-runtime-version` equal to the tag**, unless the new release added
+no host function (rc.21 to rc.23 did not, which is why it stays at rc.20). A newer SDK can import host
 functions an older `merod` has no implementation for; such a package installs
 happily and then fails when an app instance is created with `unknown import`.
 That is what `min-runtime-version` guards, so keep each app's equal to
