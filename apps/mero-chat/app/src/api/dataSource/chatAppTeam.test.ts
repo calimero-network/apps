@@ -185,7 +185,7 @@ vi.mock("../calimero", () => ({
   passkey: () => ({ create: vi.fn(), get: vi.fn() }),
 }));
 
-import { chatPackage, invalidate, MANAGED_IN_HOME, visibilityOf } from "../platform";
+import { chatPackage, invalidate, MANAGED_IN_HOME, NO_CHAT_TEAM, resetBoundSession, visibilityOf } from "../platform";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { ContextApiDataSource } from "./nodeApiDataSource";
 import { createChannel } from "../../utils/createChannel";
@@ -455,6 +455,23 @@ describe("connecting chat to an organization made for another app", () => {
     expect(h.client.scopeApps).not.toHaveBeenCalled();
     expect(h.client.createApp).not.toHaveBeenCalled();
     expect(h.client.createTeam).not.toHaveBeenCalled();
+  });
+});
+
+describe("on Chat's own page, a workspace without Chat's team", () => {
+  it("is not given one from here: an admin adds it in Home, nothing made", async () => {
+    const org = otherOrg("standalone", "admin");
+    h.client.me.mockResolvedValueOnce({ orgs: [], app: PKG } as { orgs: [] });
+    resetBoundSession();
+    try {
+      const made = await createChannel(org, "general", true);
+      expect(made).toEqual({ error: NO_CHAT_TEAM });
+      expect(h.client.scopeApps).not.toHaveBeenCalled();
+      expect(h.client.createTeam).not.toHaveBeenCalled();
+      expect(h.client.createApp).not.toHaveBeenCalled();
+    } finally {
+      resetBoundSession();
+    }
   });
 });
 

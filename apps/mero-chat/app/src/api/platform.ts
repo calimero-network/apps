@@ -620,8 +620,39 @@ async function channelParent(org: string): Promise<string | null> {
   const team = chatTeamId(record);
   if (team) return team;
   if (!chatPackage() || (record.mode !== "standalone" && record.mode !== "shared")) return null;
+  // Giving a package its app team is the organization's admins' (Calimero
+  // Home), never a frontend's: a session bound to Chat's is refused it.
+  if (await boundSession()) throw new Error(NO_CHAT_TEAM);
   const access = await openAccess(org);
   return access.kind === "team" ? access.team : null;
+}
+
+/** Shown where the workspace has no Chat team and this page may not make one. */
+export const NO_CHAT_TEAM =
+  "Chat isn't set up in this workspace yet. An owner or admin adds it in Calimero Home.";
+
+let bound: Promise<boolean> | null = null;
+
+/**
+ * Whether this session is bound to Chat's frontend (`/auth/me` names an app),
+ * asked once. Cannot tell (signed out, an older node): not bound.
+ */
+/** Test hook: ask `/auth/me` again. */
+export function resetBoundSession(): void {
+  bound = null;
+}
+
+function boundSession(): Promise<boolean> {
+  bound ??= run((c) => c.auth.me())
+    .then((me) => {
+      const app = (me as { app?: unknown }).app;
+      return typeof app === "string" && app.length > 0;
+    })
+    .catch(() => {
+      bound = null;
+      return false;
+    });
+  return bound;
 }
 
 /**
@@ -646,6 +677,11 @@ export async function createChatApp(
     run((c) => c.apps.create({ name: title, ...appTarget(chatSource()), org, access, initArgs }).then((r) => r.appId));
 
   const parent = await channelParent(org);
+  // Without Chat's team, a private channel or DM would be a team at the top
+  // of the organization, which only an unbound session may make.
+  if (!parent && !(visibility === "open" && chatPackage()) && chatPackage() && (await boundSession())) {
+    throw new Error(NO_CHAT_TEAM);
+  }
   let appId: string;
   if (!parent && visibility === "open" && chatPackage()) {
     appId = await create({ kind: "org" });
