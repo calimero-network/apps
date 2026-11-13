@@ -197,6 +197,13 @@ const InviteLabel = styled.div`
   margin-bottom: 0.4rem;
 `;
 
+const MembersNote = styled.p`
+  margin: 0 0 1rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
+`;
+
 const ModalContent = styled.div`
   min-width: 280px;
   padding: 0.25rem 0;
@@ -449,6 +456,8 @@ interface MemberDetailsProps {
   nonInvitedUserList: UserId[];
   nonChannelMembers?: Map<string, string>;
   isOwner?: boolean;
+  /// Shown in place of the add-member field (a channel managed in Calimero Home).
+  membersNote?: string;
   /// Context (channel) id — required to read/write WASM-level moderation roles.
   contextId?: string;
   /// Viewer's identity within this context. Falsy → no actions are exposed.
@@ -549,6 +558,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
   return (
     <>
       {optionsOpen !== -1 && <OverLay onClick={() => setOptionsOpen(-1)} />}
+      {props.membersNote && <MembersNote>{props.membersNote}</MembersNote>}
       {props.isOwner && (
         <AddUserDialog
           addMember={props.addMember}
