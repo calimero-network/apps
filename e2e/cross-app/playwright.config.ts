@@ -7,6 +7,8 @@
 // against `merod local` (VITE_CALIMERO_TARGET=local) and from the installed
 // packages rather than a raw bundle, so Chat makes its app team as it does on
 // a cluster. The global setup starts the cluster and installs the packages.
+// chat-bound-session.spec.ts uses no dev server: it opens the copy of Chat
+// node 1 serves from the bundle on Chat's own origin, as Calimero Cloud does.
 //
 // CI: components.yml's `cross-app` job, on merod at the pinned
 // `component-core-tag` (1.0.0-rc.14 or later: app teams). By hand:

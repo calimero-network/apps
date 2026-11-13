@@ -303,7 +303,7 @@ export default function CurbNavbar({
             <MembersSlot $align={false}>
               <ChannelDetailsPopup
                 toggle={
-                  <div>
+                  <div data-testid="channel-details">
                     <UsersButtonGroup
                       channelUserList={channelUserList}
                       openMemberList={() => {}}
