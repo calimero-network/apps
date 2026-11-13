@@ -29,6 +29,7 @@ import {
   appTeamIdIn,
   appTeamMembers,
   createAppOrg,
+  isAppOnly,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -536,10 +537,20 @@ export async function setMemberName(org: string, account: string, name: string):
   invalidate(org);
 }
 
-export async function setOrgName(org: string, name: string): Promise<void> {
-  const current = await getOrgRecord(org).catch(() => null);
-  await run((c) => c.orgs.metadata({ org, metadata: { ...(current?.metadata ?? {}), name } }));
+/** Renames the organization (`POST /orgs/{org}/name`, a passkey step-up): the workspace's name everyone sees. */
+export async function renameOrg(org: string, name: string): Promise<void> {
+  await run((c) => c.orgs.rename({ org, name }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
+}
+
+/**
+ * Whether Chat keeps its own people in `org` (a shared org with chat's app
+ * team): then removing someone and leaving are Chat's, on its team, and not
+ * the organization's.
+ */
+export async function chatOnlyIn(org: string): Promise<boolean> {
+  const record = await getOrgRecord(org);
+  return isAppOnly(record as AppOrgView, chatPackage());
 }
 
 /**

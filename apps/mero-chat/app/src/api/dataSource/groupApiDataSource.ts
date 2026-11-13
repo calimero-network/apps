@@ -50,12 +50,9 @@ import {
   chatTeamId,
   createOrg,
   createPendingChannel,
-  deleteOrg,
   getAppRecord,
   getOrgRecord,
   inviteToken,
-  leaveChat,
-  leaveChatOrg,
   invalidate,
   isOrg,
   listChatApps,
@@ -65,15 +62,21 @@ import {
   otherChatOrgs,
   pendingChannel,
   redeemInvite,
-  removeFromChat,
   run,
   setCapabilities,
   setMemberName,
   setMemberRole,
-  setOrgName,
   setVisibility,
   visibilityOf,
 } from "../platform";
+import {
+  deleteWorkspace,
+  leaveWorkspace,
+  leaveWorkspaceOrg,
+  removeFromWorkspace,
+  renameWorkspace,
+  setOrgRole,
+} from "../orgActions";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 
 type Result<T> = Awaited<ApiResponse<T>>;
@@ -218,7 +221,7 @@ export class GroupApiDataSource implements GroupApi {
   async deleteGroup(groupId: string): ApiResponse<boolean> {
     try {
       if (await isOrg(groupId)) {
-        await deleteOrg(groupId);
+        await deleteWorkspace(groupId);
       } else {
         await run((c) => c.apps.delete({ app: pendingChannel(groupId)?.appId ?? groupId }));
         invalidate();
@@ -273,6 +276,7 @@ export class GroupApiDataSource implements GroupApi {
           identity,
           role: memberRole(org.members[identity]),
           alias: memberName(org, identity),
+          ...(org.members[identity] ? { orgRole: org.members[identity] } : {}),
         }));
         return ok({ members, teeMembers: [], selfIdentity: self });
       }
@@ -343,7 +347,7 @@ export class GroupApiDataSource implements GroupApi {
   async removeMember(groupId: string, memberIdentity: string): ApiResponse<void> {
     try {
       if (await isOrg(groupId)) {
-        await removeFromChat(groupId, memberIdentity);
+        await removeFromWorkspace(groupId, memberIdentity);
       } else {
         await changeAppAccounts(pendingChannel(groupId)?.appId ?? groupId, [], [memberIdentity]);
       }
@@ -364,6 +368,20 @@ export class GroupApiDataSource implements GroupApi {
       return ok(undefined);
     } catch (error) {
       return catchError("updateMemberRole", error);
+    }
+  }
+
+  /**
+   * Makes `identity` an admin of the workspace's organization, or a member
+   * again: organization-wide, so a session on Chat's frontend approves it on
+   * the node's consent page.
+   */
+  async setOrgAdmin(groupId: string, identity: string, admin: boolean): ApiResponse<void> {
+    try {
+      await setOrgRole(groupId, identity, admin ? "admin" : "member");
+      return ok(undefined);
+    } catch (error) {
+      return catchError("setOrgAdmin", error);
     }
   }
 
@@ -418,7 +436,7 @@ export class GroupApiDataSource implements GroupApi {
     try {
       // In a shared org, Chat only; when that was the person's last app
       // there, `lastApp` lets the caller offer to leave the org too.
-      const { left, lastApp } = await leaveChat(namespaceId);
+      const { left, lastApp } = await leaveWorkspace(namespaceId);
       return ok({ namespaceId, memberPublicKey: getAccountId(), left, lastApp });
     } catch (error) {
       return catchError("leaveNamespace", error);
@@ -428,7 +446,7 @@ export class GroupApiDataSource implements GroupApi {
   /** Leaves the organization altogether (offered after leaving Chat, the last app there). */
   async leaveOrganization(namespaceId: string): ApiResponse<void> {
     try {
-      await leaveChatOrg(namespaceId);
+      await leaveWorkspaceOrg(namespaceId);
       return ok(undefined);
     } catch (error) {
       return catchError("leaveOrganization", error);
@@ -437,7 +455,7 @@ export class GroupApiDataSource implements GroupApi {
 
   async deleteNamespace(namespaceId: string): ApiResponse<boolean> {
     try {
-      await deleteOrg(namespaceId);
+      await deleteWorkspace(namespaceId);
       return ok(true);
     } catch (error) {
       return catchError("deleteNamespace", error);
@@ -553,20 +571,21 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** The workspace's name: its metadata `name`, else the org's own name. */
+  /** The workspace's name: the org's own name (else a name older workspaces kept in its metadata). */
   async getGroupMetadata(groupId: string): ApiResponse<{ name?: string } | null> {
     try {
       const org = await getOrgRecord(groupId);
-      const name = typeof org.metadata?.name === "string" && org.metadata.name ? org.metadata.name : org.name;
+      const name = org.name || (typeof org.metadata?.name === "string" ? org.metadata.name : "");
       return ok(name ? { name } : null);
     } catch (error) {
       return catchError("getGroupMetadata", error);
     }
   }
 
+  /** Renames the workspace: its organization (organization-wide, so through the consent page on Chat's frontend). */
   async setGroupMetadata(groupId: string, name: string): ApiResponse<void> {
     try {
-      await setOrgName(groupId, name);
+      await renameWorkspace(groupId, name);
       return ok(undefined);
     } catch (error) {
       return catchError("setGroupMetadata", error);

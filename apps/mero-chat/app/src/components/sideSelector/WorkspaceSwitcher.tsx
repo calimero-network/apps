@@ -3,10 +3,7 @@ import styled from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { useWorkspaceName } from "../../hooks/useWorkspaceName";
 import { useNamespaceTee } from "../../hooks/useNamespaceTee";
-import {
-  resolveWorkspaceName,
-  shouldBackfillWorkspaceName,
-} from "../../utils/workspaceName";
+import { resolveWorkspaceName } from "../../utils/workspaceName";
 import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
@@ -203,14 +200,6 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
             localAlias,
             groupId: w.groupId,
           };
-
-          // Promote a name this browser knows and the workspace does not, so a
-          // workspace named before metadata was used becomes visible to
-          // everyone. Best-effort — a member without CAN_MANAGE_METADATA is
-          // refused, and the local alias keeps showing for them.
-          if (shouldBackfillWorkspaceName(sources)) {
-            void api.setGroupMetadata(w.groupId, localAlias).catch(() => {});
-          }
 
           return { ...w, alias: resolveWorkspaceName(sources) };
         }),

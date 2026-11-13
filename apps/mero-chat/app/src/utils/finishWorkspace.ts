@@ -1,6 +1,6 @@
 /**
- * What "Create workspace" does once its organization exists: name it, give
- * its members Chat's default capabilities, make #general, and enter it.
+ * What "Create workspace" does once its organization exists (made under its
+ * name, which is the workspace's): give its members Chat's default capabilities, make #general, and enter it.
  *
  * Shared by the picker's own create (`NamespaceEntryPopup`) and by the return
  * from the node's consent page (`ConsentReturn`), where the organization was
@@ -19,7 +19,7 @@ type Toast = (toast: Omit<ToastNotification, "id">) => string;
 export async function finishWorkspace(
   api: Pick<
     GroupApiDataSource,
-    "setGroupMetadata" | "setDefaultCapabilities" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
+    "setDefaultCapabilities" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
   >,
   groupId: string,
   name: string,
@@ -29,11 +29,6 @@ export async function finishWorkspace(
   setStoredGroupAlias(groupId, name);
   // Before #general, so the channel is made under your name in it.
   setMessengerDisplayName(selfName, groupId);
-  // The `name` the org was created with does not reach the group's metadata
-  // record — a freshly created namespace reads back `metadata: null` — so
-  // write it explicitly. The creator is the owner, so this succeeds and gives
-  // the workspace a name everyone can see.
-  await api.setGroupMetadata(groupId, name).catch(() => {});
 
   // A session opened on Chat's frontend is refused this (core#4934): the
   // workspace then keeps the org's defaults until an admin changes them.

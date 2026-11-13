@@ -224,6 +224,15 @@ interface MembersTabProps {
     identity: string,
     role: MemberRole,
   ) => Promise<boolean>;
+  /**
+   * Makes someone an admin of the workspace's organization, or takes it back.
+   * Organization-wide: on Chat's frontend, approved on the node's consent page.
+   */
+  onSetOrgAdmin?: (
+    groupId: string,
+    identity: string,
+    admin: boolean,
+  ) => Promise<boolean>;
   onSetCapabilities: (
     groupId: string,
     identity: string,
@@ -244,6 +253,7 @@ export default function MembersTab({
   actionLoading,
   onRemoveMember,
   onUpdateRole,
+  onSetOrgAdmin,
   onSetCapabilities,
   onGetCapabilities,
   onRefresh,
@@ -322,6 +332,10 @@ export default function MembersTab({
         });
         const choosable =
           canManage && !!onUpdateRole && (member.role === "Admin" || member.role === "Member");
+        // The organization's own role, apart from Chat's: an owner stays one,
+        // and your own is changed by someone else.
+        const orgAdminToggle =
+          canManage && !!onSetOrgAdmin && !self && (member.orgRole === "admin" || member.orgRole === "member");
         return (
         <React.Fragment key={member.identity}>
           <MemberRow>
@@ -353,6 +367,15 @@ export default function MembersTab({
                   <option value="Admin">Admin</option>
                   <option value="Member">Member</option>
                 </RoleSelect>
+              )}
+              {orgAdminToggle && (
+                <SmallButton
+                  onClick={() => void onSetOrgAdmin?.(groupId, member.identity, member.orgRole !== "admin")}
+                  disabled={actionLoading}
+                  title="Organization-wide: every app in this organization. Your node asks you to approve it."
+                >
+                  {member.orgRole === "admin" ? "Remove organization admin" : "Make organization admin"}
+                </SmallButton>
               )}
               {canManage && member.role !== "Admin" && (
                 <SmallButton

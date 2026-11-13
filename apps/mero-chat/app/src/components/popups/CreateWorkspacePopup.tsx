@@ -165,10 +165,9 @@ export default function CreateWorkspacePopup({
     // one only at the end, so a create that fails part-way does not leave
     // the app pointing at it.
     setMessengerDisplayName(trimmedDisplayName, groupId);
-    // The workspace's own name, as the picker writes it: the name passed to
-    // `createGroup` does not reach its metadata record.
+    // The organization is made under the workspace's name; kept here too
+    // for the first paint.
     setStoredGroupAlias(groupId, trimmedWorkspaceName);
-    await groupApi.setGroupMetadata(groupId, trimmedWorkspaceName).catch(() => undefined);
     // An account's founding also asked the cloud to host the workspace; a
     // refusal means it exists but nobody can be invited until the cause is
     // fixed. Surface it here, not as a failed Invite later.
