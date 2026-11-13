@@ -5,9 +5,18 @@ import XCTest
 
 /// The client against the contract's component ABI (`logic/res/abi.json`):
 /// every method by its camelCase name, sent the right way (view or call), with
-/// exactly the ABI's parameters, `none` as an explicit null and a u64 as a
+/// the ABI's parameters but an unset `option` (left out), and a u64 as a
 /// decimal string; answers with u64s as strings decode.
 final class ContractSurfaceTests: XCTestCase {
+    /// The ABI's `option` parameters, by method.
+    static let options: [String: Set<String>] = [
+        "addActivity": ["dealId", "contactId", "owner"],
+        "createDeal": ["contactId", "owner", "expectedClose"],
+        "listActivities": ["dealId", "done"],
+        "listDeals": ["status", "stageId", "owner"],
+        "updateDeal": ["contactId", "owner", "expectedClose"],
+    ]
+
     /// `methods` of the ABI, without `init`: name → parameter names.
     static let abi: [String: [String]] = [
         "addActivity": ["dealId", "contactId", "kind", "subject", "dueAt", "owner", "note"],
@@ -124,12 +133,16 @@ final class ContractSurfaceTests: XCTestCase {
         XCTAssertEqual(CrmClient.views, Self.viewNames)
         XCTAssertEqual(CrmClient.calls, Set(Self.abi.keys).subtracting(Self.viewNames))
         for request in r.sent {
-            XCTAssertEqual(Set(request.args.keys), Set(Self.abi[request.method] ?? []), request.method)
+            // Every parameter but an `option` left unset, which the client leaves out.
+            let params = Set(Self.abi[request.method] ?? [])
+            XCTAssertTrue(Set(request.args.keys).isSubset(of: params), request.method)
+            XCTAssertTrue(
+                params.subtracting(Self.options[request.method] ?? []).isSubset(of: Set(request.args.keys)), request.method)
             XCTAssertEqual(request.view, Self.viewNames.contains(request.method), request.method)
         }
     }
 
-    func testANoneIsANullAndAU64IsADecimalString() async throws {
+    func testAnUnsetOptionIsLeftOutAndAU64IsADecimalString() async throws {
         let r = Recorder()
         let c = CrmClient(contract: r)
         _ = try await c.createDeal(
@@ -138,8 +151,8 @@ final class ContractSurfaceTests: XCTestCase {
         let args = try XCTUnwrap(r.sent.first?.args)
         XCTAssertEqual(args["value"] as? String, "12500")
         XCTAssertEqual(args["expectedClose"] as? String, "1793181600000")
-        XCTAssertTrue(args["contactId"] is NSNull)
-        XCTAssertTrue(args["owner"] is NSNull)
+        XCTAssertNil(args["contactId"])
+        XCTAssertNil(args["owner"])
     }
 
     func testAnswersReadU64sFromDecimalStrings() async throws {

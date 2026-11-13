@@ -107,7 +107,7 @@ refusals (by their `message`).
 
 `DesignClient` is generated from the component ABI (`../logic/res/abi.json`) by core's
 `mero-app-build codegen`: camelCase methods and arguments, 64-bit integers as decimal strings, an
-unset optional sent as `null`. Regenerate it with `scripts/mobile-codegen.sh` at the repo root after
+unset optional left out. Regenerate it with `scripts/mobile-codegen.sh` at the repo root after
 a contract change; CI's `Mobile clients` workflow fails on a stale client. Do not edit it by hand:
 
 - iOS: `ios/DesignCore/Sources/DesignCore/Generated/DesignClient.swift`

@@ -9,7 +9,6 @@ import com.calimero.mero.WrongNode
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -98,7 +97,7 @@ class WireTest {
         }
 
     @Test
-    fun `closesAt is a decimal string or null`() =
+    fun `closesAt is a decimal string or left out`() =
         runTest {
             val (backend, script) = makeBackend()
             script.on("createPoll") { "p" }
@@ -108,7 +107,7 @@ class WireTest {
             val sent = backend.recording.calls("createPoll")
             assertEquals(JsonPrimitive("1761000000123"), sent.first().arg("closesAt"))
             assertEquals("0", sent.first().string("minChoices"))
-            assertEquals(JsonNull, sent.last().arg("closesAt"))
+            assertNull(sent.last().arg("closesAt"))
             assertNull(sent.first().arg("closes_at"))
         }
 

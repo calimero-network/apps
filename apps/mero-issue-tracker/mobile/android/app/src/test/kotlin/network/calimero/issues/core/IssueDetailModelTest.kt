@@ -41,9 +41,9 @@ class IssueDetailModelTest {
                 m.state.value.issue!!
                     .assignee,
             )
-            // An explicit null (`option<string>`) unassigns.
-            assertTrue(
-                "\"assignee\":null" in
+            // An unset `option<string>`, left out, unassigns.
+            assertFalse(
+                "\"assignee\"" in
                     fake.backend.recording
                         .calls("setAssignee")
                         .last()

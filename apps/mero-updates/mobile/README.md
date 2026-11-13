@@ -46,7 +46,7 @@ anything.
 
 **The contract** is the component ABI (`../logic/res/abi.json`), called exactly as the web app's
 `app/src/lib/updatesClient.ts` does, through `UpdatesClient`, generated from it by core's
-`mero-app-build codegen`: camelCase methods and arguments, an unset parameter sent as `null`, the
+`mero-app-build codegen`: camelCase methods and arguments, an unset parameter left out, the
 `u64` argument `since` as a decimal string. The screens keep the v1 types (snake_case fields,
 numbers), and `ComponentWire` (iOS `Core/Sources/UpdatesCore/ComponentWire.swift`, Android
 `core/ComponentWire.kt`) converts between them and the client's JSON:

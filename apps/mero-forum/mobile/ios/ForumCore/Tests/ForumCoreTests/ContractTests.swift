@@ -70,7 +70,7 @@ final class ContractTests: XCTestCase {
         let page = try await client.listPosts(sort: "top", cursor: nil, limit: 20)
         let call = try XCTUnwrap(backend.recording.calls("listPosts").first)
         XCTAssertEqual(call.path, .query)
-        XCTAssertEqual(call.args, .object(["sort": .string("top"), "cursor": .null, "limit": .number(20)]))
+        XCTAssertEqual(call.args, .object(["sort": .string("top"), "limit": .number(20)]))
         XCTAssertEqual(page.nextCursor, "opaque")
         let post = try XCTUnwrap(page.items.first)
         XCTAssertEqual(post.createdAt, 1_700_000_000_000)

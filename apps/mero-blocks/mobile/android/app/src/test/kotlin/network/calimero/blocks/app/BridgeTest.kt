@@ -159,8 +159,8 @@ class BridgeRouterTest {
                     }
                 // Two pages: the router follows `next`.
                 "getOverrides" ->
-                    // The generated client sends an unset `option` argument as `null`, which the
-                    // contract reads as none, as it does a missing key.
+                    // The generated client leaves an unset `option` argument out, which the
+                    // contract reads as none, as it does `null`.
                     if (call.args.jsonObject["cursor"].let { it == null || it is JsonNull }) {
                         page(entry("1,2,3", 8), next = "p2")
                     } else {
@@ -231,7 +231,7 @@ class BridgeRouterTest {
             // Both pages, as one list: the page's shape.
             val overrides = Json.parseToJsonElement(router.handle(BridgeOp.QUERY, "get_overrides", "{}")).jsonArray
             assertEquals(listOf(8, 2), overrides.map { it.jsonObject["b"]!!.jsonPrimitive.int })
-            assertEquals(listOf(JsonNull, JsonPrimitive("p2")), recording.calls("getOverrides").map { it.args.jsonObject["cursor"] })
+            assertEquals(listOf(null, JsonPrimitive("p2")), recording.calls("getOverrides").map { it.args.jsonObject["cursor"] })
 
             // A page built against the component ABI may use its names.
             router.handle(BridgeOp.QUERY, "worldMeta", "{}")

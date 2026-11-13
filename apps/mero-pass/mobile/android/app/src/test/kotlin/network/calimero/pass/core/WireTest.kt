@@ -110,8 +110,8 @@ class WireTest {
                 ).single() as JsonObject
             assertEquals(JsonPrimitive("k"), wrap["keyId"])
             val update = backend.recording.calls("updateSecret").single()
-            assertEquals("option<string> goes out as an explicit null", JsonNull, update.arg("name"))
-            assertEquals(JsonNull, update.arg("tags"))
+            assertNull("an unset option<string> is left out", update.arg("name"))
+            assertNull(update.arg("tags"))
         }
 
     @Test

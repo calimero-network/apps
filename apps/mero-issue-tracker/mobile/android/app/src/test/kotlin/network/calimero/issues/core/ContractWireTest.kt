@@ -3,7 +3,6 @@ package network.calimero.issues.core
 import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import network.calimero.issues.contract.CommentView
@@ -19,6 +18,14 @@ import org.junit.Test
 /** The client speaks the component contract's wire (`logic/res/abi.json`): camelCase names, u64 as decimal strings. */
 class ContractWireTest {
     /** `kind` and `params` of every method in the contract's ABI, minus `init`. */
+    /** The ABI's `option` parameters, by method. */
+    private val options =
+        mapOf(
+            "createIssue" to setOf("labels"),
+            "listIssues" to setOf("status", "assignee", "label"),
+            "setAssignee" to setOf("assignee"),
+        )
+
     private val abi =
         mapOf(
             "addComment" to ("call" to listOf("issueId", "body")),
@@ -98,10 +105,12 @@ class ContractWireTest {
             for ((method, view, args) in wire.sent) {
                 val (kind, params) = abi.getValue(method)
                 assertEquals(method, kind == "view", view)
-                assertEquals(method, params.toSet(), args.keys)
+                // Every parameter but an `option` left unset, which the client leaves out.
+                assertTrue(method, params.toSet().containsAll(args.keys))
+                assertTrue(method, args.keys.containsAll(params.toSet() - options[method].orEmpty()))
             }
             val unassign = wire.sent.first { it.first == "setAssignee" }.third
-            assertEquals(JsonNull, unassign["assignee"])
+            assertNull("an unset option is left out, which the contract reads as none", unassign["assignee"])
         }
 
     @Test fun `answers read decimal strings`() {

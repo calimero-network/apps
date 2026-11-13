@@ -105,7 +105,7 @@ WKWebView / Android WebView from files bundled in the app:
 stale client). Until the logic derives `AbiType`, the ABI names the world's types without their
 shape, so the client takes and answers their JSON; `Contract/MerrariaContract.swift` and
 `contract/MerrariaContract.kt` keep those types, the paging of `getOverrides`, the method lists and
-the refusal sentences. An unset `option` argument goes as `null`, which the contract reads as none.
+the refusal sentences. An unset `option` argument is left out, which the contract reads as none.
 
 After a change to the web app, rebuild and commit the game bundle: `./scripts/build-game.sh`.
 

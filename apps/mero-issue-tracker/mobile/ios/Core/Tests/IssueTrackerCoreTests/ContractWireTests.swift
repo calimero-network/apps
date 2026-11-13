@@ -8,6 +8,13 @@ import XCTest
 /// camelCase names, u64 as decimal strings, explicit `null` for an empty option.
 final class ContractWireTests: XCTestCase {
     /// `kind` and `params` of every method in the contract's ABI, minus `init`.
+    /// The ABI's `option` parameters, by method.
+    static let options: [String: Set<String>] = [
+        "createIssue": ["labels"],
+        "listIssues": ["status", "assignee", "label"],
+        "setAssignee": ["assignee"],
+    ]
+
     static let abi: [String: (kind: String, params: [String])] = [
         "addComment": ("call", ["issueId", "body"]),
         "addLabel": ("call", ["issueId", "label"]),
@@ -63,7 +70,10 @@ final class ContractWireTests: XCTestCase {
         for call in wire.sent {
             let spec = try XCTUnwrap(Self.abi[call.method])
             XCTAssertEqual(call.view, spec.kind == "view", call.method)
-            XCTAssertEqual(Set(call.args.keys), Set(spec.params), call.method)
+            // Every parameter but an `option` left unset, which the client leaves out.
+            XCTAssertTrue(Set(call.args.keys).isSubset(of: Set(spec.params)), call.method)
+            XCTAssertTrue(
+                Set(spec.params).subtracting(Self.options[call.method] ?? []).isSubset(of: Set(call.args.keys)), call.method)
         }
     }
 

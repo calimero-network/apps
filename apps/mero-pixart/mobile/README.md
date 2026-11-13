@@ -114,7 +114,7 @@ from the component contract's ABI (`../logic/res/abi.json`) by core's `mero-app-
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). It speaks camelCase method and argument names
 (`updateLayer { id, blendMode, scaleX, updatedAt, … }`), sends the u64 / i64 arguments (`updatedAt`,
-`timestamp`, `x`, `y`) as decimal strings and an unset optional as `null`. The ABI describes the
+`timestamp`, `x`, `y`) as decimal strings and leaves an unset optional out. The ABI describes the
 document's types (their 64-bit fields are JSON numbers, which the logic marks `#[abi(plain)]`), so
 the client answers them typed; the screens still read the kept types (`PixartCore/Records.swift`,
 `generated/PixartRecords.kt`), through each answer's JSON, until they move to the generated ones.
