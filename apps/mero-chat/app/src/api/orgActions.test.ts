@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   app: undefined as string | undefined,
   chatOnly: false,
+  chatTeam: false,
   openConsentPage: vi.fn(),
   platform: {
     chatOnlyIn: vi.fn(),
+    hasChatTeam: vi.fn(),
+    removeFromChatTeam: vi.fn(async () => {}),
     deleteOrg: vi.fn(async () => {}),
     leaveChat: vi.fn(async () => ({ left: "org" as const, lastApp: false })),
     leaveChatOrg: vi.fn(async () => {}),
@@ -24,6 +27,7 @@ vi.mock("./platform", () => ({
     }),
 }));
 vi.mock("../utils/servedByNode", () => ({ nodeBasename: () => "/" }));
+vi.mock("./calimero", () => ({ getAccountId: () => "acct-me" }));
 
 type Actions = typeof import("./orgActions");
 
@@ -38,7 +42,9 @@ beforeEach(() => {
   sessionStorage.clear();
   h.app = undefined;
   h.chatOnly = false;
+  h.chatTeam = false;
   h.platform.chatOnlyIn.mockImplementation(async () => h.chatOnly);
+  h.platform.hasChatTeam.mockImplementation(async () => h.chatTeam);
   h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
     opts.confirm({ code: "ABC-DEF" });
     return { requestId: "r1" };
@@ -116,6 +122,19 @@ describe("organization-wide changes", () => {
       expect(h.openConsentPage).not.toHaveBeenCalled();
     });
   }
+
+  it("with chat's app team, removing and leaving take a row off it, with no consent page", async () => {
+    h.app = "chat";
+    h.chatTeam = true;
+    const actions = await load();
+    expect(await actions.removeFromWorkspace("o", "acct-bob")).toBe("app");
+    expect(await actions.leaveWorkspace("o")).toEqual({ left: "app", lastApp: true });
+    expect(h.platform.removeFromChatTeam).toHaveBeenCalledWith("o", "acct-bob");
+    expect(h.platform.removeFromChatTeam).toHaveBeenCalledWith("o", "acct-me");
+    expect(h.openConsentPage).not.toHaveBeenCalled();
+    expect(h.platform.removeFromChat).not.toHaveBeenCalled();
+    expect(h.platform.leaveChat).not.toHaveBeenCalled();
+  });
 
   it("in a shared organization, removing and leaving stay Chat's own, even on its frontend", async () => {
     h.app = "chat";

@@ -520,6 +520,25 @@ export async function leaveChat(org: string): Promise<{ left: "app" | "org"; las
   return left;
 }
 
+/** Whether `org` has chat's app team: removing and leaving are then chat's own (its team rows). */
+export async function hasChatTeam(org: string): Promise<boolean> {
+  return !!chatTeamId(await getOrgRecord(org));
+}
+
+/**
+ * Takes `account` off chat's app team in `org`, and with it every channel and
+ * DM below it (core drops their rows there). A team call a session bound to
+ * Chat's frontend may make, with a passkey step-up; the organization is left
+ * as it is.
+ */
+export async function removeFromChatTeam(org: string, account: string): Promise<void> {
+  const team = chatTeamId(await getOrgRecord(org));
+  if (!team) throw new Error("This workspace has no Chat team; an admin adds it in Calimero Home.");
+  await run((c) => c.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+  invalidate(org);
+  invalidate();
+}
+
 /** The signed-in account leaves `org` altogether: every app in it. */
 export async function leaveChatOrg(org: string): Promise<void> {
   await run((c) => leaveOrg(c, org, passkey));
