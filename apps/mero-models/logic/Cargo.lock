@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.20.3"
+version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+checksum = "87a0cf66fd1eb2fb7b822cb78370d82303750809bc6ba855f3f58e517d3238db"
 dependencies = [
  "allocator-api2",
 ]
@@ -109,7 +109,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "calimero-bundle",
  "eyre",
@@ -122,7 +122,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "calimero-app-abi",
  "calimero-build-utils",
@@ -136,7 +136,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "async-trait",
  "bytes",
@@ -159,7 +159,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -174,12 +174,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 
 [[package]]
 name = "calimero-build-utils"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "rustc_version",
  "toml",
@@ -188,7 +188,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "base64",
  "bs58",
@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -231,7 +231,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.24#f27e14f5124b35a7128af8cee9bef7d4eedb1120"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -242,9 +242,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.11.1"
+version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
+checksum = "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -1140,9 +1140,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.4"
+version = "1.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
+checksum = "20521a903f02b0a573cd6840e9d0a5a0cc043d361fe924092cd70f8556cc9c4a"
 dependencies = [
  "libc",
  "wasi",
@@ -1621,9 +1621,9 @@ dependencies = [
 
 [[package]]
 name = "target-lexicon"
-version = "0.13.5"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+checksum = "8c447be3a2abfa84b2d91680c56600bd6b2873866de27b36ec911be705e291da"
 
 [[package]]
 name = "tempfile"
