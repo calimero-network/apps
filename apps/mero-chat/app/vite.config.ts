@@ -30,14 +30,15 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
       manifest: {
-        name: "Calimero Chat",
-        short_name: "Calimero",
+        id: "./",
+        name: "Mero Chat",
+        short_name: "Mero Chat",
         description:
-          "Calimero Chat: team chat with channels, threads and DMs on Calimero.",
+          "Mero Chat: team chat with channels, threads and DMs on Calimero.",
         theme_color: "#f6f7fb",
         background_color: "#f6f7fb",
         display: "standalone",
-        orientation: "portrait-primary",
+        categories: ["social", "communication", "productivity"],
         scope: "./",
         start_url: "./",
         icons: [
@@ -88,6 +89,12 @@ export default defineConfig({
             sizes: "512x512",
             type: "image/png",
             purpose: "any",
+          },
+          {
+            src: "icons/icon-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
           },
         ],
       },
