@@ -1,11 +1,7 @@
 import type { GroupApi } from "../api/groupApi";
 import { setGroupId, setGroupMemberIdentity } from "../constants/config";
 import { log } from "./logger";
-import {
-  setIdentityDisplayName,
-  setMessengerDisplayName,
-} from "./messengerName";
-import { joinPendingChannels } from "./createChannel";
+import { setMessengerDisplayName } from "./messengerName";
 import { ensureNotificationPermission } from "./notificationPermission";
 import {
   clearNamespaceReady,
@@ -13,62 +9,50 @@ import {
   setNamespaceReady,
 } from "./session";
 import { nodeBasename } from "./servedByNode";
+import { landInGeneral } from "./landing";
 
-// Two places put the user into a workspace: the workspace picker
-// (`NamespaceEntryPopup`) and the app-level invitation prompt
-// (`InvitationPrompt`), which can fire on any page — including inside another
-// workspace. Both end here so they enter the same way.
+// Every way into a workspace ends here: the picker (`NamespaceEntryPopup`),
+// an accepted invitation (`InvitationPrompt`, `ConsentReturn`) and a new
+// workspace (`finishWorkspace`).
 
 /**
- * Commit the workspace, publish the chosen handle as the namespace-level member
- * name, and load the chat. The user only gets the channels they explicitly
- * join (self-join for Open subgroups, admin-add for Restricted) — no
- * force-joining contexts at workspace entry.
+ * Commit the workspace, publish your name in it, and load the chat.
+ *
+ * Your name is the workspace's member metadata for your account, the one
+ * place every channel, DM and message reads it from; nothing is written into
+ * the conversations. It is written before the page reloads (a write still in
+ * flight would be cut off by the navigation), unless `published` says the
+ * workspace already holds it.
  */
-export function enterWorkspace(
+export async function enterWorkspace(
   api: Pick<GroupApi, "setMemberMetadata">,
   namespaceId: string,
   username: string,
   memberIdentity: string,
-): void {
+  options: { published?: boolean } = {},
+): Promise<void> {
+  // Ask for OS notification permission once, here and first: entry is a real
+  // user gesture (Safari requires one, and it does not outlive the awaits
+  // below). Not awaited: entry must not block on the browser prompt.
+  void ensureNotificationPermission();
   setGroupId(namespaceId);
   setMessengerDisplayName(username, namespaceId);
-  // Channels made with the workspace before this name was chosen (#general).
-  if (username) void joinPendingChannels(namespaceId, username);
   if (memberIdentity) {
     setGroupMemberIdentity(namespaceId, memberIdentity);
-    setIdentityDisplayName(memberIdentity, username);
-    // Propagate the chosen handle as the namespace-level member name.
-    // Without this, other users' `listMembers(namespaceId)` returns
-    // this member with `name: null` and the channel/DM/admin UIs all
-    // fall through to displaying the raw identity string.
-    if (username) {
-      void api
-        .setMemberMetadata(namespaceId, memberIdentity, { name: username })
-        .then((res) => {
-          // Was silently swallowed. That is how this shipped broken: core
-          // rejects a device key with "Invalid account format: expected 64
-          // hex characters", the member stayed nameless, and nothing said so.
-          if (res.error) {
-            log.warn(
-              "NamespaceEntry",
-              `could not publish member name: ${res.error.message}`,
-            );
-          }
-        })
-        .catch((err) => {
-          log.warn("NamespaceEntry", "could not publish member name", err);
-        });
+    if (username && !options.published) {
+      try {
+        const res = await api.setMemberMetadata(namespaceId, memberIdentity, { name: username });
+        if (res.error) log.warn("enterWorkspace", `could not publish member name: ${res.error.message}`);
+      } catch (err) {
+        log.warn("enterWorkspace", "could not publish member name", err);
+      }
     }
   }
+  // Open #general first: the person lands in a channel, not an empty screen.
+  landInGeneral();
   forgetJoinedAwaitingName();
   clearStoredSession();
   setNamespaceReady(namespaceId);
-  // Ask for OS notification permission once, here: entry is a real user
-  // gesture (Safari requires one) and it covers desktop/browser users who
-  // never trigger the PWA `appinstalled` event. Deliberately not awaited —
-  // entry must not block on the browser prompt.
-  void ensureNotificationPermission();
   // Hard load, not navigate("/"). App.tsx gates "/" on
   //   canEnterApp = (isAuthenticated || hasLiveSession()) && isNamespaceReady()
   // which is read ONCE during render. A client-side navigate can land in the

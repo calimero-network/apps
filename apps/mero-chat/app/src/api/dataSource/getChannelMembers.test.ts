@@ -66,17 +66,9 @@ describe("getChannelMembers", () => {
     expect(members.data?.get("aa11")).toBe("TestUser");
   });
 
-  it("never asks the contract for profiles", async () => {
-    // Pins the change: profiles are a per-context nickname store, not a
-    // membership list, and reading them was the whole defect.
-    listContextMembers.mockResolvedValue({ data: [{ identity: "aa11" }], error: null });
-
-    const source = new ClientApiDataSource();
-    const spy = vi.spyOn(source, "getProfiles");
-
-    await source.getChannelMembers({ channel: { name: "general" } } as never);
-
-    expect(spy).not.toHaveBeenCalled();
+  it("has no way left to ask the contract for profiles", () => {
+    // Names are the workspace's member metadata; a conversation holds none.
+    expect("getProfiles" in new ClientApiDataSource()).toBe(false);
   });
 
   it("returns empty rather than throwing when the roster is unavailable", async () => {

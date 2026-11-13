@@ -16,35 +16,10 @@ export function useChannelMembers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // When `subgroupId` is provided, the SUBGROUP's `listMembers` is the
-  // canonical source — it includes every direct member, including those
-  // who joined but haven't yet called `set_profile`. Trade-offs:
-  //
-  // * For **joiners** (anyone added by an admin / who explicitly joined),
-  //   `join_context.rs:124` keys their `ContextIdentity` row by their
-  //   namespace identity (`resolve_namespace_identity`). So
-  //   `listMembers.identity === executor_id` and Ban / set_member_role
-  //   work as expected when targeting that key.
-  // * For the **creator** (admin), `createContext` generates a fresh
-  //   per-context identity, so their listMembers identity ≠ context
-  //   identity. The UI already gates Ban / role actions behind
-  //   `!isSelf && !isOwnerRow`, so this mismatch never reaches a real
-  //   WASM call.
-  //
-  // Display-name chain (authoritative first):
-  //   1. namespace member alias    — the live, renameable, governance-replicated
-  //                                  name; the single source of truth
-  //   2. subgroup member alias     — snapshot, scoped to one subgroup
-  //   3. context profile username  — snapshot, scoped to one context
-  //                                  (`get_profiles`)
-  //   4. raw identity              — last resort
-  //
-  // 2 and 3 are kept only because they can be present before governance sync
-  // delivers the member list. They must never outrank 1, or a rename lands in
-  // some views and not others.
-  //
-  // Legacy fallback: when `subgroupId` is unavailable (DMs routed through
-  // this path), use `get_profiles` alone.
+  // Who is in the channel comes from the channel's own member list (with
+  // `subgroupId`) or its roster; what each is called comes from
+  // `nameRepository`, by account: the workspace's member metadata, the one
+  // place a name lives. Nothing here reads the contract's profiles.
   const fetchChannelMembers = useCallback(
     async (channelId: string, subgroupId?: string) => {
       setLoading(true);

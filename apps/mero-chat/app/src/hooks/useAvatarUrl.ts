@@ -1,121 +1,89 @@
 import { useState, useEffect } from "react";
-import { getContextIdentity } from "../api/calimero";
 import { downloadBlob } from "../api/meroJsClient";
-import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { getOrgRecord, invalidate, memberAvatar, type MemberAvatar } from "../api/platform";
+import { getGroupId } from "../constants/config";
+import { toAccountHex } from "../utils/accountIdentity";
 
-// ── Module-level caches ───────────────────────────────────────────────────────
+// A person's picture lives beside their name: the workspace's member metadata
+// (`avatar: { blob, app }`), keyed by account. The blob is held by one
+// conversation every member reaches (#general where there is one), so the
+// same picture shows in every channel and DM.
 
-type ProfileRow = { identity: string; avatar?: string };
-
-// Unified cache + in-flight dedup: once the promise resolves it stays here so
-// future awaits return the already-resolved value immediately.
-const profilesForCtx = new Map<string, Promise<ProfileRow[]>>();
-
-// blob ID → object URL
+// blob → object URL
 const blobUrlCache = new Map<string, string>();
 const blobFetchInFlight = new Map<string, Promise<string | undefined>>();
 
 const cacheVersionListeners = new Set<() => void>();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-// The account is the caller in every conversation (v1 looked up this node's
-// member key per context).
-async function resolveExecutorKey(_contextId: string): Promise<string> {
-  return getContextIdentity() ?? "";
+/** `account`'s picture in workspace `org`, if they set one. */
+export async function avatarOf(org: string, account: string): Promise<MemberAvatar | undefined> {
+  if (!org || !account) return undefined;
+  const record = await getOrgRecord(org).catch(() => null);
+  return record ? memberAvatar(record, toAccountHex(account)) : undefined;
 }
 
-function getProfilesForCtx(contextId: string): Promise<ProfileRow[]> {
-  if (profilesForCtx.has(contextId)) return profilesForCtx.get(contextId)!;
+async function resolveBlob({ blob, app }: MemberAvatar): Promise<string | undefined> {
+  const key = `${app}:${blob}`;
+  if (blobUrlCache.has(key)) return blobUrlCache.get(key);
+  if (blobFetchInFlight.has(key)) return blobFetchInFlight.get(key)!;
 
-  const p = resolveExecutorKey(contextId).then((executorKey) => {
-    if (!executorKey) return [] as ProfileRow[];
-    return new ClientApiDataSource()
-      .getProfiles(contextId, executorKey)
-      .then((res) => (res.data ?? []) as ProfileRow[])
-      .catch((err) => {
-        console.error("[useAvatarUrl] getProfiles failed", err);
-        profilesForCtx.delete(contextId);
-        return [] as ProfileRow[];
-      });
-  });
-
-  profilesForCtx.set(contextId, p);
-  return p;
-}
-
-async function resolveBlob(blobId: string, contextId: string): Promise<string | undefined> {
-  if (blobUrlCache.has(blobId)) return blobUrlCache.get(blobId);
-  if (blobFetchInFlight.has(blobId)) return blobFetchInFlight.get(blobId)!;
-
-  const p = downloadBlob(blobId, contextId)
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      blobUrlCache.set(blobId, url);
+  const p = downloadBlob(blob, app)
+    .then((bytes) => {
+      const url = URL.createObjectURL(bytes);
+      blobUrlCache.set(key, url);
       return url;
     })
     .catch((err): undefined => {
-      console.error(`[useAvatarUrl] downloadBlob failed for ${blobId}`, err);
+      console.error(`[useAvatarUrl] downloadBlob failed for ${blob}`, err);
       return undefined;
     })
-    .finally(() => blobFetchInFlight.delete(blobId));
+    .finally(() => blobFetchInFlight.delete(key));
 
-  blobFetchInFlight.set(blobId, p);
+  blobFetchInFlight.set(key, p);
   return p;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-/** Async-loads the avatar image URL for an identity within a context.
- *  Returns undefined while loading or when no avatar is set. */
-export function useAvatarUrl(
-  identity: string | undefined,
-  contextId: string | undefined,
-): string | undefined {
+/** The image URL of `account`'s picture, once loaded; undefined while loading or when none is set. */
+export function useAvatarUrl(account: string | undefined): string | undefined {
   const [url, setUrl] = useState<string | undefined>(undefined);
   const [version, setVersion] = useState(0);
 
-  // Subscribe to cache invalidation so we re-fetch after avatar updates.
   useEffect(() => {
     const bump = () => setVersion((v) => v + 1);
     cacheVersionListeners.add(bump);
-    return () => { cacheVersionListeners.delete(bump); };
+    return () => {
+      cacheVersionListeners.delete(bump);
+    };
   }, []);
 
   useEffect(() => {
-    if (!identity || !contextId) return;
+    const org = getGroupId();
+    if (!account || !org) return;
     let cancelled = false;
-
-    // Clear immediately so a revoked/stale URL doesn't linger while we re-fetch.
-    // Avatar falls back to initials during the async window.
     setUrl(undefined);
 
-    (async () => {
-      const profiles = await getProfilesForCtx(contextId);
+    void (async () => {
+      const avatar = await avatarOf(org, account);
       if (cancelled) return;
-
-      const avatarBlobId = profiles.find((p) => p.identity === identity)?.avatar;
-      if (!avatarBlobId) {
+      if (!avatar) {
         setUrl(undefined);
         return;
       }
-
-      const resolved = await resolveBlob(avatarBlobId, contextId);
+      const resolved = await resolveBlob(avatar);
       if (!cancelled) setUrl(resolved);
     })();
 
-    return () => { cancelled = true; };
-  }, [identity, contextId, version]);
+    return () => {
+      cancelled = true;
+    };
+  }, [account, version]);
 
   return url;
 }
 
-// ── Cache control ─────────────────────────────────────────────────────────────
-
-/** Clear all profile + blob caches and force every mounted hook to re-fetch.
- *  Call immediately after the user updates their avatar. */
+/** Forget every loaded picture so mounted avatars re-read. Call after changing yours. */
 export function invalidateAvatarCache() {
-  profilesForCtx.clear();
+  invalidate(getGroupId() || undefined);
   blobUrlCache.forEach((url) => URL.revokeObjectURL(url));
   blobUrlCache.clear();
   cacheVersionListeners.forEach((fn) => fn());

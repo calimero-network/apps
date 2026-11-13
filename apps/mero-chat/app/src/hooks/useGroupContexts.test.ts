@@ -60,6 +60,8 @@ describe("useGroupContexts: the first entry joins the workspace's public channel
     await act(() => result.current.fetchGroupContexts("ns-a"));
     expect(h.joinGroupContext).toHaveBeenCalledWith("ns-a", { contextId: "ctx-general" });
     expect(result.current.channels.map((c) => c.isJoined)).toEqual([true]);
+    // A name is the workspace's member metadata, never written into a channel.
+    expect(h.joinChat).not.toHaveBeenCalled();
   });
 
   // Right after an invitation is accepted the node may not hold the

@@ -6,7 +6,6 @@ import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { lastUsedName } from "@calimero-apps/names";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { isDelegatedSession } from "../../api/meroJsClient";
 import { useSessionKey } from "../../hooks/useSessionKey";
 import type { GroupSummary } from "../../api/groupApi";
@@ -18,10 +17,7 @@ import {
   getStoredGroupAlias,
   setStoredGroupAlias,
 } from "../../constants/config";
-import {
-  getMessengerDisplayName,
-  setIdentityDisplayName,
-} from "../../utils/messengerName";
+import { getMessengerDisplayName } from "../../utils/messengerName";
 import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
 import {
   AppNotInstalledError,
@@ -303,13 +299,15 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   const [error, setError] = useState("");
 
   // Final step: commit the selection and go into the chat (see enterWorkspace).
-  const enterChat = useCallback((namespaceId: string, username: string, memberIdentity: string) => {
-    enterWorkspace(api.current, namespaceId, username, memberIdentity);
-  }, []);
+  const enterChat = useCallback(
+    (namespaceId: string, username: string, memberIdentity: string, options?: { published?: boolean }) => {
+      void enterWorkspace(api.current, namespaceId, username, memberIdentity, options);
+    },
+    [],
+  );
 
-  // Check whether this node already has identity + username for a namespace.
-  // Recovery order: server alias (node) → per-identity cache → WASM profiles → enter-name.
-  // Server alias is the authoritative source — if set, the user is never re-prompted.
+  // Whether you already have a name in the workspace: its member metadata
+  // (the one source), else this browser's copy (published back), else ask.
   const checkNamespace = useCallback(async (namespaceId: string) => {
     setStep("checking");
     setError("");
@@ -322,42 +320,22 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         const memberIdentity = res.data.memberIdentity;
         setGroupMemberIdentity(namespaceId, memberIdentity);
 
-        // 1. Server alias — authoritative, survives localStorage.clear() and re-login
+        // 1. The workspace's member metadata: survives storage clears and devices.
         const serverAlias = res.data.members
           ?.find((m) => m.identity === memberIdentity)
           ?.alias?.trim();
 
         if (serverAlias) {
-          setIdentityDisplayName(memberIdentity, serverAlias);
-          enterChat(namespaceId, serverAlias, memberIdentity);
+          enterChat(namespaceId, serverAlias, memberIdentity, { published: true });
           return;
         }
 
-        // 2. Per-identity cache — fast path within a session
+        // 2. This browser's copy, from before the workspace had it: entering
+        //    publishes it.
         const cachedName = getMessengerDisplayName(namespaceId);
         if (cachedName) {
-          // Back-fill server alias so future re-logins don't reach enter-name
-          api.current.setMemberMetadata(namespaceId, memberIdentity, { name: cachedName }).catch(() => {});
           enterChat(namespaceId, cachedName, memberIdentity);
           return;
-        }
-
-        // 3. WASM profiles — P2P-replicated, may be set from another device
-        const ctxRes = await api.current.listGroupContexts(namespaceId);
-        if (ctxRes.data?.length) {
-          const clientApi = new ClientApiDataSource();
-          for (const ctx of ctxRes.data) {
-            const profilesRes = await clientApi.getProfiles(ctx.contextId, memberIdentity);
-            if (profilesRes.data) {
-              const myProfile = profilesRes.data.find((p) => p.identity === memberIdentity);
-              if (myProfile?.username) {
-                api.current.setMemberMetadata(namespaceId, memberIdentity, { name: myProfile.username }).catch(() => {});
-                setIdentityDisplayName(memberIdentity, myProfile.username);
-                enterChat(namespaceId, myProfile.username, memberIdentity);
-                return;
-              }
-            }
-          }
         }
       }
     } catch {
@@ -398,9 +376,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       return;
     }
 
-    // An invitation was just accepted by someone with no display name yet: open
-    // on that workspace's name step, not the list. The node may not list it
-    // yet, so it is added from what this browser knows.
+    // An invitation was just accepted at sign-up: straight into that
+    // workspace when its name was chosen there, else its name step (once),
+    // never the list. The node may not list it yet, so it is added from what
+    // this browser knows.
     const joined = joinedAwaitingName();
     if (joined) {
       if (!groups.some((g) => g.groupId === joined)) {
@@ -415,7 +394,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       }
       setNamespaces(groups);
       setSelectedId(joined);
-      setStep("enter-name");
+      if (getMessengerDisplayName(joined)) void checkNamespace(joined);
+      else setStep("enter-name");
       return;
     }
 
@@ -430,7 +410,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     const preferred = groups.find((g) => g.groupId === storedId) ?? groups[0];
     setSelectedId(preferred.groupId);
     setStep("select");
-  }, []);
+  }, [checkNamespace]);
 
   useEffect(() => {
     if ((isAuthenticated || isConfigSet) && sessionKey) {
@@ -455,10 +435,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       const storedIdentity = getGroupMemberIdentity(selectedId);
       const res = await api.current.resolveCurrentMemberIdentity(selectedId, storedIdentity);
       const memberIdentity = res.data?.memberIdentity ?? storedIdentity;
-
-      if (memberIdentity) {
-        await api.current.setMemberMetadata(selectedId, memberIdentity, { name: trimmed }).catch(() => {});
-      }
 
       enterChat(selectedId, trimmed, memberIdentity);
     } catch (err) {
@@ -675,7 +651,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               <Title>
                 {selectedNs ? `Join ${nsLabel(selectedNs)}` : "Join chat"}
               </Title>
-              <Sub>Choose a display name to use in this server.</Sub>
+              <Sub>Choose the name people in this workspace will see.</Sub>
             </Header>
             {error && <Err>{error}</Err>}
             <Field>
@@ -697,7 +673,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               onClick={() => void handleJoin()}
               disabled={!nameInput.trim()}
             >
-              Join chat
+              Join
             </Button>
             <Button
               type="button"

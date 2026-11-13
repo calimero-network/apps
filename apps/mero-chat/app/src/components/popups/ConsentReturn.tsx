@@ -72,8 +72,10 @@ export default function ConsentReturn({ enabled }: { enabled: boolean }) {
           const alias = meta?.data?.name?.trim();
           if (alias) setStoredGroupAlias(org, alias);
           log.info("ConsentReturn", `joined workspace ${org}`);
-          const name = getMessengerDisplayName(org);
-          if (name) enterWorkspace(api.current, org, name, getAccountId());
+          // The name chosen beside Join, published as the member's name.
+          const chosen = intent?.kind === "acceptInvite" ? intent.selfName?.trim() : "";
+          const name = chosen || getMessengerDisplayName(org);
+          if (name) await enterWorkspace(api.current, org, name, getAccountId());
           else enterJoinedWorkspaceForName(org);
           return;
         }

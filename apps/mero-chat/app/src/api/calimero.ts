@@ -336,12 +336,15 @@ export function signUp(name = ""): Promise<void> {
         invite: pendingInvite(),
         policy: state.policy,
         join: true,
+        // The name they chose becomes their name in the joined workspace
+        // (its member metadata), so it is not asked again.
+        nameInOrg: true,
       });
       if (made.joined) {
         // Before the session reads as signed in, so the picker's first load
         // already sees it.
         if (made.joined.org) {
-          if (name.trim()) setMessengerDisplayName(name.trim());
+          if (name.trim()) setMessengerDisplayName(name.trim(), made.joined.org);
           markJoinedAwaitingName(made.joined.org);
         }
         dropInvite();

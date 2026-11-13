@@ -11,7 +11,6 @@ import type { SubgroupEntry } from "../api/groupApi";
 import { log } from "../utils/logger";
 import { registerContextIdentities } from "../utils/selfIdentity";
 import { DM_CONTEXT_ALIAS_PREFIX } from "../utils/dmContext";
-import { getMessengerDisplayName } from "../utils/messengerName";
 import { findSelfMember } from "../utils/groupMemberIdentity";
 
 const LEFT_CONTEXTS_KEY = "curb:left_contexts";
@@ -130,28 +129,6 @@ export function useGroupContexts() {
                 if (!key) return;
                 idMap[ctxId] = key;
                 registerContextIdentities(ctxId, [key]);
-                // Freeze the user's name in this context at join time
-                // via WASM `set_profile`. The contract treats username
-                // as write-once, so later local edits won't overwrite
-                // what other members see, and the user appears in
-                // `get_profiles` (= channel member list) immediately.
-                const username = getMessengerDisplayName(groupId);
-                if (username) {
-                  clientApi
-                    .joinChat({
-                      contextId: ctxId,
-                      username,
-                      executorPublicKey: key,
-                      isDM: false,
-                    })
-                    .catch((err) =>
-                      log.debug(
-                        "useGroupContexts",
-                        `set_profile after direct-member auto-join failed for ${ctxId}`,
-                        err,
-                      ),
-                    );
-                }
               } catch (err) {
                 log.debug(
                   "useGroupContexts",

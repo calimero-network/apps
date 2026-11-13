@@ -112,23 +112,18 @@ function UserItem({
     dm.isJoined ? dm.contextId : undefined,
     dm.isJoined ? dm.contextIdentity : undefined,
   );
-  // isOnline(dm.otherIdentity) works once getProfiles resolves the context executor key.
-  // hasOtherOnline fallback handles the case where dm.otherIdentity is still a
-  // namespace key (getProfiles not yet resolved / cross-node delay).
+  // hasOtherOnline covers presence that has not named its sender yet.
   const otherIsOnline =
     isOnline(dm.otherIdentity) || (myContextKey ? hasOtherOnline(myContextKey) : false);
 
-  // Resolve from the account. `getDmDisplayName` is only consulted while the
-  // repository has nothing yet — a DM opened before governance sync has
-  // delivered the member list still has the names captured at creation, and
-  // showing those beats showing a truncated account for a second.
+  // Resolve from the account (the workspace's member metadata). Until the
+  // repository has loaded, the name the DM list read with it.
   const resolvedName = useResolvedName(
     dm.otherIdentity || dm.namespaceMemberIdentity,
   );
   const displayName =
     resolvedName ||
     getDmDisplayName({
-      otherUsername: dm.otherUsername,
       otherAlias: dm.otherAlias,
       otherIdentity: dm.otherIdentity,
       contextId: dm.contextId,

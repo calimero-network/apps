@@ -97,6 +97,29 @@ describe("ConsentReturn", () => {
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 
+  it("enters under the name chosen beside Join, not an older one", async () => {
+    back();
+    h.returnFromConsent.mockResolvedValue({
+      intent: { kind: "acceptInvite", org: "org-1", selfName: "Bea" },
+      result: approved("acceptInvite", { org: "org-1" }),
+    });
+    render(<ConsentReturn enabled />);
+    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Bea", "acct-me"));
+    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+  });
+
+  it("asks for a name in the joined workspace only when none was chosen", async () => {
+    back();
+    h.name = "";
+    h.returnFromConsent.mockResolvedValue({
+      intent: { kind: "acceptInvite", org: "org-1" },
+      result: approved("acceptInvite", { org: "org-1" }),
+    });
+    render(<ConsentReturn enabled />);
+    await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
+    expect(h.enterWorkspace).not.toHaveBeenCalled();
+  });
+
   it("says a decline changed nothing, and a return that is not this tab's request too", async () => {
     back();
     h.returnFromConsent.mockResolvedValue({

@@ -4,8 +4,6 @@ import { useEphemeral } from "../api/presence";
 interface UsePresenceResult {
   isOnline: (identity: string) => boolean;
   // For 2-person DMs: true if ANY key other than `myKey` is present.
-  // Use this when you can't guarantee `dm.otherIdentity` is a context executor key
-  // (e.g. getProfiles hasn't resolved yet and it's still a namespace member key).
   hasOtherOnline: (myKey: string) => boolean;
 }
 

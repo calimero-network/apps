@@ -300,14 +300,6 @@ export interface GetChatMembersProps {
   executor?: UserId;
 }
 
-export interface JoinChatProps {
-  isDM?: boolean;
-  contextId?: string;
-  executor?: UserId;
-  username?: string;
-  executorPublicKey?: string;
-}
-
 export interface DeleteDMProps {
   other_user: UserId;
 }
@@ -428,7 +420,6 @@ export interface MemberRoleEntry {
 }
 
 export interface ClientApi {
-  joinChat(props: JoinChatProps): ApiResponse<string>;
   createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
   getChannels(): ApiResponse<Channels>;
   getAllChannelsSearch(): ApiResponse<Channels>;

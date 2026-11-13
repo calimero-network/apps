@@ -75,6 +75,8 @@ import {
 import type { MessageLink } from "../../utils/permalink";
 import { nodeBasename } from "../../utils/servedByNode";
 import ChatAccessGate from "./ChatAccessGate";
+import { generalChannel, landed, wantsGeneral } from "../../utils/landing";
+import { GENERAL_CHANNEL } from "../../utils/createChannel";
 
 /**
  * The selected workspace, behind {@link ChatAccessGate}: someone who no
@@ -262,9 +264,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
     const isDM = activeChatRef.current?.type === "direct_message";
     const channelId = (isDM ? "private_dm" : activeChatRef.current?.id) || "";
     // Pass the channel's subgroupId so `useChannelMembers` can read the
-    // canonical member list from the admin API. Without this it falls
-    // back to `get_profiles` which misses members who haven't set a
-    // profile yet (the typical state for freshly-added users).
+    // canonical member list from the admin API.
     //
     // No namespaceId: display names no longer come from this call at all.
     // They are resolved per account by the name repository, which reads the
@@ -400,7 +400,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
             contextId: dm.contextId,
             executorPublicKey: dm.contextIdentity,
             label: getDmDisplayName({
-              otherUsername: dm.otherUsername,
               otherAlias: dm.otherAlias,
               otherIdentity: dm.otherIdentity,
               contextId: dm.contextId,
@@ -474,7 +473,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
           contextId,
           id: contextId,
           name: getDmDisplayName({
-            otherUsername: dm.otherUsername,
             otherAlias: dm.otherAlias,
             otherIdentity: dm.otherIdentity,
             contextId: dm.contextId,
@@ -667,6 +665,26 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   const updateSelectedActiveChatRef = useRef(updateSelectedActiveChat);
   updateSelectedActiveChatRef.current = updateSelectedActiveChat;
 
+  // Just entered the workspace (created, joined, picked): open #general as
+  // soon as it is listed, unless something else was opened first.
+  useEffect(() => {
+    if (!wantsGeneral()) return;
+    if (activeChatRef.current) {
+      landed();
+      return;
+    }
+    const general = generalChannel(groupContextsHook.channels);
+    if (!general?.contextIdentity) return;
+    landed();
+    void updateSelectedActiveChatRef.current({
+      type: "channel",
+      contextId: general.contextId,
+      id: general.contextId,
+      name: general.info?.name ?? general.alias ?? GENERAL_CHANNEL,
+      contextIdentity: general.contextIdentity,
+    });
+  }, [groupContextsHook.channels]);
+
   const onDMSelected = useCallback(
     async (dm: DMContextInfo) => {
       const contextId = dm.contextId;
@@ -706,28 +724,8 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
 
         resolvedIdentity = joinResponse.data.memberPublicKey;
         setContextMemberIdentity(contextId, resolvedIdentity);
-        // Seed server-side member alias so the other DM participant sees a
-        // display name instead of a raw identity hash on rc.35.
-        const namespaceIdentity = getGroupMemberIdentity(groupId);
-        const seedAlias =
-          (namespaceIdentity ? getIdentityDisplayName(namespaceIdentity) : "") ||
-          getMessengerDisplayName() ||
-          "";
-        if (seedAlias && groupId && namespaceIdentity) {
-          // Must use the NAMESPACE group ID + namespace identity, not the DM
-          // context ID — setMemberAlias stores to the governance DAG which
-          // listMembers(namespaceId) reads. Passing contextId here silently
-          // hits a non-existent group and the alias is never stored.
-          groupApi
-            .setMemberMetadata(groupId, namespaceIdentity, { name: seedAlias })
-            .catch(() => {/* non-fatal — alias is best-effort */});
-          // Register WASM-level profile so the other node's get_profiles
-          // returns our username. Without this, the other side always sees
-          // "Direct message" because their useDMs otherUsername is "".
-          new ClientApiDataSource()
-            .joinChat({ contextId, executorPublicKey: resolvedIdentity, username: seedAlias, isDM: true })
-            .catch(() => {/* non-fatal — set_profile is best-effort */});
-        }
+        // Nothing to write about names: both sides read each other's from
+        // the workspace's member metadata, by account.
         const refreshedDms = await fetchDmsWithGroup();
         const refreshedDm = refreshedDms.find(
           (entry) => entry.contextId === contextId,
@@ -747,12 +745,11 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         contextId,
         id: contextId,
         name: getDmDisplayName({
-          otherUsername: selectedDm.otherUsername,
           otherAlias: selectedDm.otherAlias,
           otherIdentity: selectedDm.otherIdentity,
           contextId: selectedDm.contextId,
         }),
-        username: selectedDm.otherUsername || undefined,
+        username: selectedDm.otherAlias || undefined,
         readOnly: false,
         isSynced: true,
         contextIdentity: resolvedIdentity,
@@ -1058,7 +1055,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         identityMap.set(dm.contextId, dm.contextIdentity);
         forUnread.push({ contextId: dm.contextId, contextIdentity: dm.contextIdentity });
       }
-      const name = dm.otherUsername || dm.otherAlias || dm.contextId.substring(0, 8);
+      const name = dm.otherAlias || dm.contextId.substring(0, 8);
       nameMap.set(dm.contextId, name);
     });
 
@@ -1195,10 +1192,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
       setGroupMemberIdentity(groupId, myIdentity);
-      // `myIdentity` is an account in HEX (admin API); `otherIdentity` comes
-      // from the picker, i.e. the contract's `get_profiles`, in BASE58. Same
-      // account, different encoding — a raw `===` never matched, so the
-      // self-DM guard was inert.
       if (sameAccount(myIdentity, otherIdentity)) {
         return {
           data: "",
@@ -1206,16 +1199,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
 
-      const otherUsername = dmMembers.get(otherIdentity) || chatMembers.get(otherIdentity) || "";
-
-      // Dedup by ACCOUNT, never by display name.
-      //
-      // This used to also match on `otherUsername`, as "a second line of
-      // defence" for when the identity key was missing. It is not a defence:
-      // two people who choose the same name collapse into one DM, and someone
-      // who renames stops matching their own. `sameAccount` handles the
-      // base58/hex split that made the raw `===` unreliable in the first place,
-      // which is the problem the name comparison was really papering over.
+      // Dedup by ACCOUNT, never by display name: two people may share one.
       const freshDms = await fetchDmsWithGroup();
       const existingDm = (freshDms ?? []).find(
         (dm) =>
@@ -1225,8 +1209,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       if (existingDm?.contextId) {
         return { data: existingDm.contextId, error: "" };
       }
-      const myUsername = getIdentityDisplayName(myIdentity) || getMessengerDisplayName();
-
       // 1-group-per-context model: DM = a new restricted subgroup under the
       // namespace + one context inside. The helper handles both steps and
       // adds the other identity as a member of the new DM subgroup.
@@ -1234,9 +1216,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         applicationId: getApplicationId(),
         groupId,
         myIdentity,
-        myUsername,
         otherIdentity,
-        otherUsername,
         contextApi: nodeApi,
         groupApi,
         onWarning: (message) => log.warn("createDM", message),

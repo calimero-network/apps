@@ -5,6 +5,7 @@ import { rpcExec } from "../meroJsClient";
 import { nameRepository } from "../../repositories/names/useNames";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { rpcErrorMessage } from "./errorMessage";
+import { getGroupId } from "../../constants/config";
 import {
   type AcceptInvitationProps,
   type ChannelInfo,
@@ -29,7 +30,6 @@ import {
   type GetUsernameProps,
   type InviteToChannelProps,
   type JoinChannelProps,
-  type JoinChatProps,
   type LeaveChannelProps,
   type MarkAsReadProps,
   type GetUnreadProps,
@@ -65,67 +65,6 @@ export function getJsonRpcClient() {
 }
 
 export class ClientApiDataSource implements ClientApi {
-  async joinChat(props: JoinChatProps): ApiResponse<string> {
-    try {
-      if (!props.username?.trim()) {
-        return {
-          data: null,
-          error: {
-            code: 400,
-            message: "Username is required",
-          },
-        };
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, string>(
-        {
-          contextId: props.contextId || getContextId() || "",
-          method: "set_profile",
-          argsJson: {
-            username: props.username.trim(),
-            avatar: null,
-          },
-          executorPublicKey:
-            (props.isDM ? props.executor : (props.executorPublicKey || getExecutorPublicKey())) || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            message: rpcErrorMessage(response),
-          },
-        };
-      }
-      return {
-        data: response?.result.output as string,
-        error: null,
-      };
-    } catch (error) {
-      console.error("joinChat failed:", error);
-      let errorMessage = "An unexpected error occurred during joinChat";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
-  }
-
   async createChannel(
     props: CreateChannelProps,
   ): ApiResponse<CreateChannelResponse> {
@@ -918,18 +857,24 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  /**
+   * Everyone in the workspace, by account, with the name each chose there (the
+   * workspace's member metadata, through `nameRepository`). Not the contract's
+   * profiles: a conversation holds no names.
+   */
   async getChatMembers(
-    props: GetChatMembersProps,
+    _props: GetChatMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
-      const contextId = getContextId() || "";
-      const executorPublicKey = (props.isDM ? props.executor : getExecutorPublicKey()) || "";
-      if (!contextId || !executorPublicKey) return { data: new Map(), error: null };
-      const profilesRes = await this.getProfiles(contextId, executorPublicKey);
+      const groupId = getGroupId();
+      if (!groupId) return { data: new Map(), error: null };
+      const res = await new GroupApiDataSource().listMembers(groupId);
       const memberMap = new Map<string, string>();
-      for (const p of profilesRes.data ?? []) {
-        if (p.identity && p.username) memberMap.set(p.identity, p.username);
-      }
+      await Promise.all(
+        (res.data?.members ?? []).map(async (m) => {
+          memberMap.set(m.identity, await nameRepository.resolve(m.identity));
+        }),
+      );
       return { data: memberMap, error: null };
     } catch {
       return { data: new Map(), error: null };
@@ -1449,75 +1394,15 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  /** `props.userId`'s name in the workspace (its member metadata), 404 when they chose none. */
   async getUsername(props: GetUsernameProps): ApiResponse<string> {
-    try {
-      const response = await getJsonRpcClient().execute<
-        Record<string, never>,
-        { identity: string; username: string; avatar?: string }[]
-      >(
-        {
-          contextId: props.contextId || getContextId() || "",
-          method: "get_profiles",
-          argsJson: {},
-          executorPublicKey: props.executorPublicKey || getExecutorPublicKey() || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            message: rpcErrorMessage(response),
-          },
-        };
-      }
-
-      const profiles = Array.isArray(response?.result?.output)
-        ? response.result.output
-        : [];
-      const match = profiles.find((profile) => profile.identity === props.userId);
-      if (!match) {
-        return {
-          data: null,
-          error: {
-            code: 404,
-            message: "Username not found for this identity",
-          },
-        };
-      }
-
-      return {
-        data: match.username,
-        error: null,
-      };
-    } catch (error) {
-      console.error("getUsername failed:", error);
-      let errorMessage = "An unexpected error occurred during getUsername";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        data: null,
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
+    await nameRepository.resolve(props.userId);
+    const name = nameRepository.peek(props.userId);
+    return name
+      ? { data: name, error: null }
+      : { data: null, error: { code: 404, message: "Username not found for this identity" } };
   }
 
-  /**
-   * Call `get_info()` on a specific context to retrieve its metadata.
-   * Used by the group-based channel list to get name/type/description per context.
-   */
   async getContextInfo(
     contextId: string,
     executorPublicKey: string,
@@ -1563,58 +1448,6 @@ export class ClientApiDataSource implements ClientApi {
         error instanceof Error
           ? error.message
           : "An unexpected error occurred during getContextInfo";
-      return {
-        data: null,
-        error: { code: 500, message: errorMessage },
-      };
-    }
-  }
-
-  async getProfiles(
-    contextId: string,
-    executorPublicKey: string,
-  ): ApiResponse<{ identity: string; username: string; avatar?: string }[]> {
-    try {
-      const response = await getJsonRpcClient().execute<
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        any,
-        { identity: string; username: string; avatar?: string }[]
-      >(
-        {
-          contextId,
-          method: "get_profiles",
-          argsJson: {},
-          executorPublicKey,
-        },
-        {
-          headers: { "Content-Type": "application/json" },
-          timeout: 10000,
-        },
-      );
-
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response.error.code,
-            message:
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (response.error.error?.cause?.info as any)?.message ??
-              "get_profiles RPC failed",
-          },
-        };
-      }
-
-      return {
-        data: response?.result.output as { identity: string; username: string; avatar?: string }[],
-        error: null,
-      };
-    } catch (error) {
-      console.error("getProfiles failed:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred during getProfiles";
       return {
         data: null,
         error: { code: 500, message: errorMessage },
@@ -1870,40 +1703,6 @@ export class ClientApiDataSource implements ClientApi {
       return { data: undefined, error: null };
     } catch {
       return { data: null, error: { code: 500, message: "deleteDraft failed" } };
-    }
-  }
-
-  async updateProfile(
-    contextId: string,
-    executorPublicKey: string,
-    username: string,
-    avatar: string | null,
-  ): ApiResponse<string> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, string>(
-        {
-          contextId,
-          method: "set_profile",
-          argsJson: { username, avatar },
-          executorPublicKey,
-        },
-        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response.error.error?.cause?.info as any)?.message ?? "updateProfile failed",
-          },
-        };
-      }
-      return { data: response?.result.output as string, error: null };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "updateProfile failed";
-      return { data: null, error: { code: 500, message } };
     }
   }
 

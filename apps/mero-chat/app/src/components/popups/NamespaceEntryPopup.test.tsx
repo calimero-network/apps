@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setStoredGroupAlias } from "../../constants/config";
+import { setMessengerDisplayName } from "../../utils/messengerName";
 import NamespaceEntryPopup from "./NamespaceEntryPopup";
 
 // The picker no longer joins anything: an invitation arrives as an opened link
@@ -146,6 +147,19 @@ describe("NamespaceEntryPopup", () => {
     expect(screen.getByPlaceholderText("e.g. Alice")).toBeInTheDocument();
   });
 
+  it("enters a workspace joined at sign-up straight away when the name was chosen there", async () => {
+    sessionStorage.setItem("chat:joined-awaiting-name", "ns1");
+    setMessengerDisplayName("Ann", "ns1");
+    h.resolveCurrentMemberIdentity.mockResolvedValue({
+      data: { memberIdentity: "me", members: [{ identity: "me", alias: "Ann" }] },
+    });
+    open();
+    await waitFor(() =>
+      expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "ns1", "Ann", "me", { published: true }),
+    );
+    expect(screen.queryByPlaceholderText("e.g. Alice")).toBeNull();
+  });
+
   it("lists workspaces and says how to join another, with no field to paste into", async () => {
     open();
     expect(await screen.findByText("Select workspace")).toBeInTheDocument();
@@ -199,16 +213,10 @@ describe("NamespaceEntryPopup", () => {
     fireEvent.change(self, { target: { value: " " } });
     expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     fireEvent.change(self, { target: { value: "Ada L" } });
-    let nameAtGeneral = "";
-    h.createChannel.mockImplementation(async () => {
-      nameAtGeneral = localStorage.getItem("chat-username:ns-new") ?? "";
-      return { contextId: "ctx-general", memberKey: "key" };
-    });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    // The name goes to the workspace's member metadata on entry; #general holds none.
     await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "ns-new", "Ada L", "me"));
-    // #general is made under your name in the new workspace.
-    expect(nameAtGeneral).toBe("Ada L");
-    expect(screen.queryByText("Choose a display name to use in this server.")).toBeNull();
+    expect(screen.queryByText("Choose the name people in this workspace will see.")).toBeNull();
   });
 
   it("on Chat's frontend, creates the workspace on the node's consent page, keeping both names", async () => {

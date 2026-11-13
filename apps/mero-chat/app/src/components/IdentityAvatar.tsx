@@ -1,10 +1,10 @@
 import React, { memo } from "react";
-import { getContextId } from "../api/calimero";
 import { useAvatarUrl } from "../hooks/useAvatarUrl";
 import { Avatar } from "./virtualized-chat/Message/Avatar";
 
 interface IdentityAvatarProps {
   identity: string | undefined;
+  /** Unused: a picture is the person's, the same in every conversation. */
   contextId?: string;
   name?: string;
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
@@ -12,18 +12,16 @@ interface IdentityAvatarProps {
   style?: React.CSSProperties;
 }
 
-/** Renders an avatar circle with an async-loaded profile image.
+/** Renders an avatar circle with the person's workspace picture.
  *  Falls back to the initials circle if no avatar is set or while loading. */
 export const IdentityAvatar = memo(function IdentityAvatar({
   identity,
-  contextId,
   name,
   size = "md",
   className,
   style,
 }: IdentityAvatarProps) {
-  const resolvedContextId = contextId ?? getContextId() ?? undefined;
-  const avatarUrl = useAvatarUrl(identity, resolvedContextId);
+  const avatarUrl = useAvatarUrl(identity);
 
   return (
     <Avatar
