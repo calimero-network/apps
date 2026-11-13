@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "calimero-bundle",
  "eyre",
@@ -125,7 +125,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "calimero-app-abi",
  "calimero-build-utils",
@@ -139,7 +139,7 @@ dependencies = [
 [[package]]
 name = "calimero-build-utils"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "rustc_version",
  "toml 1.2.1+spec-1.1.0",
@@ -148,7 +148,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "base64 0.23.1",
  "bs58",
@@ -169,7 +169,7 @@ dependencies = [
 [[package]]
 name = "calimero-utils-fs"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "windows-sys",
 ]
@@ -555,7 +555,7 @@ dependencies = [
 [[package]]
 name = "mero-sign"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.20#d5e447c1d2c4b48097fbaa317e2fa1f99aa51e31"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.23#73584846a7ec9b06b539061a71d34f4efa95197e"
 dependencies = [
  "base64 0.23.1",
  "calimero-app-abi",
