@@ -260,7 +260,6 @@ export default function AdminPanel({
               subgroupCount={admin.subgroupCount}
               teeMembers={admin.teeMembers}
               actionLoading={admin.actionLoading}
-              onSetDefaultCapabilities={admin.setDefaultCapabilities}
               onSetSubgroupVisibility={admin.setSubgroupVisibility}
             />
           )}

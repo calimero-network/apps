@@ -9,7 +9,6 @@ import {
   setGroupMemberIdentity,
   setStoredGroupAlias,
 } from "../../constants/config";
-import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
   AppNotInstalledError,
   installConfiguredApp,
@@ -180,8 +179,6 @@ export default function CreateWorkspacePopup({
         duration: 12000,
       });
     }
-
-    await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
 
     const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
     const memberIdentity = identityResult.data?.memberIdentity;

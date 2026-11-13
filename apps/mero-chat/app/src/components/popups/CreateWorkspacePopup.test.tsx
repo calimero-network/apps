@@ -8,7 +8,6 @@ const {
   mockListApplications,
   mockCreateGroup,
   mockResolveCurrentMemberIdentity,
-  mockSetDefaultCapabilities,
   mockSetMemberMetadata,
   mockCreateInvitation,
   mockCreateGroupContext,
@@ -29,7 +28,6 @@ const {
   mockListApplications: vi.fn(),
   mockCreateGroup: vi.fn(),
   mockResolveCurrentMemberIdentity: vi.fn(),
-  mockSetDefaultCapabilities: vi.fn(),
   mockSetMemberMetadata: vi.fn(),
   mockCreateInvitation: vi.fn(),
   mockCreateGroupContext: vi.fn(),
@@ -87,7 +85,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class MockGroupApiDataSource {
     createGroup = mockCreateGroup;
     resolveCurrentMemberIdentity = mockResolveCurrentMemberIdentity;
-    setDefaultCapabilities = mockSetDefaultCapabilities;
     setMemberMetadata = mockSetMemberMetadata;
     setGroupMetadata = mockSetGroupMetadata;
     createInvitation = mockCreateInvitation;
@@ -142,7 +139,6 @@ describe("CreateWorkspacePopup", () => {
     mockListApplications.mockReset();
     mockCreateGroup.mockReset();
     mockResolveCurrentMemberIdentity.mockReset();
-    mockSetDefaultCapabilities.mockReset();
     mockSetMemberMetadata.mockReset();
     mockSetMemberMetadata.mockResolvedValue({ data: undefined, error: null });
     // The name chosen in another workspace prefills this one's name field.
@@ -166,7 +162,6 @@ describe("CreateWorkspacePopup", () => {
         groupId: "group-1",
       },
     });
-    mockSetDefaultCapabilities.mockResolvedValue({ data: undefined, error: null });
     mockResolveCurrentMemberIdentity.mockResolvedValue({
       data: {
         memberIdentity: "member-1",

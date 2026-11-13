@@ -11,6 +11,9 @@ const h = await vi.hoisted(async () => {
     removed: string[];
     parent: string | null;
     metadata: unknown;
+    capabilities?: Record<string, number>;
+    readOnly?: string[];
+    defaultCapabilities?: number | null;
   };
   type Org = {
     orgId: string;
@@ -137,9 +140,17 @@ const h = await vi.hoisted(async () => {
       };
     }),
     invite: vi.fn(async () => "tok-1"),
-    setTeamMember: vi.fn(async (org: string, team: string, account: string) => {
-      state.orgs.get(org)!.teams[team]!.members[account] = false;
-    }),
+    // core's SetTeamMember: the whole row; capabilities left out keep the row's, or a new row takes the default.
+    setTeamMember: vi.fn(
+      async (org: string, team: string, account: string, _opts: unknown, row: { lead?: boolean; capabilities?: number } = {}) => {
+        const o = state.orgs.get(org)!;
+        const t = o.teams[team]!;
+        t.members[account] = row.lead ?? false;
+        t.capabilities ??= {};
+        if (row.capabilities !== undefined) t.capabilities[account] = row.capabilities;
+        else t.capabilities[account] ??= (o.capabilities[account] ?? o.defaultCapabilities) | (t.defaultCapabilities ?? 0);
+      },
+    ),
     removeTeamMember: vi.fn(async (org: string, team: string, account: string) => {
       delete state.orgs.get(org)!.teams[team]!.members[account];
     }),
@@ -161,10 +172,13 @@ vi.mock("../calimero", () => ({
 }));
 
 import { chatPackage, invalidate, visibilityOf } from "../platform";
+import { CAN_CREATE_SUBGROUP, canCreateSubgroup } from "../../utils/groupCapabilities";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { createChannel } from "../../utils/createChannel";
 
 const api = new GroupApiDataSource();
+
+const CREATE_CHILD_TEAM = 1 << 11;
 
 /** A workspace made in Chat, with #general, and more people in its org. */
 async function workspace(people: Record<string, string> = {}): Promise<{ org: string; general: string }> {
@@ -320,8 +334,14 @@ describe("the workspace's people are Chat's", () => {
     h.state.orgs.get(org)!.teams["team-chat"]!.join = "invite";
     invalidate();
     await api.addGroupMember(org, "acct-cy");
-    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-cy", expect.anything());
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-cy", expect.anything(), {
+      lead: false,
+      role: "member",
+      // Their org-wide capabilities, and channels and DMs.
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
     expect(h.client.setMember).not.toHaveBeenCalled();
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
   });
 
   it("a legacy org: every org member, the guest too", async () => {
@@ -424,3 +444,85 @@ describe("connecting chat to an organization made for another app", () => {
     expect(h.client.createApp).not.toHaveBeenCalled();
   });
 });
+
+describe("Chat's permissions are rows on its app team", () => {
+  const people = { "acct-bob": "member", "acct-ana": "admin" };
+
+  it("a member's capabilities are their row's, else the org's with the team's default", async () => {
+    const { org } = await workspace(people);
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.defaultCapabilities = CREATE_CHILD_TEAM;
+    invalidate();
+    const implicit = (await api.getMemberCapabilities(org, "acct-bob")).data!.capabilities;
+    expect(implicit).toBe(4 | CREATE_CHILD_TEAM);
+    // Creating channels and DMs is CREATE_CHILD_TEAM on the Chat-team row.
+    expect(CAN_CREATE_SUBGROUP).toBe(CREATE_CHILD_TEAM);
+    expect(canCreateSubgroup(implicit)).toBe(true);
+    team.members["acct-bob"] = false;
+    team.capabilities = { "acct-bob": 4 };
+    invalidate();
+    expect((await api.getMemberCapabilities(org, "acct-bob")).data!.capabilities).toBe(4);
+    expect(h.client.getOrg).toHaveBeenCalled();
+  });
+
+  it("setting capabilities writes the whole row on chat's team, never org-wide", async () => {
+    const { org } = await workspace(people);
+    const res = await api.setMemberCapabilities(org, "acct-bob", { capabilities: 4 | CREATE_CHILD_TEAM });
+    expect(res.error).toBeNull();
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: false,
+      role: "member",
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+    expect(h.client.setMember).not.toHaveBeenCalled();
+  });
+
+  it("Admin is a lead of chat's team; the row keeps its capabilities, and its lead when only they change", async () => {
+    const { org } = await workspace(people);
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.members["acct-bob"] = false;
+    team.capabilities = { "acct-bob": 4 | CREATE_CHILD_TEAM };
+    invalidate();
+    await api.updateMemberRole(org, "acct-bob", "Admin");
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: true,
+      role: "lead",
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
+    expect(h.client.setMember).not.toHaveBeenCalled();
+    const bob = (await api.listMembers(org)).data!.members.find((m) => m.identity === "acct-bob");
+    expect(bob?.role).toBe("Admin");
+
+    await api.setMemberCapabilities(org, "acct-bob", { capabilities: 4 });
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: true,
+      role: "lead",
+      capabilities: 4,
+    });
+
+    await api.updateMemberRole(org, "acct-bob", "Member");
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: false,
+      role: "member",
+      capabilities: 4,
+    });
+    expect(h.client.setMember).not.toHaveBeenCalled();
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("an organization admin is an Admin Chat does not change", async () => {
+    const { org } = await workspace(people);
+    const ana = (await api.listMembers(org)).data!.members.find((m) => m.identity === "acct-ana");
+    expect(ana).toMatchObject({ role: "Admin", orgAdmin: true });
+  });
+});
+
+describe("a team's default capabilities", () => {
+  it("are never written from Chat", async () => {
+    const { org } = await workspace();
+    await api.addGroupMember(org, "acct-cy");
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+  });
+});
+

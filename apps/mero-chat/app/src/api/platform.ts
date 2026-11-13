@@ -13,7 +13,8 @@
  * | member metadata `{ name }` | org member metadata `{ name }` |
  * | a per-context member key | the account: one id everywhere |
  * | namespace invitation (signed payload in a link) | an org **invite token** naming chat's app team (a passkey step-up), redeemed after sign-in |
- * | capability bits | the org's capability bits (the same positions: create, invite, join open, create/delete subgroup ↔ team, visibility) |
+ * | namespace admin | an org owner or admin, or a lead of chat's app team (a Chat admin) |
+ * | capability bits | the capabilities on the person's row in chat's app team (the same positions: create, invite, join open, delete, visibility; creating a channel or DM is `CREATE_CHILD_TEAM`); org-wide only where there is no app team |
  *
  * v1 made a channel in steps (create the subgroup, set its visibility, add
  * members, create its context). A 1.0 instance is made in one call that
@@ -83,6 +84,10 @@ export interface OrgRecord {
 /** A team in {@link OrgRecord}. */
 export interface ChatOrgTeam extends OrgTeamView {
   metadata?: unknown;
+  /** The direct rows that read and never write the team's apps. */
+  readOnly?: string[];
+  /** What a new row takes on top of the member's org-wide capabilities; absent when unset. */
+  defaultCapabilities?: number | null;
 }
 
 function client(): CalimeroClient {
@@ -441,43 +446,126 @@ export async function createChatApp(
 // ── orgs ─────────────────────────────────────────────────────────────────────
 
 /**
- * A new workspace (`createAppOrg`): an org whose members get `capabilities`
- * (a passkey step-up) and chat's own app team, open, so everyone in it has
- * Chat, its invites name the team, and should the org later hold other apps,
- * Calimero Home can keep Chat's people apart from theirs. Neither step fails
- * the workspace: declined, or a node without app teams, it is a legacy one.
+ * A new workspace (`createAppOrg`): an org with chat's own app team, open,
+ * so everyone in it has Chat, its invites name the team, and should the org
+ * later hold other apps, Calimero Home can keep Chat's people apart from
+ * theirs. Declined, or a node without app teams, it is a legacy one. What
+ * members may do in Chat is on their rows in that team ({@link setChatRow}).
  * Not marked: a workspace is listed once it holds #general.
  */
-export async function createOrg(name: string, capabilities?: number): Promise<string> {
+export async function createOrg(name: string): Promise<string> {
   const made = await run((c) => createAppOrg(c, name, chatSource(), passkey, { mark: false }));
   invalidate();
-  if (capabilities !== undefined) {
-    await setCapabilities(made.orgId, capabilities).catch((e: unknown) => {
-      console.warn("createOrg: member capabilities not set", e);
-    });
-  }
   return made.orgId;
 }
 
-export async function setCapabilities(org: string, capabilities: number, account?: string): Promise<void> {
-  await run((c) =>
-    c.orgs.capabilities({ org, capabilities, ...(account ? { account } : {}) }, { confirm: passkeyConfirm(passkey()) }),
-  );
+/**
+ * Sets `account`'s capabilities across the whole org (a passkey step-up):
+ * only for a workspace without chat's app team (legacy, a dev bundle), and
+ * refused to a session bound to Chat's frontend.
+ */
+export async function setCapabilities(org: string, capabilities: number, account: string): Promise<void> {
+  await run((c) => c.orgs.capabilities({ org, capabilities, account }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
 }
 
+/** An org role: only for a workspace without chat's app team, and refused to a session bound to Chat's frontend. */
 export async function setMemberRole(org: string, account: string, role: "admin" | "member" | "guest"): Promise<void> {
   await run((c) => c.orgs.setMember({ org, account, role }, { confirm: passkeyConfirm(passkey()) }));
   invalidate(org);
 }
 
+/**
+ * core's `CREATE_CHILD_TEAM` on chat's app team: "may create channels and
+ * DMs". A channel is a team below chat's team, and its creator leads it, so
+ * they may create its instance there; nothing on chat's team itself is needed.
+ */
+const CREATE_CHILD_TEAM = 1 << 11;
+/** What chat gives every row it writes for someone joining it: they create channels and DMs. */
+export const CHAT_MEMBER_CREATES = CREATE_CHILD_TEAM;
 
-/** Puts an org member into Chat: a row on chat's app team (its managers; a passkey step-up). */
-export async function addToChat(org: string, account: string): Promise<void> {
-  const team = chatTeamId(await getOrgRecord(org));
-  if (!team) return;
-  await run((c) => c.orgs.teamSetMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+const ORG_ADMIN = new Set(["owner", "admin"]);
+
+/** Whether `account` is an owner or admin of the org (every capability, in every team). */
+export function isOrgAdmin(org: OrgRecord, account: string): boolean {
+  return ORG_ADMIN.has(org.members[account] ?? "");
+}
+
+/** `account`'s org-wide capabilities, as core reads them (`Org::org_caps`). */
+function orgCaps(org: OrgRecord, account: string): number {
+  if (isOrgAdmin(org, account)) return 0xfff;
+  return org.capabilities[account] ?? org.defaultCapabilities;
+}
+
+/** A row on chat's app team, whole, as `teamSetMember` writes it. */
+export interface ChatRow {
+  lead: boolean;
+  role: "lead" | "member" | "readOnly";
+  capabilities: number;
+}
+
+/**
+ * `account`'s row on chat's app team `team`: its lead flag and role, and the
+ * capabilities it holds, or (no capabilities of its own: someone in an open
+ * team without a row, or a row core left at its default) what core gives a
+ * new row: their org-wide capabilities with the team's default on top.
+ */
+export function chatRowIn(org: OrgRecord, team: string, account: string): ChatRow {
+  const t = org.teams[team];
+  const lead = t?.members?.[account] === true;
+  const readOnly = !lead && (t?.readOnly ?? []).includes(account);
+  const own = t?.capabilities?.[account];
+  const capabilities = typeof own === "number" ? own : orgCaps(org, account) | (t?.defaultCapabilities ?? 0);
+  return { lead, role: lead ? "lead" : readOnly ? "readOnly" : "member", capabilities };
+}
+
+/** Whether `account` leads chat's app team in `org` (a Chat admin). */
+export function leadsChat(org: OrgRecord, account: string): boolean {
+  const team = chatTeamId(org);
+  return !!team && org.teams[team]?.members?.[account] === true;
+}
+
+/**
+ * v1's role for `account` in workspace `org`: an org owner or admin, or a
+ * lead of chat's app team, is an Admin; a guest ReadOnly; else a Member.
+ */
+export function chatRole(org: OrgRecord, account: string): "Admin" | "Member" | "ReadOnly" {
+  const role = memberRole(org.members[account]);
+  return role === "Member" && leadsChat(org, account) ? "Admin" : role;
+}
+
+/**
+ * Writes `account`'s row on chat's app team in `org` (`teamSetMember`, a
+ * passkey step-up its leads and the org's admins may make, from a session
+ * bound to Chat's frontend too). The node writes the whole row, and a row
+ * sent without `lead` loses it, so what `row` leaves out is read from the
+ * row as it stands and sent with it. Throws where chat has no app team.
+ */
+export async function setChatRow(org: string, account: string, row: Partial<ChatRow>): Promise<void> {
   invalidate(org);
+  const record = await getOrgRecord(org);
+  const team = chatTeamId(record);
+  if (!team) throw new Error("This workspace has no Chat team; an admin adds it in Calimero Home.");
+  const current = chatRowIn(record, team, account);
+  const lead = row.lead ?? (row.role ? row.role === "lead" : current.lead);
+  const role = lead ? "lead" : row.role && row.role !== "lead" ? row.role : current.role === "lead" ? "member" : current.role;
+  const capabilities = row.capabilities ?? current.capabilities;
+  await run((c) =>
+    c.orgs.teamSetMember({ org, team, account, lead, role, capabilities }, { confirm: passkeyConfirm(passkey()) }),
+  );
+  invalidate(org);
+}
+
+/**
+ * Puts an org member into Chat: a row on chat's app team (its managers; a
+ * passkey step-up) that lets them create channels and DMs.
+ */
+export async function addToChat(org: string, account: string): Promise<void> {
+  const record = await getOrgRecord(org);
+  const team = chatTeamId(record);
+  if (!team) return;
+  const { capabilities } = chatRowIn(record, team, account);
+  await setChatRow(org, account, { capabilities: capabilities | CHAT_MEMBER_CREATES });
 }
 
 /** Takes `account` off the private channels and DMs in `org` that list them and this account may change. */

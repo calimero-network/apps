@@ -322,33 +322,6 @@ export function useGroupAdmin() {
     [],
   );
 
-  const setDefaultCapabilities = useCallback(
-    async (groupId: string, capabilities: number): Promise<boolean> => {
-      setActionLoading(true);
-      setError(null);
-      try {
-        const resp = await api.setDefaultCapabilities(groupId, {
-          defaultCapabilities: capabilities,
-        });
-        if (resp.error) {
-          setError(resp.error.message);
-          return false;
-        }
-        if (group) {
-          setGroup({ ...group, defaultCapabilities: capabilities });
-        }
-        return true;
-      } catch (err) {
-        log.error("useGroupAdmin", "Failed to set default capabilities", err);
-        setError("Failed to set default capabilities");
-        return false;
-      } finally {
-        setActionLoading(false);
-      }
-    },
-    [group],
-  );
-
   const setSubgroupVisibility = useCallback(
     async (groupId: string, mode: VisibilityMode): Promise<boolean> => {
       setActionLoading(true);
@@ -435,7 +408,6 @@ export function useGroupAdmin() {
     setContextVisibility,
     getContextAllowlist,
     manageAllowlist,
-    setDefaultCapabilities,
     setSubgroupVisibility,
     triggerUpgrade,
     refreshUpgradeStatus,
