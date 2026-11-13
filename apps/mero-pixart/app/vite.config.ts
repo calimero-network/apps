@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 // Relative, so the same build runs at / and under the path the cluster serves
 // the bundle's frontend from. `pnpm dev:local mero-pixart` runs this on
@@ -15,5 +16,5 @@ export default defineConfig({
     setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     exclude: ["**/node_modules/**", "**/e2e/**"],
   },
-  plugins: [react(), servedAssetsFallback()],
+  plugins: [installableApp({ cacheId: "mero-pixart" }), react(), servedAssetsFallback()],
 });

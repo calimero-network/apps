@@ -5,6 +5,10 @@ import { App } from "./App";
 import { invites, migrateStoredInvite } from "./teams";
 import { applyStoredTheme } from "./ui";
 import "./index.css";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");

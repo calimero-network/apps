@@ -32,6 +32,7 @@ import {
   Upload,
 } from '@calimero-network/mero-icons';
 
+import { InstallAppButton } from '@calimero-apps/install';
 import BrandMark from '../../components/BrandMark';
 import SignInDialog from '../../components/SignInDialog';
 import Wordmark from '../../components/Wordmark';
@@ -326,6 +327,9 @@ export default function LandingPage() {
                 >
                   Sign in
                 </button>
+                <InstallAppButton className="mp-ld-btn mp-ld-btn--secondary">
+                  Install Mero Pass
+                </InstallAppButton>
               </div>
               <p className="mp-ld-meta">
                 End-to-end encrypted · Web · macOS · Windows · Linux · Open

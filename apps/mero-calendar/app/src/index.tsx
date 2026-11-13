@@ -18,6 +18,10 @@ import { store } from "./store/store";
 import { ModalProvider } from "./providers/ModalProvider";
 import { PopupProvider } from "./providers/PopupProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // Before React mounts: a person opening an invitation link (`?invite=`) is
 // usually not signed in yet, and the token has to survive the passkey sign-up.

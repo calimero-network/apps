@@ -9,6 +9,10 @@ import App from './App';
 import { THEME } from './config';
 import { captureInvite } from './lib/workspaces';
 import { applyTheme, getStoredTheme } from './theme';
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // Apply the saved light/dark theme before first paint (avoids a flash).
 applyTheme(getStoredTheme());

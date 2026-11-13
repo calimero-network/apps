@@ -9,6 +9,10 @@ import { THEME } from './config';
 import { nodeBasename } from '@calimero-apps/node-served';
 import { invites, migrateLegacyInvite } from './workspaces';
 import { applyTheme, readStoredTheme } from './theme';
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // index.html already put the saved theme on <html> before the first paint;
 // this re-applies it in case that inline script could not run.
