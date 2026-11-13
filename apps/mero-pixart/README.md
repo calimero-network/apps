@@ -108,9 +108,8 @@ a second browser profile and sign up there.
 ## Commands
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/mero-pixart/logic/Cargo.toml                 # harness + scenarios
-cargo run --release --manifest-path $M -- build  apps/mero-pixart/logic       # res/abi.json
+scripts/component-build.sh apps/mero-pixart/logic                             # res/abi.json
 meroctl app pack apps/mero-pixart/logic                                       # logic/dist/*.mpk, dev-signed
 pnpm merod-local e2e mero-pixart                                              # scenarios on merod local
 pnpm -F mero-pixart lint typecheck test build

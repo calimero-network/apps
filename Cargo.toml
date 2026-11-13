@@ -38,8 +38,7 @@ members  = [
 # wasm, browser and journey matrices stop seeing it, and
 # `.github/workflows/components.yml` picks it up instead
 # (`scripts/component-apps.sh`). Each app's port adds its own line, in the same
-# PR that moves it. `tools/component-bundle` is a standalone crate too, but
-# nothing here globs over `tools/`, so it needs no entry.
+# PR that moves it.
 #
 # See docs/COMPONENT-APPS.md.
 exclude = [
@@ -156,8 +155,7 @@ min-runtime-version = "1.0.0-rc.20"
 merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.23"
 # ── component apps (the 1.0 runtime) ─────────────────────────────────────────
 #
-# The core release every component app, `tools/component-bundle` and the
-# components CI build against: `calimero-sdk` (the component SDK, named
+# The core release every component app and the components CI build against: `calimero-sdk` (the component SDK, named
 # `calimero-app-sdk` before 1.0.0-rc.9; not the v1 `calimero-sdk` tag in
 # `[workspace.dependencies]` above) and `calimero-app-build` at this tag, and the `merod`/`meroctl` the e2e job downloads from its GitHub
 # release. A component app is a standalone crate (see `exclude` above), so it

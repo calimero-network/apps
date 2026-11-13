@@ -30,8 +30,9 @@ export interface Seed {
 }
 
 /**
- * A dev-signed KV Store `.mpk` (`mero-component bundle --dev`), built once into
- * the root `dist/` (the bundler's own default is the crate's `logic/dist/`).
+ * A dev-signed KV Store `.mpk`, built once into the root `dist/` (meroctl's own
+ * default is the crate's `logic/dist/`): `scripts/component-build.sh` (meroctl
+ * app build), then `meroctl app pack` with no `--key`, so the development key.
  */
 function kvStoreMpk(): string {
   const dist = join(ROOT, "dist");
@@ -43,19 +44,24 @@ function kvStoreMpk(): string {
     }
   };
   if (!find()) {
+    const wasm = execFileSync(join(ROOT, "scripts/component-build.sh"), ["apps/kv-store/logic"], {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "inherit"],
+      encoding: "utf8",
+    })
+      .trim()
+      .split("\n")
+      .pop()!;
     execFileSync(
-      "cargo",
+      "meroctl",
       [
-        "run",
-        "--release",
-        "--manifest-path",
-        "tools/component-bundle/Cargo.toml",
-        "--",
-        "bundle",
+        "app",
+        "pack",
         "apps/kv-store/logic",
-        "--dev",
+        "--wasm",
+        wasm,
         "--no-frontend",
-        "--output",
+        "--out",
         join(dist, "com.calimero.kv-store-dev.mpk"),
       ],
       { cwd: ROOT, stdio: "inherit" },

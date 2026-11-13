@@ -49,7 +49,7 @@ passkeys, so no passkey prompt appears, and fills the table row by row.
 From Node, against a cluster already running (`pnpm merod-local up`):
 
 ```bash
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/conformance/logic
+scripts/component-build.sh apps/conformance/logic
 pnpm -F conformance-1.0 test:cluster
 ```
 

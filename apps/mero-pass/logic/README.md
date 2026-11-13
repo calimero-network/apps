@@ -51,7 +51,7 @@ Events carry ids only: `SecretChanged { secretId }`, `MembersChanged`,
 cargo test                                   # tests/harness.rs + every scenarios/*.json
 cargo clippy --all-targets -- -D warnings
 cargo clippy --target wasm32-wasip2 -- -D warnings
-cargo run --release --manifest-path ../../../tools/component-bundle/Cargo.toml -- build .
+../../../scripts/component-build.sh .
 pnpm merod-local e2e mero-pass               # the scenarios on merod local (CI's e2e job)
 ```
 

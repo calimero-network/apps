@@ -5,10 +5,11 @@
 # the `frontend` job (lint, typecheck, test, build, codegen of every pnpm member
 # a change reaches, scripts/ci-scope.py). This file adds what needs a contract:
 #
-#   checks    always: pins, tools/component-bundle, packages/connect + passkey + merod-local
+#   checks    always: pins, packages/connect + passkey + merod-local
 #   rust      per app: fmt, clippy -D warnings (host and wasm32-wasip2), cargo test
 #             (core's TestApp harness + scenarios/*.json), release build, ABI current,
-#             a dev-signed .mpk
+#             a dev-signed .mpk (build, pack and inspect are core's released
+#             `meroctl`, at the release scripts/install-meroctl.sh pins)
 #   e2e       per app: the app's scenarios/*.json on `merod local` (core's release
 #             binary at component-core-tag), as real accounts through mero-js
 #   browser   per app with an `app/playwright.config.ts`: its Playwright suite in
@@ -73,7 +74,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           EVENT: ${{ github.event_name }}
-          LOCKS: ${{ hashFiles('apps/*/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
+          LOCKS: ${{ hashFiles('apps/*/logic/Cargo.lock', 'scripts/install-meroctl.sh') }}
         run: |
           set -euo pipefail
           tag=$(awk -F'"' '/^component-core-tag/{print $2}' Cargo.toml)
@@ -108,25 +109,6 @@ jobs:
       - name: Assert the pin check still catches drift
         run: python3 scripts/tests/component-pins-test.py
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-wasip2
-          components: rustfmt, clippy
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tools/component-bundle/target
-          key: component-bundle-${{ runner.os }}-${{ hashFiles('tools/component-bundle/Cargo.lock') }}
-          restore-keys: component-bundle-${{ runner.os }}-
-      - name: tools/component-bundle (fmt, clippy, test)
-        working-directory: tools/component-bundle
-        run: |
-          cargo fmt -- --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked
-
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -156,8 +138,8 @@ jobs:
         app: ${{ fromJSON(needs.changes.outputs.rust != '[]' && needs.changes.outputs.rust || '["none"]') }}
     env:
       LOGIC: apps/${{ matrix.app }}/logic
-      # One target dir for the app, its nested wasm32-wasip2 test build and the
-      # builder, so the core crates compile once per job.
+      # One target dir for the app, its nested wasm32-wasip2 test build and
+      # meroctl's release build, so the core crates compile once per job.
       CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
     steps:
       - uses: actions/checkout@v4
@@ -176,6 +158,18 @@ jobs:
           restore-keys: |
             component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
             component-target-${{ runner.os }}-
+      # core's released `meroctl` builds, packs and inspects the components,
+      # at the release scripts/install-meroctl.sh pins (cached by its hash).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
 
       - run: cargo fmt --manifest-path "$LOGIC/Cargo.toml" -- --check
       - name: Clippy (host, tests included)
@@ -188,22 +182,21 @@ jobs:
         run: cargo test --locked --manifest-path "$LOGIC/Cargo.toml"
 
       - name: Release build
-        run: cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- build "$LOGIC"
+        run: scripts/component-build.sh "$LOGIC"
       - name: Assert the committed ABI matches the build
         run: |
           git add --intent-to-add -- "$LOGIC/res/abi.json" 2>/dev/null || true
           if ! git diff --quiet -- "$LOGIC/res/abi.json"; then
-            echo "::error::$LOGIC/res/abi.json is stale. Run 'cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build $LOGIC' and commit it."
+            echo "::error::$LOGIC/res/abi.json is stale. Run 'scripts/component-build.sh $LOGIC' (meroctl from scripts/install-meroctl.sh) and commit it."
             git --no-pager diff -- "$LOGIC/res/abi.json"
             exit 1
           fi
+      # No --key: meroctl signs with the development key, which a registry refuses.
       - name: Pack a dev-signed bundle (never publishable)
         run: |
           wasm=$(ls "$LOGIC"/res/*.wasm)
-          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
-            bundle "$LOGIC" --dev --no-frontend --wasm "$wasm" --app-version 0.0.0 --output "dist/${{ matrix.app }}-dev.mpk"
-          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
-            inspect "dist/${{ matrix.app }}-dev.mpk" > /dev/null
+          meroctl app pack "$LOGIC" --no-frontend --wasm "$wasm" --app-version 0.0.0 --out "dist/${{ matrix.app }}-dev.mpk"
+          meroctl app inspect "dist/${{ matrix.app }}-dev.mpk" > /dev/null
       # One leg saves (a key is write-once, so a second save is only a warning),
       # and only on main: a pull request's cache is visible to that PR alone,
       # and 27 of them evicted main's.
@@ -267,9 +260,23 @@ jobs:
           restore-keys: |
             component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
             component-target-${{ runner.os }}-
+      # core's released `meroctl` builds, packs and inspects the components,
+      # at the release scripts/install-meroctl.sh pins (cached by its hash).
+      - if: matrix.build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        if: matrix.build
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
       - name: Release build
         if: matrix.build
-        run: cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- build "$LOGIC"
+        run: scripts/component-build.sh "$LOGIC"
 
       # core's release binary for the pinned tag, checked against the release's
       # SHA256SUMS. A release whose binaries are not uploaded yet fails here
@@ -339,6 +346,18 @@ jobs:
           restore-keys: |
             component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
             component-target-${{ runner.os }}-
+      # core's released `meroctl` builds, packs and inspects the components,
+      # at the release scripts/install-meroctl.sh pins (cached by its hash).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
 
       # Same binary and checksum check as `e2e`.
       - name: Install merod ${{ env.TAG }}
@@ -413,6 +432,18 @@ jobs:
           restore-keys: |
             component-target-${{ runner.os }}-${{ needs.changes.outputs.tag }}-
             component-target-${{ runner.os }}-
+      # core's released `meroctl` builds, packs and inspects the components,
+      # at the release scripts/install-meroctl.sh pins (cached by its hash).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
 
       # Same binary and checksum check as `e2e`.
       - name: Install merod ${{ env.TAG }}

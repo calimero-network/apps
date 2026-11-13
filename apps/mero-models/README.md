@@ -17,7 +17,7 @@ apps/mero-models/
 │   ├── tests/harness.rs       TestApp on core's engine: every method, role and limit
 │   ├── tests/scenarios.rs     every scenarios/*.json in the harness
 │   ├── scenarios/             neutral steps, also run on merod local (`pnpm merod-local e2e`)
-│   └── res/abi.json           the component's ABI, emitted by `tools/component-bundle`'s `build`
+│   └── res/abi.json           the component's ABI, written by `scripts/component-build.sh`
 └── app/                       Vite + React + TypeScript + three.js
     ├── src/editor/            the modeller: no React in here except hooks.ts
     │   ├── model.ts           kinds, limits, hierarchy rules (mirrors the contract)
@@ -219,9 +219,8 @@ in UDIM tiles.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/mero-models/logic/Cargo.toml           # harness + scenarios + BlobRef encoding
-cargo run --release --manifest-path $M -- build apps/mero-models/logic  # res/mero_models.wasm + res/abi.json
+scripts/component-build.sh apps/mero-models/logic                       # res/mero_models.wasm + res/abi.json
 pnpm -F mero-models lint && pnpm -F mero-models typecheck && pnpm -F mero-models test && pnpm -F mero-models build
 pnpm merod-local e2e mero-models                                        # the scenarios on merod local
 ```

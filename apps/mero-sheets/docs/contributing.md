@@ -28,7 +28,7 @@ cargo test
 
 # the component and its ABI (res/abi.json is committed and diffed in CI)
 cd ../../..
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-sheets/logic
+scripts/component-build.sh apps/mero-sheets/logic
 
 # frontend
 pnpm -F mero-sheets lint typecheck test build

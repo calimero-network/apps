@@ -16,7 +16,7 @@ app/playwright-report/
 app/test-results/
 app/blob-report/
 
-# component builds (mero-component build / bundle)
+# component builds (scripts/component-build.sh / meroctl app pack)
 logic/dist/
 
 # misc

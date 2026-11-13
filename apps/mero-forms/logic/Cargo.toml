@@ -2,7 +2,7 @@
 name = "mero-forms"
 description = "Forms a team designs, the responses they collect, and a hand-off to Mero CRM, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
-# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
 version = "0.1.0"
 edition = "2021"
@@ -38,7 +38,7 @@ serde_json = "1"
 ed25519-dalek = { version = "2", default-features = false }
 hex = "0.4"
 
-# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# Read by `meroctl app pack`, with the keys
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-forms"

@@ -103,13 +103,12 @@ person, copy the team's **Invite** link into another browser profile.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 L=apps/mero-design/logic/Cargo.toml
 cargo fmt --manifest-path $L -- --check
 cargo clippy --manifest-path $L --all-targets -- -D warnings
 cargo clippy --manifest-path $L --target wasm32-wasip2 -- -D warnings
 cargo test --manifest-path $L                                     # harness + scenarios
-cargo run --release --manifest-path $M -- build apps/mero-design/logic   # res/abi.json
+scripts/component-build.sh apps/mero-design/logic                        # res/abi.json
 pnpm merod-local e2e mero-design                                  # the scenarios on merod local
 pnpm -F mero-design lint && pnpm -F mero-design typecheck && pnpm -F mero-design test && pnpm -F mero-design build
 ```

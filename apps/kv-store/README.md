@@ -125,9 +125,9 @@ syncs the stored session after every call and view; `KvPanel` calls its
 methods (`kv.set({ key, value })`) and the event stream is `kv.events()`. The
 directory is committed and CI regenerates it and fails when it is stale (see
 [docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
-After a contract change: rebuild `logic/res/abi.json` (`cargo run --release
---manifest-path tools/component-bundle/Cargo.toml -- build apps/kv-store/logic`,
-the build CI diffs it against), `pnpm -F kv-store codegen`, then `tsc -b`
+After a contract change: rebuild `logic/res/abi.json`
+(`scripts/component-build.sh apps/kv-store/logic`, the build CI diffs it
+against), `pnpm -F kv-store codegen`, then `tsc -b`
 shows every call site to fix.
 
 ## Production

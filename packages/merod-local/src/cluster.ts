@@ -176,25 +176,16 @@ export function appDir(app: string): string {
 }
 
 /**
- * Builds `apps/<app>/logic` with `tools/component-bundle` (core's builder at
- * the pinned tag) and returns the component's path.
+ * Builds `apps/<app>/logic` with `scripts/component-build.sh` (core's released
+ * `meroctl app build`, at the release scripts/install-meroctl.sh pins) and
+ * returns the component's path.
  */
 export function buildComponent(app: string): string {
   const logic = join(appDir(app), "logic");
-  const built = spawnSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "--release",
-      "--manifest-path",
-      join(ROOT, "tools/component-bundle/Cargo.toml"),
-      "--",
-      "build",
-      logic,
-    ],
-    { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" },
-  );
+  const built = spawnSync(join(ROOT, "scripts/component-build.sh"), [logic], {
+    stdio: ["ignore", "pipe", "inherit"],
+    encoding: "utf8",
+  });
   if (built.status !== 0) throw new Error(`building apps/${app}/logic failed`);
   const path = built.stdout.trim().split("\n").pop();
   if (!path || !existsSync(path)) throw new Error(`the build printed no component path (${built.stdout})`);

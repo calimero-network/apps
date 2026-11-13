@@ -39,9 +39,8 @@ the team's **Invite** tab (a second browser profile works as a teammate).
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/mero-standup/logic/Cargo.toml          # TestApp harness + scenarios
-cargo run --release --manifest-path $M -- build apps/mero-standup/logic # res/mero_standup.wasm + res/abi.json
+scripts/component-build.sh apps/mero-standup/logic                      # res/mero_standup.wasm + res/abi.json
 pnpm merod-local e2e mero-standup                                      # the scenarios on merod local
 pnpm -F mero-standup lint typecheck test build                         # the frontend
 ```

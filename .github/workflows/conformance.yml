@@ -333,10 +333,22 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target-components
-          key: conformance-matrix-${{ runner.os }}-${{ hashFiles('apps/conformance/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
+          key: conformance-matrix-${{ runner.os }}-${{ hashFiles('apps/conformance/logic/Cargo.lock', 'scripts/install-meroctl.sh') }}
           restore-keys: conformance-matrix-${{ runner.os }}-
+      # core's released `meroctl` builds the component, at the release
+      # scripts/install-meroctl.sh pins (cached by its hash).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
       - name: Build the component
-        run: cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/conformance/logic
+        run: scripts/component-build.sh apps/conformance/logic
 
       # core's release binary for the pinned tag, checked against the release's
       # SHA256SUMS (as components.yml's e2e job).

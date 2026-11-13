@@ -123,12 +123,11 @@ second person, open the workspace's invite link in another browser profile.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo fmt --manifest-path apps/mero-sign/logic/Cargo.toml -- --check
 cargo clippy --manifest-path apps/mero-sign/logic/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path apps/mero-sign/logic/Cargo.toml --target wasm32-wasip2 -- -D warnings
 cargo test --manifest-path apps/mero-sign/logic/Cargo.toml       # harness + scenarios
-cargo run --release --manifest-path $M -- build apps/mero-sign/logic   # res/abi.json
+scripts/component-build.sh apps/mero-sign/logic                        # res/abi.json
 pnpm merod-local e2e mero-sign                                   # the scenarios on merod local
 pnpm -F mero-sign lint && pnpm -F mero-sign typecheck && pnpm -F mero-sign test && pnpm -F mero-sign build
 ```

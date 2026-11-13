@@ -2,7 +2,7 @@
 name = "kv-store"
 description = "Calimero KV Store — the reference app, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
-# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
 version = "0.0.1"
 edition = "2021"
@@ -29,7 +29,7 @@ calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "
 calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.23" }
 serde_json = "1"
 
-# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# Read by `meroctl app pack`, with the keys
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.kv-store"

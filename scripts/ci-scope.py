@@ -141,7 +141,8 @@ This decides per JOB, not per app:
 
   rust      fmt, clippy, cargo test, release build, ABI gate, dev bundle.
             Reads `apps/<a>/logic/**`, the files its logic manifest points at
-            outside `logic/` (the icon), tools/component-bundle and the core pin.
+            outside `logic/` (the icon), the build tooling (meroctl's pin in
+            scripts/install-meroctl.sh, scripts/component-build.sh) and the core pin.
   e2e       the app's scenarios on `merod local`, driven by packages/merod-local
             on mero-js. Reads the release wasm and the JS that runs it. Each leg
             is `{app, build}`: `build: false` takes the wasm from this run's
@@ -202,7 +203,7 @@ EVERYTHING = re.compile(
     r"\.github/workflows/components\.yml"
     r"|\.github/actions/"
     r"|scripts/(component-apps\.sh|ci-scope\.py|lockfile-fanout\.py)"
-    r"|tools/component-bundle/"
+    r"|scripts/(component-build|install-meroctl)\.sh"
     r"|rust-toolchain(\.toml)?"
     r")"
 )

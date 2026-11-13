@@ -2,7 +2,8 @@
 
 # Run from the repo root's tools; see README.md and docs/COMPONENT-APPS.md.
 ROOT := ../..
-M := $(ROOT)/tools/component-bundle/Cargo.toml
+# core's `meroctl` (scripts/install-meroctl.sh) builds and packs the component.
+BUILD := $(ROOT)/scripts/component-build.sh
 
 help:
 	@echo ""
@@ -25,13 +26,13 @@ dev:
 	cd $(ROOT) && pnpm dev:local mero-design
 
 logic-build:
-	cargo run --release --manifest-path $(M) -- build logic
+	$(BUILD) logic
 
 logic-test:
 	cargo test --manifest-path logic/Cargo.toml
 
 logic-bundle: app-build
-	cargo run --release --manifest-path $(M) -- bundle logic --dev
+	wasm=$$($(BUILD) logic) && meroctl app pack logic --wasm "$$wasm"
 
 app-install:
 	cd $(ROOT) && pnpm install

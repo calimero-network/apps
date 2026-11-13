@@ -2,7 +2,7 @@
 name = "mero-issue-tracker"
 description = "A private, real-time issue board for a small engineering team, on the component SDK"
 # NOT the release version: a release passes the registry's next version to
-# `mero-component bundle --app-version`. Cargo requires the field; bundling
+# `meroctl app pack --app-version`. Cargo requires the field; bundling
 # locally without --app-version uses it.
 version = "0.1.0"
 edition = "2021"
@@ -32,7 +32,7 @@ calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "
 calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.23" }
 serde_json = "1"
 
-# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# Read by `meroctl app pack`, with the keys
 # `cargo mero bundle` reads for a v1 app. The v1 `services` table is gone: a
 # component bundle is one `app.wasm`, and an instance is created from the
 # package (or the bundle in dev), not from a named service.

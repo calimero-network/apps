@@ -919,7 +919,7 @@ export const APPS = {
       },
       openSource: {
         // The licence logic/Cargo.toml declares. A component app: the
-        // contract builds with tools/component-bundle, and `pnpm dev:local`
+        // contract builds with core's meroctl (scripts/component-build.sh), and `pnpm dev:local`
         // runs merod local, the contract and the app on :5173.
         license: 'MIT or Apache-2.0',
         commands: [

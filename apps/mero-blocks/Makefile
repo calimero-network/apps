@@ -1,7 +1,8 @@
 .PHONY: setup dev dev-local build unit test typecheck lint logic-build logic-test e2e bundle clean
 
 ROOT := ../..
-MC := cargo run --release --manifest-path $(ROOT)/tools/component-bundle/Cargo.toml --
+# core's `meroctl` (scripts/install-meroctl.sh) builds and packs the component.
+BUILD := $(ROOT)/scripts/component-build.sh
 
 setup: ## install frontend deps (the pnpm workspace)
 	cd $(ROOT) && pnpm install
@@ -25,7 +26,7 @@ lint:
 	cd app && pnpm lint
 
 logic-build: ## the component -> logic/res/mero_blocks.wasm (+ res/abi.json)
-	$(MC) build logic
+	$(BUILD) logic
 
 logic-test: ## the TestApp harness + scenarios on core's wasmtime engine
 	cd logic && cargo test
@@ -35,9 +36,9 @@ e2e: ## every logic/scenarios/*.json on merod local (needs merod at component-co
 
 test: unit logic-test
 
-bundle: ## dev-signed .mpk (never publishable) -> logic/dist/
+bundle: ## dev-signed .mpk (no --key: the development key, never publishable) -> logic/dist/
 	cd app && pnpm build
-	$(MC) bundle logic --dev
+	wasm=$$($(BUILD) logic) && meroctl app pack logic --wasm "$$wasm"
 
 clean:
 	rm -rf logic/res/*.wasm logic/target logic/dist app/dist app/node_modules/.vite

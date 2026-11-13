@@ -61,7 +61,7 @@ pnpm -F mero-docs build
 
 # Logic
 cargo test --manifest-path apps/mero-docs/logic/Cargo.toml
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-docs/logic
+scripts/component-build.sh apps/mero-docs/logic
 ```
 
 ## Environment

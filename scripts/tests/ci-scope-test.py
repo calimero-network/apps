@@ -209,7 +209,8 @@ with tempfile.TemporaryDirectory() as t:
     for p in (
         ".github/workflows/components.yml",
         ".github/actions/setup-playwright/action.yml",
-        "tools/component-bundle/src/main.rs",
+        "scripts/component-build.sh",
+        "scripts/install-meroctl.sh",
         "scripts/component-apps.sh",
         "scripts/lockfile-fanout.py",
         "scripts/ci-scope.py",

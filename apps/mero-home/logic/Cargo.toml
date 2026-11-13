@@ -2,7 +2,7 @@
 name = "mero-home"
 description = "Calimero Home: one organization, its apps and who is in each, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
-# the registry and passes it to `mero-component bundle --app-version`.
+# the registry and passes it to `meroctl app pack --app-version`.
 version = "0.0.1"
 edition = "2021"
 authors = ["Calimero Limited <info@calimero.network>"]
