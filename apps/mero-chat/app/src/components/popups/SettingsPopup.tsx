@@ -702,7 +702,7 @@ export default function SettingsPopup({
     addToast({
       title: "Left workspace",
       message: leftChatOnly
-        ? "You have left Mero Chat here. You stay in the organization and its other apps."
+        ? "You have left Hyperfeed Chat here. You stay in the organization and its other apps."
         : "You have left the workspace.",
       type: "channel",
       duration: 3000,
@@ -928,7 +928,7 @@ export default function SettingsPopup({
           {offerLeaveOrg ? (
             <>
               <DangerLabel data-testid="offer-leave-org">
-                Mero Chat was your last app in this organization. Leave the organization too?
+                Hyperfeed Chat was your last app in this organization. Leave the organization too?
               </DangerLabel>
               <ConfirmActions>
                 <CancelLeaveButton onClick={leaveDone} disabled={leaving}>

@@ -188,7 +188,7 @@ const SearchIcon = () => (
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile} role="banner">
-      <AppMark src={ChatAppIcon} alt="Mero Chat Application Logo" />
+      <AppMark src={ChatAppIcon} alt="Hyperfeed Chat logo" />
       <AppName>Chat</AppName>
     </LogoContainer>
   );

@@ -345,7 +345,7 @@ export default function GroupInviteModal({
               </SingleUse>
               {chatOnly && (
                 <SingleUse data-testid="invite-chat-only">
-                  Invites to Mero Chat only: this organization&apos;s other apps are managed in Calimero Home.
+                  Invites to Hyperfeed Chat only: this organization&apos;s other apps are managed in Calimero Home.
                 </SingleUse>
               )}
             </>

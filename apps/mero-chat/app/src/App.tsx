@@ -61,7 +61,7 @@ function App() {
   }, [native]);
   if (native) return <LoadingSpinner />;
   // Opened by the native app to approve a change (an invite, …) with the passkey.
-  if (pendingNativeApproval()) return <NativeApproval appName="Mero Chat" callback={NATIVE_APPROVE_CALLBACK} />;
+  if (pendingNativeApproval()) return <NativeApproval appName="Hyperfeed Chat" callback={NATIVE_APPROVE_CALLBACK} />;
 
   return (
     <ToastProvider>

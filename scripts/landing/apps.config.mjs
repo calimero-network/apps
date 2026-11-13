@@ -325,6 +325,8 @@ export const APPS = {
     markSrc: '/icons/icon-192x192.png',
     iconSrc: '/icons/icon-512x512.png',
     availability: 'web',
+    // Hyperfeed's violet, the middle of the icon's gradient.
+    tint: '#8b5cf6',
     trust: ['Channels, threads and DMs', 'No passwords', 'Only members can read it'],
     explainer: [
       'Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is who can read it: every channel is a Calimero app instance that only the members it names can reach, on attested nodes.',

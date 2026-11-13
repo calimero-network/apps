@@ -179,7 +179,7 @@ export async function orgsWithApp(
 }
 
 const KNOWN_TITLES: Record<string, string> = {
-  chat: "Mero Chat",
+  chat: "Hyperfeed Chat",
   docs: "Mero Docs",
   "mero-drive-docs": "Mero Docs",
   "kv-store": "KV Store",
@@ -212,7 +212,7 @@ export function holdingsLabel(holds: readonly OrgHolding[]): string {
 }
 
 /**
- * An org's apps in words, from its app teams: "Mero Chat, Mero Blocks", with
+ * An org's apps in words, from its app teams: "Hyperfeed Chat, Mero Blocks", with
  * the ones this account is not in marked "(not yours)". An org whose apps
  * this account does not reach still holds them, which the instance list
  * ({@link holdingsLabel}) cannot see: it said "No apps yet" for a shared org

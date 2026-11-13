@@ -43,7 +43,7 @@ const h = vi.hoisted(() => {
 
 vi.mock("../../api/calimero", () => ({
   LISTING: {
-    name: "Mero Chat",
+    name: "Hyperfeed Chat",
     description: "",
     package: "p",
     dir: "mero-chat",
@@ -134,7 +134,7 @@ function Harness() {
 /** The picker in any of its screens. */
 function picker() {
   return (
-    screen.queryByText("Welcome to MeroChat") ??
+    screen.queryByText("Welcome to Hyperfeed Chat") ??
     screen.queryByText("Create workspace") ??
     screen.queryByText("Select workspace")
   );
@@ -200,13 +200,13 @@ describe("an invitation link, then signing in with an account that has no worksp
     expect(await screen.findByRole("alert")).toHaveTextContent(SPENT_INVITE);
     expect(picker()).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
   });
 
   it("without an invitation, the picker offers Create workspace", async () => {
     h.set({ status: "signed-in", accountId: "acct-me" });
     render(<Harness />);
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
   });
 });
 

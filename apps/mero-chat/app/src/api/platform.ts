@@ -193,7 +193,7 @@ export function chatTeamId(org: OrgRecord): string | null {
 }
 
 /** The name Chat is added to an organization under, in what an owner or admin is told. */
-const CHAT_TITLE = "Mero Chat";
+const CHAT_TITLE = "Hyperfeed Chat";
 
 /**
  * Who is in Chat in this workspace: chat's app team, else (no app team) every
