@@ -1,7 +1,9 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
+  plugins: [installableApp({ cacheId: "merraria" })],
   // Relative, so the same build runs at / and under /{version}/, where a
   // Calimero cluster serves the bundle's frontend.
   base: "./",

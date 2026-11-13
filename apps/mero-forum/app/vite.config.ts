@@ -2,11 +2,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import pkg from "./package.json" with { type: "json" };
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [react(), servedAssetsFallback()],
+  plugins: [installableApp({ cacheId: "mero-forum" }), react(), servedAssetsFallback()],
   // App version (from package.json), shown in the header — so a bug report from
   // a tester says WHICH build they were on.
   define: {

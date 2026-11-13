@@ -3,6 +3,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
+import { installableApp } from "@calimero-apps/install/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -81,7 +82,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [servedAssetsFallback(), nodePolyfills(), react()],
+  plugins: [installableApp({ cacheId: "mero-docs" }), servedAssetsFallback(), nodePolyfills(), react()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

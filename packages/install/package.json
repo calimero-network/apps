@@ -1,0 +1,37 @@
+{
+  "name": "@calimero-apps/install",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Installing an app as a desktop / home-screen app: its service worker, the browser's install prompt and the button that opens it.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./vite": {
+      "types": "./src/vite.d.ts",
+      "default": "./src/vite.js"
+    }
+  },
+  "types": "./src/index.tsx",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@calimero-apps/node-served": "workspace:*",
+    "vite-plugin-pwa": "^1.1.0"
+  },
+  "peerDependencies": {
+    "react": "*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

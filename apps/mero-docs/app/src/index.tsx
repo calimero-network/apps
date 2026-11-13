@@ -7,14 +7,10 @@ import './index.css';
 import App from './App';
 import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import { captureInvite } from '@/hooks/useNamespaceInvitation';
+import { registerServiceWorker } from "@calimero-apps/install";
 
-// Unregister stale service workers from previous builds / sibling apps
-// on the same origin so they stop intercepting requests.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => {
-    regs.forEach((r) => r.unregister());
-  });
-}
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 // Before React mounts: a person opening an invitation link is usually not
 // signed in yet, and the token has to survive the passkey sign-in.

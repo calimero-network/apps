@@ -7,7 +7,7 @@ import { nodeBasename } from "./served";
  * runtime then sends each new thing that needs you, encrypted to this device.
  *
  * Only the browser side is here: the service worker that shows a push is
- * `public/sw.js`, and the sender is your agent's runtime.
+ * `public/push-sw.js` (inside the generated `sw.js`), and the sender is your agent's runtime.
  */
 
 /** This browser can take pushes at all. iOS only from an app added to the Home Screen. */

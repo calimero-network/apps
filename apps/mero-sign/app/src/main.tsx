@@ -6,6 +6,10 @@ import './index.css';
 import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { captureInvite } from './lib/invites';
+import { registerServiceWorker } from "@calimero-apps/install";
+
+// Installable as an app (Chrome, Edge); not in dev and not on a node.
+registerServiceWorker();
 
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
