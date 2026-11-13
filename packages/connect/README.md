@@ -298,6 +298,38 @@ legacy throughout:
   remover may change), never out of the org; elsewhere `removeMember`, as
   before.
 
+### From the app's own frontend (`consent.ts`)
+
+A session opened on the app's served origin is bound to its package
+(`/auth/me`'s `app`; `isFrontendBound(client)`). It runs the app's own team
+and the teams below it, and is refused everything organization-wide. On such
+a session the org-app calls go to the node's consent page instead, and their
+promise never settles while the page unloads:
+
+| Call | Bound session |
+|---|---|
+| `createAppOrg` | consent `createOrg`; the node makes the app team in the same step |
+| `appInvite`, `inviteToApp` | consent `createInvite`, same terms |
+| `acceptAppInvite(client, token)` | consent `acceptInvite` (unbound: `redeemInvite`) |
+| `removeFromApp`, `leaveApp` (standalone, legacy) | consent `removeMember`, or `leaveOrg` for oneself; a shared org's app team is still done here |
+| `leaveOrg` | consent `leaveOrg` |
+| `setMembersMayInvite` | consent `setCapabilities` on the team's default |
+| `openAppTeam(s)`, `createAppTeam`, `adoptAppTeam`, `keepAppsApart` | `ManageInHomeError`: no consent kind, an admin does it in Calimero Home |
+
+On load, the app finishes what it was doing:
+
+```ts
+setConsentDefaults({ returnTo: appRoot, confirm: (s) => askToContinue(s.code) }); // optional
+const back = await resumeAppConsent(client); // null unless the consent page sent us here
+if (back?.approved && back.kind === "createOrg") openWorkspace(back.created!.orgId);
+if (back?.approved && back.kind === "createInvite") showLink(back.invite!.token);
+```
+
+The intent is kept in `sessionStorage`; what the approval made is read from
+the node (`resumeConsent`), never from the return URL. `createOrg`'s member
+defaults need their own approval: `created.capabilitiesError` is a
+`ConsentNeededError` whose `intent` `startAppConsent` sends.
+
 ## Calimero Home
 
 `home.ts` decides where an org app's "Manage people in Calimero Home →" link

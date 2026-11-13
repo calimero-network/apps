@@ -19,6 +19,12 @@
  * Core's routes (`GET`/`POST /orgs/{org}/app-teams`) are new (core#4890). On a
  * node without them every helper here falls back to what the org routes alone
  * tell: no app team, an org-wide invite, the org role.
+ *
+ * A session bound to the app's frontend ({@link ./consent}) may run the app's
+ * own team and the teams below it, not the organization: an invite and a
+ * team's default capabilities go through the node's consent page; adding an
+ * app team, opening one and keeping apps apart are Calimero Home's
+ * ({@link ManageInHomeError}).
  */
 import {
   CalimeroError,
@@ -34,6 +40,14 @@ import {
   type ScopedAppTeam,
 } from "@calimero-network/mero-js";
 
+import {
+  ManageInHomeError,
+  goToConsent,
+  isFrontendBound,
+  type ConsentClient,
+  type ConsentOptions,
+  type MaybeMe,
+} from "./consent";
 import type { OrgAccessView } from "./invite";
 import type { ClientRoutes } from "./routes";
 
@@ -81,7 +95,17 @@ export async function appTeamOf(
   return { mode: answer.mode, team: answer.appTeams.find((t) => t.package === pkg) ?? null };
 }
 
-export interface CreateAppTeamOptions {
+/** How a function treats a session bound to the app's frontend. */
+interface BoundOpts {
+  /** The consent page's options (`returnTo`, the app's `confirm` dialog, its own `data`). */
+  consent?: ConsentOptions;
+  /** Whether the session is bound (default: asked of `/auth/me` once per client). */
+  bound?: boolean;
+}
+
+type Bindable = MaybeMe & ConsentClient;
+
+export interface CreateAppTeamOptions extends BoundOpts {
   /** The team's name, 1..64 characters (absent: the package's display name, else the package id). */
   name?: string;
   /**
@@ -99,15 +123,19 @@ export interface CreateAppTeamOptions {
  * find or make the team (the caller leads a new one), add a row for everyone
  * who reaches the package's instances now, and move those instances onto it.
  * Owner or admin only, approved with `passkey`. Idempotent: a package that has
- * a team already answers it with `created: false`.
+ * a team already answers it with `created: false`. Refused on a session bound
+ * to the app's frontend ({@link ManageInHomeError}).
  */
 export async function createAppTeam(
-  client: ClientRoutes<{ orgs: "appTeamsScope" }>,
+  client: ClientRoutes<{ orgs: "appTeamsScope" }> & MaybeMe,
   org: string,
   pkg: string,
   passkey: PasskeyProvider,
   options: CreateAppTeamOptions = {},
 ): Promise<ScopedAppTeam & { mode: OrgMode }> {
+  if (await isFrontendBound(client, options.bound)) {
+    throw new ManageInHomeError("createAppTeam", "Adding an app to an organization");
+  }
   const app: { package: string; name?: string; instances?: string[] } = { package: pkg };
   if (options.name) app.name = options.name;
   if (options.instances) app.instances = options.instances;
@@ -141,7 +169,7 @@ export async function ensureAppTeam(
   return { teamId: made.teamId, created: made.created, mode: made.mode };
 }
 
-export interface InviteToAppOptions {
+export interface InviteToAppOptions extends BoundOpts {
   /** The invite's org role (default `member`). A guest is app-only: they reach only the apps named. */
   role?: "guest" | "member" | "admin";
   passkey: PasskeyProvider;
@@ -179,9 +207,12 @@ export class NoAppTeamError extends Error {
  * app teams at all (`legacy`) or the node has no app-team route. In an org
  * that has app teams, a package without one is refused ({@link NoAppTeamError})
  * rather than widened to the whole org.
+ *
+ * On a session bound to the app's frontend it is the consent page's
+ * `createInvite` with the same terms; `resumeAppConsent` answers the token.
  */
 export async function inviteToApp(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }> & Bindable,
   org: string,
   pkg: string | readonly string[],
   options: InviteToAppOptions,
@@ -200,8 +231,17 @@ export async function inviteToApp(
   const extra: { ttlSecs?: number; uses?: number } = {};
   if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
   if (options.uses !== undefined) extra.uses = options.uses;
+  const role = options.role ?? "member";
+  if (await isFrontendBound(client, options.bound)) {
+    const mode = answer?.mode ?? null;
+    return goToConsent(
+      client,
+      { kind: "createInvite", org, role, teams, ...extra, appTeams: named, mode, appOnly: mode === "shared" && named.length > 0 },
+      options.consent,
+    );
+  }
   const { token } = await client.orgs.inviteCreate(
-    { org, role: options.role ?? "member", teams, ...extra },
+    { org, role, teams, ...extra },
     { confirm: passkeyConfirm(options.passkey) },
   );
   return { token, teams: named, mode: answer?.mode ?? null };
@@ -335,16 +375,22 @@ export function membersMayInvite(team: Pick<AppTeam, "defaultCapabilities">): bo
  * Turn "members may invite to this app" on or off: the team's default
  * capabilities with `INVITE_MEMBERS` set or cleared, every other bit kept.
  * The team's managers (or `MANAGE_MEMBERS` on it), approved with `passkey`.
+ * On a session bound to the app's frontend it is the consent page's
+ * `setCapabilities` for the team's default.
  */
 export async function setMembersMayInvite(
-  client: ClientRoutes<{ orgs: "capabilities" }>,
+  client: ClientRoutes<{ orgs: "capabilities" }> & Bindable,
   org: string,
   team: Pick<AppTeam, "teamId" | "defaultCapabilities">,
   on: boolean,
   passkey: PasskeyProvider,
+  options: BoundOpts = {},
 ): Promise<number> {
   const current = team.defaultCapabilities ?? 0;
   const next = on ? current | INVITE : current & ~INVITE;
+  if (await isFrontendBound(client, options.bound)) {
+    return goToConsent(client, { kind: "setCapabilities", org, team: team.teamId, capabilities: next }, options.consent);
+  }
   await client.orgs.capabilities({ org, team: team.teamId, capabilities: next }, { confirm: passkeyConfirm(passkey) });
   return next;
 }
@@ -401,13 +447,19 @@ export async function appTeamInstances(
  * with `join: "everyone"`. It only widens: its rows stay, and whoever was
  * taken out of it stays out (core keeps them in the team's `removed`). Core
  * asks no passkey for it (rc.14), only `MANAGE_VISIBILITY` on the team, which
- * its managers (owners, admins, its leads) hold.
+ * its managers (owners, admins, its leads) hold. Refused on a session bound
+ * to the app's frontend, which may update only the teams below its app team
+ * ({@link ManageInHomeError}).
  */
 export async function openAppTeam(
-  client: ClientRoutes<{ orgs: "teamUpdate" }>,
+  client: ClientRoutes<{ orgs: "teamUpdate" }> & MaybeMe,
   org: string,
   team: Pick<AppTeam, "teamId">,
+  options: Pick<BoundOpts, "bound"> = {},
 ): Promise<void> {
+  if (await isFrontendBound(client, options.bound)) {
+    throw new ManageInHomeError("openAppTeam", "Opening an app to everyone in the organization");
+  }
   await client.orgs.teamUpdate({ org, team: team.teamId, join: "everyone" });
 }
 
@@ -417,14 +469,15 @@ export async function openAppTeam(
  * before it already open.
  */
 export async function openAppTeams(
-  client: ClientRoutes<{ orgs: "teamUpdate" }>,
+  client: ClientRoutes<{ orgs: "teamUpdate" }> & MaybeMe,
   org: string,
   teams: ReadonlyArray<Pick<AppTeam, "teamId" | "join">>,
+  options: Pick<BoundOpts, "bound"> = {},
 ): Promise<string[]> {
   const opened: string[] = [];
   for (const t of teams) {
     if (t.join === "everyone") continue;
-    await openAppTeam(client, org, t);
+    await openAppTeam(client, org, t, options);
     opened.push(t.teamId);
   }
   return opened;
@@ -440,13 +493,18 @@ export async function openAppTeams(
  * only the apps an invite names. A legacy app (organization access, no team)
  * is left as it is. Core has no per-app close that keeps people: an
  * `updateTeam` to `join: "invite"` drops everyone who was in only because the
- * team was open, so nothing here offers it.
+ * team was open, so nothing here offers it. Refused on a session bound to an
+ * app's frontend ({@link ManageInHomeError}).
  */
 export async function keepAppsApart(
-  client: ClientRoutes<{ orgs: "appTeamsScope" }>,
+  client: ClientRoutes<{ orgs: "appTeamsScope" }> & MaybeMe,
   org: string,
   passkey: PasskeyProvider,
+  options: Pick<BoundOpts, "bound"> = {},
 ): Promise<OrgMode> {
+  if (await isFrontendBound(client, options.bound)) {
+    throw new ManageInHomeError("keepAppsApart", "Keeping an organization's apps apart");
+  }
   const result = await client.orgs.appTeamsScope({ org, apps: [], shared: true }, { confirm: passkeyConfirm(passkey) });
   return result.mode;
 }
