@@ -1627,15 +1627,24 @@
         ],
         [
           "grant",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "subject",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "send_call",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -1802,15 +1811,24 @@
         ],
         [
           "item_type",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "fields",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "reply_call",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -1918,39 +1936,66 @@
         ],
         [
           "rules",
-          "list<RuleView>"
+          "list<RuleView>",
+          {
+            "optional": true
+          }
         ],
         [
           "rule_proposals",
-          "list<RuleProposalView>"
+          "list<RuleProposalView>",
+          {
+            "optional": true
+          }
         ],
         [
           "message_modes",
-          "list<string>"
+          "list<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "access",
-          "list<AccessView>"
+          "list<AccessView>",
+          {
+            "optional": true
+          }
         ],
         [
           "reach",
-          "list<ReachView>"
+          "list<ReachView>",
+          {
+            "optional": true
+          }
         ],
         [
           "assignments",
-          "list<AssignmentView>"
+          "list<AssignmentView>",
+          {
+            "optional": true
+          }
         ],
         [
           "agent_rules",
-          "list<AgentRuleView>"
+          "list<AgentRuleView>",
+          {
+            "optional": true
+          }
         ],
         [
           "action_modes",
-          "list<ActionModeView>"
+          "list<ActionModeView>",
+          {
+            "optional": true
+          }
         ],
         [
           "agent_accounts",
-          "list<AgentAccountView>"
+          "list<AgentAccountView>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"

@@ -645,7 +645,10 @@
       "fields": [
         [
           "id",
-          "option<string>"
+          "option<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "kind",

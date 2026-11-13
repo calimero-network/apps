@@ -605,7 +605,10 @@
         ],
         [
           "values",
-          "list<string>"
+          "list<string>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -652,31 +655,52 @@
       "fields": [
         [
           "contextId",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "stageId",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "nameField",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "emailField",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "phoneField",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "organizationField",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "titleField",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -697,15 +721,24 @@
         ],
         [
           "help",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "required",
-          "bool"
+          "bool",
+          {
+            "optional": true
+          }
         ],
         [
           "options",
-          "list<string>"
+          "list<string>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
