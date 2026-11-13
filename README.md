@@ -2,18 +2,22 @@
 
 **Monorepo for every application built on the [Calimero network](https://github.com/calimero-network/core).**
 
-Calimero apps have no backend server. A Rust/WASM contract *is* the backend, it runs inside each
-participant's own node, and state replicates peer-to-peer as CRDTs. There is no central database, no
-API tier, and no operator who can read your data. Every app in here is a demonstration of what that
-architecture makes possible — design tools, spreadsheets, video calls, a secret manager, document
-signing, games — built the same way, on the same stack.
+Calimero 1.0 is a confidential cloud for collaborative apps, and these apps have no backend server of
+their own. A Rust contract on `calimero-sdk`, compiled to a `calimero:app` WebAssembly component, *is*
+the backend. Each instance of an app lives in an organization (every account has a personal one) and
+is replicated by its own Raft log across attested Intel TDX nodes: the leader runs each call against
+the contract and the replicas apply its result. Clients verify a node's attestation before they send
+anything and talk to it over a sealed channel; people sign in with passkeys. There is no API tier to
+write, and nobody operating the nodes — Calimero included — can read your data. Every app in here is a
+demonstration of what that architecture makes possible — design tools, spreadsheets, video calls, a
+secret manager, document signing, games — built the same way, on the same stack.
 
 This repository consolidates apps that used to live in their own repos, so they share one toolchain,
 one dependency graph, one CI pipeline, and one release process instead of drifting apart in sixteen
 places.
 
 > **Status: migration complete.** All **16** migrated apps are here and this repo is the source of
-> truth; apps written since — [mero-chess](apps/mero-chess), [mero-kombat](apps/mero-kombat), [mero-models](apps/mero-models) — were born in it.
+> truth; apps written since — [mero-chess](apps/mero-chess), [mero-kombat](apps/mero-kombat), [mero-models](apps/mero-models) among them — were born in it.
 > Fifteen of the sixteen source repositories are archived with a pointer back — several under their
 > older names (`p2p-sheets`, `only-peers-client`, `meropass`, `MeroSign`,
 > `scaffolding-e2e-application`); only [`kv-store`](https://github.com/calimero-network/kv-store)
@@ -25,15 +29,16 @@ places.
 
 The apps are independent products, but they are not independent codebases. They share:
 
-- **The same SDKs** — [`mero-js`](https://github.com/calimero-network/mero-js),
-  [`mero-react`](https://github.com/calimero-network/mero-react),
-  [`calimero-sdk`](https://github.com/calimero-network/core) (Rust).
+- **The same SDKs** — [`calimero-sdk`](https://github.com/calimero-network/core) (Rust, the
+  component SDK) and [`mero-js`](https://github.com/calimero-network/mero-js)'s `CalimeroClient`.
 - **The same design language** — [`design-system`](https://github.com/calimero-network/design-system).
-- **The same build tooling** — [`cargo-mero`](https://github.com/calimero-network/cargo-mero) for
-  WASM bundles, Vite + TypeScript for frontends.
-- **The same release path** — signed `.mpk` bundles published to the
+- **The same build tooling** — [`tools/component-bundle`](tools/component-bundle) (`mero-component`,
+  over core's `calimero-app-build`) builds each contract for `wasm32-wasip2` and packs it, core's
+  `mero-app-build codegen` writes the typed client, Vite + TypeScript for frontends.
+- **The same release path** — signed `.mpk` packages published to the
   [app registry](https://apps.calimero.network/).
-- **The same integration surface** — auth/SSO, invite links, desktop deep-linking, node discovery.
+- **The same integration surface** — passkey sign-in, organizations and invitations, a local
+  cluster (`merod local`) in development and Calimero Cloud in production.
 
 Every core release used to fan out into a dozen near-identical dependency bumps, and every SDK
 breaking change had to be discovered sixteen separate times. The monorepo turns that fan-out into a
@@ -51,7 +56,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Twenty-three apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
+Twenty-seven apps, each `apps/<name>/{logic,app}`, every one a component app (Calimero 1.0). **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -122,10 +127,11 @@ Three projects stayed in their own repositories, and one was abandoned.
 
 ## Component apps (Calimero 1.0)
 
-Apps are moving, one PR each, to core's **component SDK** (`calimero-sdk`,
-a `calimero:app` component on the node's wasmtime runtime, pinned at
-`component-core-tag` in the root `Cargo.toml`), to **`merod local`** for local
-development instead of merobox, and to mero-js's **`CalimeroClient`** in the
+Every app here is on core's **component SDK** (`calimero-sdk`, a
+`calimero:app` component built for `wasm32-wasip2` and run on the node's
+wasmtime runtime, pinned at `component-core-tag` in the root `Cargo.toml`),
+develops on **`merod local`** (`packages/merod-local`, which replaced
+merobox), and talks to its nodes through mero-js's **`CalimeroClient`** in the
 frontend: a Calimero Cloud cluster in production, the local nodes in
 development.
 
@@ -139,8 +145,7 @@ pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the clu
 build and bundle tool (`tools/component-bundle`), local development
 (`packages/merod-local`), the frontend helper (`packages/connect`), CI
 (`.github/workflows/components.yml`), the v1 → component SDK migration guide
-and the porting checklist. Everything below describes the v1 apps, which keep
-building as they are until their own port.
+and the porting checklist that moved each app off the v1 SDK.
 
 ## Anatomy of a Mero app
 
@@ -148,31 +153,37 @@ Every app here has the same two halves, and the boundary between them is the ABI
 
 ```
 apps/my-app/
-├── logic/                # Rust → WASM. The whole backend.
+├── logic/                # Rust → a calimero:app component (wasm32-wasip2). The whole backend.
 │   ├── src/lib.rs        #   #[app::state] state, #[app::logic] methods, #[app::event] events
-│   ├── Cargo.toml        #   [package.metadata.calimero] — the registry manifest
-│   ├── tests/            #   TestHost + convergence. No node needed.
-│   └── res/              #   abi.json + state-schema.json, emitted by cargo mero
-└── app/                  # Frontend. Vite + React + TypeScript.
-    ├── src/              #   talks to the local node via mero-js / mero-react
-    │   └── generated/    #   typed client, generated from ../logic/res/abi.json
-    ├── e2e/              #   Playwright, against a real node
-    ├── public/           #   icon-512.png and friends — the registry + Dock icon
+│   ├── Cargo.toml        #   calimero-sdk @ component-core-tag; [package.metadata.calimero],
+│   │                     #   the registry manifest; its own [workspace] and Cargo.lock
+│   ├── tests/            #   TestApp: the component on core's wasmtime engine. No node needed.
+│   ├── scenarios/        #   steps run by cargo test AND as real accounts on merod local
+│   └── res/abi.json      #   the component's ABI, emitted by mero-component build, committed
+└── app/                  # Frontend. Vite + React (or vanilla) + TypeScript.
+    ├── src/              #   mero-js CalimeroClient, through @calimero-apps/connect
+    │   └── generated/    #   typed client, mero-app-build codegen from ../logic/res/abi.json
+    ├── e2e/              #   Playwright, against merod local (where the app has a suite)
+    ├── public/           #   icon-512.png and friends — the registry icon
     └── vercel.json       #   outputDirectory + the SPA rewrite
 ```
 
-The frontend never talks to a server. It talks to *its own* node over JSON-RPC, the node executes the
-contract locally, and the resulting state delta gossips to the other members of the context. The
-"multiplayer" is a property of the network, not of the application code.
+The frontend never talks to a server of its own. It verifies a node's attestation, opens a sealed
+channel to it and signs the person in with a passkey; any node of the cluster takes the call and
+forwards it to the leader of that app instance's Raft group, which runs the contract and appends the
+call with its state diff to the instance's log; the other replicas apply the diff, and events reach
+everyone the app instance reaches. The "multiplayer" is a property of the platform, not of the
+application code.
 
-**And a receiving node does not execute the contract at all** — it verifies the delta's signature,
-authorizes the author, and folds the actions into storage. So an `if` inside a `#[app::logic]` method
-binds only the node that ran it, and a patched peer can write bytes your code would never have
-produced. Choosing the right storage tier (`Public`, `Authored`, `Shared`, `Permissioned`, `Frozen`)
-and deriving on read rather than trusting stored fields is what actually holds.
-[**`apps/mero-chess/docs/trust-model.md`**](apps/mero-chess/docs/trust-model.md) is the worked
-example: what each tier enforces and when to use it, fourteen real defects with the exploit for each,
-and a checklist for your own `#[app::state]`. Read it before you design state for a new app.
+**Every write runs the contract.** One leader applies every call in one log, so an `if` inside a
+`#[app::logic]` method holds for everyone: a rule is a method check against `env::caller()`, and who
+reaches an app instance at all is its organization's business (members, admins, guests, the owner).
+That was not true of the v1 SDK, where a receiving peer folded a delta into storage without running
+the contract;
+[**`apps/mero-chess/docs/trust-model.md`**](apps/mero-chess/docs/trust-model.md) is that design and
+the fourteen real defects it fixed, kept for the record, and
+[Mero Chess's Trust section](apps/mero-chess/README.md#trust) shows what each became as a method
+check under one log.
 
 ## Layout
 
@@ -181,10 +192,10 @@ apps/                       one directory per application
                             (see Anatomy above for what each contains)
 
 scripts/
-  app-packages.sh           v1 app packages from cargo metadata (release.yml)
+  app-packages.sh           v1 app packages from cargo metadata (release.yml; none remain)
   ci-scope.py               which apps / jobs a change reaches (both CI workflows)
   check-app-metadata.sh     registry manifest vs the workspace pins
-  check-app-icons.py        real icons, not cargo-mero's "default" placeholder
+  check-app-icons.py        real icons, not the "default" placeholder
   check-live-frontends.py   the deployed <title> matches the committed one
   check-lockfile.py         pnpm-lock.yaml has no duplicated keys
   check-vercel-output.sh    vercel.json names the directory the build wrote
@@ -201,24 +212,28 @@ tools/
 packages/
   connect/                  frontend: merod local in dev, Calimero Cloud in production
   merod-local/              pnpm dev:local / merod-local: local cluster, deploy, e2e
+  passkey/ · members/ · …   shared sign-in, membership and UI pieces the apps import
 
 docs/
   COMPONENT-APPS.md         component apps: build, merod local, Cloud, CI, migration guide
   SESSION-AND-INVITES.md    sign-in and invitations, and how each is tested
   VERCEL.md                 one deploy convention for every app
 
-.github/workflows/          ci.yml · components.yml · release.yml · publish-bundle.yml (reusable)
+.github/workflows/          ci.yml · components.yml · conformance.yml · release.yml ·
+                            publish-component.yml (reusable) · per-app mobile workflows
 
-Cargo.toml                  ONE SDK pin, the release profiles, and
-                            [workspace.metadata.mero-apps] for fleet-wide values
+Cargo.toml                  ONE core pin (component-core-tag) and the other fleet-wide
+                            values, in [workspace.metadata.mero-apps]
 pnpm-workspace.yaml         ONE version per JS dependency, via catalog:
 tsconfig.base.json
 ```
 
-Contracts are a Cargo workspace; frontends are a pnpm workspace; CI path-filters
-so touching one app does not rebuild the others — and a change to the workspace
-root fans out to all of them, because bumping the SDK changes every contract's
-bytes.
+Each contract is a standalone crate with its own `[workspace]` and `Cargo.lock`
+(excluded from the root workspace, which has no members left; the pin is checked
+rather than inherited, by `scripts/check-component-pins.py`); frontends are a
+pnpm workspace. CI path-filters so touching one app does not rebuild the others
+— and a change to the core pin fans out to all of them, because bumping the SDK
+changes every contract's bytes.
 
 ## One pin, one place
 
@@ -251,23 +266,29 @@ lint, and **never ran**. One repo has one default branch.
 
 ```bash
 pnpm install                          # whole workspace, one lockfile
-cargo mero build -p <app>             # contract → wasm + ABI
-pnpm -F <app> codegen                 # ABI → typed client
-pnpm -F <app> dev
+rustup target add wasm32-wasip2       # once
+scripts/install-mero-app-build.sh     # once: core's mero-app-build, for codegen
 
-cargo test --workspace                # every app's Rust tests, SDK compiled once
+M=tools/component-bundle/Cargo.toml
+cargo test --manifest-path apps/<app>/logic/Cargo.toml                 # TestApp harness + scenarios
+cargo run --release --manifest-path $M -- build apps/<app>/logic        # component + res/abi.json
+pnpm -F <app> codegen                 # ABI → typed client (mero-app-build codegen)
+pnpm dev:local <app>                  # merod local + build + deploy + the dev server on :5173
+
 pnpm -r typecheck                     # `tsc -b`, never --noEmit (see below)
 pnpm -r test
 ```
 
-The gates CI runs, all runnable locally — the first five are in the always-on
-`metadata` job, so they fire on every pull request:
+The gates CI runs, all runnable locally — the first four are in `ci.yml`'s
+always-on `metadata` job and the component pins in `components.yml`'s `checks`,
+so they fire on every pull request:
 
 ```bash
 bash   scripts/check-app-metadata.sh      # manifest vs the workspace pins
 python3 scripts/check-app-icons.py        # a real icon, square, opaque, >=512²
 python3 scripts/check-live-frontends.py   # deployed <title> vs the committed one
 python3 scripts/check-lockfile.py         # no duplicated keys in pnpm-lock.yaml
+python3 scripts/check-component-pins.py   # every component crate pins component-core-tag
 bash   scripts/check-vercel-output.sh --build   # vercel.json vs the real output
 python3 scripts/check-registry-sync.py    # published wasm vs this tree (manual)
 ```
@@ -290,7 +311,7 @@ the change does not reach it counts as a pass):
 
 | Workflow | Job | Runs on a pull request when | Does |
 | --- | --- | --- | --- |
-| `ci.yml` | `metadata` | always | the manifest / icon / SSO / frontend / lockfile gates, plus their own unit tests |
+| `ci.yml` | `metadata` | always | the manifest / icon / node-wire / org-module / live-frontend / lockfile gates, plus their own unit tests |
 | `ci.yml` | `frontend` | a member's frontend, contract or a package it imports changed, or a workspace-wide JS change | lint, typecheck, codegen diff, unit tests, build, `check-vercel-output.sh`, over those members only |
 | `ci.yml` | `conformance` | the rig, a package or a JS pin changed | `conformance.yml` |
 | `components.yml` | `checks` | always | pins, `tools/component-bundle`, `packages/connect` + `passkey` + `merod-local` |
@@ -321,74 +342,63 @@ the narrower question of which apps a given lockfile diff can actually affect.
 
 ### Bumping core
 
-The fleet currently sits on **`0.11.0-rc.28`**. All SDK crates must carry the
+The fleet currently sits on **`1.0.0-rc.20`**. Every core crate must carry the
 *exact* same tag — a version string cannot express it, because core's workspace
-version at a tag is `0.0.0`. In the root `Cargo.toml` edit these three, then
-`min-runtime-version` and `merod-image` in `[workspace.metadata.mero-apps]`:
+version at a tag is `0.0.0`. The steps (`docs/COMPONENT-APPS.md`, "Moving to a
+new core release"):
 
-```toml
-calimero-sdk            = { git = "…/core.git", tag = "0.11.0-rc.28" }
-calimero-storage        = { git = "…/core.git", tag = "0.11.0-rc.28" }
-calimero-storage-macros = { git = "…/core.git", tag = "0.11.0-rc.28" }
-```
+1. `component-core-tag` and `component-min-runtime-version` in
+   `[workspace.metadata.mero-apps]` of the root `Cargo.toml` (and the
+   `[workspace.dependencies]` tags and `min-runtime-version` / `merod-image`
+   beside them, which move together).
+2. The tag in `tools/component-bundle/Cargo.toml` and in each app's
+   `logic/Cargo.toml` (`python3 scripts/check-component-pins.py` lists every
+   one left), then `cargo update` in each crate.
+3. `"@calimero-network/mero-js"` in the `component` catalog of
+   `pnpm-workspace.yaml`, to the release that speaks that node's API.
+4. Rebuild each app's `res/abi.json` and regenerate its client
+   (`pnpm -r codegen`); CI's e2e job downloads the new `merod`.
 
-Run `cargo update`, push. CI rebuilds every app and the release workflow
-republishes all of them, because the SDK pin changes every contract's bytes.
+CI rebuilds every app and the release workflow republishes all of them, because
+the SDK pin changes every contract's bytes.
 
-⚠️ **Prove a bump is safe by diffing the built WASM's import set.** A newer SDK
-can import host functions an older `merod` has no implementation for; such a
-bundle installs happily and then fails at context creation with `unknown
-import`. That is what `min-runtime-version` guards, so keep it equal to the tag
-rather than inheriting a floor from an older template.
+⚠️ **Keep `min-runtime-version` equal to the tag.** A newer SDK can import host
+functions an older `merod` has no implementation for; such a package installs
+happily and then fails when an app instance is created with `unknown import`.
+That is what `min-runtime-version` guards, so keep each app's equal to
+`component-min-runtime-version` rather than inheriting a floor from an older
+template.
 
-`scripts/check-app-metadata.sh` fails if any app's `min-runtime-version` drifts
-from the workspace value. That check exists because
 `[package.metadata.calimero]` **cannot be inherited by cargo** — `.workspace = true`
 inside `[package.metadata]` resolves to the literal `{"workspace": true}`, since
-`metadata` is not on cargo's inheritable list.
-
-⚠️ **`cargo mero` parses `[workspace.metadata.calimero]` too, with
-`deny_unknown_fields`.** Only its own field names may appear there:
-
-```
-Error: invalid [..metadata.calimero] table: unknown field `merod-image`,
-expected one of `package`, `name`, `description`, `author`, `icon`, `slug`,
-`license`, `tags`, `github`, `docs`, `min-runtime-version`, `frontend`, `services`
-```
-
-So fleet-wide values that are *ours* rather than cargo-mero's live in
-`[workspace.metadata.mero-apps]`, which no tool but ours reads.
+`metadata` is not on cargo's inheritable list — and a standalone crate cannot
+inherit `[workspace.dependencies]` either. So the fleet-wide values live once in
+`[workspace.metadata.mero-apps]` (a table no tool but ours reads; v1's
+cargo-mero claimed `[workspace.metadata.calimero]` with `deny_unknown_fields`)
+and checks, not inheritance, hold every app to them.
 
 ### Adding an app
 
-A directory. `apps/<name>/{logic,app}`, `logic/Cargo.toml` with
-`.workspace = true` deps and a `[package.metadata.calimero]` block,
-`app/package.json` with `catalog:` versions, and an `app/vercel.json` matching
-the convention in `docs/VERCEL.md`. Both CI matrices are derived from
-`cargo metadata`, so there is no list to update.
+A directory. `apps/<name>/{logic,app}` in the shape of
+[`apps/kv-store`](apps/kv-store) (`docs/COMPONENT-APPS.md`, "Layout of a
+component app"): `logic/Cargo.toml` a standalone `cdylib` crate with an empty
+`[workspace]`, `calimero-sdk` at `component-core-tag` and a
+`[package.metadata.calimero]` block; `apps/<name>/logic` added to
+`[workspace].exclude` in the root `Cargo.toml`; `app/package.json` with
+`catalog:` versions (`"@calimero-network/mero-js": "catalog:component"`), and an
+`app/vercel.json` matching the convention in `docs/VERCEL.md`. The CI matrices
+come from `scripts/component-apps.sh` (every `apps/*/logic` that depends on
+`calimero-sdk`), so there is no list to update.
 
 To pass the always-on gates it also needs a real icon at `app/public/icon-512.png`
-(square, opaque, ≥512²; **not** cargo-mero's `icon = "default"` placeholder), a
-`<title>` matching what it deploys, and node trust anchored so the desktop
-hand-off works.
+(square, opaque, ≥512²; **not** the `icon = "default"` placeholder) and a
+`<title>` matching what it deploys.
 
-⚠️ **Name the directory exactly like the crate.** `publish-bundle.yml` uses the
-answer from `app-packages.sh` as *both* a path (`apps/$APP/logic`) and a cargo
-package name (`select(.name == $app)`). All of them currently agree; the first
-app where they differ fails with `no [package.metadata.calimero].package`, and
-only on the changed-app path — never on a manual dispatch, which is the one you
-would reach for to reproduce it.
-
-⚠️ **Profiles must stay at the workspace root.** Cargo *ignores* `[profile.*]` in
-a member and then refuses to build:
-
-```
-warning: profiles for the non root package will be ignored
-error: profile `app-release` is not defined
-```
-
-`cargo mero build` selects `app-release`, so an app that brought its own profile
-block simply fails. Delete it on the way in.
+⚠️ **The `package` id is forever.** The release workflow finds an app by its
+directory (`apps/$APP/logic`) and publishes under the `package` its
+`[package.metadata.calimero]` names; the registry pins that id's signer and the
+node derives the application id from (package, signer), so a changed `package`
+is a different app, not a new version of this one.
 
 ## How the apps got here
 
@@ -405,6 +415,8 @@ copy of the cargo-mero action, rewrite `logic/Cargo.toml` to `.workspace = true`
 and move its profile block to the root, rewrite `app/package.json` to
 `catalog:`. No app behaviour changed. Fifteen of the sixteen source repositories
 are now archived with a pointer back here; `kv-store`'s is still open.
+Those moves were of v1 apps (cargo-mero, merobox); each was then ported to the
+component SDK in a PR of its own, by the checklist in `docs/COMPONENT-APPS.md`.
 
 ⚠️ **`git subtree` loses path history.** A subtree merge rewrites paths without
 recording the rename, so `git log --follow` on a migrated file stops at the
@@ -418,14 +430,11 @@ checking on any future one: merobox scenarios landing at a path CI never globs
 
 ## Related
 
-- [core](https://github.com/calimero-network/core) — the node, the Rust SDK, and `meroctl`
-- [mero-js](https://github.com/calimero-network/mero-js) · [mero-react](https://github.com/calimero-network/mero-react) — JS/TS client SDKs
+- [core](https://github.com/calimero-network/core) — the node (`merod`), the Rust SDK, `mero-app-build` and `meroctl`; its docs are at [calimero-network.github.io/core](https://calimero-network.github.io/core/)
+- [mero-js](https://github.com/calimero-network/mero-js) — the JS/TS client (`CalimeroClient`); [mero-react](https://github.com/calimero-network/mero-react) only in the conformance app's 0.x rig
 - [swift-sdk](https://github.com/calimero-network/swift-sdk) · [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) — native mobile SDKs
 - [design-system](https://github.com/calimero-network/design-system) — shared UI primitives
-- [cargo-mero](https://github.com/calimero-network/cargo-mero) — build and publish WASM app bundles
 - [app-registry](https://github.com/calimero-network/app-registry) — signed app distribution ([apps.calimero.network](https://apps.calimero.network/))
-- [tauri-app](https://github.com/calimero-network/tauri-app) — Calimero Desktop, which runs these apps
-- [documentation](https://github.com/calimero-network/documentation) — [docs.calimero.network](https://docs.calimero.network/)
 
 ## License
 
