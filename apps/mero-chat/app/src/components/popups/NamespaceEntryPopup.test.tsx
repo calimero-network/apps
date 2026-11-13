@@ -16,6 +16,14 @@ const h = vi.hoisted(() => ({
   listOtherOrgs: vi.fn(),
   enterWorkspace: vi.fn(),
   sessionKey: "account:me" as string | null,
+  bound: false,
+  askOnConsentPage: vi.fn(),
+}));
+
+vi.mock("../../api/consent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  frontendBound: async () => h.bound,
+  askOnConsentPage: h.askOnConsentPage,
 }));
 
 vi.mock("../../utils/installedApps", async (importOriginal) => ({
@@ -81,6 +89,8 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 beforeEach(() => {
   localStorage.clear();
   h.sessionKey = "account:me";
+  h.bound = false;
+  h.askOnConsentPage.mockReset().mockResolvedValue(false);
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -199,6 +209,21 @@ describe("NamespaceEntryPopup", () => {
     // #general is made under your name in the new workspace.
     expect(nameAtGeneral).toBe("Ada L");
     expect(screen.queryByText("Choose a display name to use in this server.")).toBeNull();
+  });
+
+  it("on Chat's frontend, creates the workspace on the node's consent page, keeping both names", async () => {
+    h.bound = true;
+    open();
+    fireEvent.click(await screen.findByText("+ Create new workspace"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
+    fireEvent.change(screen.getByTestId("create-self-name"), { target: { value: "Ada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(h.askOnConsentPage).toHaveBeenCalled());
+    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "createOrg", name: "Design team", selfName: "Ada" });
+    expect(h.askOnConsentPage.mock.calls[0]?.[1]).toMatchObject({ kind: "createOrg", subject: { name: "Design team" } });
+    expect(h.createGroup).not.toHaveBeenCalled();
+    // Staying here (the person did not go) leaves the form as it was.
+    expect(await screen.findByRole("button", { name: "Create" })).toBeEnabled();
   });
 
   it("cannot create a workspace without your name", async () => {

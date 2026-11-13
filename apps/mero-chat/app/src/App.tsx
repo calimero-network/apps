@@ -8,6 +8,7 @@ import { isNamespaceReady } from "./utils/session";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 import InvitationPrompt from "./components/popups/InvitationPrompt";
+import ConsentReturn from "./components/popups/ConsentReturn";
 
 const Login = lazy(() => import("./pages/Login"));
 // `/docs` and `/preview` are the shared landing template's other two pages.
@@ -71,6 +72,9 @@ function App() {
       <InvitationPrompt
         enabled={!loading && isAuthenticated}
       />
+      {/* Back from the node's consent page (a session opened on Chat's
+          frontend creates workspaces and invites there): finish the job. */}
+      <ConsentReturn enabled={!loading && isAuthenticated} />
       {loading ? (
         <LoadingSpinner />
       ) : (

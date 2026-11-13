@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Workspaces and invites through the node's consent page** on Calimero Cloud.
+  There Chat is served from its package's frontend origin, and since
+  core#4934 a session opened there may not create an organization, mint an invite or redeem one (`403 FORBIDDEN: a session opened
+  on an app's frontend can use that app only`), so "Create workspace" failed.
+  Chat now asks the node (`/auth/me` names the session's app) and, for such a
+  session, sends the person to the node's own consent page (core#5014), where
+  they approve with their passkey after checking the code Chat showed:
+  **Create workspace** (`createOrg`), **Invite** (`createInvite`, naming
+  Chat's app team where the workspace has one) and **Join workspace**
+  (`acceptInvite`). What Chat was doing waits in `sessionStorage` across the
+  redirect; on the way back `ConsentReturn` reads the node's sealed decision
+  (`resumeConsent`, never the return URL) and finishes: the new workspace is
+  named, gets #general and is entered; the invite's link is shown; the joined
+  workspace is entered. A decline changes nothing. A session opened on the
+  cluster's own page, or on a dev node, does all three itself as before.
 - Chat has its own **app team** in each workspace (core#4890). A new
   workspace gets one, open, so everyone in it has Chat as before; its open
   channels use the team's access, and an invite names the team. When the
