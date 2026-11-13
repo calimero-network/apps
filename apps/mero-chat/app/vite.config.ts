@@ -30,16 +30,22 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
       manifest: {
-        name: "Calimero Chat",
-        short_name: "Calimero",
+        // Root-relative on purpose. A node serves each release under
+        // /{version}/ and redirects / to the latest, so "./" would tie an
+        // installed app to the release it was installed from: a new app per
+        // release, broken once that release is gone. On a root-hosted web
+        // deploy "/" and "./" are the same.
+        id: "/",
+        name: "Mero Chat",
+        short_name: "Mero Chat",
         description:
-          "Calimero Chat: team chat with channels, threads and DMs on Calimero.",
+          "Mero Chat: team chat with channels, threads and DMs on Calimero.",
         theme_color: "#f6f7fb",
         background_color: "#f6f7fb",
         display: "standalone",
-        orientation: "portrait-primary",
-        scope: "./",
-        start_url: "./",
+        categories: ["social", "communication", "productivity"],
+        scope: "/",
+        start_url: "/",
         icons: [
           {
             src: "icons/icon-72x72.png",
@@ -88,6 +94,12 @@ export default defineConfig({
             sizes: "512x512",
             type: "image/png",
             purpose: "any",
+          },
+          {
+            src: "icons/icon-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
           },
         ],
       },

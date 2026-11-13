@@ -10,6 +10,7 @@ import AdminIcon from "./AdminIcon";
 import GroupInviteIcon from "./GroupInviteIcon";
 import { WebSocketStatus } from "../WebSocketStatus";
 import ThemeToggle from "./ThemeToggle";
+import InstallButton from "./InstallButton";
 import ChatAppIcon from "/icons/icon-96x96.png";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
@@ -338,6 +339,7 @@ export default function CurbNavbar({
         </SearchButton>
         <GroupInviteIcon />
         <AdminIcon />
+        <InstallButton />
         <ThemeToggle />
         <SettingsIcon />
       </FlexContainer>
