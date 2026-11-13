@@ -5,10 +5,14 @@
  * | v1 | here |
  * |---|---|
  * | a workspace: a namespace of the app | an **organization** (`createOrg`); its id is the "group id" |
- * | a channel: a subgroup (open or restricted) with one context in it | an **app instance** of chat in the org; its id is both the "subgroup" and the "context" id |
- * | an open subgroup | access `team` on chat's **app team** (core#4890): everyone in Chat in this workspace reaches it; in an org without one (legacy, a dev bundle, an older node) access `org`, every member |
- * | a restricted subgroup and its members | access `accounts`: the instance's owner and the accounts listed |
- * | a DM: a restricted subgroup of two, alias `DM_CONTEXT_…` | an instance named `DM_CONTEXT_…`, access `accounts` [the other person] |
+ * | a channel: a subgroup (open or restricted) with one context in it | a **team** below chat's **app team** (core#4890) with one **app instance** of chat on it (access `team`); the instance's id is both the "subgroup" and the "context" id |
+ * | an open subgroup | an open team (`join: everyone`): everyone in Chat in this workspace |
+ * | a restricted subgroup and its members | a closed team (`join: invite`) and its rows |
+ * | a DM: a restricted subgroup of two, alias `DM_CONTEXT_…` | a closed team of two, its instance named `DM_CONTEXT_…` |
+ * | a channel made before channels had teams | access `org`, chat's app team, or `accounts`: listed and opened as before; its people are managed in Calimero Home |
+ *
+ * Where chat has no app team (a legacy org, a dev bundle) a channel's team is
+ * at the top of the org, and an open channel of a legacy org keeps access `org`.
  * | namespace members and roles | org members: `owner`/`admin` → Admin, `member` → Member, `guest` → ReadOnly |
  * | member metadata `{ name }` | org member metadata `{ name }` |
  * | a per-context member key | the account: one id everywhere |
@@ -20,7 +24,14 @@
  * needs all of that, so the first steps are kept as a **pending channel**
  * here and the instance is created when the context is.
  */
-import { passkeyConfirm, type AppInfo, type CalimeroClient, type OrgMode } from "@calimero-network/mero-js";
+import {
+  DEFAULT_ORG_CAPABILITIES,
+  ORG_CAPABILITIES,
+  passkeyConfirm,
+  type AppInfo,
+  type CalimeroClient,
+  type OrgMode,
+} from "@calimero-network/mero-js";
 import {
   adoptAppTeam,
   appInvite,
@@ -83,6 +94,7 @@ export interface OrgRecord {
 /** A team in {@link OrgRecord}. */
 export interface ChatOrgTeam extends OrgTeamView {
   metadata?: unknown;
+  defaultCapabilities?: number | null;
 }
 
 function client(): CalimeroClient {
@@ -324,9 +336,89 @@ export function memberName(org: OrgRecord, account: string): string | undefined 
   return typeof name === "string" && name.trim() ? name.trim() : undefined;
 }
 
+/** What a member holds in a team they are in, as core reads it (`Org::row_caps`). */
+function teamCapsOf(org: OrgRecord, team: ChatOrgTeam & { defaultCapabilities?: number | null }, account: string): number {
+  const role = org.members[account];
+  if (role === "owner" || role === "admin") return ~0;
+  const row = team.capabilities?.[account];
+  if (typeof row === "number") return row;
+  const orgCaps = org.capabilities[account] ?? org.defaultCapabilities ?? DEFAULT_ORG_CAPABILITIES;
+  return orgCaps | (team.defaultCapabilities ?? 0);
+}
+
 /**
- * Who reaches channel `app`: everyone in chat's app team (or every org member
- * where there is none), or its owner and the listed accounts.
+ * Who is in `teamId`, as core decides it (`Org::in_team`): a row; and, for
+ * an open team, the people of its parent (the org at the top: chat's app
+ * team) who hold `JOIN_OPEN_TEAMS` there and were not taken out of it. In
+ * org order; `[]` for a team the caller does not see.
+ */
+export function teamPeople(org: OrgRecord, teamId: string, depth = 0): string[] {
+  const team = org.teams[teamId];
+  if (!team || depth > 32) return [];
+  if (!team.parent) return appTeamMembers(org as AppOrgView, teamId, org.mode);
+  const out = new Set(Object.keys(team.members ?? {}).filter((a) => a in org.members));
+  if (team.join === "everyone") {
+    const parent = org.teams[team.parent];
+    const removed = new Set(team.removed ?? []);
+    for (const account of teamPeople(org, team.parent, depth + 1)) {
+      if (removed.has(account)) continue;
+      if (parent && (teamCapsOf(org, parent, account) & ORG_CAPABILITIES.JOIN_OPEN_TEAMS) === 0) continue;
+      out.add(account);
+    }
+  }
+  return Object.keys(org.members).filter((a) => out.has(a));
+}
+
+/**
+ * The team a channel or DM is on: its own team, below chat's app team (at
+ * the top of the org where chat has none: a dev bundle, a legacy org). `null`
+ * for a channel made before channels had teams (access `org`, `accounts`, or
+ * chat's app team itself): its people are managed in Calimero Home.
+ */
+export function channelTeamOf(app: AppRecord, org: OrgRecord | null): string | null {
+  if (app.access.kind !== "team" || !app.access.team) return null;
+  if (org && app.access.team === chatTeamId(org)) return null;
+  return app.access.team;
+}
+
+/** What a channel made before channels had teams answers to a change of its people or visibility. */
+export const MANAGED_IN_HOME = "This channel's members are managed in Calimero Home.";
+
+/** A change Chat cannot make to a channel made before channels had teams ({@link MANAGED_IN_HOME}). */
+export class ManagedInHomeError extends Error {
+  readonly status = 409;
+  constructor() {
+    super(MANAGED_IN_HOME);
+    this.name = "ManagedInHomeError";
+  }
+}
+
+/** A channel, with its org's record and its own team (`null`: one made before channels had teams). */
+interface ChannelOf {
+  app: AppRecord;
+  org: string;
+  record: OrgRecord | null;
+  team: string | null;
+}
+
+async function channelOf(app: string): Promise<ChannelOf> {
+  const record = await getAppRecord(app);
+  const org = record.org ?? "";
+  const orgRecord = org ? await getOrgRecord(org).catch(() => null) : null;
+  return { app: record, org, record: orgRecord, team: org ? channelTeamOf(record, orgRecord) : null };
+}
+
+/** Whether Chat leaves this channel's people to Calimero Home: one made before channels had teams. */
+export async function channelManagedInHome(app: string): Promise<boolean> {
+  if (pendingChannels.has(app) && !pendingChannels.get(app)?.appId) return false;
+  const { team } = await channelOf(pendingChannels.get(app)?.appId ?? app);
+  return team === null;
+}
+
+/**
+ * Who reaches channel `app`: the people of its team (chat's app team, or the
+ * channel's own), every org member for organization access, or its owner and
+ * the listed accounts (a private channel made before channels had teams).
  */
 export async function appMembers(app: AppRecord): Promise<string[]> {
   if (app.access.kind === "accounts") {
@@ -337,8 +429,7 @@ export async function appMembers(app: AppRecord): Promise<string[]> {
     return appPeople((await getOrgRecord(app.org)) as AppOrgView, null);
   }
   if (app.access.kind === "team" && app.org) {
-    const org = await getOrgRecord(app.org);
-    return appTeamMembers(org as AppOrgView, app.access.team, org.mode);
+    return teamPeople(await getOrgRecord(app.org), app.access.team);
   }
   return [app.owner];
 }
@@ -348,33 +439,138 @@ export function visibilityOf(access: Access): Visibility {
   return access.kind === "org" || access.kind === "public" || access.kind === "team" ? "open" : "restricted";
 }
 
+/** A channel's visibility: its own team's `join` (open: everyone in Chat), else {@link visibilityOf}. */
+export async function channelVisibility(app: AppRecord): Promise<Visibility> {
+  if (app.access.kind === "team" && app.org) {
+    const org = await getOrgRecord(app.org).catch(() => null);
+    const team = org ? channelTeamOf(app, org) : null;
+    if (team && org?.teams[team]) return org.teams[team]!.join === "everyone" ? "open" : "restricted";
+  }
+  return visibilityOf(app.access);
+}
+
+/** The accounts with a row on a private channel's team (or listed on an older one). */
+export async function channelRows(app: string): Promise<string[]> {
+  const { app: record, record: org, team } = await channelOf(app);
+  if (team) {
+    const t = org?.teams[team];
+    return t && t.join !== "everyone" ? Object.keys(t.members ?? {}) : [];
+  }
+  return record.access.kind === "accounts" ? record.access.accounts : [];
+}
+
 // ── writes ───────────────────────────────────────────────────────────────────
 
-/** Sets a channel's access: open (the org) or restricted to `accounts` (besides its owner). */
-export async function setAppAccess(app: string, access: Access): Promise<void> {
-  await run((c) => c.apps.access({ app, access }));
+/**
+ * Adds `accounts` to channel `app` and takes `remove` off it: rows on its
+ * team (a passkey step-up each). Someone who already has a row keeps it as
+ * it is (a lead stays one).
+ */
+export async function changeChannelMembers(app: string, add: string[], remove: string[] = []): Promise<void> {
+  const { org, record, team } = await channelOf(app);
+  if (!team) throw new ManagedInHomeError();
+  const rows = record?.teams[team]?.members ?? {};
+  for (const account of new Set(add)) {
+    if (!account || account in rows) continue;
+    await run((c) => c.orgs.teamSetMember({ org, team, account, lead: false }, { confirm: passkeyConfirm(passkey()) }));
+  }
+  for (const account of new Set(remove)) {
+    if (!account) continue;
+    await run((c) => c.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+  }
+  invalidate(org);
   invalidate(app);
 }
 
-/** Adds (or removes) accounts on a restricted channel. An open channel already reaches every member. */
-export async function changeAppAccounts(app: string, add: string[], remove: string[] = []): Promise<void> {
-  const record = await getAppRecord(app);
-  if (record.access.kind !== "accounts") return;
-  const next = new Set(record.access.accounts);
-  for (const a of add) if (a && a !== record.owner) next.add(a);
-  for (const a of remove) next.delete(a);
-  await setAppAccess(app, { kind: "accounts", accounts: [...next] });
+/** Opens a channel to everyone in Chat, or closes it to the people with a row: its team's `join`. */
+export async function setVisibility(app: string, mode: Visibility): Promise<void> {
+  const { org, record, team } = await channelOf(app);
+  if (!team) throw new ManagedInHomeError();
+  const join = mode === "open" ? "everyone" : "invite";
+  if (record?.teams[team]?.join === join) return;
+  await run((c) => c.orgs.teamUpdate({ org, team, join }));
+  invalidate(org);
+  invalidate(app);
 }
 
-export async function setVisibility(app: string, mode: Visibility): Promise<void> {
-  const record = await getAppRecord(app);
-  if (visibilityOf(record.access) === mode) return;
-  if (mode === "open") {
-    await setAppAccess(app, record.org ? await openAccess(record.org) : { kind: "org" });
-  } else {
-    // A channel made private keeps nobody but its owner until people are added.
-    await setAppAccess(app, { kind: "accounts", accounts: [] });
+/** Renames a channel: its team, and the name its instance shows. */
+export async function renameChannel(app: string, name: string): Promise<void> {
+  const { app: record, org, team } = await channelOf(app);
+  if (team) {
+    await run((c) => c.orgs.teamUpdate({ org, team, name }));
+    invalidate(org);
   }
+  await run((c) => c.apps.metadata({ app, metadata: { ...(record.metadata ?? {}), name } }));
+  invalidate(app);
+}
+
+/**
+ * Deletes a channel or DM: its team, which takes its instance with it (a
+ * passkey step-up over the instance). One made before channels had teams is
+ * its instance alone.
+ */
+export async function deleteChannel(app: string): Promise<void> {
+  const pending = pendingChannels.get(app);
+  if (pending && !pending.appId) {
+    pendingChannels.delete(app);
+    return;
+  }
+  const id = pending?.appId ?? app;
+  const { org, team } = await channelOf(id);
+  if (team) {
+    await run((c) => c.orgs.teamDelete({ org, team }, { confirm: passkeyConfirm(passkey()) }));
+    invalidate(org);
+  } else {
+    await run((c) => c.apps.delete({ app: id }));
+  }
+  invalidate();
+}
+
+// ── listing ──────────────────────────────────────────────────────────────────
+
+/** A channel or DM in a workspace ({@link listChannels}). */
+export interface ChannelEntry {
+  appId: string;
+  name: string;
+  /** Its own team; `null` for one made before channels had teams. */
+  team: string | null;
+}
+
+/** The teams of chat's channels in `org` that `self` is in: below chat's app team (at the top where it has none). */
+function channelTeamsIn(org: OrgRecord, self: string): string[] {
+  const chat = chatTeamId(org);
+  if (!chat) return [];
+  return Object.entries(org.teams)
+    .filter(([id, t]) => t.parent === chat && teamPeople(org, id).includes(self))
+    .map(([id]) => id);
+}
+
+/**
+ * The workspace's channels and DMs this account reaches: the teams below
+ * chat's app team they are in, then the instances on them; and the chat
+ * instances made before channels had teams (organization access, chat's app
+ * team, an account list), as the node lists them.
+ */
+export async function listChannels(org: string): Promise<ChannelEntry[]> {
+  const [record, apps] = await Promise.all([getOrgRecord(org).catch(() => null), listChatApps()]);
+  const out = new Map<string, ChannelEntry>();
+  const teams = record ? channelTeamsIn(record, getAccountId()) : [];
+  const views = await Promise.all(
+    teams.map((team) =>
+      cached(`team:${team}:${org}`, () => run((c) => c.orgs.teamGet({ org, team }))).catch(() => null),
+    ),
+  );
+  views.forEach((view, i) => {
+    for (const a of (view?.apps ?? []) as Array<{ appId?: unknown; name?: unknown }>) {
+      if (typeof a.appId !== "string") continue;
+      out.set(a.appId, { appId: a.appId, name: typeof a.name === "string" ? a.name : "", team: teams[i]! });
+    }
+  });
+  for (const a of apps) {
+    if (a.org !== org || out.has(a.appId)) continue;
+    out.set(a.appId, { appId: a.appId, name: a.name, team: null });
+  }
+  return [...out.values()];
 }
 
 // ── pending channels (v1's subgroup steps before its context) ────────────────
@@ -414,8 +610,26 @@ export function initArgsFrom(params: Record<string, unknown>): Record<string, un
 }
 
 /**
- * Creates the chat instance for a channel or DM: from a pending channel (v1's
- * subgroup) or straight into an org.
+ * The team a new channel goes below: chat's app team, made first where the
+ * org has app teams but none for chat (an owner or admin's). `null` where
+ * chat has none (a legacy org, a dev bundle): the channel's team is then at
+ * the top of the org.
+ */
+async function channelParent(org: string): Promise<string | null> {
+  const record = await getOrgRecord(org);
+  const team = chatTeamId(record);
+  if (team) return team;
+  if (!chatPackage() || (record.mode !== "standalone" && record.mode !== "shared")) return null;
+  const access = await openAccess(org);
+  return access.kind === "team" ? access.team : null;
+}
+
+/**
+ * Creates a channel or DM: its own team below chat's app team (open: everyone
+ * in Chat; private, or a DM: the people with a row), then its chat instance
+ * with that team as its access. From a pending channel (v1's subgroup) or
+ * straight into an org. The creator leads the team. An open channel of a
+ * legacy org (no app team for chat) keeps organization access, as before.
  */
 export async function createChatApp(
   groupId: string,
@@ -426,13 +640,42 @@ export async function createChatApp(
   if (pending?.appId) return pending.appId;
   const org = pending?.org ?? groupId;
   const title = (pending?.name || name || String(initializationParams.name ?? "") || "channel").trim();
-  const access: Access =
-    (pending?.visibility ?? "open") === "open"
-      ? await openAccess(org)
-      : { kind: "accounts", accounts: pending?.accounts ?? [] };
-  const appId = await run((c) =>
-    c.apps.create({ name: title, ...appTarget(chatSource()), org, access, initArgs: initArgsFrom(initializationParams) }).then((r) => r.appId),
-  );
+  const initArgs = initArgsFrom(initializationParams);
+  const visibility = pending?.visibility ?? (initArgs.contextType === "Dm" ? "restricted" : "open");
+  const create = (access: Access) =>
+    run((c) => c.apps.create({ name: title, ...appTarget(chatSource()), org, access, initArgs }).then((r) => r.appId));
+
+  const parent = await channelParent(org);
+  let appId: string;
+  if (!parent && visibility === "open" && chatPackage()) {
+    appId = await create({ kind: "org" });
+  } else {
+    // Made closed: a member makes only a closed team below chat's (core), and
+    // leads it, so may open it right after.
+    const { teamId: team } = await run((c) =>
+      c.orgs.teamCreate({ org, name: title, join: "invite", ...(parent ? { parent } : {}) }),
+    );
+    try {
+      if (visibility === "open") {
+        await run((c) => c.orgs.teamUpdate({ org, team, join: "everyone" }));
+      } else {
+        const self = getAccountId();
+        for (const account of new Set(pending?.accounts ?? [])) {
+          if (!account || account === self) continue;
+          await run((c) =>
+            c.orgs.teamSetMember({ org, team, account, lead: false }, { confirm: passkeyConfirm(passkey()) }),
+          );
+        }
+      }
+      appId = await create({ kind: "team", team });
+    } catch (e) {
+      // Nothing on it yet: the team goes without a passkey.
+      await run((c) => c.orgs.teamDelete({ org, team })).catch(() => {});
+      invalidate(org);
+      throw e;
+    }
+    invalidate(org);
+  }
   if (pending) pending.appId = appId;
   invalidate();
   return appId;
@@ -480,29 +723,15 @@ export async function addToChat(org: string, account: string): Promise<void> {
   invalidate(org);
 }
 
-/** Takes `account` off the private channels and DMs in `org` that list them and this account may change. */
-async function offPrivateChannels(org: string, account: string): Promise<void> {
-  const apps = (await listChatApps().catch(() => [] as AppInfo[])).filter((a) => a.org === org);
-  for (const app of apps) {
-    const record = await getAppRecord(app.appId).catch(() => null);
-    if (record?.access.kind !== "accounts" || !record.access.accounts.includes(account)) continue;
-    await changeAppAccounts(app.appId, [], [account]).catch((e: unknown) => {
-      console.warn(`removeFromChat: ${app.appId} still lists ${account}`, e);
-    });
-  }
-}
-
 /**
  * Removes a person from Chat in `org` (`removeFromApp`, a passkey step-up).
- * In a shared org that is Chat only: off chat's app team, and off the private
- * channels and DMs listed for them that this account may change (their access
- * names accounts, so the team does not carry them). Elsewhere (standalone,
+ * In a shared org that is Chat only: off chat's app team, which takes their
+ * rows on the channels and DMs below it too (core). Elsewhere (standalone,
  * legacy, a dev bundle) it is out of the organization, as before.
  */
 export async function removeFromChat(org: string, account: string): Promise<"app" | "org"> {
   const left = await run((c) => removeFromApp(c, org, chatSource(), account, passkey));
   invalidate(org);
-  if (left === "app") await offPrivateChannels(org, account);
   invalidate();
   return left;
 }

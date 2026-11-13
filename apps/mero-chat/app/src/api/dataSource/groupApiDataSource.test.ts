@@ -57,6 +57,28 @@ const h = await vi.hoisted(async () => {
     removeMember: vi.fn(async () => ({})),
     deleteOrg: vi.fn(async () => {}),
     deleteApp: vi.fn(async () => {}),
+    // Teams, as core keeps them: a channel's, its creator leading it.
+    createTeam: vi.fn(async (org: string, name: string, join: string, parent?: string) => {
+      const o = state.orgs.get(org)!;
+      const teams = (o.teams ??= {}) as Record<string, Record<string, unknown>>;
+      const teamId = `team-${(state.seq += 1)}`;
+      teams[teamId] = { name, join, parent: parent ?? null, members: { "acct-me": true }, removed: [] };
+      return teamId;
+    }),
+    updateTeam: vi.fn(async (org: string, team: string, update: Record<string, unknown>) => {
+      Object.assign((state.orgs.get(org)!.teams as Record<string, object>)[team]!, update);
+    }),
+    setTeamMember: vi.fn(async (org: string, team: string, account: string) => {
+      ((state.orgs.get(org)!.teams as Record<string, { members: Record<string, boolean> }>)[team]!.members)[account] = false;
+    }),
+    removeTeamMember: vi.fn(async (org: string, team: string, account: string) => {
+      delete (state.orgs.get(org)!.teams as Record<string, { members: Record<string, boolean> }>)[team]!.members[account];
+    }),
+    deleteTeam: vi.fn(async (org: string, team: string) => {
+      delete (state.orgs.get(org)!.teams as Record<string, object>)[team];
+      for (const [id, a] of state.apps) if ((a.access as { team?: string }).team === team) state.apps.delete(id);
+      return { teams: [team], apps: [] };
+    }),
   });
   return { state, client };
 });
@@ -137,15 +159,18 @@ describe("a channel is a chat instance in the org", () => {
       name: "secret",
       initializationParams: { name: "secret", context_type: "Channel", description: "", created_at: 1, creator_username: "me" },
     });
-    expect(ctx.data).toEqual({ contextId: "app-2", memberPublicKey: "acct-me" });
+    expect(ctx.data).toEqual({ contextId: "app-3", memberPublicKey: "acct-me" });
+    // A dev bundle has no app team: the channel's team is at the top of the org.
+    expect(h.client.createTeam).toHaveBeenCalledWith("org-1", "secret", "invite");
+    expect(h.client.setTeamMember).toHaveBeenCalledWith("org-1", "team-2", "acct-bob", expect.anything(), { lead: false });
     expect(h.client.createApp).toHaveBeenCalledWith("secret", "bundle-hash", {
       org: "org-1",
-      access: { kind: "accounts", accounts: ["acct-bob"] },
+      access: { kind: "team", team: "team-2" },
       initArgs: { name: "secret", contextType: "Channel", description: "", creatorUsername: "me" },
     });
   });
 
-  it("an open channel reaches every org member; a private one its owner and the listed accounts", async () => {
+  it("an open channel reaches every org member; made private, the people with a row on its team", async () => {
     await api.createGroup({ applicationId: "x", name: "Team" });
     h.state.orgs.get("org-1")!.members = { "acct-me": "owner", "acct-bob": "member" };
     invalidate();
@@ -156,7 +181,7 @@ describe("a channel is a chat instance in the org", () => {
       joinChat: async () => ({ data: "ok", error: null }),
     });
     const id = (general as { contextId: string }).contextId;
-    expect(h.state.apps.get(id)!.access).toEqual({ kind: "org" });
+    expect(h.state.apps.get(id)!.access).toEqual({ kind: "team", team: "team-2" });
 
     const info = await api.getGroup(id);
     expect(info.data).toMatchObject({ subgroupVisibility: "open", memberCount: 2, alias: "general" });
@@ -166,11 +191,16 @@ describe("a channel is a chat instance in the org", () => {
     expect(contexts.data?.[0]).toMatchObject({ contextId: id, alias: "general" });
 
     await api.setSubgroupVisibility(id, { subgroupVisibility: "restricted" });
-    expect(h.state.apps.get(id)!.access).toEqual({ kind: "accounts", accounts: [] });
+    expect(h.client.updateTeam).toHaveBeenLastCalledWith("org-1", "team-2", { join: "invite" });
+    expect((await api.listMembers(id)).data?.members.map((m) => m.identity)).toEqual(["acct-me"]);
     await api.addGroupMember(id, "acct-bob");
-    expect(h.state.apps.get(id)!.access).toEqual({ kind: "accounts", accounts: ["acct-bob"] });
+    expect(h.state.apps.get(id)!.access).toEqual({ kind: "team", team: "team-2" });
     const members = await api.listMembers(id);
     expect(members.data?.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
+
+    expect((await api.deleteGroup(id)).error).toBeNull();
+    expect(h.client.deleteTeam).toHaveBeenCalledWith("org-1", "team-2", expect.anything());
+    expect(h.client.deleteApp).not.toHaveBeenCalled();
   });
 
   it("joining a channel needs nothing but reaching it", async () => {

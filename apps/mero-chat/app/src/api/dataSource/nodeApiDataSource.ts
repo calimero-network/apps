@@ -3,7 +3,7 @@
 import { describeError } from "@calimero-apps/connect";
 
 import { getAccountId } from "../calimero";
-import { createChatApp, getAppRecord, invalidate, listChatApps, run } from "../platform";
+import { createChatApp, deleteChannel, getAppRecord, listChatApps } from "../platform";
 import type { ApiResponse } from "../types";
 import type {
   CreateContextProps,
@@ -55,11 +55,10 @@ export class ContextApiDataSource implements NodeApi {
     return { data: { publicKey }, error: null };
   }
 
-  /** Deletes the instance (its owner, or an admin of its org). */
+  /** Deletes a channel or DM: its team, which takes the instance (a passkey step-up). */
   async deleteContext(props: DeleteContextProps): ApiResponse<string> {
     try {
-      await run((c) => c.apps.delete({ app: props.contextId }));
-      invalidate();
+      await deleteChannel(props.contextId);
       return { data: props.contextId, error: null };
     } catch (error) {
       return sdkError("deleteContext", error);

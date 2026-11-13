@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import AboutDetails from "./AboutDetails";
 import MemberDetails from "./MemberDetails";
@@ -108,6 +108,20 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
 
   const targetGroupId = props.contextSubgroupId ?? props.groupId;
 
+  // A channel made before channels had teams: its people are managed in
+  // Calimero Home, so its member controls say so instead of failing.
+  const [managedInHome, setManagedInHome] = useState(false);
+  useEffect(() => {
+    if (!targetGroupId) return;
+    let live = true;
+    void new GroupApiDataSource().channelManagedInHome(targetGroupId).then((v) => {
+      if (live) setManagedInHome(v);
+    });
+    return () => {
+      live = false;
+    };
+  }, [targetGroupId]);
+
   const addMember = async (account: string, _channel: string) => {
     if (!targetGroupId) return;
     const result = await new GroupApiDataSource().addGroupMember(targetGroupId, account);
@@ -173,7 +187,8 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
           getNonInvitedUsers={getNonInvitedUsers}
           nonInvitedUserList={nonInvitedUserList}
           nonChannelMembers={props.nonChannelMembers}
-          isOwner={canManageMembers}
+          isOwner={canManageMembers && !managedInHome}
+          membersNote={canManageMembers && managedInHome ? "Members of this channel are managed in Calimero Home." : undefined}
           contextId={props.contextId}
           myContextIdentity={getContextIdentity() ?? undefined}
         />
