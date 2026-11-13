@@ -109,11 +109,19 @@ export function signUpInviteHere(policy: SignUpPolicy | null | undefined, invite
   return invite;
 }
 
-/** The organization a brand-new account is in: the one its invite joined. */
+/**
+ * The organization a brand-new account is in: the one its invite joined. From
+ * core 1.0.0-rc.20 (core#5015) every account also has a personal organization
+ * from sign-up (`personal: true` in `/auth/me`), which is never the one joined,
+ * so it is left out.
+ */
 export async function soleOrg(client: ClientRoutes<{ auth: "me" }>): Promise<string | null> {
   try {
-    const me = (await client.auth.me()) as { orgs?: Array<{ orgId?: unknown }> };
-    const orgs = (me.orgs ?? []).map((o) => o.orgId).filter((o): o is string => typeof o === "string");
+    const me = (await client.auth.me()) as { orgs?: Array<{ orgId?: unknown; personal?: unknown }> };
+    const orgs = (me.orgs ?? [])
+      .filter((o) => o.personal !== true)
+      .map((o) => o.orgId)
+      .filter((o): o is string => typeof o === "string");
     return orgs.length === 1 ? (orgs[0] as string) : null;
   } catch {
     return null;
