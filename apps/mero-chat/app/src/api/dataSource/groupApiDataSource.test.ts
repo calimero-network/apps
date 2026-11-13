@@ -73,7 +73,7 @@ import { invalidate } from "../platform";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { ContextApiDataSource } from "./nodeApiDataSource";
 import { createChannel } from "../../utils/createChannel";
-import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
+import { CAN_CREATE_CONTEXT, CAN_CREATE_SUBGROUP } from "../../utils/groupCapabilities";
 
 const api = new GroupApiDataSource();
 
@@ -86,10 +86,28 @@ beforeEach(() => {
 });
 
 describe("a workspace is an org", () => {
-  it("is created with the member capabilities v1 gave a namespace", async () => {
+  it("is created without setting org-wide capabilities", async () => {
     const res = await api.createGroup({ applicationId: "x", name: "Team" });
     expect(res.data).toEqual({ groupId: "org-1" });
-    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", DEFAULT_MEMBER_CAPABILITIES, expect.anything());
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+  });
+
+  // A dev bundle has no app team: roles and capabilities stay org-wide there.
+  it("without chat's app team, roles and capabilities stay on the org", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const org = h.state.orgs.get("org-1")!;
+    org.members = { "acct-me": "owner", "acct-bob": "member" };
+    org.capabilities = { "acct-bob": CAN_CREATE_CONTEXT };
+    invalidate();
+    expect((await api.getMemberCapabilities("org-1", "acct-bob")).data?.capabilities).toBe(
+      CAN_CREATE_CONTEXT | CAN_CREATE_SUBGROUP,
+    );
+    await api.setMemberCapabilities("org-1", "acct-bob", { capabilities: CAN_CREATE_CONTEXT | CAN_CREATE_SUBGROUP });
+    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", CAN_CREATE_CONTEXT, expect.anything(), {
+      account: "acct-bob",
+    });
+    await api.updateMemberRole("org-1", "acct-bob", "Admin");
+    expect(h.client.setMember).toHaveBeenCalledWith("org-1", "acct-bob", "admin", expect.anything());
   });
 
   it("lists the orgs the account is in that hold chat", async () => {
@@ -107,7 +125,7 @@ describe("a workspace is an org", () => {
     invalidate();
     const res = await api.listMembers("org-1");
     expect(res.data?.members).toEqual([
-      { identity: "acct-me", role: "Admin", alias: undefined },
+      { identity: "acct-me", role: "Admin", alias: undefined, orgAdmin: true },
       { identity: "acct-bob", role: "Member", alias: "Bob" },
       { identity: "acct-gus", role: "ReadOnly", alias: undefined },
     ]);

@@ -1,17 +1,16 @@
+// The capabilities on a person's row in Chat's app team (core's bits; a
+// workspace without that team reads and writes them org-wide instead).
 export const CAN_CREATE_CONTEXT = 1 << 0;
 export const CAN_INVITE_MEMBERS = 1 << 1;
 export const CAN_JOIN_OPEN_SUBGROUPS = 1 << 2;
-// rc.37 capability bits — let a namespace member start/delete their own
-// channel (== a subgroup under the namespace root with 1 context inside) and
-// flip its open/restricted visibility without full admin rights.
-export const CAN_CREATE_SUBGROUP = 1 << 5;
 export const CAN_DELETE_SUBGROUP = 1 << 6;
 export const CAN_MANAGE_VISIBILITY = 1 << 7;
+// core's CREATE_CHILD_TEAM: a closed team below Chat's app team, which is
+// what a private channel or a DM is. On by default in an app team.
+export const CAN_CREATE_SUBGROUP = 1 << 11;
 
-// Default mask granted to invited namespace members in the 1-group-per-context
-// model: create + delete their own channel-group, manage its visibility, plus
-// the existing context/invite/join-open caps.
-export const DEFAULT_MEMBER_CAPABILITIES =
+/** The bits the toggles below read and write; a row's other bits are kept as they are. */
+export const TOGGLED_CAPABILITIES =
   CAN_CREATE_CONTEXT |
   CAN_INVITE_MEMBERS |
   CAN_JOIN_OPEN_SUBGROUPS |

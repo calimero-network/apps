@@ -95,10 +95,6 @@ interface SettingsTabProps {
   /** TEE nodes admitted to the namespace; never part of the member list. */
   teeMembers?: GroupMember[];
   actionLoading: boolean;
-  onSetDefaultCapabilities: (
-    groupId: string,
-    capabilities: number,
-  ) => Promise<boolean>;
   onSetSubgroupVisibility: (
     groupId: string,
     mode: VisibilityMode,
@@ -111,7 +107,6 @@ export default function SettingsTab({
   subgroupCount,
   teeMembers = [],
   actionLoading: _actionLoading,
-  onSetDefaultCapabilities: _onSetDefaultCapabilities,
   onSetSubgroupVisibility: _onSetSubgroupVisibility,
 }: SettingsTabProps) {
   if (!group) {
