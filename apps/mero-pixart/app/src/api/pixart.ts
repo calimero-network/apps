@@ -10,9 +10,10 @@ import { MeroPixartClient, type AppTransport } from "../generated/client";
  * arguments as decimal strings (`i64` below), views as views.
  *
  * Answers need no translation: every integer the contract answers is inside a
- * record the contract keeps as v1 did (JSON numbers, camelCase fields). The ABI
- * names those records without their shapes, so the generated types are
- * `unknown` and the screens cast them to `types/`.
+ * record the contract keeps as v1 did (JSON numbers, camelCase fields), which
+ * it marks `#[abi(plain)]`, so the generated types describe them. Members and
+ * cursors read straight into `types/`; a layer is cast there, since the app
+ * narrows its `kind` and `blendMode` strings to unions.
  *
  * `pixartTransport` is the one adapter on the wire: a refusal reaches the
  * screens as an `Error` with v1's words (`messageOf`), which is also what

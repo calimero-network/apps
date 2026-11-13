@@ -3,7 +3,6 @@ package network.calimero.crm
 import com.calimero.mero.app.ContextContractCalling
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -16,6 +15,7 @@ import network.calimero.crm.generated.expectedClose
 import network.calimero.crm.generated.nextActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -93,21 +93,24 @@ class ContractSurfaceTest {
             assertEquals(VIEWS, CrmContract.VIEWS)
             assertEquals(ABI.keys - VIEWS, CrmContract.CALLS)
             for (request in r.sent) {
-                assertEquals(request.method, ABI[request.method]!!.toSet(), request.args.keys)
+                // Every parameter but an `option` left unset, which the client leaves out.
+                val params = ABI[request.method]!!.toSet()
+                assertTrue(request.method, params.containsAll(request.args.keys))
+                assertTrue(request.method, request.args.keys.containsAll(params - OPTIONS[request.method].orEmpty()))
                 assertEquals(request.method, request.method in VIEWS, request.view)
             }
         }
 
     @Test
-    fun `a none is a null and a u64 is a decimal string`() =
+    fun `an unset option is left out and a u64 is a decimal string`() =
         runTest {
             val r = Recorder()
             CrmClient(r).createDeal(title = "t", value = 12_500u, organization = "", stageId = "s", expectedClose = 1_793_181_600_000u, source = "")
             val args = r.sent.first().args
             assertEquals(JsonPrimitive("12500"), args["value"])
             assertEquals(JsonPrimitive("1793181600000"), args["expectedClose"])
-            assertEquals(JsonNull, args["contactId"])
-            assertEquals(JsonNull, args["owner"])
+            assertNull(args["contactId"])
+            assertNull(args["owner"])
         }
 
     @Test
@@ -125,6 +128,16 @@ class ContractSurfaceTest {
         }
 
     private companion object {
+        /** The ABI's `option` parameters, by method. */
+        val OPTIONS: Map<String, Set<String>> =
+            mapOf(
+                "addActivity" to setOf("dealId", "contactId", "owner"),
+                "createDeal" to setOf("contactId", "owner", "expectedClose"),
+                "listActivities" to setOf("dealId", "done"),
+                "listDeals" to setOf("status", "stageId", "owner"),
+                "updateDeal" to setOf("contactId", "owner", "expectedClose"),
+            )
+
         /** `methods` of the ABI, without `init`: name to parameter names. */
         val ABI: Map<String, List<String>> =
             mapOf(

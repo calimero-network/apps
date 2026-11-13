@@ -11,10 +11,11 @@
 # `component-core-tag`. It is a tag (`1.0.0-rc.18`) or a full commit sha of
 # core; a sha is installed with `--rev`, anything else with `--tag`.
 #
-# Now the 1.0.0-rc.19 tag, which `component-core-tag` also names: it has
-# core#5011 (`raw.*` returns `{result, index, events}`, the call-only
-# `AppCallTransport`, typed `InitArgs`), core#5005 (`--name` defaults from
-# Cargo.toml, `--no-openapi`, `--version`, the `<Name>Api` interface) and
+# Now the 1.0.0-rc.23 tag, which `component-core-tag` and
+# scripts/mobile-codegen.sh also name: it has core#5027 (1.0.0-rc.21:
+# `#[abi(plain)]`'s `u64_number` / `i64_number` / `byte_list`,
+# `#[serde(default)]` fields optional, unset optionals left out,
+# `--kotlin-serialization-plugin`), on top of core#5011, core#5005 and
 # core#5007.
 #
 # Moving it changes what every generated client looks like, so regenerate them
@@ -25,7 +26,7 @@
 # (a stamp file beside it), so a cached root costs nothing.
 set -euo pipefail
 
-REF="${MERO_APP_BUILD_REF:-${MERO_APP_BUILD_TAG:-1.0.0-rc.19}}"
+REF="${MERO_APP_BUILD_REF:-${MERO_APP_BUILD_TAG:-1.0.0-rc.23}}"
 ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 STAMP="$ROOT/.mero-app-build-tag"
 

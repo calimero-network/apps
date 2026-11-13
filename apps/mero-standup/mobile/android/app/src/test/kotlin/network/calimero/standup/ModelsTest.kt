@@ -8,7 +8,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import network.calimero.standup.app.BoardModel
@@ -175,9 +174,9 @@ class ModelsTest {
             assertEquals(2, model.items.value.size)
             assertTrue(model.hasMore.value)
             val first = args(backend, "listDecisions")
-            // Unknown keys are refused by the component contract; absent options go as null, as the web app sends them.
-            assertEquals(setOf("search", "tag", "fromDay", "standingOnly", "cursor", "limit"), first.keys)
-            assertEquals(JsonNull, first["search"])
+            // Unknown keys are refused by the component contract; absent options are left out, as the web app does.
+            assertEquals(setOf("standingOnly", "limit"), first.keys)
+            assertNull(first["search"])
             assertEquals("25", (first["limit"] as JsonPrimitive).content)
 
             model.showOlder()
@@ -203,8 +202,8 @@ class ModelsTest {
 
             model.log(DecisionDraft(title = "T", decision = "D"))
             val plain = args(backend, "logDecision")
-            assertEquals(JsonNull, plain["supersedes"])
-            assertEquals(JsonNull, plain["fromDay"])
+            assertNull(plain["supersedes"])
+            assertNull(plain["fromDay"])
         }
 
     @Test

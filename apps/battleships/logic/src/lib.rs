@@ -164,9 +164,11 @@ pub struct PlayerEntry {
 /// A grid of the caller's shots (`getShots`) or of the shots fired at the
 /// caller (`getIncomingShots`): one cell byte per square, row-major
 /// (0 empty, 2 hit, 3 miss, 4 pending).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, AbiType)]
 pub struct ShotsView {
     pub size: u8,
+    /// An array of numbers, as plain serde writes a `Vec<u8>` (`byte_list`).
+    #[abi(plain)]
     pub shots: Vec<u8>,
 }
 

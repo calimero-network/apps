@@ -15,7 +15,6 @@ import {
   type MatchStateView,
   type MatchSummary,
   type PlayerStatsView,
-  type ShotsView,
 } from '../../battleships';
 import {
   cellsFromShips,
@@ -343,8 +342,8 @@ export default function MatchPage() {
     if (!matchApi || !effectiveMatchId) return;
     try {
       const state = (await matchApi.getMatchState({ matchId: effectiveMatchId })) as MatchStateView;
-      const shots = (await matchApi.getShots({ matchId: effectiveMatchId })) as ShotsView;
-      const incoming = (await matchApi.getIncomingShots({ matchId: effectiveMatchId })) as ShotsView;
+      const shots = await matchApi.getShots({ matchId: effectiveMatchId });
+      const incoming = await matchApi.getIncomingShots({ matchId: effectiveMatchId });
       setSize(shots.size);
       setMatchState(state);
       setShotsBoard(shots.shots);
@@ -372,7 +371,7 @@ export default function MatchPage() {
         latest = (await matchApi.getMatchState({ matchId: effectiveMatchId })) as MatchStateView;
       }
       if (latest !== state) {
-        const nextIncoming = (await matchApi.getIncomingShots({ matchId: effectiveMatchId })) as ShotsView;
+        const nextIncoming = await matchApi.getIncomingShots({ matchId: effectiveMatchId });
         setMatchState(latest);
         setOwnBoard(overlayOwnBoard(stored.cells, nextIncoming.shots));
       }

@@ -44,7 +44,7 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .ready)
         XCTAssertFalse(backend.log.contains { $0.hasPrefix("joinContext") }, "org members reach the board as is")
         let page = backend.recording.calls("getElementsPage").first
-        XCTAssertEqual(page?.args, .object(["cursor": .null, "limit": .number(1000)]))
+        XCTAssertEqual(page?.args, .object(["limit": .number(1000)]))
         XCTAssertEqual(model.scene.nodes.count, 2)
         XCTAssertEqual(model.name, "Landing v2")
         XCTAssertEqual(model.role, "editor")
@@ -73,7 +73,7 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(join.path, .execute)
         XCTAssertEqual(join.args["username"], .string("Fran"))
         XCTAssertEqual(join.args["timestamp"], .string("1700000000000"), "u64 arguments travel as decimal strings")
-        XCTAssertEqual(join.args["avatar"], .null)
+        XCTAssertNil(join.args["avatar"])
         let add = try XCTUnwrap(backend.recording.calls("addComment").first)
         XCTAssertEqual(add.path, .execute)
         XCTAssertEqual(add.args["content"], .string("Bigger logo?"))
@@ -145,13 +145,13 @@ final class TransportTests: XCTestCase {
         let backend = InMemoryAppBackend()
         let el = Fixtures.element("a", Fixtures.rect)
         backend.recording.setHandler { call in
-            let first = call.args["cursor"] == .null
+            let first = call.args["cursor"] == nil
             let json = #"{"items":["# + el + #"],"nextCursor":"# + (first ? #""c1""# : "null") + "}"
             return try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
         }
         let elements = try await backend.designClient("board").allElements()
         XCTAssertEqual(elements.count, 2)
-        XCTAssertEqual(backend.recording.calls("getElementsPage").map { $0.args["cursor"] }, [.null, .string("c1")])
+        XCTAssertEqual(backend.recording.calls("getElementsPage").map { $0.args["cursor"] }, [nil, .string("c1")])
     }
 
     func testCallsGoOutOnTheComponentWire() async throws {

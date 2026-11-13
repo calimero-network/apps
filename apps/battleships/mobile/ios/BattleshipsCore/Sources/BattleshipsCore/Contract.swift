@@ -3,7 +3,7 @@ import MeroKit
 
 // The Battleships component contract (`../logic/res/abi.json`). The calls are `BattleshipsClient`,
 // generated from it into `Generated/` by core's `mero-app-build codegen`
-// (`scripts/mobile-codegen.sh`), and so are the answer types but `ShotsView`; this file keeps the
+// (`scripts/mobile-codegen.sh`), and so are the answer types; this file keeps the
 // method lists of the web app's `src/battleships.ts`: camelCase method and argument names, snake_case result fields, 64-bit
 // integers as decimal strings, bytes as base64url, refusals as `422 APP_ERROR {code, fields}`.
 // (Kotlin `Contract.kt`.)
@@ -23,8 +23,7 @@ public enum BattleshipsMethods {
 // MARK: - Results
 
 // The answer types are the generated client's (`Generated/BattleshipsClient.swift`, from the ABI),
-// field names as the contract has them (`match_id`, `created_ms`, ...). `ShotsView` is the one the
-// ABI still leaves `unknown`, so it is read from the generated client's JSON below.
+// field names as the contract has them (`match_id`, `created_ms`, ...).
 
 public typealias MatchStatus = BattleshipsClient.MatchStatus
 public typealias MatchSummary = BattleshipsClient.MatchSummary
@@ -41,27 +40,8 @@ public typealias PendingShotView = BattleshipsClient.PendingShotView
 public typealias MatchStateView = BattleshipsClient.MatchStateView
 
 /// The caller's shots (`getShots`) or the shots at the caller (`getIncomingShots`): one ``Cell``
-/// byte per square, row-major.
-public struct ShotsView: Codable, Sendable, Equatable {
-    public var size: UInt32
-    public var shots: [UInt8]
-
-    public init(size: UInt32, shots: [UInt8]) {
-        self.size = size
-        self.shots = shots
-    }
-}
-
-// MARK: - Reading the generated client's answers
-
-extension Encodable {
-    /// This answer as the app type `T`. The ABI leaves `ShotsView` `unknown` (its `shots` are
-    /// bytes the logic does not describe yet), so the generated `BattleshipsClient` answers its JSON
-    /// and ``ShotsView`` reads it.
-    func decoded<T: Decodable>(as type: T.Type) throws -> T {
-        try MeroJSON.decode(type, from: MeroJSON.encode(self))
-    }
-}
+/// byte per square, row-major, a JSON array of bytes, which the logic marks `#[abi(plain)]`.
+public typealias ShotsView = BattleshipsClient.ShotsView
 
 /// Bytes as the contract takes them: base64url, no padding.
 public enum Base64URL {

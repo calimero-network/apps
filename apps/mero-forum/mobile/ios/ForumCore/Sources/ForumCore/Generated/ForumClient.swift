@@ -348,7 +348,7 @@ public struct ForumClient: Sendable {
     ) async throws -> CommentPage {
         var args = Args()
         args.add("postId", postId)
-        args.add("cursor", cursor)
+        if let value = cursor { args.add("cursor", value) }
         args.add("limit", limit)
         let result = try await invokeView("listComments", args, stale: stale, minIndex: minIndex, as: CommentPage.self)
         return result
@@ -363,8 +363,8 @@ public struct ForumClient: Sendable {
         minIndex: Int = 0
     ) async throws -> PostPage {
         var args = Args()
-        args.add("sort", sort)
-        args.add("cursor", cursor)
+        if let value = sort { args.add("sort", value) }
+        if let value = cursor { args.add("cursor", value) }
         args.add("limit", limit)
         let result = try await invokeView("listPosts", args, stale: stale, minIndex: minIndex, as: PostPage.self)
         return result

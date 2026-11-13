@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -371,8 +372,8 @@ class PassClient private constructor(
             "updateSecret",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("name", encode(String.serializer().nullable, name))
-                put("tags", encode(String.serializer().nullable, tags))
+                if (name != null) put("name", encode(String.serializer().nullable, name))
+                if (tags != null) put("tags", encode(String.serializer().nullable, tags))
                 put("fields", encode(MapSerializer(String.serializer(), String.serializer()), fields))
                 put("rekey", encode(Boolean.serializer(), rekey))
             },
@@ -561,6 +562,7 @@ class PassClient private constructor(
     }
 
     /** The app type `AuditView`. */
+    @Serializable(with = AuditView.Companion.Wire::class)
     data class AuditView(
         val action: String,
         val target: String,
@@ -571,9 +573,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `AuditView`'s JSON form. */
-            fun serializer(): KSerializer<AuditView> = Wire
-
-            private object Wire : KSerializer<AuditView> {
+            internal object Wire : KSerializer<AuditView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -609,6 +609,7 @@ class PassClient private constructor(
     }
 
     /** The app type `DeviceView`. */
+    @Serializable(with = DeviceView.Companion.Wire::class)
     data class DeviceView(
         val fingerprint: String,
         val publicKey: String,
@@ -620,9 +621,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `DeviceView`'s JSON form. */
-            fun serializer(): KSerializer<DeviceView> = Wire
-
-            private object Wire : KSerializer<DeviceView> {
+            internal object Wire : KSerializer<DeviceView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -660,6 +659,7 @@ class PassClient private constructor(
     }
 
     /** The app type `KeyWrapInput`. */
+    @Serializable(with = KeyWrapInput.Companion.Wire::class)
     data class KeyWrapInput(
         val keyId: String,
         val recipient: String,
@@ -668,9 +668,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `KeyWrapInput`'s JSON form. */
-            fun serializer(): KSerializer<KeyWrapInput> = Wire
-
-            private object Wire : KSerializer<KeyWrapInput> {
+            internal object Wire : KSerializer<KeyWrapInput> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -702,6 +700,7 @@ class PassClient private constructor(
     }
 
     /** The app type `KeyWrapView`. */
+    @Serializable(with = KeyWrapView.Companion.Wire::class)
     data class KeyWrapView(
         val keyId: String,
         val recipient: String,
@@ -711,9 +710,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `KeyWrapView`'s JSON form. */
-            fun serializer(): KSerializer<KeyWrapView> = Wire
-
-            private object Wire : KSerializer<KeyWrapView> {
+            internal object Wire : KSerializer<KeyWrapView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -747,6 +744,7 @@ class PassClient private constructor(
     }
 
     /** The app type `MemberView`. */
+    @Serializable(with = MemberView.Companion.Wire::class)
     data class MemberView(
         val account: String,
         val role: String,
@@ -754,9 +752,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `MemberView`'s JSON form. */
-            fun serializer(): KSerializer<MemberView> = Wire
-
-            private object Wire : KSerializer<MemberView> {
+            internal object Wire : KSerializer<MemberView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -786,6 +782,7 @@ class PassClient private constructor(
     }
 
     /** The app type `RevisionView`. */
+    @Serializable(with = RevisionView.Companion.Wire::class)
     data class RevisionView(
         val field: String,
         val previous: String,
@@ -794,9 +791,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `RevisionView`'s JSON form. */
-            fun serializer(): KSerializer<RevisionView> = Wire
-
-            private object Wire : KSerializer<RevisionView> {
+            internal object Wire : KSerializer<RevisionView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -828,6 +823,7 @@ class PassClient private constructor(
     }
 
     /** The app type `SecretView`. */
+    @Serializable(with = SecretView.Companion.Wire::class)
     data class SecretView(
         val id: String,
         val kind: String,
@@ -843,9 +839,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `SecretView`'s JSON form. */
-            fun serializer(): KSerializer<SecretView> = Wire
-
-            private object Wire : KSerializer<SecretView> {
+            internal object Wire : KSerializer<SecretView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -891,6 +885,7 @@ class PassClient private constructor(
     }
 
     /** The app type `VaultInfo`. */
+    @Serializable(with = VaultInfo.Companion.Wire::class)
     data class VaultInfo(
         val name: String,
         val currentKey: String,
@@ -900,9 +895,7 @@ class PassClient private constructor(
     ) {
         companion object {
             /** `VaultInfo`'s JSON form. */
-            fun serializer(): KSerializer<VaultInfo> = Wire
-
-            private object Wire : KSerializer<VaultInfo> {
+            internal object Wire : KSerializer<VaultInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

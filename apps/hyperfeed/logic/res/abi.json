@@ -1530,6 +1530,31 @@
     "version": 1
   },
   "types": {
+    "AccessView": {
+      "fields": [
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "folders",
+          "list<Folder>"
+        ],
+        [
+          "shell",
+          "bool"
+        ],
+        [
+          "web",
+          "bool"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "ActionDef": {
       "fields": [
         [
@@ -1627,15 +1652,24 @@
         ],
         [
           "grant",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "subject",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "send_call",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -1657,6 +1691,99 @@
       ],
       "kind": "record"
     },
+    "ActionSetView": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "application_id",
+          "string"
+        ],
+        [
+          "actions",
+          "list<ActionDef>"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AgentAccountView": {
+      "fields": [
+        [
+          "account",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "added_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AgentRuleView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AgentView": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "seen_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AppCount": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "count",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
     "Ask": {
       "fields": [
         [
@@ -1674,6 +1801,77 @@
         [
           "draft",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AssignmentView": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Attachment": {
+      "fields": [
+        [
+          "blob_id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "mime",
+          "string"
+        ],
+        [
+          "size",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AutorunView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "at",
+          "u64_number"
+        ],
+        [
+          "set_at",
+          "u64_number"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "stopped_at",
+          "u64_number"
+        ],
+        [
+          "fired_at",
+          "u64_number"
         ]
       ],
       "kind": "record"
@@ -1711,6 +1909,324 @@
       ],
       "kind": "record"
     },
+    "CheckpointView": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "done",
+          "string"
+        ],
+        [
+          "next",
+          "string"
+        ],
+        [
+          "branches",
+          "list<string>"
+        ],
+        [
+          "worktrees",
+          "list<string>"
+        ],
+        [
+          "prs",
+          "list<string>"
+        ],
+        [
+          "questions",
+          "list<string>"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FeedCounts": {
+      "fields": [
+        [
+          "all",
+          "u32"
+        ],
+        [
+          "agent",
+          "u32"
+        ],
+        [
+          "notifications",
+          "u32"
+        ],
+        [
+          "needs_you",
+          "u32"
+        ],
+        [
+          "archived",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "FeedItem": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "chain_len",
+          "u32"
+        ],
+        [
+          "chain_at",
+          "u64_number"
+        ],
+        [
+          "app",
+          "string"
+        ],
+        [
+          "source_context",
+          "string"
+        ],
+        [
+          "source_label",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "body",
+          "string"
+        ],
+        [
+          "at",
+          "u64_number"
+        ],
+        [
+          "needs_you",
+          "bool"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "status_at",
+          "u64_number"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "ask",
+          "Ask"
+        ],
+        [
+          "history",
+          "list<Step>"
+        ],
+        [
+          "method",
+          "string"
+        ],
+        [
+          "category",
+          "string"
+        ],
+        [
+          "why",
+          "string"
+        ],
+        [
+          "intent_hash",
+          "string"
+        ],
+        [
+          "executor",
+          "string"
+        ],
+        [
+          "undoable",
+          "bool"
+        ],
+        [
+          "breach",
+          "string"
+        ],
+        [
+          "reviewed_at",
+          "u64_number"
+        ],
+        [
+          "from",
+          "string"
+        ],
+        [
+          "event",
+          "string"
+        ],
+        [
+          "seen",
+          "bool"
+        ],
+        [
+          "reply_to",
+          "string"
+        ],
+        [
+          "item_type",
+          "string"
+        ],
+        [
+          "fields",
+          "string"
+        ],
+        [
+          "reply_call",
+          "string"
+        ],
+        [
+          "doing",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "doing_at",
+          "u64_number",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "attachments",
+          "list<Attachment>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "steps",
+          "list<TurnStep>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "draft",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "stop_at",
+          "u64_number",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "headline",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "mode",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "superseded_by",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "answers",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "answers_superseded",
+          "bool",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "held_by",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "held_since",
+          "u64_number",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "subject",
+          "string",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "FeedPage": {
+      "fields": [
+        [
+          "items",
+          "list<FeedItem>"
+        ],
+        [
+          "counts",
+          "FeedCounts"
+        ],
+        [
+          "apps",
+          "list<AppCount>"
+        ],
+        [
+          "next_before",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "Folder": {
       "fields": [
         [
@@ -1737,6 +2253,60 @@
       ],
       "kind": "record"
     },
+    "LeaseView": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "session",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "claimed_at",
+          "u64_number"
+        ],
+        [
+          "expires_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LensView": {
+      "fields": [
+        [
+          "app",
+          "string"
+        ],
+        [
+          "application_id",
+          "string"
+        ],
+        [
+          "spec",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "LinkInput": {
       "fields": [
         [
@@ -1750,6 +2320,178 @@
         [
           "by",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LinkView": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "subject",
+          "string"
+        ],
+        [
+          "app",
+          "string"
+        ],
+        [
+          "context",
+          "string"
+        ],
+        [
+          "item",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "by",
+          "string"
+        ],
+        [
+          "added_at",
+          "u64_number"
+        ],
+        [
+          "activity",
+          "u32"
+        ],
+        [
+          "last_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemoHits": {
+      "fields": [
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "hits",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemoInput": {
+      "fields": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "scope",
+          "string"
+        ],
+        [
+          "tool",
+          "string"
+        ],
+        [
+          "args",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ],
+        [
+          "class",
+          "string"
+        ],
+        [
+          "ttl_ms",
+          "u64_number"
+        ],
+        [
+          "fetched_at",
+          "u64_number"
+        ],
+        [
+          "unchanged",
+          "u32"
+        ],
+        [
+          "hits",
+          "u64_number"
+        ],
+        [
+          "last_hit_at",
+          "u64_number"
+        ],
+        [
+          "attested",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemoView": {
+      "fields": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "scope",
+          "string"
+        ],
+        [
+          "tool",
+          "string"
+        ],
+        [
+          "args",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ],
+        [
+          "class",
+          "string"
+        ],
+        [
+          "ttl_ms",
+          "u64_number"
+        ],
+        [
+          "fetched_at",
+          "u64_number"
+        ],
+        [
+          "unchanged",
+          "u32"
+        ],
+        [
+          "hits",
+          "list<MemoHits>"
+        ],
+        [
+          "last_hit_at",
+          "u64_number"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "attested",
+          "bool"
+        ],
+        [
+          "updated_at",
+          "u64_number"
         ]
       ],
       "kind": "record"
@@ -1802,15 +2544,24 @@
         ],
         [
           "item_type",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "fields",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ],
         [
           "reply_call",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"
@@ -1828,6 +2579,156 @@
         [
           "notifications",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PrInput": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "repo",
+          "string"
+        ],
+        [
+          "pr",
+          "u64_number"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "state",
+          "string"
+        ],
+        [
+          "draft",
+          "bool"
+        ],
+        [
+          "base",
+          "string"
+        ],
+        [
+          "default_branch",
+          "string"
+        ],
+        [
+          "conflicts",
+          "bool"
+        ],
+        [
+          "head_sha",
+          "string"
+        ],
+        [
+          "checks",
+          "string"
+        ],
+        [
+          "checks_total",
+          "u32"
+        ],
+        [
+          "checks_passed",
+          "u32"
+        ],
+        [
+          "checks_pending",
+          "u32"
+        ],
+        [
+          "failing",
+          "list<string>"
+        ],
+        [
+          "stacked_on",
+          "u64_number"
+        ],
+        [
+          "stacked_merged",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PrView": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "repo",
+          "string"
+        ],
+        [
+          "pr",
+          "u64_number"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "state",
+          "string"
+        ],
+        [
+          "draft",
+          "bool"
+        ],
+        [
+          "base",
+          "string"
+        ],
+        [
+          "default_branch",
+          "string"
+        ],
+        [
+          "conflicts",
+          "bool"
+        ],
+        [
+          "head_sha",
+          "string"
+        ],
+        [
+          "checks",
+          "string"
+        ],
+        [
+          "checks_total",
+          "u32"
+        ],
+        [
+          "checks_passed",
+          "u32"
+        ],
+        [
+          "checks_pending",
+          "u32"
+        ],
+        [
+          "failing",
+          "list<string>"
+        ],
+        [
+          "stacked_on",
+          "u64_number"
+        ],
+        [
+          "stacked_merged",
+          "bool"
+        ],
+        [
+          "seen_at",
+          "u64_number"
         ]
       ],
       "kind": "record"
@@ -1857,6 +2758,52 @@
         [
           "key",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PushDeviceView": {
+      "fields": [
+        [
+          "endpoint",
+          "string"
+        ],
+        [
+          "p256dh",
+          "string"
+        ],
+        [
+          "auth",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "quiet",
+          "bool"
+        ],
+        [
+          "added_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PushKeyView": {
+      "fields": [
+        [
+          "public_key",
+          "string"
+        ],
+        [
+          "by",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
         ]
       ],
       "kind": "record"
@@ -1894,6 +2841,69 @@
       ],
       "kind": "record"
     },
+    "ReachView": {
+      "fields": [
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "lines",
+          "list<ReachLine>"
+        ],
+        [
+          "at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RuleProposalView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "why",
+          "string"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RuleView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "SettingsView": {
       "fields": [
         [
@@ -1918,39 +2928,194 @@
         ],
         [
           "rules",
-          "list<RuleView>"
+          "list<RuleView>",
+          {
+            "optional": true
+          }
         ],
         [
           "rule_proposals",
-          "list<RuleProposalView>"
+          "list<RuleProposalView>",
+          {
+            "optional": true
+          }
         ],
         [
           "message_modes",
-          "list<string>"
+          "list<string>",
+          {
+            "optional": true
+          }
         ],
         [
           "access",
-          "list<AccessView>"
+          "list<AccessView>",
+          {
+            "optional": true
+          }
         ],
         [
           "reach",
-          "list<ReachView>"
+          "list<ReachView>",
+          {
+            "optional": true
+          }
         ],
         [
           "assignments",
-          "list<AssignmentView>"
+          "list<AssignmentView>",
+          {
+            "optional": true
+          }
         ],
         [
           "agent_rules",
-          "list<AgentRuleView>"
+          "list<AgentRuleView>",
+          {
+            "optional": true
+          }
         ],
         [
           "action_modes",
-          "list<ActionModeView>"
+          "list<ActionModeView>",
+          {
+            "optional": true
+          }
         ],
         [
           "agent_accounts",
-          "list<AgentAccountView>"
+          "list<AgentAccountView>",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "SituationInput": {
+      "fields": [
+        [
+          "headline",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "recommend",
+          "string"
+        ],
+        [
+          "reason",
+          "string"
+        ],
+        [
+          "score",
+          "u32"
+        ],
+        [
+          "due_at",
+          "u64_number"
+        ],
+        [
+          "sources",
+          "u32"
+        ],
+        [
+          "apps",
+          "u32"
+        ],
+        [
+          "author",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SituationView": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "headline",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "recommend",
+          "string"
+        ],
+        [
+          "reason",
+          "string"
+        ],
+        [
+          "score",
+          "u32"
+        ],
+        [
+          "due_at",
+          "u64_number"
+        ],
+        [
+          "sources",
+          "u32"
+        ],
+        [
+          "apps",
+          "u32"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "updated_at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Step": {
+      "fields": [
+        [
+          "status",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "at",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TurnStep": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "at",
+          "u64_number"
         ]
       ],
       "kind": "record"
@@ -1964,6 +3129,116 @@
         [
           "reason",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WatchInput": {
+      "fields": [
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "condition",
+          "string"
+        ],
+        [
+          "repo",
+          "string"
+        ],
+        [
+          "pr",
+          "u64_number"
+        ],
+        [
+          "branch",
+          "string"
+        ],
+        [
+          "action",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "WatchView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "chain",
+          "string"
+        ],
+        [
+          "condition",
+          "string"
+        ],
+        [
+          "repo",
+          "string"
+        ],
+        [
+          "pr",
+          "u64_number"
+        ],
+        [
+          "branch",
+          "string"
+        ],
+        [
+          "action",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "agent",
+          "string"
+        ],
+        [
+          "status",
+          "string"
+        ],
+        [
+          "note",
+          "string"
+        ],
+        [
+          "seen",
+          "string"
+        ],
+        [
+          "seen_at",
+          "u64_number"
+        ],
+        [
+          "fired_by",
+          "string"
+        ],
+        [
+          "fired_at",
+          "u64_number"
+        ],
+        [
+          "created_at",
+          "u64_number"
+        ],
+        [
+          "updated_at",
+          "u64_number"
         ]
       ],
       "kind": "record"

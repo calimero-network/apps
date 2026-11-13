@@ -301,7 +301,7 @@ public struct IssueTrackerClient: Sendable {
         args.add("repro", repro)
         args.add("resolutionCriteria", resolutionCriteria)
         args.add("priority", priority)
-        args.add("labels", labels)
+        if let value = labels { args.add("labels", value) }
         let result = try await invokeCall("createIssue", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
     }
@@ -379,9 +379,9 @@ public struct IssueTrackerClient: Sendable {
         minIndex: Int = 0
     ) async throws -> [IssueView] {
         var args = Args()
-        args.add("status", status)
-        args.add("assignee", assignee)
-        args.add("label", label)
+        if let value = status { args.add("status", value) }
+        if let value = assignee { args.add("assignee", value) }
+        if let value = label { args.add("label", value) }
         let result = try await invokeView("listIssues", args, stale: stale, minIndex: minIndex, as: [IssueView].self)
         return result
     }
@@ -406,7 +406,7 @@ public struct IssueTrackerClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("issueId", issueId)
-        args.add("assignee", assignee)
+        if let value = assignee { args.add("assignee", value) }
         _ = try await invokeCall("setAssignee", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 

@@ -474,8 +474,7 @@
           }
         },
         "required": [
-          "fieldId",
-          "values"
+          "fieldId"
         ],
         "type": "object",
         "x-calimero-abi-type": "AnswerInput"
@@ -922,15 +921,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "contextId",
-          "stageId",
-          "nameField",
-          "emailField",
-          "phoneField",
-          "organizationField",
-          "titleField"
-        ],
+        "required": [],
         "type": "object",
         "x-calimero-abi-type": "CrmLink"
       },
@@ -1137,10 +1128,7 @@
         "required": [
           "id",
           "kind",
-          "label",
-          "help",
-          "required",
-          "options"
+          "label"
         ],
         "type": "object",
         "x-calimero-abi-type": "Field"

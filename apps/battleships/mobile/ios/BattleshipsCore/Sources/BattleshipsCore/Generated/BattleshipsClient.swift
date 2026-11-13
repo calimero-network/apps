@@ -15,9 +15,6 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct BattleshipsClient: Sendable {
-    /// The app type `ShotsView`: the ABI names it without its shape, so it is its JSON.
-    public typealias ShotsView = JSONValue
-
 
     /// The app type `MatchRecord`.
     public struct MatchRecord: Codable, Sendable, Equatable {
@@ -334,6 +331,34 @@ public struct BattleshipsClient: Sendable {
             try fields.encode(DecimalString(self.wins), forKey: Key("wins"))
             try fields.encode(DecimalString(self.losses), forKey: Key("losses"))
             try fields.encode(DecimalString(self.games_played), forKey: Key("games_played"))
+        }
+    }
+
+    /// The app type `ShotsView`.
+    public struct ShotsView: Codable, Sendable, Equatable {
+        public var size: UInt8
+        public var shots: [UInt8]
+
+        public init(
+            size: UInt8,
+            shots: [UInt8]
+        ) {
+            self.size = size
+            self.shots = shots
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt8.self, forKey: Key("size"))
+            let v1 = try fields.decode([UInt8].self, forKey: Key("shots"))
+            self.size = v0
+            self.shots = v1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.size, forKey: Key("size"))
+            try fields.encode(self.shots, forKey: Key("shots"))
         }
     }
 

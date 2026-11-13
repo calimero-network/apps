@@ -38,8 +38,8 @@ class ContractTest {
         runTest {
             val backend = InMemoryAppBackend()
             backend.recording.handler = { call ->
-                // The generated client sends an unset `option` argument as `null`, which the
-                // contract reads as none, as it does a missing key.
+                // The generated client leaves an unset `option` argument out, which the
+                // contract reads as none, as it does `null`.
                 when ((call.args as JsonObject)["cursor"]?.takeUnless { it is JsonNull }?.let { (it as JsonPrimitive).content }) {
                     null -> Json.parseToJsonElement("""{"items":[{"k":"1,2","t":3}],"next":"a"}""")
                     "a" -> Json.parseToJsonElement("""{"items":[{"k":"3,4","t":0}],"next":"b"}""")

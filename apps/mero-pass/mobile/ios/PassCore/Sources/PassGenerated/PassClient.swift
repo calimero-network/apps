@@ -663,8 +663,8 @@ public struct PassClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("name", name)
-        args.add("tags", tags)
+        if let value = name { args.add("name", value) }
+        if let value = tags { args.add("tags", value) }
         args.add("fields", fields)
         args.add("rekey", rekey)
         _ = try await invokeCall("updateSecret", args, idempotencyKey: idempotencyKey, as: JSONValue.self)

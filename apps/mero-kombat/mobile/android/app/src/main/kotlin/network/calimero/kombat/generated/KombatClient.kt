@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -425,6 +426,7 @@ class KombatClient private constructor(
     }
 
     /** The app type `ArenaView`. */
+    @Serializable(with = ArenaView.Companion.Wire::class)
     data class ArenaView(
         val title: String,
         val createdAt: ULong,
@@ -446,9 +448,7 @@ class KombatClient private constructor(
     ) {
         companion object {
             /** `ArenaView`'s JSON form. */
-            fun serializer(): KSerializer<ArenaView> = Wire
-
-            private object Wire : KSerializer<ArenaView> {
+            internal object Wire : KSerializer<ArenaView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -506,6 +506,7 @@ class KombatClient private constructor(
     }
 
     /** The app type `FighterView`. */
+    @Serializable(with = FighterView.Companion.Wire::class)
     data class FighterView(
         val seat: String,
         val member: String,
@@ -518,9 +519,7 @@ class KombatClient private constructor(
     ) {
         companion object {
             /** `FighterView`'s JSON form. */
-            fun serializer(): KSerializer<FighterView> = Wire
-
-            private object Wire : KSerializer<FighterView> {
+            internal object Wire : KSerializer<FighterView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -560,6 +559,7 @@ class KombatClient private constructor(
     }
 
     /** The app type `HitView`. */
+    @Serializable(with = HitView.Companion.Wire::class)
     data class HitView(
         val by: String,
         val id: UInt,
@@ -570,9 +570,7 @@ class KombatClient private constructor(
     ) {
         companion object {
             /** `HitView`'s JSON form. */
-            fun serializer(): KSerializer<HitView> = Wire
-
-            private object Wire : KSerializer<HitView> {
+            internal object Wire : KSerializer<HitView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -608,6 +606,7 @@ class KombatClient private constructor(
     }
 
     /** The app type `MatchSummary`. */
+    @Serializable(with = MatchSummary.Companion.Wire::class)
     data class MatchSummary(
         val index: UInt,
         val startedAt: ULong,
@@ -618,9 +617,7 @@ class KombatClient private constructor(
     ) {
         companion object {
             /** `MatchSummary`'s JSON form. */
-            fun serializer(): KSerializer<MatchSummary> = Wire
-
-            private object Wire : KSerializer<MatchSummary> {
+            internal object Wire : KSerializer<MatchSummary> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

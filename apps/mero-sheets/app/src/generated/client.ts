@@ -173,8 +173,8 @@ export interface NamedRange {
 
 /** The app type `NoteChange`. */
 export type NoteChange =
-  | { retain: number; attributes: Attrs | null }
-  | { insert: string; attributes: Attrs | null }
+  | { retain: number; attributes?: Attrs | null }
+  | { insert: string; attributes?: Attrs | null }
   | { delete: number };
 
 /** The app type `NotedCell`. */

@@ -222,7 +222,7 @@ export default function CanvasPage() {
           (design(projectId!).getComments() as Promise<CanvasComment[]>)
             .then((cs) => { if (!cancelled) setComments(Array.isArray(cs) ? cs : []); })
             .catch(() => {});
-          (design(projectId!).getCursors() as Promise<CursorState[]>)
+          design(projectId!).getCursors()
             .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
             .catch(() => {});
         })
@@ -283,7 +283,7 @@ export default function CanvasPage() {
     // Guard against a slow get_members from the previous project repopulating the
     // roster (and mislabeling cursors) after the user switched canvases.
     let cancelled = false;
-    (design(projectId).getMembers() as Promise<Member[]>)
+    design(projectId).getMembers()
       .then((ms) => {
         if (cancelled) return;
         const list = Array.isArray(ms) ? ms : [];
@@ -317,7 +317,7 @@ export default function CanvasPage() {
       timestamp: i64(Date.now()),
     }).catch(() => {});
     setBoardName(username);
-    (design(projectId).getMembers() as Promise<Member[]>)
+    design(projectId).getMembers()
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
@@ -380,7 +380,7 @@ export default function CanvasPage() {
     // new canvas.
     let cancelled = false;
     const id = setInterval(() => {
-      (design(projectId).getCursors() as Promise<CursorState[]>)
+      design(projectId).getCursors()
         .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
         .catch(() => {});
     }, 5000);
@@ -440,7 +440,7 @@ export default function CanvasPage() {
         setComments((prev) => prev.filter((c) => !gone.has(c.id)));
       }
       if (changes.cursors) {
-        (design(projectId).getCursors() as Promise<CursorState[]>)
+        design(projectId).getCursors()
           .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
           .catch(() => {});
       }
@@ -454,7 +454,7 @@ export default function CanvasPage() {
           .catch(() => { setCanEdit(false); setIsAdmin(false); });
       }
       if (changes.members) {
-        (design(projectId).getMembers() as Promise<Member[]>)
+        design(projectId).getMembers()
           .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
           .catch(() => {});
       }
@@ -475,10 +475,10 @@ export default function CanvasPage() {
     (design(projectId).getComments() as Promise<CanvasComment[]>)
       .then((cs) => setComments(Array.isArray(cs) ? cs : []))
       .catch(() => {});
-    (design(projectId).getCursors() as Promise<CursorState[]>)
+    design(projectId).getCursors()
       .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
       .catch(() => {});
-    (design(projectId).getMembers() as Promise<Member[]>)
+    design(projectId).getMembers()
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }, [projectId, setElements]);

@@ -15,15 +15,116 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct PixartClient: Sendable {
-    /// The app type `CursorState`: the ABI names it without its shape, so it is its JSON.
-    public typealias CursorState = JSONValue
 
-    /// The app type `Layer`: the ABI names it without its shape, so it is its JSON.
-    public typealias Layer = JSONValue
+    /// The app type `Adjustments`.
+    public struct Adjustments: Codable, Sendable, Equatable {
+        public var brightness: Int32
+        public var contrast: Int32
+        public var saturation: Int32
+        public var hue: Int32
+        public var exposure: Int32
+        public var blur: UInt32
+        public var invert: Bool
+        public var curves: String?
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public init(
+            brightness: Int32,
+            contrast: Int32,
+            saturation: Int32,
+            hue: Int32,
+            exposure: Int32,
+            blur: UInt32,
+            invert: Bool,
+            curves: String? = nil
+        ) {
+            self.brightness = brightness
+            self.contrast = contrast
+            self.saturation = saturation
+            self.hue = hue
+            self.exposure = exposure
+            self.blur = blur
+            self.invert = invert
+            self.curves = curves
+        }
 
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Int32.self, forKey: Key("brightness"))
+            let v1 = try fields.decode(Int32.self, forKey: Key("contrast"))
+            let v2 = try fields.decode(Int32.self, forKey: Key("saturation"))
+            let v3 = try fields.decode(Int32.self, forKey: Key("hue"))
+            let v4 = try fields.decode(Int32.self, forKey: Key("exposure"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("blur"))
+            let v6 = try fields.decode(Bool.self, forKey: Key("invert"))
+            let v7 = try fields.decodeIfPresent(String.self, forKey: Key("curves"))
+            self.brightness = v0
+            self.contrast = v1
+            self.saturation = v2
+            self.hue = v3
+            self.exposure = v4
+            self.blur = v5
+            self.invert = v6
+            self.curves = v7
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.brightness, forKey: Key("brightness"))
+            try fields.encode(self.contrast, forKey: Key("contrast"))
+            try fields.encode(self.saturation, forKey: Key("saturation"))
+            try fields.encode(self.hue, forKey: Key("hue"))
+            try fields.encode(self.exposure, forKey: Key("exposure"))
+            try fields.encode(self.blur, forKey: Key("blur"))
+            try fields.encode(self.invert, forKey: Key("invert"))
+            try fields.encodeIfPresent(self.curves, forKey: Key("curves"))
+        }
+    }
+
+    /// The app type `CursorState`.
+    public struct CursorState: Codable, Sendable, Equatable {
+        public var identity: String
+        public var account: String
+        public var x: Int64
+        public var y: Int64
+        public var updatedAt: UInt64
+
+        public init(
+            identity: String,
+            account: String,
+            x: Int64,
+            y: Int64,
+            updatedAt: UInt64
+        ) {
+            self.identity = identity
+            self.account = account
+            self.x = x
+            self.y = y
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("identity"))
+            let v1 = try fields.decode(String.self, forKey: Key("account"))
+            let v2 = try fields.decode(Int64.self, forKey: Key("x"))
+            let v3 = try fields.decode(Int64.self, forKey: Key("y"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.identity = v0
+            self.account = v1
+            self.x = v2
+            self.y = v3
+            self.updatedAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.identity, forKey: Key("identity"))
+            try fields.encode(self.account, forKey: Key("account"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
 
     /// The app type `DocumentInfo`.
     public struct DocumentInfo: Codable, Sendable, Equatable {
@@ -89,6 +190,242 @@ public struct PixartClient: Sendable {
         }
     }
 
+    /// The app type `Layer`.
+    public struct Layer: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var kind: String
+        public var parentId: String?
+        public var layerIndex: UInt32
+        public var visible: Bool
+        public var locked: Bool
+        public var opacity: UInt8
+        public var blendMode: String
+        public var x: Int64
+        public var y: Int64
+        public var width: UInt32
+        public var height: UInt32
+        public var rotation: Int32
+        public var scaleX: Int32
+        public var scaleY: Int32
+        public var skewX: Int32?
+        public var skewY: Int32?
+        public var flipH: Bool?
+        public var flipV: Bool?
+        public var warp: String?
+        public var blobId: String?
+        public var maskBlobId: String?
+        public var fill: String?
+        public var adjustments: Adjustments
+        public var text: TextProps?
+        public var createdBy: String
+        public var createdAt: UInt64
+        public var updatedAt: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            kind: String,
+            parentId: String? = nil,
+            layerIndex: UInt32,
+            visible: Bool,
+            locked: Bool,
+            opacity: UInt8,
+            blendMode: String,
+            x: Int64,
+            y: Int64,
+            width: UInt32,
+            height: UInt32,
+            rotation: Int32,
+            scaleX: Int32,
+            scaleY: Int32,
+            skewX: Int32? = nil,
+            skewY: Int32? = nil,
+            flipH: Bool? = nil,
+            flipV: Bool? = nil,
+            warp: String? = nil,
+            blobId: String? = nil,
+            maskBlobId: String? = nil,
+            fill: String? = nil,
+            adjustments: Adjustments,
+            text: TextProps? = nil,
+            createdBy: String,
+            createdAt: UInt64,
+            updatedAt: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.kind = kind
+            self.parentId = parentId
+            self.layerIndex = layerIndex
+            self.visible = visible
+            self.locked = locked
+            self.opacity = opacity
+            self.blendMode = blendMode
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.rotation = rotation
+            self.scaleX = scaleX
+            self.scaleY = scaleY
+            self.skewX = skewX
+            self.skewY = skewY
+            self.flipH = flipH
+            self.flipV = flipV
+            self.warp = warp
+            self.blobId = blobId
+            self.maskBlobId = maskBlobId
+            self.fill = fill
+            self.adjustments = adjustments
+            self.text = text
+            self.createdBy = createdBy
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("kind"))
+            let v3 = try fields.decodeIfPresent(String.self, forKey: Key("parentId"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("layerIndex"))
+            let v5 = try fields.decode(Bool.self, forKey: Key("visible"))
+            let v6 = try fields.decode(Bool.self, forKey: Key("locked"))
+            let v7 = try fields.decode(UInt8.self, forKey: Key("opacity"))
+            let v8 = try fields.decode(String.self, forKey: Key("blendMode"))
+            let v9 = try fields.decode(Int64.self, forKey: Key("x"))
+            let v10 = try fields.decode(Int64.self, forKey: Key("y"))
+            let v11 = try fields.decode(UInt32.self, forKey: Key("width"))
+            let v12 = try fields.decode(UInt32.self, forKey: Key("height"))
+            let v13 = try fields.decode(Int32.self, forKey: Key("rotation"))
+            let v14 = try fields.decode(Int32.self, forKey: Key("scaleX"))
+            let v15 = try fields.decode(Int32.self, forKey: Key("scaleY"))
+            let v16 = try fields.decodeIfPresent(Int32.self, forKey: Key("skewX"))
+            let v17 = try fields.decodeIfPresent(Int32.self, forKey: Key("skewY"))
+            let v18 = try fields.decodeIfPresent(Bool.self, forKey: Key("flipH"))
+            let v19 = try fields.decodeIfPresent(Bool.self, forKey: Key("flipV"))
+            let v20 = try fields.decodeIfPresent(String.self, forKey: Key("warp"))
+            let v21 = try fields.decodeIfPresent(String.self, forKey: Key("blobId"))
+            let v22 = try fields.decodeIfPresent(String.self, forKey: Key("maskBlobId"))
+            let v23 = try fields.decodeIfPresent(String.self, forKey: Key("fill"))
+            let v24 = try fields.decode(Adjustments.self, forKey: Key("adjustments"))
+            let v25 = try fields.decodeIfPresent(TextProps.self, forKey: Key("text"))
+            let v26 = try fields.decode(String.self, forKey: Key("createdBy"))
+            let v27 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            let v28 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.id = v0
+            self.name = v1
+            self.kind = v2
+            self.parentId = v3
+            self.layerIndex = v4
+            self.visible = v5
+            self.locked = v6
+            self.opacity = v7
+            self.blendMode = v8
+            self.x = v9
+            self.y = v10
+            self.width = v11
+            self.height = v12
+            self.rotation = v13
+            self.scaleX = v14
+            self.scaleY = v15
+            self.skewX = v16
+            self.skewY = v17
+            self.flipH = v18
+            self.flipV = v19
+            self.warp = v20
+            self.blobId = v21
+            self.maskBlobId = v22
+            self.fill = v23
+            self.adjustments = v24
+            self.text = v25
+            self.createdBy = v26
+            self.createdAt = v27
+            self.updatedAt = v28
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encodeIfPresent(self.parentId, forKey: Key("parentId"))
+            try fields.encode(self.layerIndex, forKey: Key("layerIndex"))
+            try fields.encode(self.visible, forKey: Key("visible"))
+            try fields.encode(self.locked, forKey: Key("locked"))
+            try fields.encode(self.opacity, forKey: Key("opacity"))
+            try fields.encode(self.blendMode, forKey: Key("blendMode"))
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(self.rotation, forKey: Key("rotation"))
+            try fields.encode(self.scaleX, forKey: Key("scaleX"))
+            try fields.encode(self.scaleY, forKey: Key("scaleY"))
+            try fields.encodeIfPresent(self.skewX, forKey: Key("skewX"))
+            try fields.encodeIfPresent(self.skewY, forKey: Key("skewY"))
+            try fields.encodeIfPresent(self.flipH, forKey: Key("flipH"))
+            try fields.encodeIfPresent(self.flipV, forKey: Key("flipV"))
+            try fields.encodeIfPresent(self.warp, forKey: Key("warp"))
+            try fields.encodeIfPresent(self.blobId, forKey: Key("blobId"))
+            try fields.encodeIfPresent(self.maskBlobId, forKey: Key("maskBlobId"))
+            try fields.encodeIfPresent(self.fill, forKey: Key("fill"))
+            try fields.encode(self.adjustments, forKey: Key("adjustments"))
+            try fields.encodeIfPresent(self.text, forKey: Key("text"))
+            try fields.encode(self.createdBy, forKey: Key("createdBy"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var username: String
+        public var avatar: String?
+        public var joinedAt: UInt64
+        public var usernameUpdatedAt: UInt64
+
+        public init(
+            id: String,
+            username: String,
+            avatar: String? = nil,
+            joinedAt: UInt64,
+            usernameUpdatedAt: UInt64
+        ) {
+            self.id = id
+            self.username = username
+            self.avatar = avatar
+            self.joinedAt = joinedAt
+            self.usernameUpdatedAt = usernameUpdatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("avatar"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("joinedAt"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("usernameUpdatedAt"))
+            self.id = v0
+            self.username = v1
+            self.avatar = v2
+            self.joinedAt = v3
+            self.usernameUpdatedAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(self.avatar, forKey: Key("avatar"))
+            try fields.encode(self.joinedAt, forKey: Key("joinedAt"))
+            try fields.encode(self.usernameUpdatedAt, forKey: Key("usernameUpdatedAt"))
+        }
+    }
+
     /// The app type `MemberRole`.
     public struct MemberRole: Codable, Sendable, Equatable {
         public var member: String
@@ -114,6 +451,64 @@ public struct PixartClient: Sendable {
             var fields = encoder.container(keyedBy: Key.self)
             try fields.encode(self.member, forKey: Key("member"))
             try fields.encode(self.role, forKey: Key("role"))
+        }
+    }
+
+    /// The app type `TextProps`.
+    public struct TextProps: Codable, Sendable, Equatable {
+        public var content: String
+        public var fontFamily: String
+        public var fontSize: UInt32
+        public var color: String
+        public var bold: Bool
+        public var italic: Bool
+        public var align: String?
+
+        public init(
+            content: String,
+            fontFamily: String,
+            fontSize: UInt32,
+            color: String,
+            bold: Bool,
+            italic: Bool,
+            align: String? = nil
+        ) {
+            self.content = content
+            self.fontFamily = fontFamily
+            self.fontSize = fontSize
+            self.color = color
+            self.bold = bold
+            self.italic = italic
+            self.align = align
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("content"))
+            let v1 = try fields.decode(String.self, forKey: Key("fontFamily"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("fontSize"))
+            let v3 = try fields.decode(String.self, forKey: Key("color"))
+            let v4 = try fields.decode(Bool.self, forKey: Key("bold"))
+            let v5 = try fields.decode(Bool.self, forKey: Key("italic"))
+            let v6 = try fields.decodeIfPresent(String.self, forKey: Key("align"))
+            self.content = v0
+            self.fontFamily = v1
+            self.fontSize = v2
+            self.color = v3
+            self.bold = v4
+            self.italic = v5
+            self.align = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.content, forKey: Key("content"))
+            try fields.encode(self.fontFamily, forKey: Key("fontFamily"))
+            try fields.encode(self.fontSize, forKey: Key("fontSize"))
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.bold, forKey: Key("bold"))
+            try fields.encode(self.italic, forKey: Key("italic"))
+            try fields.encodeIfPresent(self.align, forKey: Key("align"))
         }
     }
 
@@ -274,7 +669,7 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("username", username)
-        args.add("avatar", avatar)
+        if let value = avatar { args.add("avatar", value) }
         args.add("timestamp", DecimalString(timestamp))
         _ = try await invokeCall("join", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -299,7 +694,7 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("parentId", parentId)
+        if let value = parentId { args.add("parentId", value) }
         args.add("layerIndex", layerIndex)
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("moveLayer", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
@@ -387,14 +782,14 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("brightness", brightness)
-        args.add("contrast", contrast)
-        args.add("saturation", saturation)
-        args.add("hue", hue)
-        args.add("exposure", exposure)
-        args.add("blur", blur)
-        args.add("invert", invert)
-        args.add("curves", curves)
+        if let value = brightness { args.add("brightness", value) }
+        if let value = contrast { args.add("contrast", value) }
+        if let value = saturation { args.add("saturation", value) }
+        if let value = hue { args.add("hue", value) }
+        if let value = exposure { args.add("exposure", value) }
+        if let value = blur { args.add("blur", value) }
+        if let value = invert { args.add("invert", value) }
+        if let value = curves { args.add("curves", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateAdjustments", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -423,11 +818,11 @@ public struct PixartClient: Sendable {
         idempotencyKey: String? = nil
     ) async throws {
         var args = Args()
-        args.add("name", name)
-        args.add("description", description)
-        args.add("width", width)
-        args.add("height", height)
-        args.add("background", background)
+        if let value = name { args.add("name", value) }
+        if let value = description { args.add("description", value) }
+        if let value = width { args.add("width", value) }
+        if let value = height { args.add("height", value) }
+        if let value = background { args.add("background", value) }
         _ = try await invokeCall("updateDocument", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -452,19 +847,19 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("name", name)
-        args.add("visible", visible)
-        args.add("locked", locked)
-        args.add("opacity", opacity)
-        args.add("blendMode", blendMode)
-        args.add("x", x.map { DecimalString($0) })
-        args.add("y", y.map { DecimalString($0) })
-        args.add("width", width)
-        args.add("height", height)
-        args.add("rotation", rotation)
-        args.add("scaleX", scaleX)
-        args.add("scaleY", scaleY)
-        args.add("fill", fill)
+        if let value = name { args.add("name", value) }
+        if let value = visible { args.add("visible", value) }
+        if let value = locked { args.add("locked", value) }
+        if let value = opacity { args.add("opacity", value) }
+        if let value = blendMode { args.add("blendMode", value) }
+        if let value = x { args.add("x", DecimalString(value)) }
+        if let value = y { args.add("y", DecimalString(value)) }
+        if let value = width { args.add("width", value) }
+        if let value = height { args.add("height", value) }
+        if let value = rotation { args.add("rotation", value) }
+        if let value = scaleX { args.add("scaleX", value) }
+        if let value = scaleY { args.add("scaleY", value) }
+        if let value = fill { args.add("fill", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateLayer", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -496,7 +891,7 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("maskBlobId", maskBlobId)
+        if let value = maskBlobId { args.add("maskBlobId", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateLayerMask", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -528,13 +923,13 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("content", content)
-        args.add("fontFamily", fontFamily)
-        args.add("fontSize", fontSize)
-        args.add("color", color)
-        args.add("bold", bold)
-        args.add("italic", italic)
-        args.add("align", align)
+        if let value = content { args.add("content", value) }
+        if let value = fontFamily { args.add("fontFamily", value) }
+        if let value = fontSize { args.add("fontSize", value) }
+        if let value = color { args.add("color", value) }
+        if let value = bold { args.add("bold", value) }
+        if let value = italic { args.add("italic", value) }
+        if let value = align { args.add("align", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateText", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
@@ -555,14 +950,14 @@ public struct PixartClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("id", id)
-        args.add("rotation", rotation)
-        args.add("scaleX", scaleX)
-        args.add("scaleY", scaleY)
-        args.add("skewX", skewX)
-        args.add("skewY", skewY)
-        args.add("flipH", flipH)
-        args.add("flipV", flipV)
-        args.add("warp", warp)
+        if let value = rotation { args.add("rotation", value) }
+        if let value = scaleX { args.add("scaleX", value) }
+        if let value = scaleY { args.add("scaleY", value) }
+        if let value = skewX { args.add("skewX", value) }
+        if let value = skewY { args.add("skewY", value) }
+        if let value = flipH { args.add("flipH", value) }
+        if let value = flipV { args.add("flipV", value) }
+        if let value = warp { args.add("warp", value) }
         args.add("updatedAt", DecimalString(updatedAt))
         _ = try await invokeCall("updateTransform", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }

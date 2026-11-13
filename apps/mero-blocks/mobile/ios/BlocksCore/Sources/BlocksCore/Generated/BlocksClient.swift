@@ -372,8 +372,8 @@ public struct BlocksClient: Sendable {
         minIndex: Int = 0
     ) async throws -> OverridesPage {
         var args = Args()
-        args.add("cursor", cursor)
-        args.add("limit", limit)
+        if let value = cursor { args.add("cursor", value) }
+        if let value = limit { args.add("limit", value) }
         let result = try await invokeView("getOverrides", args, stale: stale, minIndex: minIndex, as: OverridesPage.self)
         return result
     }
@@ -388,8 +388,8 @@ public struct BlocksClient: Sendable {
     ) async throws -> PlayersPage {
         var args = Args()
         args.add("now", DecimalString(now))
-        args.add("cursor", cursor)
-        args.add("limit", limit)
+        if let value = cursor { args.add("cursor", value) }
+        if let value = limit { args.add("limit", value) }
         let result = try await invokeView("getPlayers", args, stale: stale, minIndex: minIndex, as: PlayersPage.self)
         return result
     }
@@ -404,7 +404,7 @@ public struct BlocksClient: Sendable {
         var args = Args()
         args.add("t", t)
         args.add("now", DecimalString(now))
-        args.add("device", device)
+        if let value = device { args.add("device", value) }
         _ = try await invokeCall("heartbeat", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -419,7 +419,7 @@ public struct BlocksClient: Sendable {
         var args = Args()
         args.add("name", name)
         args.add("now", DecimalString(now))
-        args.add("device", device)
+        if let value = device { args.add("device", value) }
         let result = try await invokeCall("join", args, idempotencyKey: idempotencyKey, as: PlayerView.self)
         return result
     }
@@ -432,7 +432,7 @@ public struct BlocksClient: Sendable {
     ) async throws {
         var args = Args()
         args.add("now", DecimalString(now))
-        args.add("device", device)
+        if let value = device { args.add("device", value) }
         _ = try await invokeCall("leave", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
     }
 
@@ -467,7 +467,7 @@ public struct BlocksClient: Sendable {
         var args = Args()
         args.add("edits", edits)
         args.add("now", DecimalString(now))
-        args.add("device", device)
+        if let value = device { args.add("device", value) }
         let result = try await invokeCall("setBlocks", args, idempotencyKey: idempotencyKey, as: UInt32.self)
         return result
     }

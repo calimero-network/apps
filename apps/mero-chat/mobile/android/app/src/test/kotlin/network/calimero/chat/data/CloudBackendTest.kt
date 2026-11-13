@@ -39,7 +39,7 @@ class CloudBackendTest {
             val (edit, from) = app.recording.calls
             assertEquals("editMessage", edit.method)
             assertEquals(
-                Json.parseToJsonElement("""{"messageId":"m","newMessage":"t","timestamp":"1760000000","parentId":null}"""),
+                Json.parseToJsonElement("""{"messageId":"m","newMessage":"t","timestamp":"1760000000"}"""),
                 edit.args,
             )
             assertEquals("getMessagesFrom", from.method)

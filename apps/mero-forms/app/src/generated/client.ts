@@ -15,7 +15,7 @@ export interface Answer {
 /** The app type `AnswerInput`. */
 export interface AnswerInput {
   fieldId: string;
-  values: string[];
+  values?: string[];
 }
 
 /** The app type `CaptchaPass`. */
@@ -35,13 +35,13 @@ export interface CaptchaSettings {
 
 /** The app type `CrmLink`. */
 export interface CrmLink {
-  contextId: string;
-  stageId: string;
-  nameField: string;
-  emailField: string;
-  phoneField: string;
-  organizationField: string;
-  titleField: string;
+  contextId?: string;
+  stageId?: string;
+  nameField?: string;
+  emailField?: string;
+  phoneField?: string;
+  organizationField?: string;
+  titleField?: string;
 }
 
 /** The app type `Field`. */
@@ -49,9 +49,9 @@ export interface Field {
   id: string;
   kind: string;
   label: string;
-  help: string;
-  required: boolean;
-  options: string[];
+  help?: string;
+  required?: boolean;
+  options?: string[];
 }
 
 /** The app type `FormKeyView`. */

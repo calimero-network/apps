@@ -1,5 +1,5 @@
 import type { MeroModelsClient } from "../generated/client";
-import { u64, type LockView, type MemberView, type MeshRef, type SceneInfo, type TextureRef, type VersionView } from "../meroModels";
+import { u64, type LockView, type MeshRef, type TextureRef, type VersionView } from "../meroModels";
 import type { BlobStore } from "./blobs";
 import type { MeshShape } from "./geometry";
 import { decodeMesh, encodeMesh, meshCounts } from "./meshcodec";
@@ -189,7 +189,7 @@ export class SceneSync implements Outbox {
   }
 
   listHistory(assetId: string): Promise<VersionView[]> {
-    return this.api.listHistory({ assetId }) as Promise<VersionView[]>;
+    return this.api.listHistory({ assetId });
   }
 
   /** Upload an image and add (or replace) a texture. Not an undo step: textures are versioned instead. */
@@ -274,12 +274,12 @@ export class SceneSync implements Outbox {
     const start = this.tick;
     const now = Date.now();
     const [scene, serverObjects, refs, textures, locks, members] = await Promise.all([
-      this.api.getScene() as Promise<SceneInfo>,
-      this.api.getObjects() as Promise<SceneObject[]>,
-      this.api.listMeshes() as Promise<MeshRef[]>,
-      this.api.listTextures() as Promise<TextureRef[]>,
-      this.api.listLocks({ now: u64(now) }) as Promise<LockView[]>,
-      this.api.getMembers() as Promise<MemberView[]>,
+      this.api.getScene(),
+      this.api.getObjects(),
+      this.api.listMeshes(),
+      this.api.listTextures(),
+      this.api.listLocks({ now: u64(now) }),
+      this.api.getMembers(),
     ]);
     if (this.disposed) return;
     const state = useEditor.getState();

@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,21 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `Comment`: the ABI names it without its shape, so it is its JSON. */
-typealias Comment = JsonElement
-
-/** The app type `CursorState`: the ABI names it without its shape, so it is its JSON. */
-typealias CursorState = JsonElement
-
-/** The app type `Element`: the ABI names it without its shape, so it is its JSON. */
-typealias Element = JsonElement
-
-/** The app type `ElementPatch`: the ABI names it without its shape, so it is its JSON. */
-typealias ElementPatch = JsonElement
-
-/** The app type `Member`: the ABI names it without its shape, so it is its JSON. */
-typealias Member = JsonElement
 
 /**
  * The app's methods.
@@ -110,7 +96,7 @@ class DesignClient private constructor(
         invokeCall(
             "addElement",
             buildJsonObject {
-                put("element", encode(JsonElement.serializer(), element))
+                put("element", encode(Element.serializer(), element))
             },
             idempotencyKey,
             String.serializer(),
@@ -124,7 +110,7 @@ class DesignClient private constructor(
         invokeCall(
             "addElements",
             buildJsonObject {
-                put("elements", encode(ListSerializer(JsonElement.serializer()), elements))
+                put("elements", encode(ListSerializer(Element.serializer()), elements))
             },
             idempotencyKey,
             ListSerializer(String.serializer()),
@@ -288,7 +274,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Comment.serializer()),
         )
 
     /** view `getCursors`. */
@@ -301,7 +287,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(CursorState.serializer()),
         )
 
     /** view `getElement`. */
@@ -317,7 +303,7 @@ class DesignClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer().nullable,
+            Element.serializer().nullable,
         )
 
     /** view `getElements`. */
@@ -330,7 +316,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Element.serializer()),
         )
 
     /** view `getElementsByIds`. */
@@ -346,7 +332,7 @@ class DesignClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Element.serializer()),
         )
 
     /** view `getElementsPage`. */
@@ -359,7 +345,7 @@ class DesignClient private constructor(
         invokeView(
             "getElementsPage",
             buildJsonObject {
-                put("cursor", encode(String.serializer().nullable, cursor))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
                 put("limit", encode(UInt.serializer(), limit))
             },
             stale,
@@ -377,7 +363,7 @@ class DesignClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(Member.serializer()),
         )
 
     /** view `getRole`. */
@@ -422,7 +408,7 @@ class DesignClient private constructor(
             "join",
             buildJsonObject {
                 put("username", encode(String.serializer(), username))
-                put("avatar", encode(String.serializer().nullable, avatar))
+                if (avatar != null) put("avatar", encode(String.serializer().nullable, avatar))
                 put("timestamp", encode(U64AsString, timestamp))
             },
             idempotencyKey,
@@ -529,8 +515,8 @@ class DesignClient private constructor(
         invokeCall(
             "updateBoard",
             buildJsonObject {
-                put("name", encode(String.serializer().nullable, name))
-                put("description", encode(String.serializer().nullable, description))
+                if (name != null) put("name", encode(String.serializer().nullable, name))
+                if (description != null) put("description", encode(String.serializer().nullable, description))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -576,16 +562,16 @@ class DesignClient private constructor(
             "updateElement",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("x", encode(I64AsString.nullable, x))
-                put("y", encode(I64AsString.nullable, y))
-                put("width", encode(UInt.serializer().nullable, width))
-                put("height", encode(UInt.serializer().nullable, height))
-                put("rotation", encode(Int.serializer().nullable, rotation))
-                put("fill", encode(String.serializer().nullable, fill))
-                put("stroke", encode(String.serializer().nullable, stroke))
-                put("strokeWidth", encode(UInt.serializer().nullable, strokeWidth))
-                put("opacity", encode(UByte.serializer().nullable, opacity))
-                put("cornerRadius", encode(UInt.serializer().nullable, cornerRadius))
+                if (x != null) put("x", encode(I64AsString.nullable, x))
+                if (y != null) put("y", encode(I64AsString.nullable, y))
+                if (width != null) put("width", encode(UInt.serializer().nullable, width))
+                if (height != null) put("height", encode(UInt.serializer().nullable, height))
+                if (rotation != null) put("rotation", encode(Int.serializer().nullable, rotation))
+                if (fill != null) put("fill", encode(String.serializer().nullable, fill))
+                if (stroke != null) put("stroke", encode(String.serializer().nullable, stroke))
+                if (strokeWidth != null) put("strokeWidth", encode(UInt.serializer().nullable, strokeWidth))
+                if (opacity != null) put("opacity", encode(UByte.serializer().nullable, opacity))
+                if (cornerRadius != null) put("cornerRadius", encode(UInt.serializer().nullable, cornerRadius))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -604,7 +590,7 @@ class DesignClient private constructor(
             "updateElementLabel",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("label", encode(String.serializer().nullable, label))
+                if (label != null) put("label", encode(String.serializer().nullable, label))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -638,7 +624,7 @@ class DesignClient private constructor(
         invokeCall(
             "updateElements",
             buildJsonObject {
-                put("patches", encode(ListSerializer(JsonElement.serializer()), patches))
+                put("patches", encode(ListSerializer(ElementPatch.serializer()), patches))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -677,10 +663,10 @@ class DesignClient private constructor(
             "updateShadow",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("shadowColor", encode(String.serializer().nullable, shadowColor))
-                put("shadowOffsetX", encode(Int.serializer().nullable, shadowOffsetX))
-                put("shadowOffsetY", encode(Int.serializer().nullable, shadowOffsetY))
-                put("shadowBlur", encode(UInt.serializer().nullable, shadowBlur))
+                if (shadowColor != null) put("shadowColor", encode(String.serializer().nullable, shadowColor))
+                if (shadowOffsetX != null) put("shadowOffsetX", encode(Int.serializer().nullable, shadowOffsetX))
+                if (shadowOffsetY != null) put("shadowOffsetY", encode(Int.serializer().nullable, shadowOffsetY))
+                if (shadowBlur != null) put("shadowBlur", encode(UInt.serializer().nullable, shadowBlur))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -705,13 +691,13 @@ class DesignClient private constructor(
             "updateTextStyle",
             buildJsonObject {
                 put("id", encode(String.serializer(), id))
-                put("content", encode(String.serializer().nullable, content))
-                put("fontFamily", encode(String.serializer().nullable, fontFamily))
-                put("fontSize", encode(UInt.serializer().nullable, fontSize))
-                put("bold", encode(Boolean.serializer().nullable, bold))
-                put("italic", encode(Boolean.serializer().nullable, italic))
-                put("textAlign", encode(String.serializer().nullable, textAlign))
-                put("verticalAlign", encode(String.serializer().nullable, verticalAlign))
+                if (content != null) put("content", encode(String.serializer().nullable, content))
+                if (fontFamily != null) put("fontFamily", encode(String.serializer().nullable, fontFamily))
+                if (fontSize != null) put("fontSize", encode(UInt.serializer().nullable, fontSize))
+                if (bold != null) put("bold", encode(Boolean.serializer().nullable, bold))
+                if (italic != null) put("italic", encode(Boolean.serializer().nullable, italic))
+                if (textAlign != null) put("textAlign", encode(String.serializer().nullable, textAlign))
+                if (verticalAlign != null) put("verticalAlign", encode(String.serializer().nullable, verticalAlign))
                 put("updatedAt", encode(U64AsString, updatedAt))
             },
             idempotencyKey,
@@ -922,6 +908,7 @@ class DesignClient private constructor(
     }
 
     /** The app type `BoardInfo`. */
+    @Serializable(with = BoardInfo.Companion.Wire::class)
     data class BoardInfo(
         val name: String,
         val description: String,
@@ -931,9 +918,7 @@ class DesignClient private constructor(
     ) {
         companion object {
             /** `BoardInfo`'s JSON form. */
-            fun serializer(): KSerializer<BoardInfo> = Wire
-
-            private object Wire : KSerializer<BoardInfo> {
+            internal object Wire : KSerializer<BoardInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -966,16 +951,381 @@ class DesignClient private constructor(
         }
     }
 
+    /** The app type `Comment`. */
+    @Serializable(with = Comment.Companion.Wire::class)
+    data class Comment(
+        val id: String,
+        val x: Long,
+        val y: Long,
+        val content: String,
+        val author: String,
+        val createdAt: ULong,
+        val replies: List<CommentReply>? = null,
+    ) {
+        companion object {
+            /** `Comment`'s JSON form. */
+            internal object Wire : KSerializer<Comment> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Comment,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("x", encode(Long.serializer(), value.x))
+                            put("y", encode(Long.serializer(), value.y))
+                            put("content", encode(String.serializer(), value.content))
+                            put("author", encode(String.serializer(), value.author))
+                            put("createdAt", encode(ULong.serializer(), value.createdAt))
+                            if (value.replies != null) put("replies", encode(ListSerializer(CommentReply.serializer()).nullable, value.replies))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Comment {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Comment")
+                    return Comment(
+                        id = field(fields, "id", String.serializer()),
+                        x = field(fields, "x", Long.serializer()),
+                        y = field(fields, "y", Long.serializer()),
+                        content = field(fields, "content", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        createdAt = field(fields, "createdAt", ULong.serializer()),
+                        replies = field(fields, "replies", ListSerializer(CommentReply.serializer()).nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CommentReply`. */
+    @Serializable(with = CommentReply.Companion.Wire::class)
+    data class CommentReply(
+        val id: String,
+        val content: String,
+        val author: String,
+        val createdAt: ULong,
+    ) {
+        companion object {
+            /** `CommentReply`'s JSON form. */
+            internal object Wire : KSerializer<CommentReply> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CommentReply,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("content", encode(String.serializer(), value.content))
+                            put("author", encode(String.serializer(), value.author))
+                            put("createdAt", encode(ULong.serializer(), value.createdAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CommentReply {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CommentReply")
+                    return CommentReply(
+                        id = field(fields, "id", String.serializer()),
+                        content = field(fields, "content", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        createdAt = field(fields, "createdAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `CursorState`. */
+    @Serializable(with = CursorState.Companion.Wire::class)
+    data class CursorState(
+        val identity: String,
+        val account: String? = null,
+        val x: Long,
+        val y: Long,
+        val updatedAt: ULong,
+    ) {
+        companion object {
+            /** `CursorState`'s JSON form. */
+            internal object Wire : KSerializer<CursorState> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: CursorState,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("identity", encode(String.serializer(), value.identity))
+                            if (value.account != null) put("account", encode(String.serializer().nullable, value.account))
+                            put("x", encode(Long.serializer(), value.x))
+                            put("y", encode(Long.serializer(), value.y))
+                            put("updatedAt", encode(ULong.serializer(), value.updatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): CursorState {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "CursorState")
+                    return CursorState(
+                        identity = field(fields, "identity", String.serializer()),
+                        account = field(fields, "account", String.serializer().nullable),
+                        x = field(fields, "x", Long.serializer()),
+                        y = field(fields, "y", Long.serializer()),
+                        updatedAt = field(fields, "updatedAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Element`. */
+    @Serializable(with = Element.Companion.Wire::class)
+    data class Element(
+        val id: String,
+        val data: ElementData,
+        val x: Long,
+        val y: Long,
+        val width: UInt,
+        val height: UInt,
+        val rotation: Int,
+        val fill: String,
+        val stroke: String,
+        val strokeWidth: UInt,
+        val opacity: UByte,
+        val layerIndex: UInt,
+        val createdBy: String,
+        val createdAt: ULong,
+        val updatedAt: ULong,
+        val shadowColor: String? = null,
+        val shadowOffsetX: Int? = null,
+        val shadowOffsetY: Int? = null,
+        val shadowBlur: UInt? = null,
+        val label: String? = null,
+        val cornerRadius: UInt? = null,
+    ) {
+        companion object {
+            /** `Element`'s JSON form. */
+            internal object Wire : KSerializer<Element> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Element,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("data", encode(ElementData.serializer(), value.data))
+                            put("x", encode(Long.serializer(), value.x))
+                            put("y", encode(Long.serializer(), value.y))
+                            put("width", encode(UInt.serializer(), value.width))
+                            put("height", encode(UInt.serializer(), value.height))
+                            put("rotation", encode(Int.serializer(), value.rotation))
+                            put("fill", encode(String.serializer(), value.fill))
+                            put("stroke", encode(String.serializer(), value.stroke))
+                            put("strokeWidth", encode(UInt.serializer(), value.strokeWidth))
+                            put("opacity", encode(UByte.serializer(), value.opacity))
+                            put("layerIndex", encode(UInt.serializer(), value.layerIndex))
+                            put("createdBy", encode(String.serializer(), value.createdBy))
+                            put("createdAt", encode(ULong.serializer(), value.createdAt))
+                            put("updatedAt", encode(ULong.serializer(), value.updatedAt))
+                            put("shadowColor", encode(String.serializer().nullable, value.shadowColor))
+                            put("shadowOffsetX", encode(Int.serializer().nullable, value.shadowOffsetX))
+                            put("shadowOffsetY", encode(Int.serializer().nullable, value.shadowOffsetY))
+                            put("shadowBlur", encode(UInt.serializer().nullable, value.shadowBlur))
+                            put("label", encode(String.serializer().nullable, value.label))
+                            if (value.cornerRadius != null) put("cornerRadius", encode(UInt.serializer().nullable, value.cornerRadius))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Element {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Element")
+                    return Element(
+                        id = field(fields, "id", String.serializer()),
+                        data = field(fields, "data", ElementData.serializer()),
+                        x = field(fields, "x", Long.serializer()),
+                        y = field(fields, "y", Long.serializer()),
+                        width = field(fields, "width", UInt.serializer()),
+                        height = field(fields, "height", UInt.serializer()),
+                        rotation = field(fields, "rotation", Int.serializer()),
+                        fill = field(fields, "fill", String.serializer()),
+                        stroke = field(fields, "stroke", String.serializer()),
+                        strokeWidth = field(fields, "strokeWidth", UInt.serializer()),
+                        opacity = field(fields, "opacity", UByte.serializer()),
+                        layerIndex = field(fields, "layerIndex", UInt.serializer()),
+                        createdBy = field(fields, "createdBy", String.serializer()),
+                        createdAt = field(fields, "createdAt", ULong.serializer()),
+                        updatedAt = field(fields, "updatedAt", ULong.serializer()),
+                        shadowColor = field(fields, "shadowColor", String.serializer().nullable),
+                        shadowOffsetX = field(fields, "shadowOffsetX", Int.serializer().nullable),
+                        shadowOffsetY = field(fields, "shadowOffsetY", Int.serializer().nullable),
+                        shadowBlur = field(fields, "shadowBlur", UInt.serializer().nullable),
+                        label = field(fields, "label", String.serializer().nullable),
+                        cornerRadius = field(fields, "cornerRadius", UInt.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ElementData`. */
+    @Serializable(with = ElementData.Companion.Wire::class)
+    sealed interface ElementData {
+        /** `rect`. */
+        data object Rect : ElementData
+
+        /** `circle`. */
+        data object Circle : ElementData
+
+        /** `line`. */
+        data class Line(
+            val points: String?,
+        ) : ElementData
+
+        /** `arrow`. */
+        data class Arrow(
+            val points: String?,
+        ) : ElementData
+
+        /** `path`. */
+        data class Path(
+            val points: String,
+        ) : ElementData
+
+        /** `text`. */
+        data class Text(
+            val content: String,
+            val fontSize: UInt,
+            val fontFamily: String,
+            val bold: Boolean,
+            val italic: Boolean,
+            val text_align: String?,
+            val vertical_align: String?,
+        ) : ElementData
+
+        /** `image`. */
+        data class Image(
+            val naturalWidth: UInt,
+            val naturalHeight: UInt,
+            val blobId: String?,
+        ) : ElementData
+
+        /** `svg`. */
+        data class Svg(
+            val naturalWidth: UInt,
+            val naturalHeight: UInt,
+            val blobId: String?,
+        ) : ElementData
+
+        companion object {
+            /** `ElementData`'s JSON form. */
+            internal object Wire : KSerializer<ElementData> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ElementData,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        when (value) {
+                            is Rect -> buildJsonObject {
+                                put("kind", JsonPrimitive("rect"))
+                            }
+                            is Circle -> buildJsonObject {
+                                put("kind", JsonPrimitive("circle"))
+                            }
+                            is Line -> buildJsonObject {
+                                put("kind", JsonPrimitive("line"))
+                                if (value.points != null) put("points", encode(String.serializer().nullable, value.points))
+                            }
+                            is Arrow -> buildJsonObject {
+                                put("kind", JsonPrimitive("arrow"))
+                                if (value.points != null) put("points", encode(String.serializer().nullable, value.points))
+                            }
+                            is Path -> buildJsonObject {
+                                put("kind", JsonPrimitive("path"))
+                                put("points", encode(String.serializer(), value.points))
+                            }
+                            is Text -> buildJsonObject {
+                                put("kind", JsonPrimitive("text"))
+                                put("content", encode(String.serializer(), value.content))
+                                put("fontSize", encode(UInt.serializer(), value.fontSize))
+                                put("fontFamily", encode(String.serializer(), value.fontFamily))
+                                put("bold", encode(Boolean.serializer(), value.bold))
+                                put("italic", encode(Boolean.serializer(), value.italic))
+                                if (value.text_align != null) put("text_align", encode(String.serializer().nullable, value.text_align))
+                                if (value.vertical_align != null) put("vertical_align", encode(String.serializer().nullable, value.vertical_align))
+                            }
+                            is Image -> buildJsonObject {
+                                put("kind", JsonPrimitive("image"))
+                                put("naturalWidth", encode(UInt.serializer(), value.naturalWidth))
+                                put("naturalHeight", encode(UInt.serializer(), value.naturalHeight))
+                                if (value.blobId != null) put("blobId", encode(String.serializer().nullable, value.blobId))
+                            }
+                            is Svg -> buildJsonObject {
+                                put("kind", JsonPrimitive("svg"))
+                                put("naturalWidth", encode(UInt.serializer(), value.naturalWidth))
+                                put("naturalHeight", encode(UInt.serializer(), value.naturalHeight))
+                                if (value.blobId != null) put("blobId", encode(String.serializer().nullable, value.blobId))
+                            }
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ElementData {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val name = tag(data, "kind", "ElementData")
+                    return when (name) {
+                        "rect" -> Rect
+                        "circle" -> Circle
+                        "line" -> Line(points = field(data, "points", String.serializer().nullable))
+                        "arrow" -> Arrow(points = field(data, "points", String.serializer().nullable))
+                        "path" -> Path(points = field(data, "points", String.serializer()))
+                        "text" -> Text(
+                            content = field(data, "content", String.serializer()),
+                            fontSize = field(data, "fontSize", UInt.serializer()),
+                            fontFamily = field(data, "fontFamily", String.serializer()),
+                            bold = field(data, "bold", Boolean.serializer()),
+                            italic = field(data, "italic", Boolean.serializer()),
+                            text_align = field(data, "text_align", String.serializer().nullable),
+                            vertical_align = field(data, "vertical_align", String.serializer().nullable),
+                        )
+                        "image" -> Image(
+                            naturalWidth = field(data, "naturalWidth", UInt.serializer()),
+                            naturalHeight = field(data, "naturalHeight", UInt.serializer()),
+                            blobId = field(data, "blobId", String.serializer().nullable),
+                        )
+                        "svg" -> Svg(
+                            naturalWidth = field(data, "naturalWidth", UInt.serializer()),
+                            naturalHeight = field(data, "naturalHeight", UInt.serializer()),
+                            blobId = field(data, "blobId", String.serializer().nullable),
+                        )
+                        else -> throw SerializationException("ElementData: unknown variant $name")
+                    }
+                }
+            }
+        }
+    }
+
     /** The app type `ElementPage`. */
+    @Serializable(with = ElementPage.Companion.Wire::class)
     data class ElementPage(
         val items: List<Element>,
         val nextCursor: String? = null,
     ) {
         companion object {
             /** `ElementPage`'s JSON form. */
-            fun serializer(): KSerializer<ElementPage> = Wire
-
-            private object Wire : KSerializer<ElementPage> {
+            internal object Wire : KSerializer<ElementPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -984,7 +1334,7 @@ class DesignClient private constructor(
                 ) {
                     (encoder as JsonEncoder).encodeJsonElement(
                         buildJsonObject {
-                            put("items", encode(ListSerializer(JsonElement.serializer()), value.items))
+                            put("items", encode(ListSerializer(Element.serializer()), value.items))
                             put("nextCursor", encode(String.serializer().nullable, value.nextCursor))
                         },
                     )
@@ -994,7 +1344,7 @@ class DesignClient private constructor(
                     val data = (decoder as JsonDecoder).decodeJsonElement()
                     val fields = obj(data, "ElementPage")
                     return ElementPage(
-                        items = field(fields, "items", ListSerializer(JsonElement.serializer())),
+                        items = field(fields, "items", ListSerializer(Element.serializer())),
                         nextCursor = field(fields, "nextCursor", String.serializer().nullable),
                     )
                 }
@@ -1002,16 +1352,77 @@ class DesignClient private constructor(
         }
     }
 
+    /** The app type `ElementPatch`. */
+    @Serializable(with = ElementPatch.Companion.Wire::class)
+    data class ElementPatch(
+        val id: String,
+        val x: Long? = null,
+        val y: Long? = null,
+        val width: UInt? = null,
+        val height: UInt? = null,
+        val rotation: Int? = null,
+        val fill: String? = null,
+        val stroke: String? = null,
+        val stroke_width: UInt? = null,
+        val opacity: UByte? = null,
+        val corner_radius: UInt? = null,
+    ) {
+        companion object {
+            /** `ElementPatch`'s JSON form. */
+            internal object Wire : KSerializer<ElementPatch> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ElementPatch,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            if (value.x != null) put("x", encode(Long.serializer().nullable, value.x))
+                            if (value.y != null) put("y", encode(Long.serializer().nullable, value.y))
+                            if (value.width != null) put("width", encode(UInt.serializer().nullable, value.width))
+                            if (value.height != null) put("height", encode(UInt.serializer().nullable, value.height))
+                            if (value.rotation != null) put("rotation", encode(Int.serializer().nullable, value.rotation))
+                            if (value.fill != null) put("fill", encode(String.serializer().nullable, value.fill))
+                            if (value.stroke != null) put("stroke", encode(String.serializer().nullable, value.stroke))
+                            if (value.stroke_width != null) put("stroke_width", encode(UInt.serializer().nullable, value.stroke_width))
+                            if (value.opacity != null) put("opacity", encode(UByte.serializer().nullable, value.opacity))
+                            if (value.corner_radius != null) put("corner_radius", encode(UInt.serializer().nullable, value.corner_radius))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ElementPatch {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ElementPatch")
+                    return ElementPatch(
+                        id = field(fields, "id", String.serializer()),
+                        x = field(fields, "x", Long.serializer().nullable),
+                        y = field(fields, "y", Long.serializer().nullable),
+                        width = field(fields, "width", UInt.serializer().nullable),
+                        height = field(fields, "height", UInt.serializer().nullable),
+                        rotation = field(fields, "rotation", Int.serializer().nullable),
+                        fill = field(fields, "fill", String.serializer().nullable),
+                        stroke = field(fields, "stroke", String.serializer().nullable),
+                        stroke_width = field(fields, "stroke_width", UInt.serializer().nullable),
+                        opacity = field(fields, "opacity", UByte.serializer().nullable),
+                        corner_radius = field(fields, "corner_radius", UInt.serializer().nullable),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `LabelUpdate`. */
+    @Serializable(with = LabelUpdate.Companion.Wire::class)
     data class LabelUpdate(
         val id: String,
         val label: String? = null,
     ) {
         companion object {
             /** `LabelUpdate`'s JSON form. */
-            fun serializer(): KSerializer<LabelUpdate> = Wire
-
-            private object Wire : KSerializer<LabelUpdate> {
+            internal object Wire : KSerializer<LabelUpdate> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1038,7 +1449,52 @@ class DesignClient private constructor(
         }
     }
 
+    /** The app type `Member`. */
+    @Serializable(with = Member.Companion.Wire::class)
+    data class Member(
+        val id: String,
+        val username: String,
+        val avatar: String? = null,
+        val joinedAt: ULong,
+        val usernameUpdatedAt: ULong,
+    ) {
+        companion object {
+            /** `Member`'s JSON form. */
+            internal object Wire : KSerializer<Member> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Member,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("username", encode(String.serializer(), value.username))
+                            put("avatar", encode(String.serializer().nullable, value.avatar))
+                            put("joinedAt", encode(ULong.serializer(), value.joinedAt))
+                            put("usernameUpdatedAt", encode(ULong.serializer(), value.usernameUpdatedAt))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Member {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Member")
+                    return Member(
+                        id = field(fields, "id", String.serializer()),
+                        username = field(fields, "username", String.serializer()),
+                        avatar = field(fields, "avatar", String.serializer().nullable),
+                        joinedAt = field(fields, "joinedAt", ULong.serializer()),
+                        usernameUpdatedAt = field(fields, "usernameUpdatedAt", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `MemberRole`. */
+    @Serializable(with = MemberRole.Companion.Wire::class)
     data class MemberRole(
         val member: String,
         val role: String,
@@ -1046,9 +1502,7 @@ class DesignClient private constructor(
     ) {
         companion object {
             /** `MemberRole`'s JSON form. */
-            fun serializer(): KSerializer<MemberRole> = Wire
-
-            private object Wire : KSerializer<MemberRole> {
+            internal object Wire : KSerializer<MemberRole> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1149,5 +1603,16 @@ class DesignClient private constructor(
             data: JsonElement,
             what: String,
         ): JsonObject = data as? JsonObject ?: throw SerializationException("$what: expected an object")
+
+        /** The variant name at [key] of a tagged enum's object. */
+        private fun tag(
+            data: JsonElement,
+            key: String,
+            what: String,
+        ): String {
+            val tag = obj(data, what)[key] as? JsonPrimitive
+            if (tag == null || !tag.isString) throw SerializationException("$what: no `$key`")
+            return tag.content
+        }
     }
 }

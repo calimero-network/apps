@@ -998,11 +998,11 @@ public struct SheetsClient: Sendable {
             case .retain(let v0, let v1):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("retain"))
-                try fields.encode(v1, forKey: Key("attributes"))
+                try fields.encodeIfPresent(v1, forKey: Key("attributes"))
             case .insert(let v0, let v1):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("insert"))
-                try fields.encode(v1, forKey: Key("attributes"))
+                try fields.encodeIfPresent(v1, forKey: Key("attributes"))
             case .delete(let v0):
                 var fields = encoder.container(keyedBy: Key.self)
                 try fields.encode(v0, forKey: Key("delete"))

@@ -136,9 +136,10 @@ build it over the SDK's backend (`ModelsClient(backend:app:)`). Against the ABI:
   JSON numbers;
 - `init` takes no arguments and the node runs it, so the client has none.
 
-Until the logic derives `AbiType`, the ABI names the scene's types without their shape, so the
-client answers their JSON and the types first generated from v1's ABI read it
-(`ModelsCore/Records.swift`, `generated/ModelsRecords.kt`). The unit tests pin the wire (method
+The ABI describes the scene's types (their u64 fields are JSON numbers, which the logic marks
+`#[abi(plain)]`), so the client answers them typed. The screens still read the types first
+generated from v1's ABI (`ModelsCore/Records.swift`, `generated/ModelsRecords.kt`), through each
+answer's JSON, until they move to the generated ones. The unit tests pin the wire (method
 names, `now` as a string).
 
 ## Build and test

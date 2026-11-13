@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -206,7 +207,7 @@ class ForumClient private constructor(
             "listComments",
             buildJsonObject {
                 put("postId", encode(String.serializer(), postId))
-                put("cursor", encode(String.serializer().nullable, cursor))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
                 put("limit", encode(UInt.serializer(), limit))
             },
             stale,
@@ -225,8 +226,8 @@ class ForumClient private constructor(
         invokeView(
             "listPosts",
             buildJsonObject {
-                put("sort", encode(String.serializer().nullable, sort))
-                put("cursor", encode(String.serializer().nullable, cursor))
+                if (sort != null) put("sort", encode(String.serializer().nullable, sort))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
                 put("limit", encode(UInt.serializer(), limit))
             },
             stale,
@@ -523,15 +524,14 @@ class ForumClient private constructor(
     }
 
     /** The app type `CommentPage`. */
+    @Serializable(with = CommentPage.Companion.Wire::class)
     data class CommentPage(
         val items: List<CommentView>,
         val nextCursor: String? = null,
     ) {
         companion object {
             /** `CommentPage`'s JSON form. */
-            fun serializer(): KSerializer<CommentPage> = Wire
-
-            private object Wire : KSerializer<CommentPage> {
+            internal object Wire : KSerializer<CommentPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -559,6 +559,7 @@ class ForumClient private constructor(
     }
 
     /** The app type `CommentView`. */
+    @Serializable(with = CommentView.Companion.Wire::class)
     data class CommentView(
         val id: String,
         val postId: String,
@@ -572,9 +573,7 @@ class ForumClient private constructor(
     ) {
         companion object {
             /** `CommentView`'s JSON form. */
-            fun serializer(): KSerializer<CommentView> = Wire
-
-            private object Wire : KSerializer<CommentView> {
+            internal object Wire : KSerializer<CommentView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -616,15 +615,14 @@ class ForumClient private constructor(
     }
 
     /** The app type `PostPage`. */
+    @Serializable(with = PostPage.Companion.Wire::class)
     data class PostPage(
         val items: List<PostView>,
         val nextCursor: String? = null,
     ) {
         companion object {
             /** `PostPage`'s JSON form. */
-            fun serializer(): KSerializer<PostPage> = Wire
-
-            private object Wire : KSerializer<PostPage> {
+            internal object Wire : KSerializer<PostPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -652,6 +650,7 @@ class ForumClient private constructor(
     }
 
     /** The app type `PostView`. */
+    @Serializable(with = PostView.Companion.Wire::class)
     data class PostView(
         val id: String,
         val author: String,
@@ -666,9 +665,7 @@ class ForumClient private constructor(
     ) {
         companion object {
             /** `PostView`'s JSON form. */
-            fun serializer(): KSerializer<PostView> = Wire
-
-            private object Wire : KSerializer<PostView> {
+            internal object Wire : KSerializer<PostView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

@@ -42,7 +42,7 @@ export interface Transform {
   y: number;
   dir: number;
   sel: number;
-  action: string;
+  action?: string;
 }
 
 /** The app type `WorldMeta`. */

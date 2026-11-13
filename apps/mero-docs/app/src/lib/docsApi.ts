@@ -6,9 +6,8 @@
 // workspace's registry instance, so the same class reaches both.
 //
 // The hooks were written against v1's abi-codegen clients, and keep those
-// shapes. The ABI names its records without their shapes, so the generated
-// answers are `unknown`, and the few that differ from v1's pass through a
-// `to*` below:
+// shapes, and the few answers that differ from v1's pass through a `to*`
+// below:
 //
 // - results' fields are camelCase on the wire; `DocDto`, `CommentDto`,
 //   `ViewDto`, the search page and the `*On` answers keep v1's snake_case;
@@ -174,15 +173,6 @@ function appliedOf<T extends { anchorPos?: number | null }>(
   return { ...rest, anchor_pos: anchorPos ?? null };
 }
 
-/** Change steps as the contract takes them: `attributes` only where one was given. */
-function opsOf(ops: Change[]): unknown[] {
-  return ops.map((op) => {
-    if ('delete' in op) return { delete: op.delete };
-    const { attributes, ...rest } = op as Change_Insert & Change_Retain;
-    return attributes == null ? rest : { ...rest, attributes };
-  });
-}
-
 // ---------------------------------------------------------------- answers
 
 /** `getDoc`'s answer. */
@@ -244,7 +234,14 @@ export const toSpans = (raw: unknown): Span[] => raw as Span[];
 /** `getTitleState`'s answer. */
 export const toTitleState = (raw: unknown): TitleState => raw as TitleState;
 
-/** Change steps as the contract takes them (`applyDelta*`, `titleApplyDelta*`). */
+/**
+ * Change steps as the contract takes them (`applyDelta*`, `titleApplyDelta*`):
+ * `attributes` only where one was given (`#[serde(default)]`, so the ABI has
+ * it optional).
+ */
 export const wireOps = (ops: Change[]): WireChange[] =>
-  // The ABI types `attributes` as required; serde reads a missing Option as None.
-  opsOf(ops) as WireChange[];
+  ops.map((op) => {
+    if ('delete' in op) return { delete: op.delete };
+    const { attributes, ...rest } = op;
+    return attributes == null ? rest : { ...rest, attributes };
+  });

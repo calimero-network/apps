@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -75,7 +76,7 @@ class UpdatesClient private constructor(
             "addComment",
             buildJsonObject {
                 put("postId", encode(String.serializer(), postId))
-                put("parentId", encode(String.serializer().nullable, parentId))
+                if (parentId != null) put("parentId", encode(String.serializer().nullable, parentId))
                 put("body", encode(String.serializer(), body))
             },
             idempotencyKey,
@@ -124,7 +125,7 @@ class UpdatesClient private constructor(
             buildJsonObject {
                 put("title", encode(String.serializer(), title))
                 put("body", encode(String.serializer(), body))
-                put("categoryId", encode(String.serializer().nullable, categoryId))
+                if (categoryId != null) put("categoryId", encode(String.serializer().nullable, categoryId))
             },
             idempotencyKey,
             String.serializer(),
@@ -325,7 +326,7 @@ class UpdatesClient private constructor(
         invokeView(
             "listAsks",
             buildJsonObject {
-                put("status", encode(String.serializer().nullable, status))
+                if (status != null) put("status", encode(String.serializer().nullable, status))
             },
             stale,
             minIndex,
@@ -428,9 +429,9 @@ class UpdatesClient private constructor(
         invokeView(
             "listPosts",
             buildJsonObject {
-                put("kind", encode(String.serializer().nullable, kind))
-                put("categoryId", encode(String.serializer().nullable, categoryId))
-                put("cursor", encode(String.serializer().nullable, cursor))
+                if (kind != null) put("kind", encode(String.serializer().nullable, kind))
+                if (categoryId != null) put("categoryId", encode(String.serializer().nullable, categoryId))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
                 put("limit", encode(UInt.serializer(), limit))
             },
             stale,
@@ -528,7 +529,7 @@ class UpdatesClient private constructor(
         invokeCall(
             "saveDraft",
             buildJsonObject {
-                put("draftId", encode(String.serializer().nullable, draftId))
+                if (draftId != null) put("draftId", encode(String.serializer().nullable, draftId))
                 put("title", encode(String.serializer(), title))
                 put("payload", encode(String.serializer(), payload))
             },
@@ -855,6 +856,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `AskInput`. */
+    @Serializable(with = AskInput.Companion.Wire::class)
     data class AskInput(
         val id: String? = null,
         val kind: String,
@@ -863,9 +865,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `AskInput`'s JSON form. */
-            fun serializer(): KSerializer<AskInput> = Wire
-
-            private object Wire : KSerializer<AskInput> {
+            internal object Wire : KSerializer<AskInput> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -874,7 +874,7 @@ class UpdatesClient private constructor(
                 ) {
                     (encoder as JsonEncoder).encodeJsonElement(
                         buildJsonObject {
-                            put("id", encode(String.serializer().nullable, value.id))
+                            if (value.id != null) put("id", encode(String.serializer().nullable, value.id))
                             put("kind", encode(String.serializer(), value.kind))
                             put("title", encode(String.serializer(), value.title))
                             put("detail", encode(String.serializer(), value.detail))
@@ -897,6 +897,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `AskView`. */
+    @Serializable(with = AskView.Companion.Wire::class)
     data class AskView(
         val id: String,
         val postId: String,
@@ -912,9 +913,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `AskView`'s JSON form. */
-            fun serializer(): KSerializer<AskView> = Wire
-
-            private object Wire : KSerializer<AskView> {
+            internal object Wire : KSerializer<AskView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -960,6 +959,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `CategoryView`. */
+    @Serializable(with = CategoryView.Companion.Wire::class)
     data class CategoryView(
         val id: String,
         val name: String,
@@ -971,9 +971,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `CategoryView`'s JSON form. */
-            fun serializer(): KSerializer<CategoryView> = Wire
-
-            private object Wire : KSerializer<CategoryView> {
+            internal object Wire : KSerializer<CategoryView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1011,6 +1009,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `CommentView`. */
+    @Serializable(with = CommentView.Companion.Wire::class)
     data class CommentView(
         val id: String,
         val postId: String,
@@ -1024,9 +1023,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `CommentView`'s JSON form. */
-            fun serializer(): KSerializer<CommentView> = Wire
-
-            private object Wire : KSerializer<CommentView> {
+            internal object Wire : KSerializer<CommentView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1068,6 +1065,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `ContributionView`. */
+    @Serializable(with = ContributionView.Companion.Wire::class)
     data class ContributionView(
         val askId: String,
         val askTitle: String,
@@ -1080,9 +1078,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `ContributionView`'s JSON form. */
-            fun serializer(): KSerializer<ContributionView> = Wire
-
-            private object Wire : KSerializer<ContributionView> {
+            internal object Wire : KSerializer<ContributionView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1122,6 +1118,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `DraftView`. */
+    @Serializable(with = DraftView.Companion.Wire::class)
     data class DraftView(
         val id: String,
         val title: String,
@@ -1130,9 +1127,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `DraftView`'s JSON form. */
-            fun serializer(): KSerializer<DraftView> = Wire
-
-            private object Wire : KSerializer<DraftView> {
+            internal object Wire : KSerializer<DraftView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1164,6 +1159,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `EngagementRow`. */
+    @Serializable(with = EngagementRow.Companion.Wire::class)
     data class EngagementRow(
         val postId: String,
         val title: String,
@@ -1177,9 +1173,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `EngagementRow`'s JSON form. */
-            fun serializer(): KSerializer<EngagementRow> = Wire
-
-            private object Wire : KSerializer<EngagementRow> {
+            internal object Wire : KSerializer<EngagementRow> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1221,6 +1215,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `MeView`. */
+    @Serializable(with = MeView.Companion.Wire::class)
     data class MeView(
         val account: String,
         val name: String,
@@ -1231,9 +1226,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `MeView`'s JSON form. */
-            fun serializer(): KSerializer<MeView> = Wire
-
-            private object Wire : KSerializer<MeView> {
+            internal object Wire : KSerializer<MeView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1269,6 +1262,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `Metric`. */
+    @Serializable(with = Metric.Companion.Wire::class)
     data class Metric(
         val name: String,
         val value: String,
@@ -1276,9 +1270,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `Metric`'s JSON form. */
-            fun serializer(): KSerializer<Metric> = Wire
-
-            private object Wire : KSerializer<Metric> {
+            internal object Wire : KSerializer<Metric> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1308,6 +1300,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `MetricPoint`. */
+    @Serializable(with = MetricPoint.Companion.Wire::class)
     data class MetricPoint(
         val postId: String,
         val postTitle: String,
@@ -1316,9 +1309,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `MetricPoint`'s JSON form. */
-            fun serializer(): KSerializer<MetricPoint> = Wire
-
-            private object Wire : KSerializer<MetricPoint> {
+            internal object Wire : KSerializer<MetricPoint> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1350,6 +1341,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `MetricSeries`. */
+    @Serializable(with = MetricSeries.Companion.Wire::class)
     data class MetricSeries(
         val name: String,
         val unit: String,
@@ -1357,9 +1349,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `MetricSeries`'s JSON form. */
-            fun serializer(): KSerializer<MetricSeries> = Wire
-
-            private object Wire : KSerializer<MetricSeries> {
+            internal object Wire : KSerializer<MetricSeries> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1389,6 +1379,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `OfferView`. */
+    @Serializable(with = OfferView.Companion.Wire::class)
     data class OfferView(
         val askId: String,
         val account: String,
@@ -1401,9 +1392,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `OfferView`'s JSON form. */
-            fun serializer(): KSerializer<OfferView> = Wire
-
-            private object Wire : KSerializer<OfferView> {
+            internal object Wire : KSerializer<OfferView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1443,6 +1432,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `Overview`. */
+    @Serializable(with = Overview.Companion.Wire::class)
     data class Overview(
         val companyName: String,
         val cadenceDays: UInt,
@@ -1457,9 +1447,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `Overview`'s JSON form. */
-            fun serializer(): KSerializer<Overview> = Wire
-
-            private object Wire : KSerializer<Overview> {
+            internal object Wire : KSerializer<Overview> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1503,6 +1491,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `PersonView`. */
+    @Serializable(with = PersonView.Companion.Wire::class)
     data class PersonView(
         val account: String,
         val name: String,
@@ -1519,9 +1508,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `PersonView`'s JSON form. */
-            fun serializer(): KSerializer<PersonView> = Wire
-
-            private object Wire : KSerializer<PersonView> {
+            internal object Wire : KSerializer<PersonView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1569,6 +1556,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `PostCard`. */
+    @Serializable(with = PostCard.Companion.Wire::class)
     data class PostCard(
         val id: String,
         val kind: String,
@@ -1591,9 +1579,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `PostCard`'s JSON form. */
-            fun serializer(): KSerializer<PostCard> = Wire
-
-            private object Wire : KSerializer<PostCard> {
+            internal object Wire : KSerializer<PostCard> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1653,15 +1639,14 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `PostPage`. */
+    @Serializable(with = PostPage.Companion.Wire::class)
     data class PostPage(
         val items: List<PostCard>,
         val nextCursor: String? = null,
     ) {
         companion object {
             /** `PostPage`'s JSON form. */
-            fun serializer(): KSerializer<PostPage> = Wire
-
-            private object Wire : KSerializer<PostPage> {
+            internal object Wire : KSerializer<PostPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1689,6 +1674,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `PostView`. */
+    @Serializable(with = PostView.Companion.Wire::class)
     data class PostView(
         val card: PostCard,
         val sections: List<Section>,
@@ -1697,9 +1683,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `PostView`'s JSON form. */
-            fun serializer(): KSerializer<PostView> = Wire
-
-            private object Wire : KSerializer<PostView> {
+            internal object Wire : KSerializer<PostView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1731,6 +1715,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `ReactionCount`. */
+    @Serializable(with = ReactionCount.Companion.Wire::class)
     data class ReactionCount(
         val emoji: String,
         val count: ULong,
@@ -1738,9 +1723,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `ReactionCount`'s JSON form. */
-            fun serializer(): KSerializer<ReactionCount> = Wire
-
-            private object Wire : KSerializer<ReactionCount> {
+            internal object Wire : KSerializer<ReactionCount> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1770,6 +1753,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `ReaderView`. */
+    @Serializable(with = ReaderView.Companion.Wire::class)
     data class ReaderView(
         val account: String,
         val name: String,
@@ -1778,9 +1762,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `ReaderView`'s JSON form. */
-            fun serializer(): KSerializer<ReaderView> = Wire
-
-            private object Wire : KSerializer<ReaderView> {
+            internal object Wire : KSerializer<ReaderView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1812,6 +1794,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `Section`. */
+    @Serializable(with = Section.Companion.Wire::class)
     data class Section(
         val kind: String,
         val title: String,
@@ -1819,9 +1802,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `Section`'s JSON form. */
-            fun serializer(): KSerializer<Section> = Wire
-
-            private object Wire : KSerializer<Section> {
+            internal object Wire : KSerializer<Section> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1851,6 +1832,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `Settings`. */
+    @Serializable(with = Settings.Companion.Wire::class)
     data class Settings(
         val companyName: String,
         val cadenceDays: UInt,
@@ -1858,9 +1840,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `Settings`'s JSON form. */
-            fun serializer(): KSerializer<Settings> = Wire
-
-            private object Wire : KSerializer<Settings> {
+            internal object Wire : KSerializer<Settings> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1890,6 +1870,7 @@ class UpdatesClient private constructor(
     }
 
     /** The app type `UpdateInput`. */
+    @Serializable(with = UpdateInput.Companion.Wire::class)
     data class UpdateInput(
         val title: String,
         val summary: String,
@@ -1900,9 +1881,7 @@ class UpdatesClient private constructor(
     ) {
         companion object {
             /** `UpdateInput`'s JSON form. */
-            fun serializer(): KSerializer<UpdateInput> = Wire
-
-            private object Wire : KSerializer<UpdateInput> {
+            internal object Wire : KSerializer<UpdateInput> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

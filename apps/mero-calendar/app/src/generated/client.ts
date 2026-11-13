@@ -62,13 +62,13 @@ export interface CreateBookingLink {
   tokenHash: string;
   grantId: string;
   title: string;
-  description: string;
+  description?: string;
   durationMinutes: number;
   weeklyHours: WeeklyWindow[];
   utcOffsetMinutes: number;
   horizonDays: number;
-  minNoticeMinutes: number;
-  expiresAtMs: string | null;
+  minNoticeMinutes?: number;
+  expiresAtMs?: string | null;
 }
 
 /** The app type `CreateCalendarEvent`. */
@@ -79,14 +79,14 @@ export interface CreateCalendarEvent {
   end: string;
   event_type: string;
   color: string;
-  peers: string[];
+  peers?: string[];
 }
 
 /** The app type `GuestDetails`. */
 export interface GuestDetails {
   name: string;
   email: string;
-  note: string;
+  note?: string;
 }
 
 /** The app type `Member`. */
@@ -99,13 +99,13 @@ export interface Member {
 
 /** The app type `UpdateCalendarEvent`. */
 export interface UpdateCalendarEvent {
-  title: string | null;
-  description: string | null;
-  start: string | null;
-  end: string | null;
-  event_type: string | null;
-  color: string | null;
-  peers: string[] | null;
+  title?: string | null;
+  description?: string | null;
+  start?: string | null;
+  end?: string | null;
+  event_type?: string | null;
+  color?: string | null;
+  peers?: string[] | null;
 }
 
 /** The app type `WeeklyWindow`. */

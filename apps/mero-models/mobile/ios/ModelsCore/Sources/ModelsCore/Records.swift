@@ -3,8 +3,9 @@ import MeroKit
 
 // The scene's types, as the contract (`../../logic/res/abi.json`) answers them: v1's snake_case
 // fields and JSON numbers. The calls are the generated `ModelsClient` (`Generated/`,
-// `scripts/mobile-codegen.sh` at the repo root); until the logic derives `AbiType` the ABI names
-// these types without their shape, so the client answers their JSON and they read it.
+// `scripts/mobile-codegen.sh` at the repo root). The ABI describes these types too (their u64
+// fields are JSON numbers, `#[abi(plain)]`), but the screens still use the ones here, which read
+// each answer's JSON.
 
 extension Encodable {
     /// This answer as the app type `T` (one of the types below).

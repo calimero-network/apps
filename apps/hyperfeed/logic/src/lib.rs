@@ -323,7 +323,8 @@ fn now_ms() -> u64 {
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One step in a row's history: a status, who said what about it, and when.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct Step {
     pub status: String,
     /// The note that came with it: the agent's ("NDA signed"), or your answer
@@ -465,7 +466,8 @@ pub struct MessageMode {
 
 /// An image on a message: a blob on your node, announced to the feed's
 /// context, and what the client needs to show it before fetching it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct Attachment {
     pub blob_id: String,
     /// The file's name as you picked it; may be empty for a pasted image.
@@ -674,7 +676,8 @@ pub struct Reach {
 }
 
 /// What you let one agent reach, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AccessView {
     pub agent: String,
     pub folders: Vec<Folder>,
@@ -684,7 +687,8 @@ pub struct AccessView {
 }
 
 /// Which agent works in one app, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AssignmentView {
     pub app: String,
     pub agent: String,
@@ -692,7 +696,8 @@ pub struct AssignmentView {
 }
 
 /// What one agent reported it can reach, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct ReachView {
     pub agent: String,
     pub lines: Vec<ReachLine>,
@@ -711,7 +716,8 @@ pub struct Progress {
 /// One step of your agent's turn on a message of yours: a tool it ran, a file
 /// it edited, a write it made. Shown in the message's work block, never as a
 /// row of its own.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct TurnStep {
     /// The agent's own id for the step, unique within the turn.
     pub id: String,
@@ -905,7 +911,8 @@ pub struct Verdict {
 
 /// One row of the feed. Actions and notifications share it so a client renders
 /// one list; a field that does not apply to the row's kind is empty.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct FeedItem {
     pub id: String,
     pub kind: String,
@@ -1033,7 +1040,8 @@ pub struct AppCount {
     pub count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct FeedPage {
     pub items: Vec<FeedItem>,
     /// Counts over the whole feed (muted apps excluded), not just this page,
@@ -1057,7 +1065,8 @@ pub struct GuardView {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct LensView {
     pub app: String,
     pub application_id: String,
@@ -1112,7 +1121,8 @@ pub struct SettingsView {
 }
 
 /// One of your standing rules, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct RuleView {
     pub id: String,
     pub text: String,
@@ -1120,7 +1130,8 @@ pub struct RuleView {
 }
 
 /// One of your rules for one agent, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AgentRuleView {
     pub id: String,
     pub agent: String,
@@ -1129,7 +1140,8 @@ pub struct AgentRuleView {
 }
 
 /// A rule your agent suggested, as settings shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct RuleProposalView {
     pub id: String,
     pub text: String,
@@ -1140,7 +1152,8 @@ pub struct RuleProposalView {
 }
 
 /// A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct LeaseView {
     pub chain: String,
     pub session: String,
@@ -1151,7 +1164,8 @@ pub struct LeaseView {
 }
 
 /// An agent and when it last said it was running (ms).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AgentView {
     pub name: String,
     pub seen_at: u64,

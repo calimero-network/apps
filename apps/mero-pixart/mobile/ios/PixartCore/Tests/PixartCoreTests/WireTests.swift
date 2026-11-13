@@ -25,7 +25,7 @@ final class WireTests: XCTestCase {
         _ = try? await client.updateLayer(id: "l1", visible: false, x: 5, updatedAt: 7)
         let layer = try args(backend, "updateLayer")
         XCTAssertEqual(layer["x"] as? String, "5")
-        XCTAssertTrue(layer["y"] is NSNull, "an unset optional goes out as null, which the contract reads as none")
+        XCTAssertNil(layer["y"], "an unset optional is left out, which the contract reads as none")
         XCTAssertEqual(layer["visible"] as? Bool, false)
         XCTAssertEqual(backend.recording.calls("updateLayer").first?.path, .execute)
 

@@ -65,8 +65,8 @@ final class WireTests: XCTestCase {
         let wraps = try XCTUnwrap(backend.recording.calls("addKeyWraps").first?.args["wraps"]?.arrayValue?.first?.objectValue)
         XCTAssertEqual(wraps["keyId"]?.stringValue, "k")
         let update = try XCTUnwrap(backend.recording.calls("updateSecret").first)
-        XCTAssertEqual(update.args["name"], .null, "option<string> goes out as an explicit null")
-        XCTAssertEqual(update.args["tags"], .null)
+        XCTAssertNil(update.args["name"], "an unset option<string> is left out")
+        XCTAssertNil(update.args["tags"])
     }
 
     func testU64AnswersArriveAsDecimalStrings() throws {

@@ -53,7 +53,8 @@ pub struct Situation {
 }
 
 /// What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct SituationInput {
     /// The card's headline, as you would say it: "Launch date: the team
     /// settled on Thursday, and your calendar clashes".
@@ -77,7 +78,8 @@ pub struct SituationInput {
 }
 
 /// A chain's situation, as [`crate::Hyperfeed::situations`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct SituationView {
     pub chain: String,
     pub headline: String,
@@ -186,7 +188,8 @@ pub struct Autorun {
 }
 
 /// A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct AutorunView {
     /// The proposal's action id.
     pub id: String,

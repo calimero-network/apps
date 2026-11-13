@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -117,7 +118,7 @@ class IssueTrackerClient private constructor(
                 put("repro", encode(String.serializer(), repro))
                 put("resolutionCriteria", encode(String.serializer(), resolutionCriteria))
                 put("priority", encode(String.serializer(), priority))
-                put("labels", encode(ListSerializer(String.serializer()).nullable, labels))
+                if (labels != null) put("labels", encode(ListSerializer(String.serializer()).nullable, labels))
             },
             idempotencyKey,
             String.serializer(),
@@ -223,9 +224,9 @@ class IssueTrackerClient private constructor(
         invokeView(
             "listIssues",
             buildJsonObject {
-                put("status", encode(String.serializer().nullable, status))
-                put("assignee", encode(String.serializer().nullable, assignee))
-                put("label", encode(String.serializer().nullable, label))
+                if (status != null) put("status", encode(String.serializer().nullable, status))
+                if (assignee != null) put("assignee", encode(String.serializer().nullable, assignee))
+                if (label != null) put("label", encode(String.serializer().nullable, label))
             },
             stale,
             minIndex,
@@ -259,7 +260,7 @@ class IssueTrackerClient private constructor(
             "setAssignee",
             buildJsonObject {
                 put("issueId", encode(String.serializer(), issueId))
-                put("assignee", encode(String.serializer().nullable, assignee))
+                if (assignee != null) put("assignee", encode(String.serializer().nullable, assignee))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -570,6 +571,7 @@ class IssueTrackerClient private constructor(
     }
 
     /** The app type `Comment`. */
+    @Serializable(with = Comment.Companion.Wire::class)
     data class Comment(
         val id: String,
         val issueId: String,
@@ -580,9 +582,7 @@ class IssueTrackerClient private constructor(
     ) {
         companion object {
             /** `Comment`'s JSON form. */
-            fun serializer(): KSerializer<Comment> = Wire
-
-            private object Wire : KSerializer<Comment> {
+            internal object Wire : KSerializer<Comment> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -618,15 +618,14 @@ class IssueTrackerClient private constructor(
     }
 
     /** The app type `IssueDetail`. */
+    @Serializable(with = IssueDetail.Companion.Wire::class)
     data class IssueDetail(
         val issue: IssueView,
         val comments: List<Comment>,
     ) {
         companion object {
             /** `IssueDetail`'s JSON form. */
-            fun serializer(): KSerializer<IssueDetail> = Wire
-
-            private object Wire : KSerializer<IssueDetail> {
+            internal object Wire : KSerializer<IssueDetail> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -654,6 +653,7 @@ class IssueTrackerClient private constructor(
     }
 
     /** The app type `IssueView`. */
+    @Serializable(with = IssueView.Companion.Wire::class)
     data class IssueView(
         val id: String,
         val title: String,
@@ -670,9 +670,7 @@ class IssueTrackerClient private constructor(
     ) {
         companion object {
             /** `IssueView`'s JSON form. */
-            fun serializer(): KSerializer<IssueView> = Wire
-
-            private object Wire : KSerializer<IssueView> {
+            internal object Wire : KSerializer<IssueView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -720,14 +718,13 @@ class IssueTrackerClient private constructor(
     }
 
     /** The app type `RepoInfo`. */
+    @Serializable(with = RepoInfo.Companion.Wire::class)
     data class RepoInfo(
         val repoUrl: String,
     ) {
         companion object {
             /** `RepoInfo`'s JSON form. */
-            fun serializer(): KSerializer<RepoInfo> = Wire
-
-            private object Wire : KSerializer<RepoInfo> {
+            internal object Wire : KSerializer<RepoInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -751,15 +748,14 @@ class IssueTrackerClient private constructor(
     }
 
     /** The app type `StatusCount`. */
+    @Serializable(with = StatusCount.Companion.Wire::class)
     data class StatusCount(
         val status: String,
         val count: ULong,
     ) {
         companion object {
             /** `StatusCount`'s JSON form. */
-            fun serializer(): KSerializer<StatusCount> = Wire
-
-            private object Wire : KSerializer<StatusCount> {
+            internal object Wire : KSerializer<StatusCount> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

@@ -149,7 +149,7 @@ final class BoardModelTests: XCTestCase {
         XCTAssertNil(board.carriedFrom)
         let filter = try? XCTUnwrap(fake.recording.calls("listDecisions").first)
         XCTAssertEqual(filter?.args["fromDay"]?.stringValue, "2026-10-28")
-        XCTAssertEqual(filter?.args["search"], .null, "optional arguments are written as null, as the web app sends them")
+        XCTAssertNil(filter?.args["search"], "unset optional arguments are left out, as the web app does")
     }
 
     func testCarriesYourLastUpdateForward() async {
@@ -249,7 +249,7 @@ final class DecisionsModelTests: XCTestCase {
         let last = fake.recording.calls("listDecisions").last
         XCTAssertEqual(
             last?.args,
-            ["search": "rel", "tag": "infra", "fromDay": .null, "standingOnly": true, "cursor": .null, "limit": 50])
+            ["search": "rel", "tag": "infra", "standingOnly": true, "limit": 50])
     }
 
     func testLogsADecisionWithItsNotes() async throws {
@@ -274,7 +274,7 @@ final class DecisionsModelTests: XCTestCase {
             ])
     }
 
-    func testAbsentOptionalArgumentsAreNull() async throws {
+    func testAbsentOptionalArgumentsAreLeftOut() async throws {
         let fake = FakeTeam()
         let team = await fake.teamModel()
         let model = DecisionsModel(team: team, calendar: utc)
@@ -283,8 +283,8 @@ final class DecisionsModelTests: XCTestCase {
         draft.decision = "D"
         try await model.log(draft)
         let args = try XCTUnwrap(fake.recording.calls("logDecision").first?.args)
-        // The component contract refuses unknown keys; absent options go as null, as the web app sends them.
-        XCTAssertEqual(args["supersedes"], .null)
-        XCTAssertEqual(args["fromDay"], .null)
+        // The component contract refuses unknown keys; absent options are left out, as the web app does.
+        XCTAssertNil(args["supersedes"])
+        XCTAssertNil(args["fromDay"])
     }
 }

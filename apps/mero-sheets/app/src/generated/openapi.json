@@ -4697,8 +4697,7 @@
               }
             },
             "required": [
-              "retain",
-              "attributes"
+              "retain"
             ],
             "type": "object"
           },
@@ -4719,8 +4718,7 @@
               }
             },
             "required": [
-              "insert",
-              "attributes"
+              "insert"
             ],
             "type": "object"
           },

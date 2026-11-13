@@ -55,12 +55,13 @@ final class ComponentWireTests: XCTestCase {
         for call in wire.sent {
             let spec = try XCTUnwrap(ComponentWire.methods[call.method])
             XCTAssertEqual(call.view, spec.view, call.method)
-            XCTAssertEqual(Set(call.args.keys), Set(spec.params), call.method)
+            // An unset optional argument is left out, so the keys sent are some of the ABI's.
+            XCTAssertTrue(Set(call.args.keys).isSubset(of: Set(spec.params)), call.method)
         }
         let since = try XCTUnwrap(wire.sent.first { $0.method == "listContributions" }?.args["since"] as? String)
         XCTAssertEqual(since, "42")
         let draft = try XCTUnwrap(wire.sent.first { $0.method == "saveDraft" })
-        XCTAssertTrue(draft.args["draftId"] is NSNull)
+        XCTAssertNil(draft.args["draftId"])
         let published = try XCTUnwrap(wire.sent.first { $0.method == "publishUpdate" }?.args["input"] as? [String: Any])
         XCTAssertEqual(published["categoryId"] as? String, "c")
     }

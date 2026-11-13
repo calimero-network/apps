@@ -743,6 +743,307 @@
       ],
       "kind": "record"
     },
+    "Comment": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "x",
+          "i64_number"
+        ],
+        [
+          "y",
+          "i64_number"
+        ],
+        [
+          "content",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ],
+        [
+          "replies",
+          "list<CommentReply>",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "CommentReply": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "content",
+          "string"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "CursorState": {
+      "fields": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "account",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "x",
+          "i64_number"
+        ],
+        [
+          "y",
+          "i64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Element": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "data",
+          "ElementData"
+        ],
+        [
+          "x",
+          "i64_number"
+        ],
+        [
+          "y",
+          "i64_number"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "rotation",
+          "i32"
+        ],
+        [
+          "fill",
+          "string"
+        ],
+        [
+          "stroke",
+          "string"
+        ],
+        [
+          "strokeWidth",
+          "u32"
+        ],
+        [
+          "opacity",
+          "u8"
+        ],
+        [
+          "layerIndex",
+          "u32"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ],
+        [
+          "shadowColor",
+          "option<string>"
+        ],
+        [
+          "shadowOffsetX",
+          "option<i32>"
+        ],
+        [
+          "shadowOffsetY",
+          "option<i32>"
+        ],
+        [
+          "shadowBlur",
+          "option<u32>"
+        ],
+        [
+          "label",
+          "option<string>"
+        ],
+        [
+          "cornerRadius",
+          "option<u32>",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "ElementData": {
+      "kind": "enum",
+      "tag": "kind",
+      "variants": [
+        {
+          "name": "rect"
+        },
+        {
+          "name": "circle"
+        },
+        {
+          "fields": [
+            [
+              "points",
+              "string",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "line"
+        },
+        {
+          "fields": [
+            [
+              "points",
+              "string",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "arrow"
+        },
+        {
+          "fields": [
+            [
+              "points",
+              "string"
+            ]
+          ],
+          "name": "path"
+        },
+        {
+          "fields": [
+            [
+              "content",
+              "string"
+            ],
+            [
+              "fontSize",
+              "u32"
+            ],
+            [
+              "fontFamily",
+              "string"
+            ],
+            [
+              "bold",
+              "bool"
+            ],
+            [
+              "italic",
+              "bool"
+            ],
+            [
+              "text_align",
+              "option<string>",
+              {
+                "optional": true
+              }
+            ],
+            [
+              "vertical_align",
+              "option<string>",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "text"
+        },
+        {
+          "fields": [
+            [
+              "naturalWidth",
+              "u32"
+            ],
+            [
+              "naturalHeight",
+              "u32"
+            ],
+            [
+              "blobId",
+              "string",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "image"
+        },
+        {
+          "fields": [
+            [
+              "naturalWidth",
+              "u32"
+            ],
+            [
+              "naturalHeight",
+              "u32"
+            ],
+            [
+              "blobId",
+              "string",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "svg"
+        }
+      ]
+    },
     "ElementPage": {
       "fields": [
         [
@@ -756,6 +1057,85 @@
       ],
       "kind": "record"
     },
+    "ElementPatch": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "x",
+          "option<i64_number>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "y",
+          "option<i64_number>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "width",
+          "option<u32>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "height",
+          "option<u32>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "rotation",
+          "option<i32>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "fill",
+          "option<string>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "stroke",
+          "option<string>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "stroke_width",
+          "option<u32>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "opacity",
+          "option<u8>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "corner_radius",
+          "option<u32>",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
     "LabelUpdate": {
       "fields": [
         [
@@ -765,6 +1145,31 @@
         [
           "label",
           "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "avatar",
+          "option<string>"
+        ],
+        [
+          "joinedAt",
+          "u64_number"
+        ],
+        [
+          "usernameUpdatedAt",
+          "u64_number"
         ]
       ],
       "kind": "record"

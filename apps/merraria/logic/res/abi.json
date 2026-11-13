@@ -273,7 +273,10 @@
         ],
         [
           "action",
-          "string"
+          "string",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"

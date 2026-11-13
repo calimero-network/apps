@@ -49,7 +49,7 @@ public struct UpdatesClient: Sendable {
 
         public func encode(to encoder: Encoder) throws {
             var fields = encoder.container(keyedBy: Key.self)
-            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encodeIfPresent(self.id, forKey: Key("id"))
             try fields.encode(self.kind, forKey: Key("kind"))
             try fields.encode(self.title, forKey: Key("title"))
             try fields.encode(self.detail, forKey: Key("detail"))
@@ -1246,7 +1246,7 @@ public struct UpdatesClient: Sendable {
     ) async throws -> String {
         var args = Args()
         args.add("postId", postId)
-        args.add("parentId", parentId)
+        if let value = parentId { args.add("parentId", value) }
         args.add("body", body)
         let result = try await invokeCall("addComment", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
@@ -1283,7 +1283,7 @@ public struct UpdatesClient: Sendable {
         var args = Args()
         args.add("title", title)
         args.add("body", body)
-        args.add("categoryId", categoryId)
+        if let value = categoryId { args.add("categoryId", value) }
         let result = try await invokeCall("askQuestion", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
     }
@@ -1433,7 +1433,7 @@ public struct UpdatesClient: Sendable {
         minIndex: Int = 0
     ) async throws -> [AskView] {
         var args = Args()
-        args.add("status", status)
+        if let value = status { args.add("status", value) }
         let result = try await invokeView("listAsks", args, stale: stale, minIndex: minIndex, as: [AskView].self)
         return result
     }
@@ -1512,9 +1512,9 @@ public struct UpdatesClient: Sendable {
         minIndex: Int = 0
     ) async throws -> PostPage {
         var args = Args()
-        args.add("kind", kind)
-        args.add("categoryId", categoryId)
-        args.add("cursor", cursor)
+        if let value = kind { args.add("kind", value) }
+        if let value = categoryId { args.add("categoryId", value) }
+        if let value = cursor { args.add("cursor", value) }
         args.add("limit", limit)
         let result = try await invokeView("listPosts", args, stale: stale, minIndex: minIndex, as: PostPage.self)
         return result
@@ -1587,7 +1587,7 @@ public struct UpdatesClient: Sendable {
         idempotencyKey: String? = nil
     ) async throws -> String {
         var args = Args()
-        args.add("draftId", draftId)
+        if let value = draftId { args.add("draftId", value) }
         args.add("title", title)
         args.add("payload", payload)
         let result = try await invokeCall("saveDraft", args, idempotencyKey: idempotencyKey, as: String.self)

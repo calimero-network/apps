@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -505,9 +506,9 @@ class SignClient private constructor(
                 put("hash", encode(String.serializer(), hash))
                 put("pdfBlobIdStr", encode(String.serializer(), pdfBlobIdStr))
                 put("fileSize", encode(U64AsString, fileSize))
-                put("embeddings", encode(ListSerializer(Float.serializer()).nullable, embeddings))
-                put("extractedText", encode(String.serializer().nullable, extractedText))
-                put("chunks", encode(ListSerializer(DocumentChunk.serializer()).nullable, chunks))
+                if (embeddings != null) put("embeddings", encode(ListSerializer(Float.serializer()).nullable, embeddings))
+                if (extractedText != null) put("extractedText", encode(String.serializer().nullable, extractedText))
+                if (chunks != null) put("chunks", encode(ListSerializer(DocumentChunk.serializer()).nullable, chunks))
             },
             idempotencyKey,
             String.serializer(),
@@ -717,6 +718,7 @@ class SignClient private constructor(
     }
 
     /** The app type `ContextDetails`. */
+    @Serializable(with = ContextDetails.Companion.Wire::class)
     data class ContextDetails(
         val contextId: String,
         val contextName: String,
@@ -729,9 +731,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `ContextDetails`'s JSON form. */
-            fun serializer(): KSerializer<ContextDetails> = Wire
-
-            private object Wire : KSerializer<ContextDetails> {
+            internal object Wire : KSerializer<ContextDetails> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -771,6 +771,7 @@ class SignClient private constructor(
     }
 
     /** The app type `ContextMetadata`. */
+    @Serializable(with = ContextMetadata.Companion.Wire::class)
     data class ContextMetadata(
         val contextId: String,
         val contextName: String,
@@ -781,9 +782,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `ContextMetadata`'s JSON form. */
-            fun serializer(): KSerializer<ContextMetadata> = Wire
-
-            private object Wire : KSerializer<ContextMetadata> {
+            internal object Wire : KSerializer<ContextMetadata> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -819,6 +818,7 @@ class SignClient private constructor(
     }
 
     /** The app type `DocumentChunk`. */
+    @Serializable(with = DocumentChunk.Companion.Wire::class)
     data class DocumentChunk(
         val text: String,
         val embedding: List<Float>,
@@ -827,9 +827,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `DocumentChunk`'s JSON form. */
-            fun serializer(): KSerializer<DocumentChunk> = Wire
-
-            private object Wire : KSerializer<DocumentChunk> {
+            internal object Wire : KSerializer<DocumentChunk> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -861,6 +859,7 @@ class SignClient private constructor(
     }
 
     /** The app type `DocumentInfo`. */
+    @Serializable(with = DocumentInfo.Companion.Wire::class)
     data class DocumentInfo(
         val id: String,
         val name: String,
@@ -877,9 +876,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `DocumentInfo`'s JSON form. */
-            fun serializer(): KSerializer<DocumentInfo> = Wire
-
-            private object Wire : KSerializer<DocumentInfo> {
+            internal object Wire : KSerializer<DocumentInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -927,15 +924,14 @@ class SignClient private constructor(
     }
 
     /** The app type `DocumentSignature`. */
+    @Serializable(with = DocumentSignature.Companion.Wire::class)
     data class DocumentSignature(
         val signer: String,
         val signedAt: ULong,
     ) {
         companion object {
             /** `DocumentSignature`'s JSON form. */
-            fun serializer(): KSerializer<DocumentSignature> = Wire
-
-            private object Wire : KSerializer<DocumentSignature> {
+            internal object Wire : KSerializer<DocumentSignature> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -963,6 +959,7 @@ class SignClient private constructor(
     }
 
     /** The app type `DocumentStatus`. */
+    @Serializable(with = DocumentStatus.Companion.Wire::class)
     sealed interface DocumentStatus {
         /** `Pending`. */
         data object Pending : DocumentStatus
@@ -975,9 +972,7 @@ class SignClient private constructor(
 
         companion object {
             /** `DocumentStatus`'s JSON form. */
-            fun serializer(): KSerializer<DocumentStatus> = Wire
-
-            private object Wire : KSerializer<DocumentStatus> {
+            internal object Wire : KSerializer<DocumentStatus> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1008,6 +1003,7 @@ class SignClient private constructor(
     }
 
     /** The app type `IdentityMapping`. */
+    @Serializable(with = IdentityMapping.Companion.Wire::class)
     data class IdentityMapping(
         val privateIdentity: String,
         val sharedIdentity: String,
@@ -1016,9 +1012,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `IdentityMapping`'s JSON form. */
-            fun serializer(): KSerializer<IdentityMapping> = Wire
-
-            private object Wire : KSerializer<IdentityMapping> {
+            internal object Wire : KSerializer<IdentityMapping> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1050,15 +1044,14 @@ class SignClient private constructor(
     }
 
     /** The app type `ParticipantInfo`. */
+    @Serializable(with = ParticipantInfo.Companion.Wire::class)
     data class ParticipantInfo(
         val userId: String,
         val permissionLevel: PermissionLevel,
     ) {
         companion object {
             /** `ParticipantInfo`'s JSON form. */
-            fun serializer(): KSerializer<ParticipantInfo> = Wire
-
-            private object Wire : KSerializer<ParticipantInfo> {
+            internal object Wire : KSerializer<ParticipantInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1086,6 +1079,7 @@ class SignClient private constructor(
     }
 
     /** The app type `ParticipantRole`. */
+    @Serializable(with = ParticipantRole.Companion.Wire::class)
     sealed interface ParticipantRole {
         /** `Owner`. */
         data object Owner : ParticipantRole
@@ -1101,9 +1095,7 @@ class SignClient private constructor(
 
         companion object {
             /** `ParticipantRole`'s JSON form. */
-            fun serializer(): KSerializer<ParticipantRole> = Wire
-
-            private object Wire : KSerializer<ParticipantRole> {
+            internal object Wire : KSerializer<ParticipantRole> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1136,6 +1128,7 @@ class SignClient private constructor(
     }
 
     /** The app type `PermissionLevel`. */
+    @Serializable(with = PermissionLevel.Companion.Wire::class)
     sealed interface PermissionLevel {
         /** `Read`. */
         data object Read : PermissionLevel
@@ -1148,9 +1141,7 @@ class SignClient private constructor(
 
         companion object {
             /** `PermissionLevel`'s JSON form. */
-            fun serializer(): KSerializer<PermissionLevel> = Wire
-
-            private object Wire : KSerializer<PermissionLevel> {
+            internal object Wire : KSerializer<PermissionLevel> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1181,6 +1172,7 @@ class SignClient private constructor(
     }
 
     /** The app type `SignatureRecord`. */
+    @Serializable(with = SignatureRecord.Companion.Wire::class)
     data class SignatureRecord(
         val id: ULong,
         val name: String,
@@ -1190,9 +1182,7 @@ class SignClient private constructor(
     ) {
         companion object {
             /** `SignatureRecord`'s JSON form. */
-            fun serializer(): KSerializer<SignatureRecord> = Wire
-
-            private object Wire : KSerializer<SignatureRecord> {
+            internal object Wire : KSerializer<SignatureRecord> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

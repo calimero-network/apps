@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -78,12 +79,12 @@ class CrmClient private constructor(
         invokeCall(
             "addActivity",
             buildJsonObject {
-                put("dealId", encode(String.serializer().nullable, dealId))
-                put("contactId", encode(String.serializer().nullable, contactId))
+                if (dealId != null) put("dealId", encode(String.serializer().nullable, dealId))
+                if (contactId != null) put("contactId", encode(String.serializer().nullable, contactId))
                 put("kind", encode(String.serializer(), kind))
                 put("subject", encode(String.serializer(), subject))
                 put("dueAt", encode(U64AsString, dueAt))
-                put("owner", encode(String.serializer().nullable, owner))
+                if (owner != null) put("owner", encode(String.serializer().nullable, owner))
                 put("note", encode(String.serializer(), note))
             },
             idempotencyKey,
@@ -182,10 +183,10 @@ class CrmClient private constructor(
                 put("title", encode(String.serializer(), title))
                 put("value", encode(U64AsString, value))
                 put("organization", encode(String.serializer(), organization))
-                put("contactId", encode(String.serializer().nullable, contactId))
+                if (contactId != null) put("contactId", encode(String.serializer().nullable, contactId))
                 put("stageId", encode(String.serializer(), stageId))
-                put("owner", encode(String.serializer().nullable, owner))
-                put("expectedClose", encode(U64AsString.nullable, expectedClose))
+                if (owner != null) put("owner", encode(String.serializer().nullable, owner))
+                if (expectedClose != null) put("expectedClose", encode(U64AsString.nullable, expectedClose))
                 put("source", encode(String.serializer(), source))
             },
             idempotencyKey,
@@ -321,8 +322,8 @@ class CrmClient private constructor(
         invokeView(
             "listActivities",
             buildJsonObject {
-                put("dealId", encode(String.serializer().nullable, dealId))
-                put("done", encode(Boolean.serializer().nullable, done))
+                if (dealId != null) put("dealId", encode(String.serializer().nullable, dealId))
+                if (done != null) put("done", encode(Boolean.serializer().nullable, done))
             },
             stale,
             minIndex,
@@ -366,9 +367,9 @@ class CrmClient private constructor(
         invokeView(
             "listDeals",
             buildJsonObject {
-                put("status", encode(String.serializer().nullable, status))
-                put("stageId", encode(String.serializer().nullable, stageId))
-                put("owner", encode(String.serializer().nullable, owner))
+                if (status != null) put("status", encode(String.serializer().nullable, status))
+                if (stageId != null) put("stageId", encode(String.serializer().nullable, stageId))
+                if (owner != null) put("owner", encode(String.serializer().nullable, owner))
             },
             stale,
             minIndex,
@@ -592,9 +593,9 @@ class CrmClient private constructor(
                 put("title", encode(String.serializer(), title))
                 put("value", encode(U64AsString, value))
                 put("organization", encode(String.serializer(), organization))
-                put("contactId", encode(String.serializer().nullable, contactId))
-                put("owner", encode(String.serializer().nullable, owner))
-                put("expectedClose", encode(U64AsString.nullable, expectedClose))
+                if (contactId != null) put("contactId", encode(String.serializer().nullable, contactId))
+                if (owner != null) put("owner", encode(String.serializer().nullable, owner))
+                if (expectedClose != null) put("expectedClose", encode(U64AsString.nullable, expectedClose))
                 put("source", encode(String.serializer(), source))
             },
             idempotencyKey,
@@ -810,6 +811,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `ActivityView`. */
+    @Serializable(with = ActivityView.Companion.Wire::class)
     data class ActivityView(
         val id: String,
         val deal_id: String? = null,
@@ -828,9 +830,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `ActivityView`'s JSON form. */
-            fun serializer(): KSerializer<ActivityView> = Wire
-
-            private object Wire : KSerializer<ActivityView> {
+            internal object Wire : KSerializer<ActivityView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -882,6 +882,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `AutomationView`. */
+    @Serializable(with = AutomationView.Companion.Wire::class)
     data class AutomationView(
         val id: String,
         val stage_id: String,
@@ -894,9 +895,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `AutomationView`'s JSON form. */
-            fun serializer(): KSerializer<AutomationView> = Wire
-
-            private object Wire : KSerializer<AutomationView> {
+            internal object Wire : KSerializer<AutomationView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -936,6 +935,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `ContactView`. */
+    @Serializable(with = ContactView.Companion.Wire::class)
     data class ContactView(
         val id: String,
         val name: String,
@@ -950,9 +950,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `ContactView`'s JSON form. */
-            fun serializer(): KSerializer<ContactView> = Wire
-
-            private object Wire : KSerializer<ContactView> {
+            internal object Wire : KSerializer<ContactView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -996,6 +994,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `DealDetail`. */
+    @Serializable(with = DealDetail.Companion.Wire::class)
     data class DealDetail(
         val deal: DealView,
         val contact: ContactView? = null,
@@ -1004,9 +1003,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `DealDetail`'s JSON form. */
-            fun serializer(): KSerializer<DealDetail> = Wire
-
-            private object Wire : KSerializer<DealDetail> {
+            internal object Wire : KSerializer<DealDetail> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1038,6 +1035,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `DealView`. */
+    @Serializable(with = DealView.Companion.Wire::class)
     data class DealView(
         val id: String,
         val title: String,
@@ -1062,9 +1060,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `DealView`'s JSON form. */
-            fun serializer(): KSerializer<DealView> = Wire
-
-            private object Wire : KSerializer<DealView> {
+            internal object Wire : KSerializer<DealView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1128,6 +1124,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `NextActivity`. */
+    @Serializable(with = NextActivity.Companion.Wire::class)
     data class NextActivity(
         val id: String,
         val kind: String,
@@ -1136,9 +1133,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `NextActivity`'s JSON form. */
-            fun serializer(): KSerializer<NextActivity> = Wire
-
-            private object Wire : KSerializer<NextActivity> {
+            internal object Wire : KSerializer<NextActivity> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1170,6 +1165,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `NoteView`. */
+    @Serializable(with = NoteView.Companion.Wire::class)
     data class NoteView(
         val id: String,
         val deal_id: String,
@@ -1179,9 +1175,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `NoteView`'s JSON form. */
-            fun serializer(): KSerializer<NoteView> = Wire
-
-            private object Wire : KSerializer<NoteView> {
+            internal object Wire : KSerializer<NoteView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1215,15 +1209,14 @@ class CrmClient private constructor(
     }
 
     /** The app type `Settings`. */
+    @Serializable(with = Settings.Companion.Wire::class)
     data class Settings(
         val currency: String,
         val rotting_days: UInt,
     ) {
         companion object {
             /** `Settings`'s JSON form. */
-            fun serializer(): KSerializer<Settings> = Wire
-
-            private object Wire : KSerializer<Settings> {
+            internal object Wire : KSerializer<Settings> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1251,6 +1244,7 @@ class CrmClient private constructor(
     }
 
     /** The app type `StageView`. */
+    @Serializable(with = StageView.Companion.Wire::class)
     data class StageView(
         val id: String,
         val name: String,
@@ -1259,9 +1253,7 @@ class CrmClient private constructor(
     ) {
         companion object {
             /** `StageView`'s JSON form. */
-            fun serializer(): KSerializer<StageView> = Wire
-
-            private object Wire : KSerializer<StageView> {
+            internal object Wire : KSerializer<StageView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

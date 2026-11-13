@@ -45,7 +45,8 @@ pub const MEMO_CLASSES: &[&str] = &["immutable", "slow", "fast"];
 const CLOCK_SKEW_MS: u64 = 5 * 60 * 1000;
 
 /// How often one agent used a row.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct MemoHits {
     pub agent: String,
     pub hits: u64,
@@ -123,7 +124,8 @@ impl Memo {
 }
 
 /// One row as [`crate::Hyperfeed::put_memos`] takes it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct MemoInput {
     /// A hex hash of scope, tool and arguments: the runtime's key for the read.
     pub key: String,
@@ -152,7 +154,8 @@ pub struct MemoInput {
 }
 
 /// A row as [`crate::Hyperfeed::memos`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct MemoView {
     pub key: String,
     pub scope: String,

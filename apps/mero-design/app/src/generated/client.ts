@@ -13,10 +13,89 @@ export interface BoardInfo {
   owner: string | null;
 }
 
+/** The app type `Comment`. */
+export interface Comment {
+  id: string;
+  x: number;
+  y: number;
+  content: string;
+  author: string;
+  createdAt: number;
+  replies?: CommentReply[];
+}
+
+/** The app type `CommentReply`. */
+export interface CommentReply {
+  id: string;
+  content: string;
+  author: string;
+  createdAt: number;
+}
+
+/** The app type `CursorState`. */
+export interface CursorState {
+  identity: string;
+  account?: string;
+  x: number;
+  y: number;
+  updatedAt: number;
+}
+
+/** The app type `Element`. */
+export interface Element {
+  id: string;
+  data: ElementData;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+  layerIndex: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  shadowColor: string | null;
+  shadowOffsetX: number | null;
+  shadowOffsetY: number | null;
+  shadowBlur: number | null;
+  label: string | null;
+  cornerRadius?: number | null;
+}
+
+/** The app type `ElementData`. */
+export type ElementData =
+  | { kind: 'rect' }
+  | { kind: 'circle' }
+  | { kind: 'line'; points?: string }
+  | { kind: 'arrow'; points?: string }
+  | { kind: 'path'; points: string }
+  | { kind: 'text'; content: string; fontSize: number; fontFamily: string; bold: boolean; italic: boolean; text_align?: string | null; vertical_align?: string | null }
+  | { kind: 'image'; naturalWidth: number; naturalHeight: number; blobId?: string }
+  | { kind: 'svg'; naturalWidth: number; naturalHeight: number; blobId?: string };
+
 /** The app type `ElementPage`. */
 export interface ElementPage {
   items: Element[];
   nextCursor: string | null;
+}
+
+/** The app type `ElementPatch`. */
+export interface ElementPatch {
+  id: string;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  rotation?: number | null;
+  fill?: string | null;
+  stroke?: string | null;
+  stroke_width?: number | null;
+  opacity?: number | null;
+  corner_radius?: number | null;
 }
 
 /** The app type `LabelUpdate`. */
@@ -25,27 +104,21 @@ export interface LabelUpdate {
   label: string | null;
 }
 
+/** The app type `Member`. */
+export interface Member {
+  id: string;
+  username: string;
+  avatar: string | null;
+  joinedAt: number;
+  usernameUpdatedAt: number;
+}
+
 /** The app type `MemberRole`. */
 export interface MemberRole {
   member: string;
   role: string;
   account: string | null;
 }
-
-/** The app type `Comment`: the ABI names it without its shape. */
-export type Comment = unknown;
-
-/** The app type `CursorState`: the ABI names it without its shape. */
-export type CursorState = unknown;
-
-/** The app type `Element`: the ABI names it without its shape. */
-export type Element = unknown;
-
-/** The app type `ElementPatch`: the ABI names it without its shape. */
-export type ElementPatch = unknown;
-
-/** The app type `Member`: the ABI names it without its shape. */
-export type Member = unknown;
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

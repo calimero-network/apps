@@ -1,9 +1,10 @@
 // The board's types, as the contract (`logic/res/abi.json`) answers them: first written by
 // @calimero/abi-codegen from v1's ABI, kept since. The calls are the generated [DesignClient]
 // (`scripts/mobile-codegen.sh` at the repo root), and so are the types the ABI describes
-// ([BoardInfo], [LabelUpdate], [MemberRole]). The ABI still leaves `Element`, `ElementPatch`,
-// `Comment`, `CursorState` and `Member` `unknown`, so the client takes and answers their JSON and
-// the types here read and write it. Once they are generated too, this file goes.
+// ([BoardInfo], [LabelUpdate], [MemberRole]) aliased below. The ABI also describes `Element`,
+// `ElementPatch`, `Comment`, `CursorState` and `Member` (their u64/i64 fields are JSON numbers,
+// `#[abi(plain)]`), but the screens still use the types here, which read each answer's JSON
+// ([network.calimero.design.core.toDesign]). Once the screens use the generated ones, this file goes.
 
 package network.calimero.design.generated
 

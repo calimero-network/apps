@@ -11,6 +11,7 @@ on:
       - apps/*/logic/res/abi.json
       - apps/*/mobile/**
       - scripts/mobile-codegen.sh
+      - scripts/install-mero-app-build.sh
       - .github/workflows/mobile-clients.yml
   push:
     branches: [main]
@@ -18,6 +19,7 @@ on:
       - apps/*/logic/res/abi.json
       - apps/*/mobile/**
       - scripts/mobile-codegen.sh
+      - scripts/install-mero-app-build.sh
       - .github/workflows/mobile-clients.yml
   workflow_dispatch:
 
@@ -36,11 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Keyed by the generator revision the script pins: a run that does not
-      # move it does not compile it.
+      # Keyed by the generator tag the script pins: a run that does not move
+      # it does not compile it.
       - name: Generator revision
         id: rev
-        run: echo "rev=$(sed -n 's/^REV=//p' scripts/mobile-codegen.sh)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=$(sed -n 's/^REF=//p' scripts/mobile-codegen.sh)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/mero-app-build
