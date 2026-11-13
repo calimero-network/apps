@@ -156,9 +156,9 @@ enum BattleshipsDemo {
                         standing: game.standing, committed: game.committed, ended_by: game.endedBy, loser: game.loser,
                         revealed: game.revealed, audit_failed: [], winner: game.winner))
             case "getShots":
-                return try DemoReply.json(ShotsView(size: UInt32(BoardGeometry.size), shots: game.shots))
+                return try DemoReply.json(ShotsView(size: UInt8(BoardGeometry.size), shots: game.shots))
             case "getIncomingShots":
-                return try DemoReply.json(ShotsView(size: UInt32(BoardGeometry.size), shots: game.incoming))
+                return try DemoReply.json(ShotsView(size: UInt8(BoardGeometry.size), shots: game.incoming))
             case "getWinner":
                 return try game.winner.map(DemoReply.json) ?? DemoReply.null
             case "getCurrentTurn":

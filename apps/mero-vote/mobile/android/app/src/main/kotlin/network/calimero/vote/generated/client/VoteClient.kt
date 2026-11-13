@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -153,7 +154,7 @@ class VoteClient private constructor(
                 put("trustees", encode(ListSerializer(String.serializer()), trustees))
                 put("threshold", encode(UInt.serializer(), threshold))
                 put("voters", encode(ListSerializer(String.serializer()), voters))
-                put("closesAt", encode(U64AsString.nullable, closesAt))
+                if (closesAt != null) put("closesAt", encode(U64AsString.nullable, closesAt))
             },
             idempotencyKey,
             String.serializer(),
@@ -581,6 +582,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Anchor`. */
+    @Serializable(with = Anchor.Companion.Wire::class)
     data class Anchor(
         val digest: String,
         val network: String,
@@ -589,9 +591,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Anchor`'s JSON form. */
-            fun serializer(): KSerializer<Anchor> = Wire
-
-            private object Wire : KSerializer<Anchor> {
+            internal object Wire : KSerializer<Anchor> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -623,6 +623,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `AuditReport`. */
+    @Serializable(with = AuditReport.Companion.Wire::class)
     data class AuditReport(
         val poll_id: String,
         val phase: Phase,
@@ -637,9 +638,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `AuditReport`'s JSON form. */
-            fun serializer(): KSerializer<AuditReport> = Wire
-
-            private object Wire : KSerializer<AuditReport> {
+            internal object Wire : KSerializer<AuditReport> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -683,6 +682,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Ceremony`. */
+    @Serializable(with = Ceremony.Companion.Wire::class)
     data class Ceremony(
         val threshold: UInt,
         val trustees: List<CeremonyTrustee>,
@@ -690,9 +690,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Ceremony`'s JSON form. */
-            fun serializer(): KSerializer<Ceremony> = Wire
-
-            private object Wire : KSerializer<Ceremony> {
+            internal object Wire : KSerializer<Ceremony> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -722,6 +720,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `CeremonyTrustee`. */
+    @Serializable(with = CeremonyTrustee.Companion.Wire::class)
     data class CeremonyTrustee(
         val account: String,
         val index: UInt,
@@ -730,9 +729,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `CeremonyTrustee`'s JSON form. */
-            fun serializer(): KSerializer<CeremonyTrustee> = Wire
-
-            private object Wire : KSerializer<CeremonyTrustee> {
+            internal object Wire : KSerializer<CeremonyTrustee> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -764,6 +761,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Check`. */
+    @Serializable(with = Check.Companion.Wire::class)
     data class Check(
         val name: String,
         val ok: Boolean,
@@ -771,9 +769,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Check`'s JSON form. */
-            fun serializer(): KSerializer<Check> = Wire
-
-            private object Wire : KSerializer<Check> {
+            internal object Wire : KSerializer<Check> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -803,6 +799,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Closure`. */
+    @Serializable(with = Closure.Companion.Wire::class)
     data class Closure(
         val counted: List<CountedBallot>,
         val aggregate: List<WireCiphertext>,
@@ -810,9 +807,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Closure`'s JSON form. */
-            fun serializer(): KSerializer<Closure> = Wire
-
-            private object Wire : KSerializer<Closure> {
+            internal object Wire : KSerializer<Closure> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -842,6 +837,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `ComplaintView`. */
+    @Serializable(with = ComplaintView.Companion.Wire::class)
     data class ComplaintView(
         val recipient: String,
         val dealer: String,
@@ -849,9 +845,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `ComplaintView`'s JSON form. */
-            fun serializer(): KSerializer<ComplaintView> = Wire
-
-            private object Wire : KSerializer<ComplaintView> {
+            internal object Wire : KSerializer<ComplaintView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -881,6 +875,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `CountedBallot`. */
+    @Serializable(with = CountedBallot.Companion.Wire::class)
     data class CountedBallot(
         val voter: String,
         val digest: String,
@@ -888,9 +883,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `CountedBallot`'s JSON form. */
-            fun serializer(): KSerializer<CountedBallot> = Wire
-
-            private object Wire : KSerializer<CountedBallot> {
+            internal object Wire : KSerializer<CountedBallot> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -920,6 +913,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Election`. */
+    @Serializable(with = Election.Companion.Wire::class)
     data class Election(
         val key: String,
         val threshold: UInt,
@@ -930,9 +924,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Election`'s JSON form. */
-            fun serializer(): KSerializer<Election> = Wire
-
-            private object Wire : KSerializer<Election> {
+            internal object Wire : KSerializer<Election> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -968,14 +960,13 @@ class VoteClient private constructor(
     }
 
     /** The app type `Identity`. */
+    @Serializable(with = Identity.Companion.Wire::class)
     data class Identity(
         val account: String,
     ) {
         companion object {
             /** `Identity`'s JSON form. */
-            fun serializer(): KSerializer<Identity> = Wire
-
-            private object Wire : KSerializer<Identity> {
+            internal object Wire : KSerializer<Identity> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -999,15 +990,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `Member`. */
+    @Serializable(with = Member.Companion.Wire::class)
     data class Member(
         val account: String,
         val name: String,
     ) {
         companion object {
             /** `Member`'s JSON form. */
-            fun serializer(): KSerializer<Member> = Wire
-
-            private object Wire : KSerializer<Member> {
+            internal object Wire : KSerializer<Member> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1035,6 +1025,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Phase`. */
+    @Serializable(with = Phase.Companion.Wire::class)
     sealed interface Phase {
         /** `KeyCeremony`. */
         data object KeyCeremony : Phase
@@ -1050,9 +1041,7 @@ class VoteClient private constructor(
 
         companion object {
             /** `Phase`'s JSON form. */
-            fun serializer(): KSerializer<Phase> = Wire
-
-            private object Wire : KSerializer<Phase> {
+            internal object Wire : KSerializer<Phase> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1085,6 +1074,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `PollDefinition`. */
+    @Serializable(with = PollDefinition.Companion.Wire::class)
     data class PollDefinition(
         val title: String,
         val description: String,
@@ -1100,9 +1090,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `PollDefinition`'s JSON form. */
-            fun serializer(): KSerializer<PollDefinition> = Wire
-
-            private object Wire : KSerializer<PollDefinition> {
+            internal object Wire : KSerializer<PollDefinition> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1148,6 +1136,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `PollState`. */
+    @Serializable(with = PollState.Companion.Wire::class)
     data class PollState(
         val phase: Phase,
         val election: Election? = null,
@@ -1157,9 +1146,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `PollState`'s JSON form. */
-            fun serializer(): KSerializer<PollState> = Wire
-
-            private object Wire : KSerializer<PollState> {
+            internal object Wire : KSerializer<PollState> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1193,6 +1180,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `PollSummary`. */
+    @Serializable(with = PollSummary.Companion.Wire::class)
     data class PollSummary(
         val poll_id: String,
         val title: String,
@@ -1203,9 +1191,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `PollSummary`'s JSON form. */
-            fun serializer(): KSerializer<PollSummary> = Wire
-
-            private object Wire : KSerializer<PollSummary> {
+            internal object Wire : KSerializer<PollSummary> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1241,6 +1227,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `PollView`. */
+    @Serializable(with = PollView.Companion.Wire::class)
     data class PollView(
         val poll_id: String,
         val definition: PollDefinition,
@@ -1252,9 +1239,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `PollView`'s JSON form. */
-            fun serializer(): KSerializer<PollView> = Wire
-
-            private object Wire : KSerializer<PollView> {
+            internal object Wire : KSerializer<PollView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1292,15 +1277,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `QualifiedDealing`. */
+    @Serializable(with = QualifiedDealing.Companion.Wire::class)
     data class QualifiedDealing(
         val dealer: String,
         val dealing: WireDealing,
     ) {
         companion object {
             /** `QualifiedDealing`'s JSON form. */
-            fun serializer(): KSerializer<QualifiedDealing> = Wire
-
-            private object Wire : KSerializer<QualifiedDealing> {
+            internal object Wire : KSerializer<QualifiedDealing> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1328,15 +1312,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `TallyInputs`. */
+    @Serializable(with = TallyInputs.Companion.Wire::class)
     data class TallyInputs(
         val aggregate: List<WireCiphertext>,
         val counted: UInt,
     ) {
         companion object {
             /** `TallyInputs`'s JSON form. */
-            fun serializer(): KSerializer<TallyInputs> = Wire
-
-            private object Wire : KSerializer<TallyInputs> {
+            internal object Wire : KSerializer<TallyInputs> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1364,6 +1347,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Transcript`. */
+    @Serializable(with = Transcript.Companion.Wire::class)
     data class Transcript(
         val protocol: String,
         val poll_id: String,
@@ -1375,9 +1359,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Transcript`'s JSON form. */
-            fun serializer(): KSerializer<Transcript> = Wire
-
-            private object Wire : KSerializer<Transcript> {
+            internal object Wire : KSerializer<Transcript> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1415,6 +1397,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `TranscriptBallot`. */
+    @Serializable(with = TranscriptBallot.Companion.Wire::class)
     data class TranscriptBallot(
         val voter: String,
         val digest: String,
@@ -1423,9 +1406,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `TranscriptBallot`'s JSON form. */
-            fun serializer(): KSerializer<TranscriptBallot> = Wire
-
-            private object Wire : KSerializer<TranscriptBallot> {
+            internal object Wire : KSerializer<TranscriptBallot> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1457,6 +1438,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `TranscriptPartial`. */
+    @Serializable(with = TranscriptPartial.Companion.Wire::class)
     data class TranscriptPartial(
         val trustee: String,
         val index: UInt,
@@ -1464,9 +1446,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `TranscriptPartial`'s JSON form. */
-            fun serializer(): KSerializer<TranscriptPartial> = Wire
-
-            private object Wire : KSerializer<TranscriptPartial> {
+            internal object Wire : KSerializer<TranscriptPartial> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1496,6 +1476,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `TrusteeStatus`. */
+    @Serializable(with = TrusteeStatus.Companion.Wire::class)
     data class TrusteeStatus(
         val account: String,
         val index: UInt,
@@ -1507,9 +1488,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `TrusteeStatus`'s JSON form. */
-            fun serializer(): KSerializer<TrusteeStatus> = Wire
-
-            private object Wire : KSerializer<TrusteeStatus> {
+            internal object Wire : KSerializer<TrusteeStatus> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1547,6 +1526,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `Turnout`. */
+    @Serializable(with = Turnout.Companion.Wire::class)
     data class Turnout(
         val voter: String,
         val digest: String,
@@ -1554,9 +1534,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `Turnout`'s JSON form. */
-            fun serializer(): KSerializer<Turnout> = Wire
-
-            private object Wire : KSerializer<Turnout> {
+            internal object Wire : KSerializer<Turnout> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1586,15 +1564,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireBallot`. */
+    @Serializable(with = WireBallot.Companion.Wire::class)
     data class WireBallot(
         val choices: List<WireChoice>,
         val sum_proof: List<WireBranch>,
     ) {
         companion object {
             /** `WireBallot`'s JSON form. */
-            fun serializer(): KSerializer<WireBallot> = Wire
-
-            private object Wire : KSerializer<WireBallot> {
+            internal object Wire : KSerializer<WireBallot> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1622,15 +1599,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireBranch`. */
+    @Serializable(with = WireBranch.Companion.Wire::class)
     data class WireBranch(
         val c: String,
         val z: String,
     ) {
         companion object {
             /** `WireBranch`'s JSON form. */
-            fun serializer(): KSerializer<WireBranch> = Wire
-
-            private object Wire : KSerializer<WireBranch> {
+            internal object Wire : KSerializer<WireBranch> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1658,6 +1634,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireChoice`. */
+    @Serializable(with = WireChoice.Companion.Wire::class)
     data class WireChoice(
         val a: String,
         val b: String,
@@ -1665,9 +1642,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `WireChoice`'s JSON form. */
-            fun serializer(): KSerializer<WireChoice> = Wire
-
-            private object Wire : KSerializer<WireChoice> {
+            internal object Wire : KSerializer<WireChoice> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1697,15 +1672,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireCiphertext`. */
+    @Serializable(with = WireCiphertext.Companion.Wire::class)
     data class WireCiphertext(
         val a: String,
         val b: String,
     ) {
         companion object {
             /** `WireCiphertext`'s JSON form. */
-            fun serializer(): KSerializer<WireCiphertext> = Wire
-
-            private object Wire : KSerializer<WireCiphertext> {
+            internal object Wire : KSerializer<WireCiphertext> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1733,6 +1707,7 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireDealing`. */
+    @Serializable(with = WireDealing.Companion.Wire::class)
     data class WireDealing(
         val commitments: List<String>,
         val proof: WireBranch,
@@ -1740,9 +1715,7 @@ class VoteClient private constructor(
     ) {
         companion object {
             /** `WireDealing`'s JSON form. */
-            fun serializer(): KSerializer<WireDealing> = Wire
-
-            private object Wire : KSerializer<WireDealing> {
+            internal object Wire : KSerializer<WireDealing> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1772,15 +1745,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `WireEncShare`. */
+    @Serializable(with = WireEncShare.Companion.Wire::class)
     data class WireEncShare(
         val r: String,
         val v: String,
     ) {
         companion object {
             /** `WireEncShare`'s JSON form. */
-            fun serializer(): KSerializer<WireEncShare> = Wire
-
-            private object Wire : KSerializer<WireEncShare> {
+            internal object Wire : KSerializer<WireEncShare> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1808,15 +1780,14 @@ class VoteClient private constructor(
     }
 
     /** The app type `WirePartial`. */
+    @Serializable(with = WirePartial.Companion.Wire::class)
     data class WirePartial(
         val d: String,
         val proof: WireBranch,
     ) {
         companion object {
             /** `WirePartial`'s JSON form. */
-            fun serializer(): KSerializer<WirePartial> = Wire
-
-            private object Wire : KSerializer<WirePartial> {
+            internal object Wire : KSerializer<WirePartial> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

@@ -183,10 +183,10 @@ pnpm -F battleships codegen           # logic/res/abi.json -> app/src/generated/
 `after` syncs the stored session, over a transport that notes the log index of
 each answer, where the event stream resumes). The screens call its methods with
 the contract's camelCase arguments (`matchId`, `shotId`, and the reveal's bytes
-as base64url through `base64url`). The ABI names its records without their
-shapes (it predates `#[derive(AbiType)]`), so the generated types are `unknown`
-and `src/battleships.ts`'s shapes type them, and its `to*` functions convert
-their u64s, where they are read. The directory is committed and CI regenerates
+as base64url through `base64url`). The generated client types every answer
+(`ShotsView`'s `shots`, a JSON array of bytes, is `#[abi(plain)]`), and
+`src/battleships.ts`'s `to*` functions convert the u64 decimal strings to the
+numbers the screens use, where they are read. The directory is committed and CI regenerates
 it and fails when it is stale (see
 [docs/COMPONENT-APPS.md, "The app's typed client"](../../docs/COMPONENT-APPS.md#the-apps-typed-client)).
 

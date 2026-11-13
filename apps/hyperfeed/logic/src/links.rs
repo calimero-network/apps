@@ -59,7 +59,8 @@ pub struct LinkInput {
 }
 
 /// A link as [`crate::Hyperfeed::links`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct LinkView {
     pub chain: String,
     pub subject: String,

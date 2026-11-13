@@ -171,13 +171,11 @@ class MatchModel(
             mine =
                 game
                     .getShots(matchId)
-                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
             incoming =
                 game
                     .getIncomingShots(matchId)
-                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
         } catch (e: CancellationException) {
@@ -214,7 +212,6 @@ class MatchModel(
             answers = attempt {
                 game
                     .getIncomingShots(matchId)
-                    .toAppType<ShotsView>()
                     .shots
                     .map { it.toInt() }
             } ?: answers

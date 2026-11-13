@@ -94,7 +94,8 @@ fn rank(status: &str) -> u8 {
 
 /// What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use
 /// `""` or `0` where it does not apply.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct WatchInput {
     /// The chain it reports to: the task it belongs to.
     pub chain: String,
@@ -117,7 +118,8 @@ pub struct WatchInput {
 }
 
 /// A watch, as the feed returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct WatchView {
     pub id: String,
     pub chain: String,

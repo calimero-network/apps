@@ -18,7 +18,7 @@
 import { AppError } from "@calimero-network/mero-js";
 
 import { after, getClient } from "./calimero";
-import { MeroChatClient, type AppTransport, type Role } from "../generated/client";
+import { MeroChatClient, type AppTransport, type AttachmentInput, type Role } from "../generated/client";
 
 type Args = Record<string, unknown>;
 type Out = unknown;
@@ -75,7 +75,7 @@ function attachmentOut(a: Rec) {
 }
 
 /** v1's `AttachmentRequest` → the ABI's `AttachmentInput`. */
-function attachmentIn(a: Rec) {
+function attachmentIn(a: Rec): AttachmentInput {
   return {
     name: String(a.name ?? ""),
     mimeType: String(a.mime_type ?? ""),

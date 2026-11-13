@@ -144,8 +144,8 @@ public final class MatchModel: ObservableObject {
         let incoming: ShotsView
         do {
             current = try await game.getMatchState(matchId: matchId)
-            mine = try await game.getShots(matchId: matchId).decoded(as: ShotsView.self)
-            incoming = try await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self)
+            mine = try await game.getShots(matchId: matchId)
+            incoming = try await game.getIncomingShots(matchId: matchId)
         } catch {
             if state == nil {
                 // A match the node has not applied yet (just created on another node).
@@ -176,7 +176,7 @@ public final class MatchModel: ObservableObject {
         var answers = incoming.shots
         if await answerPendingShot(latest, cells: board.cells) {
             latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
-            answers = (try? await game.getIncomingShots(matchId: matchId).decoded(as: ShotsView.self))?.shots ?? answers
+            answers = (try? await game.getIncomingShots(matchId: matchId))?.shots ?? answers
             turn = try? await game.getCurrentTurn(matchId: matchId)
         }
         if await revealIfDue(latest, board: board) {

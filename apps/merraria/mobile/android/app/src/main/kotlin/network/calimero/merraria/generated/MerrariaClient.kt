@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -93,8 +94,8 @@ class MerrariaClient private constructor(
         invokeView(
             "getOverrides",
             buildJsonObject {
-                put("cursor", encode(String.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -335,6 +336,7 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `Edit`. */
+    @Serializable(with = Edit.Companion.Wire::class)
     data class Edit(
         val x: Int,
         val y: Int,
@@ -342,9 +344,7 @@ class MerrariaClient private constructor(
     ) {
         companion object {
             /** `Edit`'s JSON form. */
-            fun serializer(): KSerializer<Edit> = Wire
-
-            private object Wire : KSerializer<Edit> {
+            internal object Wire : KSerializer<Edit> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -374,15 +374,14 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `OverridesPage`. */
+    @Serializable(with = OverridesPage.Companion.Wire::class)
     data class OverridesPage(
         val items: List<TileEntry>,
         val next: String? = null,
     ) {
         companion object {
             /** `OverridesPage`'s JSON form. */
-            fun serializer(): KSerializer<OverridesPage> = Wire
-
-            private object Wire : KSerializer<OverridesPage> {
+            internal object Wire : KSerializer<OverridesPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -410,6 +409,7 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `PlayerView`. */
+    @Serializable(with = PlayerView.Companion.Wire::class)
     data class PlayerView(
         val id: String,
         val name: String,
@@ -422,9 +422,7 @@ class MerrariaClient private constructor(
     ) {
         companion object {
             /** `PlayerView`'s JSON form. */
-            fun serializer(): KSerializer<PlayerView> = Wire
-
-            private object Wire : KSerializer<PlayerView> {
+            internal object Wire : KSerializer<PlayerView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -464,15 +462,14 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `TileEntry`. */
+    @Serializable(with = TileEntry.Companion.Wire::class)
     data class TileEntry(
         val k: String,
         val t: UByte,
     ) {
         companion object {
             /** `TileEntry`'s JSON form. */
-            fun serializer(): KSerializer<TileEntry> = Wire
-
-            private object Wire : KSerializer<TileEntry> {
+            internal object Wire : KSerializer<TileEntry> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -500,19 +497,18 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `Transform`. */
+    @Serializable(with = Transform.Companion.Wire::class)
     data class Transform(
         val name: String,
         val x: Double,
         val y: Double,
         val dir: Double,
         val sel: UByte,
-        val action: String,
+        val action: String? = null,
     ) {
         companion object {
             /** `Transform`'s JSON form. */
-            fun serializer(): KSerializer<Transform> = Wire
-
-            private object Wire : KSerializer<Transform> {
+            internal object Wire : KSerializer<Transform> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -526,7 +522,7 @@ class MerrariaClient private constructor(
                             put("y", encode(Double.serializer(), value.y))
                             put("dir", encode(Double.serializer(), value.dir))
                             put("sel", encode(UByte.serializer(), value.sel))
-                            put("action", encode(String.serializer(), value.action))
+                            if (value.action != null) put("action", encode(String.serializer().nullable, value.action))
                         },
                     )
                 }
@@ -540,7 +536,7 @@ class MerrariaClient private constructor(
                         y = field(fields, "y", Double.serializer()),
                         dir = field(fields, "dir", Double.serializer()),
                         sel = field(fields, "sel", UByte.serializer()),
-                        action = field(fields, "action", String.serializer()),
+                        action = field(fields, "action", String.serializer().nullable),
                     )
                 }
             }
@@ -548,6 +544,7 @@ class MerrariaClient private constructor(
     }
 
     /** The app type `WorldMeta`. */
+    @Serializable(with = WorldMeta.Companion.Wire::class)
     data class WorldMeta(
         val name: String,
         val seed: UInt,
@@ -555,9 +552,7 @@ class MerrariaClient private constructor(
     ) {
         companion object {
             /** `WorldMeta`'s JSON form. */
-            fun serializer(): KSerializer<WorldMeta> = Wire
-
-            private object Wire : KSerializer<WorldMeta> {
+            internal object Wire : KSerializer<WorldMeta> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

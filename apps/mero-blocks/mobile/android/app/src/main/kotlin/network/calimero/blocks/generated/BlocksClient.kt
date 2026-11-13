@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -74,8 +75,8 @@ class BlocksClient private constructor(
         invokeView(
             "getOverrides",
             buildJsonObject {
-                put("cursor", encode(String.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -94,8 +95,8 @@ class BlocksClient private constructor(
             "getPlayers",
             buildJsonObject {
                 put("now", encode(U64AsString, now))
-                put("cursor", encode(String.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -114,7 +115,7 @@ class BlocksClient private constructor(
             buildJsonObject {
                 put("t", encode(Transform.serializer(), t))
                 put("now", encode(U64AsString, now))
-                put("device", encode(String.serializer().nullable, device))
+                if (device != null) put("device", encode(String.serializer().nullable, device))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -133,7 +134,7 @@ class BlocksClient private constructor(
             buildJsonObject {
                 put("name", encode(String.serializer(), name))
                 put("now", encode(U64AsString, now))
-                put("device", encode(String.serializer().nullable, device))
+                if (device != null) put("device", encode(String.serializer().nullable, device))
             },
             idempotencyKey,
             PlayerView.serializer(),
@@ -149,7 +150,7 @@ class BlocksClient private constructor(
             "leave",
             buildJsonObject {
                 put("now", encode(U64AsString, now))
-                put("device", encode(String.serializer().nullable, device))
+                if (device != null) put("device", encode(String.serializer().nullable, device))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -194,7 +195,7 @@ class BlocksClient private constructor(
             buildJsonObject {
                 put("edits", encode(ListSerializer(Edit.serializer()), edits))
                 put("now", encode(U64AsString, now))
-                put("device", encode(String.serializer().nullable, device))
+                if (device != null) put("device", encode(String.serializer().nullable, device))
             },
             idempotencyKey,
             UInt.serializer(),
@@ -370,15 +371,14 @@ class BlocksClient private constructor(
     }
 
     /** The app type `BlockEntry`. */
+    @Serializable(with = BlockEntry.Companion.Wire::class)
     data class BlockEntry(
         val k: String,
         val b: UByte,
     ) {
         companion object {
             /** `BlockEntry`'s JSON form. */
-            fun serializer(): KSerializer<BlockEntry> = Wire
-
-            private object Wire : KSerializer<BlockEntry> {
+            internal object Wire : KSerializer<BlockEntry> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -406,6 +406,7 @@ class BlocksClient private constructor(
     }
 
     /** The app type `Edit`. */
+    @Serializable(with = Edit.Companion.Wire::class)
     data class Edit(
         val x: Int,
         val y: Int,
@@ -414,9 +415,7 @@ class BlocksClient private constructor(
     ) {
         companion object {
             /** `Edit`'s JSON form. */
-            fun serializer(): KSerializer<Edit> = Wire
-
-            private object Wire : KSerializer<Edit> {
+            internal object Wire : KSerializer<Edit> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -448,15 +447,14 @@ class BlocksClient private constructor(
     }
 
     /** The app type `OverridesPage`. */
+    @Serializable(with = OverridesPage.Companion.Wire::class)
     data class OverridesPage(
         val items: List<BlockEntry>,
         val next: String? = null,
     ) {
         companion object {
             /** `OverridesPage`'s JSON form. */
-            fun serializer(): KSerializer<OverridesPage> = Wire
-
-            private object Wire : KSerializer<OverridesPage> {
+            internal object Wire : KSerializer<OverridesPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -484,6 +482,7 @@ class BlocksClient private constructor(
     }
 
     /** The app type `PlayerView`. */
+    @Serializable(with = PlayerView.Companion.Wire::class)
     data class PlayerView(
         val id: String,
         val account: String,
@@ -499,9 +498,7 @@ class BlocksClient private constructor(
     ) {
         companion object {
             /** `PlayerView`'s JSON form. */
-            fun serializer(): KSerializer<PlayerView> = Wire
-
-            private object Wire : KSerializer<PlayerView> {
+            internal object Wire : KSerializer<PlayerView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -547,15 +544,14 @@ class BlocksClient private constructor(
     }
 
     /** The app type `PlayersPage`. */
+    @Serializable(with = PlayersPage.Companion.Wire::class)
     data class PlayersPage(
         val items: List<PlayerView>,
         val next: String? = null,
     ) {
         companion object {
             /** `PlayersPage`'s JSON form. */
-            fun serializer(): KSerializer<PlayersPage> = Wire
-
-            private object Wire : KSerializer<PlayersPage> {
+            internal object Wire : KSerializer<PlayersPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -583,6 +579,7 @@ class BlocksClient private constructor(
     }
 
     /** The app type `Transform`. */
+    @Serializable(with = Transform.Companion.Wire::class)
     data class Transform(
         val name: String,
         val x: Double,
@@ -594,9 +591,7 @@ class BlocksClient private constructor(
     ) {
         companion object {
             /** `Transform`'s JSON form. */
-            fun serializer(): KSerializer<Transform> = Wire
-
-            private object Wire : KSerializer<Transform> {
+            internal object Wire : KSerializer<Transform> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -634,6 +629,7 @@ class BlocksClient private constructor(
     }
 
     /** The app type `WorldMeta`. */
+    @Serializable(with = WorldMeta.Companion.Wire::class)
     data class WorldMeta(
         val name: String,
         val seed: ULong,
@@ -641,9 +637,7 @@ class BlocksClient private constructor(
     ) {
         companion object {
             /** `WorldMeta`'s JSON form. */
-            fun serializer(): KSerializer<WorldMeta> = Wire
-
-            private object Wire : KSerializer<WorldMeta> {
+            internal object Wire : KSerializer<WorldMeta> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -673,15 +667,14 @@ class BlocksClient private constructor(
     }
 
     /** The app type `WorldStats`. */
+    @Serializable(with = WorldStats.Companion.Wire::class)
     data class WorldStats(
         val overrides: ULong,
         val players: ULong,
     ) {
         companion object {
             /** `WorldStats`'s JSON form. */
-            fun serializer(): KSerializer<WorldStats> = Wire
-
-            private object Wire : KSerializer<WorldStats> {
+            internal object Wire : KSerializer<WorldStats> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

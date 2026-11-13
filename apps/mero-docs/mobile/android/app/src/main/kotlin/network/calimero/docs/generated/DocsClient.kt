@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,12 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `AttrDelta`: the ABI names it without its shape, so it is its JSON. */
-typealias AttrDelta = JsonElement
-
-/** The app type `Attrs`: the ABI names it without its shape, so it is its JSON. */
-typealias Attrs = JsonElement
 
 /**
  * The app's methods.
@@ -174,7 +169,7 @@ class DocsClient private constructor(
                 put("block", encode(String.serializer(), block))
                 put("base", encode(String.serializer(), base))
                 put("ops", encode(ListSerializer(Change.serializer()), ops))
-                put("anchor", encode(String.serializer().nullable, anchor))
+                if (anchor != null) put("anchor", encode(String.serializer().nullable, anchor))
             },
             idempotencyKey,
             Applied.serializer(),
@@ -524,7 +519,7 @@ class DocsClient private constructor(
             "insertBlock",
             buildJsonObject {
                 put("doc", encode(String.serializer(), doc))
-                put("after", encode(String.serializer().nullable, after))
+                if (after != null) put("after", encode(String.serializer().nullable, after))
                 put("kind", encode(String.serializer(), kind))
                 put("depth", encode(UByte.serializer(), depth))
             },
@@ -637,7 +632,7 @@ class DocsClient private constructor(
                 put("start", encode(UInt.serializer(), start))
                 put("end", encode(UInt.serializer(), end))
                 put("key", encode(String.serializer(), key))
-                put("value", encode(String.serializer().nullable, value))
+                if (value != null) put("value", encode(String.serializer().nullable, value))
             },
             idempotencyKey,
             String.serializer().nullable,
@@ -674,7 +669,7 @@ class DocsClient private constructor(
             buildJsonObject {
                 put("doc", encode(String.serializer(), doc))
                 put("block", encode(String.serializer(), block))
-                put("after", encode(String.serializer().nullable, after))
+                if (after != null) put("after", encode(String.serializer().nullable, after))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -786,8 +781,8 @@ class DocsClient private constructor(
             buildJsonObject {
                 put("query", encode(String.serializer(), query))
                 put("includeArchived", encode(Boolean.serializer(), includeArchived))
-                put("cursor", encode(UInt.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(UInt.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -808,7 +803,7 @@ class DocsClient private constructor(
                 put("doc", encode(String.serializer(), doc))
                 put("block", encode(String.serializer(), block))
                 put("key", encode(String.serializer(), key))
-                put("value", encode(String.serializer().nullable, value))
+                if (value != null) put("value", encode(String.serializer().nullable, value))
             },
             idempotencyKey,
             JsonElement.serializer(),
@@ -940,7 +935,7 @@ class DocsClient private constructor(
                 put("doc", encode(String.serializer(), doc))
                 put("base", encode(String.serializer(), base))
                 put("ops", encode(ListSerializer(Change.serializer()), ops))
-                put("anchor", encode(String.serializer().nullable, anchor))
+                if (anchor != null) put("anchor", encode(String.serializer().nullable, anchor))
             },
             idempotencyKey,
             TitleApplied.serializer(),
@@ -1257,6 +1252,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `Applied`. */
+    @Serializable(with = Applied.Companion.Wire::class)
     data class Applied(
         val applied: Boolean,
         val token: String? = null,
@@ -1267,9 +1263,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `Applied`'s JSON form. */
-            fun serializer(): KSerializer<Applied> = Wire
-
-            private object Wire : KSerializer<Applied> {
+            internal object Wire : KSerializer<Applied> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1305,6 +1299,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `Block`. */
+    @Serializable(with = Block.Companion.Wire::class)
     data class Block(
         val id: String,
         val kind: String,
@@ -1315,9 +1310,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `Block`'s JSON form. */
-            fun serializer(): KSerializer<Block> = Wire
-
-            private object Wire : KSerializer<Block> {
+            internal object Wire : KSerializer<Block> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1353,17 +1346,18 @@ class DocsClient private constructor(
     }
 
     /** The app type `Change`. */
+    @Serializable(with = Change.Companion.Wire::class)
     sealed interface Change {
         /** `Retain`. */
         data class Retain(
             val retain: UInt,
-            val attributes: AttrDelta?,
+            val attributes: JsonElement?,
         ) : Change
 
         /** `Insert`. */
         data class Insert(
             val insert: String,
-            val attributes: AttrDelta?,
+            val attributes: JsonElement?,
         ) : Change
 
         /** `Delete`. */
@@ -1373,9 +1367,7 @@ class DocsClient private constructor(
 
         companion object {
             /** `Change`'s JSON form. */
-            fun serializer(): KSerializer<Change> = Wire
-
-            private object Wire : KSerializer<Change> {
+            internal object Wire : KSerializer<Change> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1386,11 +1378,11 @@ class DocsClient private constructor(
                         when (value) {
                             is Retain -> buildJsonObject {
                                 put("retain", encode(UInt.serializer(), value.retain))
-                                put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
+                                if (value.attributes != null) put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
                             }
                             is Insert -> buildJsonObject {
                                 put("insert", encode(String.serializer(), value.insert))
-                                put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
+                                if (value.attributes != null) put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
                             }
                             is Delete -> buildJsonObject {
                                 put("delete", encode(UInt.serializer(), value.delete))
@@ -1426,6 +1418,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `CommentView`. */
+    @Serializable(with = CommentView.Companion.Wire::class)
     data class CommentView(
         val id: String,
         val author: String,
@@ -1435,9 +1428,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `CommentView`'s JSON form. */
-            fun serializer(): KSerializer<CommentView> = Wire
-
-            private object Wire : KSerializer<CommentView> {
+            internal object Wire : KSerializer<CommentView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1471,6 +1462,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `DocSearchHit`. */
+    @Serializable(with = DocSearchHit.Companion.Wire::class)
     data class DocSearchHit(
         val id: String,
         val title: String,
@@ -1480,9 +1472,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `DocSearchHit`'s JSON form. */
-            fun serializer(): KSerializer<DocSearchHit> = Wire
-
-            private object Wire : KSerializer<DocSearchHit> {
+            internal object Wire : KSerializer<DocSearchHit> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1516,6 +1506,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `DocSearchPage`. */
+    @Serializable(with = DocSearchPage.Companion.Wire::class)
     data class DocSearchPage(
         val hits: List<DocSearchHit>,
         val total: ULong,
@@ -1523,9 +1514,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `DocSearchPage`'s JSON form. */
-            fun serializer(): KSerializer<DocSearchPage> = Wire
-
-            private object Wire : KSerializer<DocSearchPage> {
+            internal object Wire : KSerializer<DocSearchPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1555,6 +1544,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `DocView`. */
+    @Serializable(with = DocView.Companion.Wire::class)
     data class DocView(
         val id: String,
         val title: String,
@@ -1568,9 +1558,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `DocView`'s JSON form. */
-            fun serializer(): KSerializer<DocView> = Wire
-
-            private object Wire : KSerializer<DocView> {
+            internal object Wire : KSerializer<DocView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1612,6 +1600,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `Run`. */
+    @Serializable(with = Run.Companion.Wire::class)
     data class Run(
         val replica: String,
         val counter: UInt,
@@ -1619,9 +1608,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `Run`'s JSON form. */
-            fun serializer(): KSerializer<Run> = Wire
-
-            private object Wire : KSerializer<Run> {
+            internal object Wire : KSerializer<Run> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1651,15 +1638,14 @@ class DocsClient private constructor(
     }
 
     /** The app type `Span`. */
+    @Serializable(with = Span.Companion.Wire::class)
     data class Span(
         val text: String,
-        val attributes: Attrs,
+        val attributes: JsonElement,
     ) {
         companion object {
             /** `Span`'s JSON form. */
-            fun serializer(): KSerializer<Span> = Wire
-
-            private object Wire : KSerializer<Span> {
+            internal object Wire : KSerializer<Span> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1687,6 +1673,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `TagView`. */
+    @Serializable(with = TagView.Companion.Wire::class)
     data class TagView(
         val key: String,
         val name: String,
@@ -1695,9 +1682,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `TagView`'s JSON form. */
-            fun serializer(): KSerializer<TagView> = Wire
-
-            private object Wire : KSerializer<TagView> {
+            internal object Wire : KSerializer<TagView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1729,6 +1714,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `TitleApplied`. */
+    @Serializable(with = TitleApplied.Companion.Wire::class)
     data class TitleApplied(
         val applied: Boolean,
         val token: String? = null,
@@ -1739,9 +1725,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `TitleApplied`'s JSON form. */
-            fun serializer(): KSerializer<TitleApplied> = Wire
-
-            private object Wire : KSerializer<TitleApplied> {
+            internal object Wire : KSerializer<TitleApplied> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1777,15 +1761,14 @@ class DocsClient private constructor(
     }
 
     /** The app type `TitleState`. */
+    @Serializable(with = TitleState.Companion.Wire::class)
     data class TitleState(
         val text: String,
         val ids: List<Run>,
     ) {
         companion object {
             /** `TitleState`'s JSON form. */
-            fun serializer(): KSerializer<TitleState> = Wire
-
-            private object Wire : KSerializer<TitleState> {
+            internal object Wire : KSerializer<TitleState> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1813,6 +1796,7 @@ class DocsClient private constructor(
     }
 
     /** The app type `ViewView`. */
+    @Serializable(with = ViewView.Companion.Wire::class)
     data class ViewView(
         val id: String,
         val name: String,
@@ -1821,9 +1805,7 @@ class DocsClient private constructor(
     ) {
         companion object {
             /** `ViewView`'s JSON form. */
-            fun serializer(): KSerializer<ViewView> = Wire
-
-            private object Wire : KSerializer<ViewView> {
+            internal object Wire : KSerializer<ViewView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

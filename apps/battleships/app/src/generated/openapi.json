@@ -2457,7 +2457,28 @@
         "type": "object"
       },
       "ShotsView": {
-        "description": "The app type `ShotsView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "shots": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer",
+              "x-calimero-type": "u8"
+            },
+            "type": "array"
+          },
+          "size": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u8"
+          }
+        },
+        "required": [
+          "size",
+          "shots"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ShotsView"
       },
       "Trap": {

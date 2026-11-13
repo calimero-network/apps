@@ -678,6 +678,71 @@
     "version": 1
   },
   "types": {
+    "Adjustments": {
+      "fields": [
+        [
+          "brightness",
+          "i32"
+        ],
+        [
+          "contrast",
+          "i32"
+        ],
+        [
+          "saturation",
+          "i32"
+        ],
+        [
+          "hue",
+          "i32"
+        ],
+        [
+          "exposure",
+          "i32"
+        ],
+        [
+          "blur",
+          "u32"
+        ],
+        [
+          "invert",
+          "bool"
+        ],
+        [
+          "curves",
+          "string",
+          {
+            "optional": true
+          }
+        ]
+      ],
+      "kind": "record"
+    },
+    "CursorState": {
+      "fields": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "account",
+          "string"
+        ],
+        [
+          "x",
+          "i64_number"
+        ],
+        [
+          "y",
+          "i64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "DocumentInfo": {
       "fields": [
         [
@@ -715,6 +780,182 @@
       ],
       "kind": "record"
     },
+    "Layer": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ],
+        [
+          "parentId",
+          "option<string>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "layerIndex",
+          "u32"
+        ],
+        [
+          "visible",
+          "bool"
+        ],
+        [
+          "locked",
+          "bool"
+        ],
+        [
+          "opacity",
+          "u8"
+        ],
+        [
+          "blendMode",
+          "string"
+        ],
+        [
+          "x",
+          "i64_number"
+        ],
+        [
+          "y",
+          "i64_number"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "rotation",
+          "i32"
+        ],
+        [
+          "scaleX",
+          "i32"
+        ],
+        [
+          "scaleY",
+          "i32"
+        ],
+        [
+          "skewX",
+          "i32",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "skewY",
+          "i32",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "flipH",
+          "bool",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "flipV",
+          "bool",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "warp",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "blobId",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "maskBlobId",
+          "option<string>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "fill",
+          "string",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "adjustments",
+          "Adjustments"
+        ],
+        [
+          "text",
+          "option<TextProps>",
+          {
+            "optional": true
+          }
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "avatar",
+          "option<string>"
+        ],
+        [
+          "joinedAt",
+          "u64_number"
+        ],
+        [
+          "usernameUpdatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
     "MemberRole": {
       "fields": [
         [
@@ -724,6 +965,42 @@
         [
           "role",
           "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TextProps": {
+      "fields": [
+        [
+          "content",
+          "string"
+        ],
+        [
+          "fontFamily",
+          "string"
+        ],
+        [
+          "fontSize",
+          "u32"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "bold",
+          "bool"
+        ],
+        [
+          "italic",
+          "bool"
+        ],
+        [
+          "align",
+          "option<string>",
+          {
+            "optional": true
+          }
         ]
       ],
       "kind": "record"

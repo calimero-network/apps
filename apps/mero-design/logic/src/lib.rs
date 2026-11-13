@@ -142,7 +142,8 @@ pub enum ElementData {
 }
 
 /// One element on the canvas.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct Element {
     /// Chosen by the caller; use a fresh UUID. Writing an existing id replaces that element.
@@ -192,7 +193,8 @@ pub struct Element {
 }
 
 /// A board member: someone who has called `join`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     /// The member's account, the id roles and ownership name.
@@ -237,7 +239,8 @@ pub struct MemberRole {
 }
 
 /// A reply in a comment thread.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentReply {
     /// Reply id, chosen by the caller.
@@ -251,7 +254,8 @@ pub struct CommentReply {
 }
 
 /// A comment pinned at a canvas point, with its replies.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
     /// Comment id, chosen by the caller.
@@ -273,7 +277,8 @@ pub struct Comment {
 }
 
 /// A pointer's last reported position.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
     /// Whose pointer this is: the account (v1: the device).
@@ -291,7 +296,8 @@ pub struct CursorState {
 
 /// One element's change in an `updateElements` call. Fields match `updateElement`'s
 /// arguments (snake_case here, as in v1); an omitted or `null` field is left unchanged.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, AbiType)]
+#[abi(plain)]
 pub struct ElementPatch {
     /// The element to change; an unknown id is skipped.
     pub id: String,

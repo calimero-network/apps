@@ -494,6 +494,27 @@
     "version": 1
   },
   "types": {
+    "AttachmentInput": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "mimeType",
+          "string"
+        ],
+        [
+          "size",
+          "u64_number"
+        ],
+        [
+          "blobIdStr",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
     "AttachmentView": {
       "fields": [
         [

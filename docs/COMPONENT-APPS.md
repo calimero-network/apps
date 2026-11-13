@@ -288,6 +288,12 @@ which may run ahead of `component-core-tag`: moving it regenerates every app's
 client in the same PR. A record or enum type in the ABI is an interface or a
 union only when the contract derives `Record` or `AbiType` and was built at
 `1.0.0-rc.18` or later; otherwise it is `unknown`, so cast it where it is used.
+A plain serde record whose `u64` / `i64` / `Vec<u8>` fields travel as JSON
+numbers and arrays (v1's shapes) derives `AbiType` with `#[abi(plain)]` on the
+struct or the field (core 1.0.0-rc.21): the ABI then says `u64_number` /
+`i64_number` / `byte_list` and the client types them `number` / `number[]`,
+with the JSON unchanged. A field with `#[serde(default)]` is optional in the
+ABI from the same release.
 
 ## CI
 

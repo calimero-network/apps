@@ -167,9 +167,9 @@ export function u64(n: number): string {
 }
 
 /**
- * The contract's answer as the screens read it: `hyperfeedTypes`' records
- * (v1's, field for field), each answer read as the type of the
- * {@link FeedBackend} method returning it.
+ * The contract's answer as the screens read it, where the generated type is
+ * not already it: a `FeedItem`, `FeedPage` or `SettingsView` (hand-kept in
+ * `hyperfeedTypes`, see there), or a call's `null` read as `void`.
  */
 function as<T>(answer: Promise<unknown>): Promise<T> {
   return answer as Promise<T>;
@@ -191,27 +191,27 @@ export function clusterBackend(client: HyperfeedClient, apps: OtherApps, images:
     completeAnswer: (id, outcome, note) => as(client.completeAnswer({ id, outcome, note })),
     completeAction: (id, outcome, note) => as(client.completeAction({ id, outcome, note })),
     callApp: (app, method, args) => apps.call(app, method, args),
-    lenses: () => as(client.lenses()),
-    decideLens: (appKey, applicationId, decision) => as(client.decideLens({ appKey, applicationId, decision })),
-    actionSets: () => as(client.actionSets()),
+    lenses: () => client.lenses(),
+    decideLens: (appKey, applicationId, decision) => client.decideLens({ appKey, applicationId, decision }),
+    actionSets: () => client.actionSets(),
     decideActions: (appKey, applicationId, decision) =>
       as(client.decideActions({ appKey, applicationId, decision })),
     setActionMode: (appKey, action, mode) => client.setActionMode({ appKey, action, mode }).then(() => undefined),
     chain: (chain) => as(client.chain({ chain })),
-    checkpoint: (chain) => client.checkpoint({ chain }).then((c) => (c ?? null) as CheckpointView | null),
-    situations: () => as(client.situations()),
-    autoruns: () => as(client.autoruns()),
-    stopAutorun: (id) => as(client.stopAutorun({ id })),
-    watches: (chain) => as(client.watches({ chain })),
-    cancelWatch: (id) => as(client.cancelWatch({ id, note: null })),
-    mergeWhenGreen: (chain, repo, pr) => as(client.addWatch({ input: mergeWatchInput(chain, repo, pr) })),
-    prs: (chain) => as(client.prs({ chain })),
-    links: (chain) => as(client.links({ chain })),
-    addLink: (chain, subject, label) => as(client.addLink({ chain, input: { subject, label, by: "you" } })),
+    checkpoint: (chain) => client.checkpoint({ chain }).then((c) => c ?? null),
+    situations: () => client.situations(),
+    autoruns: () => client.autoruns(),
+    stopAutorun: (id) => client.stopAutorun({ id }),
+    watches: (chain) => client.watches({ chain }),
+    cancelWatch: (id) => client.cancelWatch({ id, note: null }),
+    mergeWhenGreen: (chain, repo, pr) => client.addWatch({ input: mergeWatchInput(chain, repo, pr) }),
+    prs: (chain) => client.prs({ chain }),
+    links: (chain) => client.links({ chain }),
+    addLink: (chain, subject, label) => client.addLink({ chain, input: { subject, label, by: "you" } }),
     removeLink: (chain, subject) => client.removeLink({ chain, subject }).then(() => undefined),
-    pushKey: () => as(client.pushKey()),
-    pushDevices: () => as(client.pushDevices()),
-    addPushDevice: (input) => as(client.addPushDevice({ input })),
+    pushKey: () => client.pushKey(),
+    pushDevices: () => client.pushDevices(),
+    addPushDevice: (input) => client.addPushDevice({ input }),
     removePushDevice: (endpoint) => client.removePushDevice({ endpoint }).then(() => undefined),
     // Text alone keeps to `say`; only images need `sayWith`. `headline` and
     // `mode` are optional arguments, sent only when given.
@@ -223,23 +223,23 @@ export function clusterBackend(client: HyperfeedClient, apps: OtherApps, images:
       ),
     answerAsk: (id, _chain, text) => as(client.answerAsk({ id, text })),
     stop: (id) => as(client.stop({ id })),
-    markSeen: (ids) => as(client.markSeen({ ids })),
-    markAllSeen: () => as(client.markAllSeen()),
-    setPolicy: (appKey, agent, notifications) => as(client.setPolicy({ appKey, agent, notifications })),
+    markSeen: (ids) => client.markSeen({ ids }),
+    markAllSeen: () => client.markAllSeen(),
+    setPolicy: (appKey, agent, notifications) => client.setPolicy({ appKey, agent, notifications }),
     setGuard: (category, enabled) => as(client.setGuard({ category, enabled })),
     setPaused: (paused) => as(client.setPaused({ paused })),
     setAccess: (agent, folders, shell, web) => as(client.setAccess({ agent, folders, shell, web })),
     setAssignment: (app, agent) => as(client.setAssignment({ appKey: app, agent })),
     addAgentAccount: (account, name) => as(client.addAgentAccount({ account, name })),
     removeAgentAccount: (account) => as(client.removeAgentAccount({ account })),
-    addRule: (text) => as(client.addRule({ text })),
+    addRule: (text) => client.addRule({ text }),
     removeRule: (id) => as(client.removeRule({ id })),
-    addAgentRule: (agent, text) => as(client.addAgentRule({ agent, text })),
+    addAgentRule: (agent, text) => client.addAgentRule({ agent, text }),
     removeAgentRule: (id) => as(client.removeAgentRule({ id })),
-    approveRule: (id) => as(client.approveRule({ id })),
-    dismissRule: (id) => as(client.dismissRule({ id })),
-    archive: (chains, until = 0) => as(client.archive({ chains, until: u64(until) })),
-    unarchive: (chains) => as(client.unarchive({ chains })),
+    approveRule: (id) => client.approveRule({ id }),
+    dismissRule: (id) => client.dismissRule({ id }),
+    archive: (chains, until = 0) => client.archive({ chains, until: u64(until) }),
+    unarchive: (chains) => client.unarchive({ chains }),
     recordNotification: (input) => as(client.recordNotification({ input })),
     recordAction: (input) => as(client.recordAction({ input })),
   };

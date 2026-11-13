@@ -177,7 +177,38 @@
     },
     "schemas": {
       "AccessView": {
-        "description": "The app type `AccessView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/Folder"
+            },
+            "type": "array"
+          },
+          "shell": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "web": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "agent",
+          "folders",
+          "shell",
+          "web",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AccessView"
       },
       "ActionChangedEvent": {
@@ -306,10 +337,7 @@
           "executor",
           "note",
           "chain",
-          "ask",
-          "grant",
-          "subject",
-          "send_call"
+          "ask"
         ],
         "type": "object",
         "x-calimero-abi-type": "ActionInput"
@@ -350,7 +378,42 @@
         "type": "object"
       },
       "ActionSetView": {
-        "description": "The app type `ActionSetView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionDef"
+            },
+            "type": "array"
+          },
+          "app": {
+            "type": "string"
+          },
+          "application_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "app",
+          "application_id",
+          "actions",
+          "summary",
+          "status",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ActionSetView"
       },
       "ActionSetsArgs": {
@@ -770,7 +833,27 @@
         "type": "object"
       },
       "AgentAccountView": {
-        "description": "The app type `AgentAccountView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "added_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "name",
+          "added_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AgentAccountView"
       },
       "AgentAckArgs": {
@@ -1039,7 +1122,31 @@
         "type": "object"
       },
       "AgentRuleView": {
-        "description": "The app type `AgentRuleView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "agent",
+          "text",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AgentRuleView"
       },
       "AgentSayArgs": {
@@ -1173,7 +1280,23 @@
         "type": "object"
       },
       "AgentView": {
-        "description": "The app type `AgentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "seen_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "name",
+          "seen_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AgentView"
       },
       "AgentWorkArgs": {
@@ -1380,6 +1503,25 @@
         ],
         "type": "object"
       },
+      "AppCount": {
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "app",
+          "count"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "AppCount"
+      },
       "ApproveRuleArgs": {
         "description": "The arguments of `approveRule`, by name.",
         "properties": {
@@ -1547,11 +1689,55 @@
         "x-calimero-abi-type": "Ask"
       },
       "AssignmentView": {
-        "description": "The app type `AssignmentView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "app": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "app",
+          "agent",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AssignmentView"
       },
       "Attachment": {
-        "description": "The app type `Attachment`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "blob_id": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "blob_id",
+          "name",
+          "mime",
+          "size"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Attachment"
       },
       "AutorunChangedEvent": {
@@ -1570,7 +1756,55 @@
         "type": "object"
       },
       "AutorunView": {
-        "description": "The app type `AutorunView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "fired_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "set_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stopped_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "id",
+          "chain",
+          "at",
+          "set_at",
+          "status",
+          "stopped_at",
+          "fired_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "AutorunView"
       },
       "AutorunsArgs": {
@@ -2364,7 +2598,63 @@
         "type": "object"
       },
       "CheckpointView": {
-        "description": "The app type `CheckpointView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "branches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "done": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          },
+          "prs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "worktrees": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "chain",
+          "done",
+          "next",
+          "branches",
+          "worktrees",
+          "prs",
+          "questions",
+          "author",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "CheckpointView"
       },
       "ClaimChainArgs": {
@@ -3482,12 +3772,299 @@
         ],
         "type": "object"
       },
+      "FeedCounts": {
+        "properties": {
+          "agent": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "all": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "archived": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "needs_you": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "notifications": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "all",
+          "agent",
+          "notifications",
+          "needs_you",
+          "archived"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "FeedCounts"
+      },
       "FeedItem": {
-        "description": "The app type `FeedItem`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "answers": {
+            "type": "string"
+          },
+          "answers_superseded": {
+            "type": "boolean"
+          },
+          "app": {
+            "type": "string"
+          },
+          "ask": {
+            "$ref": "#/components/schemas/Ask"
+          },
+          "at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "body": {
+            "type": "string"
+          },
+          "breach": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "chain_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "chain_len": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "doing": {
+            "type": "string"
+          },
+          "doing_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "draft": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "executor": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "held_by": {
+            "type": "string"
+          },
+          "held_since": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intent_hash": {
+            "type": "string"
+          },
+          "item_type": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "needs_you": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "reply_call": {
+            "type": "string"
+          },
+          "reply_to": {
+            "type": "string"
+          },
+          "reviewed_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "seen": {
+            "type": "boolean"
+          },
+          "source_context": {
+            "type": "string"
+          },
+          "source_label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TurnStep"
+            },
+            "type": "array"
+          },
+          "stop_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "superseded_by": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "undoable": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "chain",
+          "chain_len",
+          "chain_at",
+          "app",
+          "source_context",
+          "source_label",
+          "title",
+          "body",
+          "at",
+          "needs_you",
+          "status",
+          "status_at",
+          "note",
+          "ask",
+          "history",
+          "method",
+          "category",
+          "why",
+          "intent_hash",
+          "executor",
+          "undoable",
+          "breach",
+          "reviewed_at",
+          "from",
+          "event",
+          "seen",
+          "reply_to",
+          "item_type",
+          "fields",
+          "reply_call"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FeedItem"
       },
       "FeedPage": {
-        "description": "The app type `FeedPage`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/AppCount"
+            },
+            "type": "array"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/FeedCounts"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedItem"
+            },
+            "type": "array"
+          },
+          "next_before": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "items",
+          "counts",
+          "apps",
+          "next_before"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "FeedPage"
       },
       "FeedRequest": {
@@ -3836,7 +4413,39 @@
         "type": "object"
       },
       "LeaseView": {
-        "description": "The app type `LeaseView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "claimed_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "expires_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "session": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "session",
+          "agent",
+          "claimed_at",
+          "expires_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LeaseView"
       },
       "LensChangedEvent": {
@@ -3855,7 +4464,39 @@
         "type": "object"
       },
       "LensView": {
-        "description": "The app type `LensView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "application_id": {
+            "type": "string"
+          },
+          "spec": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "app",
+          "application_id",
+          "spec",
+          "summary",
+          "status",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LensView"
       },
       "LensesArgs": {
@@ -3932,7 +4573,62 @@
         "x-calimero-abi-type": "LinkInput"
       },
       "LinkView": {
-        "description": "The app type `LinkView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "activity": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "added_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "app": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "subject",
+          "app",
+          "context",
+          "item",
+          "label",
+          "by",
+          "added_at",
+          "activity",
+          "last_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LinkView"
       },
       "LinksArgs": {
@@ -4120,12 +4816,185 @@
         ],
         "type": "object"
       },
+      "MemoHits": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "hits": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "agent",
+          "hits"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "MemoHits"
+      },
       "MemoInput": {
-        "description": "The app type `MemoInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "args": {
+            "type": "string"
+          },
+          "attested": {
+            "type": "boolean"
+          },
+          "class": {
+            "type": "string"
+          },
+          "fetched_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "hits": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "key": {
+            "type": "string"
+          },
+          "last_hit_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "ttl_ms": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "unchanged": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "scope",
+          "tool",
+          "args",
+          "value",
+          "class",
+          "ttl_ms",
+          "fetched_at",
+          "unchanged",
+          "hits",
+          "last_hit_at",
+          "attested"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemoInput"
       },
       "MemoView": {
-        "description": "The app type `MemoView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "args": {
+            "type": "string"
+          },
+          "attested": {
+            "type": "boolean"
+          },
+          "class": {
+            "type": "string"
+          },
+          "fetched_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/MemoHits"
+            },
+            "type": "array"
+          },
+          "key": {
+            "type": "string"
+          },
+          "last_hit_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "ttl_ms": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "unchanged": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "scope",
+          "tool",
+          "args",
+          "value",
+          "class",
+          "ttl_ms",
+          "fetched_at",
+          "unchanged",
+          "hits",
+          "last_hit_at",
+          "agent",
+          "attested",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemoView"
       },
       "MemosArgs": {
@@ -4316,10 +5185,7 @@
           "event",
           "needs_you",
           "chain",
-          "ask",
-          "item_type",
-          "fields",
-          "reply_call"
+          "ask"
         ],
         "type": "object",
         "x-calimero-abi-type": "NotificationInput"
@@ -4434,11 +5300,203 @@
         "type": "object"
       },
       "PrInput": {
-        "description": "The app type `PrInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "base": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "string"
+          },
+          "checks_passed": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "checks_pending": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "checks_total": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "conflicts": {
+            "type": "boolean"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "boolean"
+          },
+          "failing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "head_sha": {
+            "type": "string"
+          },
+          "pr": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "stacked_merged": {
+            "type": "boolean"
+          },
+          "stacked_on": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "repo",
+          "pr",
+          "title",
+          "state",
+          "draft",
+          "base",
+          "default_branch",
+          "conflicts",
+          "head_sha",
+          "checks",
+          "checks_total",
+          "checks_passed",
+          "checks_pending",
+          "failing",
+          "stacked_on",
+          "stacked_merged"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PrInput"
       },
       "PrView": {
-        "description": "The app type `PrView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "base": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "string"
+          },
+          "checks_passed": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "checks_pending": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "checks_total": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "conflicts": {
+            "type": "boolean"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "boolean"
+          },
+          "failing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "head_sha": {
+            "type": "string"
+          },
+          "pr": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "seen_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "stacked_merged": {
+            "type": "boolean"
+          },
+          "stacked_on": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "repo",
+          "pr",
+          "title",
+          "state",
+          "draft",
+          "base",
+          "default_branch",
+          "conflicts",
+          "head_sha",
+          "checks",
+          "checks_total",
+          "checks_passed",
+          "checks_pending",
+          "failing",
+          "stacked_on",
+          "stacked_merged",
+          "seen_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PrView"
       },
       "ProposeActionsArgs": {
@@ -4743,7 +5801,39 @@
         "x-calimero-abi-type": "PushDeviceInput"
       },
       "PushDeviceView": {
-        "description": "The app type `PushDeviceView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "added_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "auth": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "p256dh": {
+            "type": "string"
+          },
+          "quiet": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "endpoint",
+          "p256dh",
+          "auth",
+          "name",
+          "quiet",
+          "added_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PushDeviceView"
       },
       "PushDevicesArgs": {
@@ -4850,7 +5940,27 @@
         "type": "object"
       },
       "PushKeyView": {
-        "description": "The app type `PushKeyView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "by": {
+            "type": "string"
+          },
+          "public_key": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "public_key",
+          "by",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "PushKeyView"
       },
       "PutMemosArgs": {
@@ -4959,7 +6069,30 @@
         "x-calimero-abi-type": "ReachLine"
       },
       "ReachView": {
-        "description": "The app type `ReachView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReachLine"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent",
+          "lines",
+          "at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "ReachView"
       },
       "Receipt": {
@@ -5640,11 +6773,63 @@
         "type": "object"
       },
       "RuleProposalView": {
-        "description": "The app type `RuleProposalView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "chain": {
+            "type": "string"
+          },
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "why",
+          "chain",
+          "status",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "RuleProposalView"
       },
       "RuleView": {
-        "description": "The app type `RuleView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "created_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "RuleView"
       },
       "SayArgs": {
@@ -6573,16 +7758,7 @@
           "paused",
           "policies",
           "guards",
-          "agents",
-          "rules",
-          "rule_proposals",
-          "message_modes",
-          "access",
-          "reach",
-          "assignments",
-          "agent_rules",
-          "action_modes",
-          "agent_accounts"
+          "agents"
         ],
         "type": "object",
         "x-calimero-abi-type": "SettingsView"
@@ -6599,11 +7775,129 @@
         "type": "object"
       },
       "SituationInput": {
-        "description": "The app type `SituationInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "apps": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "author": {
+            "type": "string"
+          },
+          "due_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommend": {
+            "type": "string"
+          },
+          "score": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "sources": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "headline",
+          "summary",
+          "recommend",
+          "reason",
+          "score",
+          "due_at",
+          "sources",
+          "apps",
+          "author"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SituationInput"
       },
       "SituationView": {
-        "description": "The app type `SituationView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "apps": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "author": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "due_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "headline": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommend": {
+            "type": "string"
+          },
+          "score": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "sources": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "chain",
+          "headline",
+          "summary",
+          "recommend",
+          "reason",
+          "score",
+          "due_at",
+          "sources",
+          "apps",
+          "author",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SituationView"
       },
       "SituationsArgs": {
@@ -6728,6 +8022,30 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "Step": {
+        "properties": {
+          "at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "note": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "note",
+          "at"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Step"
       },
       "StopArgs": {
         "description": "The arguments of `stop`, by name.",
@@ -6941,7 +8259,31 @@
         "type": "object"
       },
       "TurnStep": {
-        "description": "The app type `TurnStep`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TurnStep"
       },
       "UnarchiveArgs": {
@@ -7042,7 +8384,47 @@
         "type": "object"
       },
       "WatchInput": {
-        "description": "The app type `WatchInput`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "pr": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "condition",
+          "repo",
+          "pr",
+          "branch",
+          "action",
+          "text",
+          "agent"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WatchInput"
       },
       "WatchSeenArgs": {
@@ -7106,7 +8488,99 @@
         "type": "object"
       },
       "WatchView": {
-        "description": "The app type `WatchView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "fired_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "fired_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "pr": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "seen": {
+            "type": "string"
+          },
+          "seen_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "id",
+          "chain",
+          "condition",
+          "repo",
+          "pr",
+          "branch",
+          "action",
+          "text",
+          "agent",
+          "status",
+          "note",
+          "seen",
+          "seen_at",
+          "fired_by",
+          "fired_at",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "WatchView"
       },
       "WatchesArgs": {

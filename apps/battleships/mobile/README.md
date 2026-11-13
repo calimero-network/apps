@@ -47,9 +47,9 @@ The apps call the component contract as the web app does, through `BattleshipsCl
 from `../logic/res/abi.json` by core's `mero-app-build codegen` into
 `ios/BattleshipsCore/Sources/BattleshipsCore/Generated/` and `android/.../generated/`. Run
 `scripts/mobile-codegen.sh` at the repo root after an ABI change (CI's `Mobile clients` workflow
-fails on a stale client). Until the logic derives `AbiType`, the ABI names the contract's types
-without their shape, so the client answers their JSON and `Contract.swift` / `core/Contract.kt`
-read it into the types they keep:
+fails on a stale client). The ABI describes every type the contract takes and answers (`ShotsView`'s
+`shots`, a JSON array of bytes, is `#[abi(plain)]`), so `Contract.swift` / `core/Contract.kt` name
+the generated types:
 
 - calls `registerPlayer`, `createMatch`, `commitBoard`, `proposeShot`, `acknowledgeShot`,
   `revealBoard`; views `getPlayers`, `getMatches`, `getPlayerStats`, `getHistory`, `getShots`,

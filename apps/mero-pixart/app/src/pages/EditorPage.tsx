@@ -216,8 +216,8 @@ export default function EditorPage() {
       const [d, ls, ms, cs] = await Promise.all([
         pix.getDocument(),
         (pix.getLayers() as Promise<Layer[]>),
-        (pix.getMembers() as Promise<Member[]>),
-        (pix.getCursors() as Promise<CursorState[]>),
+        pix.getMembers(),
+        pix.getCursors(),
       ]);
       if (d) setDoc(d);
       if (Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); }
@@ -272,7 +272,7 @@ export default function EditorPage() {
       const role = await (pix.myRole() as Promise<Role>).catch(() => "viewer" as Role);
       if (!cancelled) setRole(role);
 
-      const ms = await (pix.getMembers() as Promise<Member[]>).catch(() => [] as Member[]);
+      const ms = await pix.getMembers().catch((): Member[] => []);
       if (!cancelled && Array.isArray(ms)) {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
@@ -280,7 +280,7 @@ export default function EditorPage() {
         setOnProject(alreadyMember);
       }
 
-      const cs = await (pix.getCursors() as Promise<CursorState[]>).catch(() => [] as CursorState[]);
+      const cs = await pix.getCursors().catch((): CursorState[] => []);
       if (!cancelled && Array.isArray(cs)) setCursors(cs);
 
       if (!cancelled) { setReady(true); clearHistory(); }

@@ -143,8 +143,8 @@ pub const OBJECT_KINDS: &[&str] = &[
 //
 // Plain serde structs: their fields stay snake_case on the wire, as in v1, and
 // their `u64` fields stay JSON numbers (unix milliseconds and byte sizes, all
-// far below 2^53). Only a `u64` that is a method's own parameter (`now`)
-// travels as a decimal string.
+// far below 2^53), which `#[abi(plain)]` describes (`u64_number`). Only a `u64`
+// that is a method's own parameter (`now`) travels as a decimal string.
 
 /// A point or a direction in scene units, or Euler angles in radians.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, AbiType)]
@@ -190,7 +190,8 @@ pub struct Material {
 }
 
 /// One object in the scene.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 pub struct SceneObject {
     /// Chosen by the caller; use a fresh UUID. Writing an existing id replaces that object.
     pub id: String,
@@ -230,7 +231,8 @@ pub struct SceneObject {
 /// The blob is the app's binary mesh format (the frontend's `meshcodec.ts`).
 /// The contract cannot read it; `vertex_count` and friends are what the writer
 /// says is inside, and a reader checks them against what it decodes.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 pub struct MeshRef {
     /// The object this is the shape of.
     pub id: String,
@@ -252,7 +254,8 @@ pub struct MeshRef {
 
 /// An image a material can use, held in a blob, as sent and answered. Stored
 /// as a [`TextureRow`].
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 pub struct TextureRef {
     /// Chosen by the caller; use a fresh UUID.
     pub id: String,
@@ -333,7 +336,8 @@ pub struct Lock {
 }
 
 /// What surrounds the scene: its name, the background and the ambient light.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, AbiType)]
+#[abi(plain)]
 pub struct Environment {
     /// The scene's name; `""` shows the instance's name (the frontend fills it in).
     pub name: String,
@@ -373,7 +377,8 @@ pub struct SceneInfo {
 }
 
 /// One row of an asset's history, numbered from 1 in the order it was written.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
+#[abi(plain)]
 pub struct VersionView {
     /// 1 for the first version.
     pub number: u32,
@@ -392,7 +397,8 @@ pub struct VersionView {
 }
 
 /// A live check-out.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
+#[abi(plain)]
 pub struct LockView {
     pub asset_id: String,
     pub holder: String,
@@ -403,7 +409,8 @@ pub struct LockView {
 }
 
 /// A member with their effective role.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, AbiType)]
+#[abi(plain)]
 pub struct MemberView {
     pub id: String,
     pub name: String,

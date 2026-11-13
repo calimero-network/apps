@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -486,6 +487,7 @@ class MeroChessClient private constructor(
     }
 
     /** The app type `GameSummary`. */
+    @Serializable(with = GameSummary.Companion.Wire::class)
     data class GameSummary(
         val index: UInt,
         val startedAt: ULong,
@@ -497,9 +499,7 @@ class MeroChessClient private constructor(
     ) {
         companion object {
             /** `GameSummary`'s JSON form. */
-            fun serializer(): KSerializer<GameSummary> = Wire
-
-            private object Wire : KSerializer<GameSummary> {
+            internal object Wire : KSerializer<GameSummary> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -537,6 +537,7 @@ class MeroChessClient private constructor(
     }
 
     /** The app type `MoveView`. */
+    @Serializable(with = MoveView.Companion.Wire::class)
     data class MoveView(
         val ply: UInt,
         val uci: String,
@@ -546,9 +547,7 @@ class MeroChessClient private constructor(
     ) {
         companion object {
             /** `MoveView`'s JSON form. */
-            fun serializer(): KSerializer<MoveView> = Wire
-
-            private object Wire : KSerializer<MoveView> {
+            internal object Wire : KSerializer<MoveView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -582,6 +581,7 @@ class MeroChessClient private constructor(
     }
 
     /** The app type `PlayerView`. */
+    @Serializable(with = PlayerView.Companion.Wire::class)
     data class PlayerView(
         val id: String,
         val name: String,
@@ -590,9 +590,7 @@ class MeroChessClient private constructor(
     ) {
         companion object {
             /** `PlayerView`'s JSON form. */
-            fun serializer(): KSerializer<PlayerView> = Wire
-
-            private object Wire : KSerializer<PlayerView> {
+            internal object Wire : KSerializer<PlayerView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -624,6 +622,7 @@ class MeroChessClient private constructor(
     }
 
     /** The app type `SeatView`. */
+    @Serializable(with = SeatView.Companion.Wire::class)
     data class SeatView(
         val seat: String,
         val member: String,
@@ -632,9 +631,7 @@ class MeroChessClient private constructor(
     ) {
         companion object {
             /** `SeatView`'s JSON form. */
-            fun serializer(): KSerializer<SeatView> = Wire
-
-            private object Wire : KSerializer<SeatView> {
+            internal object Wire : KSerializer<SeatView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -666,6 +663,7 @@ class MeroChessClient private constructor(
     }
 
     /** The app type `TableView`. */
+    @Serializable(with = TableView.Companion.Wire::class)
     data class TableView(
         val title: String,
         val createdAt: ULong,
@@ -690,9 +688,7 @@ class MeroChessClient private constructor(
     ) {
         companion object {
             /** `TableView`'s JSON form. */
-            fun serializer(): KSerializer<TableView> = Wire
-
-            private object Wire : KSerializer<TableView> {
+            internal object Wire : KSerializer<TableView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

@@ -4,6 +4,14 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `AttachmentInput`. */
+export interface AttachmentInput {
+  name: string;
+  mimeType: string;
+  size: number;
+  blobIdStr: string;
+}
+
 /** The app type `AttachmentView`. */
 export interface AttachmentView {
   name: string;
@@ -86,9 +94,6 @@ export interface UserProfile {
   username: string;
   avatar: string | null;
 }
-
-/** The app type `AttachmentInput`: the ABI names it without its shape. */
-export type AttachmentInput = unknown;
 
 /** The arguments of the app's `init`: `initArgs` of `client.apps.create`. */
 export interface InitArgs {

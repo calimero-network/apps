@@ -45,11 +45,6 @@ export interface PlayerStatsView {
   games_played: number;
 }
 
-export interface ShotsView {
-  size: number;
-  shots: number[];
-}
-
 export interface PendingShotView {
   shot_id: number;
   x: number;
@@ -105,9 +100,9 @@ export function base64url(bytes: Uint8Array): string {
 // (`src/generated/client.ts`): camelCase arguments, bytes as base64url
 // (`base64url` above). The ABI describes its records, so the generated client
 // types what the contract answers; the `to*` functions convert them to the
-// shapes the screens use, where they are read. `ShotsView` stays undescribed
-// (its `shots` is a JSON array of bytes, which the ABI cannot spell), so it is
-// typed where it is read.
+// shapes the screens use, where they are read. `ShotsView` needs none: its
+// `shots` is a JSON array of bytes, which the contract marks `#[abi(plain)]`
+// (`byte_list`), so the generated type is the screens' shape.
 
 /** A lobby's contract, and the highest log index its answers reflected (0 before the first). */
 export interface Lobby {

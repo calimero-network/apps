@@ -773,7 +773,36 @@
         "type": "object"
       },
       "Environment": {
-        "description": "The app type `Environment`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "ambient_color": {
+            "type": "string"
+          },
+          "ambient_intensity": {
+            "format": "double",
+            "type": "number"
+          },
+          "background": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "name",
+          "background",
+          "ambient_color",
+          "ambient_intensity",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "Environment"
       },
       "EnvironmentChangedEvent": {
@@ -1578,7 +1607,39 @@
         "type": "object"
       },
       "LockView": {
-        "description": "The app type `LockView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "holder": {
+            "type": "string"
+          },
+          "mine": {
+            "type": "boolean"
+          },
+          "since": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "asset_id",
+          "holder",
+          "since",
+          "expires_at",
+          "mine"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "LockView"
       },
       "LockedError": {
@@ -1606,6 +1667,66 @@
         ],
         "type": "object"
       },
+      "Material": {
+        "properties": {
+          "base_color_map": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "emissive": {
+            "type": "string"
+          },
+          "emissive_map": {
+            "type": "string"
+          },
+          "flat_shading": {
+            "type": "boolean"
+          },
+          "metalness": {
+            "format": "double",
+            "type": "number"
+          },
+          "normal_map": {
+            "type": "string"
+          },
+          "normal_scale": {
+            "format": "double",
+            "type": "number"
+          },
+          "opacity": {
+            "format": "double",
+            "type": "number"
+          },
+          "orm_map": {
+            "type": "string"
+          },
+          "roughness": {
+            "format": "double",
+            "type": "number"
+          },
+          "wireframe": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "color",
+          "metalness",
+          "roughness",
+          "opacity",
+          "emissive",
+          "wireframe",
+          "flat_shading",
+          "base_color_map",
+          "normal_map",
+          "normal_scale",
+          "orm_map",
+          "emissive_map"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Material"
+      },
       "MemberChangedEvent": {
         "properties": {
           "member": {
@@ -1618,7 +1739,31 @@
         "type": "object"
       },
       "MemberView": {
-        "description": "The app type `MemberView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "joined_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "joined_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MemberView"
       },
       "MeshChangedEvent": {
@@ -1633,7 +1778,61 @@
         "type": "object"
       },
       "MeshRef": {
-        "description": "The app type `MeshRef`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "blob_id": {
+            "type": "string"
+          },
+          "has_uvs": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "triangle_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "vertex_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "id",
+          "blob_id",
+          "size",
+          "vertex_count",
+          "triangle_count",
+          "has_uvs",
+          "author",
+          "message",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "MeshRef"
       },
       "MyRoleArgs": {
@@ -2068,7 +2267,79 @@
         "x-calimero-abi-type": "SceneInfo"
       },
       "SceneObject": {
-        "description": "The app type `SceneObject`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intensity": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "material": {
+            "$ref": "#/components/schemas/Material"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          },
+          "position": {
+            "$ref": "#/components/schemas/Vec3"
+          },
+          "rotation": {
+            "$ref": "#/components/schemas/Vec3"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/Vec3"
+          },
+          "segments": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "visible": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "parent",
+          "position",
+          "rotation",
+          "scale",
+          "visible",
+          "material",
+          "segments",
+          "intensity",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "SceneObject"
       },
       "SetEnvironmentArgs": {
@@ -2146,7 +2417,69 @@
         "type": "object"
       },
       "TextureRef": {
-        "description": "The app type `TextureRef`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "blob_id": {
+            "type": "string"
+          },
+          "color_space": {
+            "type": "string"
+          },
+          "height": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "updated_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "width": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "blob_id",
+          "size",
+          "width",
+          "height",
+          "mime",
+          "color_space",
+          "author",
+          "message",
+          "updated_at"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "TextureRef"
       },
       "TexturesDeletedEvent": {
@@ -2191,8 +2524,92 @@
         ],
         "type": "object"
       },
+      "Vec3": {
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Vec3"
+      },
       "VersionView": {
-        "description": "The app type `VersionView`. The ABI names it without describing its shape, so any JSON value is accepted here.",
+        "properties": {
+          "a": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "author": {
+            "type": "string"
+          },
+          "b": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "blob_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "number": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "size": {
+            "description": "A u64_number as a JSON number, as plain serde writes it; JavaScript loses precision past 2^53.",
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u64_number"
+          }
+        },
+        "required": [
+          "number",
+          "kind",
+          "blob_id",
+          "size",
+          "a",
+          "b",
+          "author",
+          "message",
+          "created_at",
+          "current"
+        ],
+        "type": "object",
         "x-calimero-abi-type": "VersionView"
       }
     },

@@ -177,7 +177,7 @@ public struct MerrariaClient: Sendable {
         public var y: Double
         public var dir: Double
         public var sel: UInt8
-        public var action: String
+        public var action: String?
 
         public init(
             name: String,
@@ -185,7 +185,7 @@ public struct MerrariaClient: Sendable {
             y: Double,
             dir: Double,
             sel: UInt8,
-            action: String
+            action: String? = nil
         ) {
             self.name = name
             self.x = x
@@ -202,7 +202,7 @@ public struct MerrariaClient: Sendable {
             let v2 = try fields.decode(Double.self, forKey: Key("y"))
             let v3 = try fields.decode(Double.self, forKey: Key("dir"))
             let v4 = try fields.decode(UInt8.self, forKey: Key("sel"))
-            let v5 = try fields.decode(String.self, forKey: Key("action"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("action"))
             self.name = v0
             self.x = v1
             self.y = v2
@@ -218,7 +218,7 @@ public struct MerrariaClient: Sendable {
             try fields.encode(self.y, forKey: Key("y"))
             try fields.encode(self.dir, forKey: Key("dir"))
             try fields.encode(self.sel, forKey: Key("sel"))
-            try fields.encode(self.action, forKey: Key("action"))
+            try fields.encodeIfPresent(self.action, forKey: Key("action"))
         }
     }
 
@@ -300,8 +300,8 @@ public struct MerrariaClient: Sendable {
         minIndex: Int = 0
     ) async throws -> OverridesPage {
         var args = Args()
-        args.add("cursor", cursor)
-        args.add("limit", limit)
+        if let value = cursor { args.add("cursor", value) }
+        if let value = limit { args.add("limit", value) }
         let result = try await invokeView("getOverrides", args, stale: stale, minIndex: minIndex, as: OverridesPage.self)
         return result
     }

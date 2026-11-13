@@ -4,6 +4,61 @@
 
 import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
+/** The app type `Environment`. */
+export interface Environment {
+  name: string;
+  background: string;
+  ambient_color: string;
+  ambient_intensity: number;
+  updated_at: number;
+}
+
+/** The app type `LockView`. */
+export interface LockView {
+  asset_id: string;
+  holder: string;
+  since: number;
+  expires_at: number;
+  mine: boolean;
+}
+
+/** The app type `Material`. */
+export interface Material {
+  color: string;
+  metalness: number;
+  roughness: number;
+  opacity: number;
+  emissive: string;
+  wireframe: boolean;
+  flat_shading: boolean;
+  base_color_map: string;
+  normal_map: string;
+  normal_scale: number;
+  orm_map: string;
+  emissive_map: string;
+}
+
+/** The app type `MemberView`. */
+export interface MemberView {
+  id: string;
+  name: string;
+  role: string;
+  joined_at: number;
+}
+
+/** The app type `MeshRef`. */
+export interface MeshRef {
+  id: string;
+  blob_id: string;
+  size: number;
+  vertex_count: number;
+  triangle_count: number;
+  has_uvs: boolean;
+  author: string;
+  message: string;
+  updated_at: number;
+}
+
 /** The app type `SceneInfo`. */
 export interface SceneInfo {
   name: string;
@@ -16,26 +71,59 @@ export interface SceneInfo {
   my_role: string;
 }
 
-/** The app type `Environment`: the ABI names it without its shape. */
-export type Environment = unknown;
+/** The app type `SceneObject`. */
+export interface SceneObject {
+  id: string;
+  name: string;
+  kind: string;
+  parent: string;
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+  visible: boolean;
+  material: Material;
+  segments: number;
+  intensity: number;
+  created_by: string;
+  created_at: number;
+  updated_at: number;
+}
 
-/** The app type `LockView`: the ABI names it without its shape. */
-export type LockView = unknown;
+/** The app type `TextureRef`. */
+export interface TextureRef {
+  id: string;
+  name: string;
+  blob_id: string;
+  size: number;
+  width: number;
+  height: number;
+  mime: string;
+  color_space: string;
+  author: string;
+  message: string;
+  updated_at: number;
+}
 
-/** The app type `MemberView`: the ABI names it without its shape. */
-export type MemberView = unknown;
+/** The app type `Vec3`. */
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
-/** The app type `MeshRef`: the ABI names it without its shape. */
-export type MeshRef = unknown;
-
-/** The app type `SceneObject`: the ABI names it without its shape. */
-export type SceneObject = unknown;
-
-/** The app type `TextureRef`: the ABI names it without its shape. */
-export type TextureRef = unknown;
-
-/** The app type `VersionView`: the ABI names it without its shape. */
-export type VersionView = unknown;
+/** The app type `VersionView`. */
+export interface VersionView {
+  number: number;
+  kind: string;
+  blob_id: string;
+  size: number;
+  a: number;
+  b: number;
+  author: string;
+  message: string;
+  created_at: number;
+  current: boolean;
+}
 
 /** The arguments of `checkIn`. */
 export interface CheckInArgs {

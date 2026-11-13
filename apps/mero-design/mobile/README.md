@@ -113,10 +113,11 @@ a contract change; CI's `Mobile clients` workflow fails on a stale client. Do no
 - iOS: `ios/DesignCore/Sources/DesignCore/Generated/DesignClient.swift`
 - Android: `android/app/src/main/kotlin/network/calimero/design/generated/client/DesignClient.kt`
 
-Until the logic derives `AbiType`, the ABI names the board's types (elements, members, comments,
-cursors, the board) without their shape, so the client takes and answers their JSON and the types
-first generated from v1's ABI read it (`ios/DesignCore/Sources/DesignCore/Records.swift`,
-`android/.../generated/DesignRecords.kt`). `getElements` (at most 1,000 elements) is read whole
+The ABI describes the board's types (elements, members, comments, cursors, the board; their
+64-bit fields are JSON numbers, which the logic marks `#[abi(plain)]`), so the client answers them
+typed. The screens still read the types first generated from v1's ABI
+(`ios/DesignCore/Sources/DesignCore/Records.swift`, `android/.../generated/DesignRecords.kt`),
+through each answer's JSON, until they move to the generated ones. `getElements` (at most 1,000 elements) is read whole
 through `getElementsPage` (`allElements()`), as the web app's `src/api/meroDesign.ts` does.
 
 ## Build and test

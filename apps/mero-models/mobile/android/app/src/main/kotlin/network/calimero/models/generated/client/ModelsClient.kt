@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,27 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `Environment`: the ABI names it without its shape, so it is its JSON. */
-typealias Environment = JsonElement
-
-/** The app type `LockView`: the ABI names it without its shape, so it is its JSON. */
-typealias LockView = JsonElement
-
-/** The app type `MemberView`: the ABI names it without its shape, so it is its JSON. */
-typealias MemberView = JsonElement
-
-/** The app type `MeshRef`: the ABI names it without its shape, so it is its JSON. */
-typealias MeshRef = JsonElement
-
-/** The app type `SceneObject`: the ABI names it without its shape, so it is its JSON. */
-typealias SceneObject = JsonElement
-
-/** The app type `TextureRef`: the ABI names it without its shape, so it is its JSON. */
-typealias TextureRef = JsonElement
-
-/** The app type `VersionView`: the ABI names it without its shape, so it is its JSON. */
-typealias VersionView = JsonElement
 
 /**
  * The app's methods.
@@ -175,7 +155,7 @@ class ModelsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MemberView.serializer()),
         )
 
     /** view `getObjects`. */
@@ -188,7 +168,7 @@ class ModelsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(SceneObject.serializer()),
         )
 
     /** view `getObjectsByIds`. */
@@ -204,7 +184,7 @@ class ModelsClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(SceneObject.serializer()),
         )
 
     /** view `getScene`. */
@@ -265,7 +245,7 @@ class ModelsClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(VersionView.serializer()),
         )
 
     /** view `listLocks`. */
@@ -281,7 +261,7 @@ class ModelsClient private constructor(
             },
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(LockView.serializer()),
         )
 
     /** view `listMeshes`. */
@@ -294,7 +274,7 @@ class ModelsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(MeshRef.serializer()),
         )
 
     /** view `listTextures`. */
@@ -307,7 +287,7 @@ class ModelsClient private constructor(
             JsonObject(emptyMap()),
             stale,
             minIndex,
-            ListSerializer(JsonElement.serializer()),
+            ListSerializer(TextureRef.serializer()),
         )
 
     /** view `myRole`. */
@@ -332,7 +312,7 @@ class ModelsClient private constructor(
         invokeCall(
             "putMesh",
             buildJsonObject {
-                put("mesh", encode(JsonElement.serializer(), mesh))
+                put("mesh", encode(MeshRef.serializer(), mesh))
                 put("now", encode(U64AsString, now))
             },
             idempotencyKey,
@@ -349,7 +329,7 @@ class ModelsClient private constructor(
         invokeCall(
             "putObjects",
             buildJsonObject {
-                put("objects", encode(ListSerializer(JsonElement.serializer()), objects))
+                put("objects", encode(ListSerializer(SceneObject.serializer()), objects))
                 put("now", encode(U64AsString, now))
             },
             idempotencyKey,
@@ -365,7 +345,7 @@ class ModelsClient private constructor(
         invokeCall(
             "putTexture",
             buildJsonObject {
-                put("texture", encode(JsonElement.serializer(), texture))
+                put("texture", encode(TextureRef.serializer(), texture))
                 put("now", encode(U64AsString, now))
             },
             idempotencyKey,
@@ -397,7 +377,7 @@ class ModelsClient private constructor(
         invokeCall(
             "setEnvironment",
             buildJsonObject {
-                put("environment", encode(JsonElement.serializer(), environment))
+                put("environment", encode(Environment.serializer(), environment))
                 put("now", encode(U64AsString, now))
             },
             idempotencyKey,
@@ -577,7 +557,258 @@ class ModelsClient private constructor(
         }
     }
 
+    /** The app type `Environment`. */
+    @Serializable(with = Environment.Companion.Wire::class)
+    data class Environment(
+        val name: String,
+        val background: String,
+        val ambient_color: String,
+        val ambient_intensity: Double,
+        val updated_at: ULong,
+    ) {
+        companion object {
+            /** `Environment`'s JSON form. */
+            internal object Wire : KSerializer<Environment> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Environment,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("background", encode(String.serializer(), value.background))
+                            put("ambient_color", encode(String.serializer(), value.ambient_color))
+                            put("ambient_intensity", encode(Double.serializer(), value.ambient_intensity))
+                            put("updated_at", encode(ULong.serializer(), value.updated_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Environment {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Environment")
+                    return Environment(
+                        name = field(fields, "name", String.serializer()),
+                        background = field(fields, "background", String.serializer()),
+                        ambient_color = field(fields, "ambient_color", String.serializer()),
+                        ambient_intensity = field(fields, "ambient_intensity", Double.serializer()),
+                        updated_at = field(fields, "updated_at", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `LockView`. */
+    @Serializable(with = LockView.Companion.Wire::class)
+    data class LockView(
+        val asset_id: String,
+        val holder: String,
+        val since: ULong,
+        val expires_at: ULong,
+        val mine: Boolean,
+    ) {
+        companion object {
+            /** `LockView`'s JSON form. */
+            internal object Wire : KSerializer<LockView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: LockView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("asset_id", encode(String.serializer(), value.asset_id))
+                            put("holder", encode(String.serializer(), value.holder))
+                            put("since", encode(ULong.serializer(), value.since))
+                            put("expires_at", encode(ULong.serializer(), value.expires_at))
+                            put("mine", encode(Boolean.serializer(), value.mine))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): LockView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "LockView")
+                    return LockView(
+                        asset_id = field(fields, "asset_id", String.serializer()),
+                        holder = field(fields, "holder", String.serializer()),
+                        since = field(fields, "since", ULong.serializer()),
+                        expires_at = field(fields, "expires_at", ULong.serializer()),
+                        mine = field(fields, "mine", Boolean.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Material`. */
+    @Serializable(with = Material.Companion.Wire::class)
+    data class Material(
+        val color: String,
+        val metalness: Double,
+        val roughness: Double,
+        val opacity: Double,
+        val emissive: String,
+        val wireframe: Boolean,
+        val flat_shading: Boolean,
+        val base_color_map: String,
+        val normal_map: String,
+        val normal_scale: Double,
+        val orm_map: String,
+        val emissive_map: String,
+    ) {
+        companion object {
+            /** `Material`'s JSON form. */
+            internal object Wire : KSerializer<Material> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Material,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("color", encode(String.serializer(), value.color))
+                            put("metalness", encode(Double.serializer(), value.metalness))
+                            put("roughness", encode(Double.serializer(), value.roughness))
+                            put("opacity", encode(Double.serializer(), value.opacity))
+                            put("emissive", encode(String.serializer(), value.emissive))
+                            put("wireframe", encode(Boolean.serializer(), value.wireframe))
+                            put("flat_shading", encode(Boolean.serializer(), value.flat_shading))
+                            put("base_color_map", encode(String.serializer(), value.base_color_map))
+                            put("normal_map", encode(String.serializer(), value.normal_map))
+                            put("normal_scale", encode(Double.serializer(), value.normal_scale))
+                            put("orm_map", encode(String.serializer(), value.orm_map))
+                            put("emissive_map", encode(String.serializer(), value.emissive_map))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Material {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Material")
+                    return Material(
+                        color = field(fields, "color", String.serializer()),
+                        metalness = field(fields, "metalness", Double.serializer()),
+                        roughness = field(fields, "roughness", Double.serializer()),
+                        opacity = field(fields, "opacity", Double.serializer()),
+                        emissive = field(fields, "emissive", String.serializer()),
+                        wireframe = field(fields, "wireframe", Boolean.serializer()),
+                        flat_shading = field(fields, "flat_shading", Boolean.serializer()),
+                        base_color_map = field(fields, "base_color_map", String.serializer()),
+                        normal_map = field(fields, "normal_map", String.serializer()),
+                        normal_scale = field(fields, "normal_scale", Double.serializer()),
+                        orm_map = field(fields, "orm_map", String.serializer()),
+                        emissive_map = field(fields, "emissive_map", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MemberView`. */
+    @Serializable(with = MemberView.Companion.Wire::class)
+    data class MemberView(
+        val id: String,
+        val name: String,
+        val role: String,
+        val joined_at: ULong,
+    ) {
+        companion object {
+            /** `MemberView`'s JSON form. */
+            internal object Wire : KSerializer<MemberView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MemberView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("role", encode(String.serializer(), value.role))
+                            put("joined_at", encode(ULong.serializer(), value.joined_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MemberView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MemberView")
+                    return MemberView(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        role = field(fields, "role", String.serializer()),
+                        joined_at = field(fields, "joined_at", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `MeshRef`. */
+    @Serializable(with = MeshRef.Companion.Wire::class)
+    data class MeshRef(
+        val id: String,
+        val blob_id: String,
+        val size: ULong,
+        val vertex_count: UInt,
+        val triangle_count: UInt,
+        val has_uvs: Boolean,
+        val author: String,
+        val message: String,
+        val updated_at: ULong,
+    ) {
+        companion object {
+            /** `MeshRef`'s JSON form. */
+            internal object Wire : KSerializer<MeshRef> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: MeshRef,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("blob_id", encode(String.serializer(), value.blob_id))
+                            put("size", encode(ULong.serializer(), value.size))
+                            put("vertex_count", encode(UInt.serializer(), value.vertex_count))
+                            put("triangle_count", encode(UInt.serializer(), value.triangle_count))
+                            put("has_uvs", encode(Boolean.serializer(), value.has_uvs))
+                            put("author", encode(String.serializer(), value.author))
+                            put("message", encode(String.serializer(), value.message))
+                            put("updated_at", encode(ULong.serializer(), value.updated_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): MeshRef {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "MeshRef")
+                    return MeshRef(
+                        id = field(fields, "id", String.serializer()),
+                        blob_id = field(fields, "blob_id", String.serializer()),
+                        size = field(fields, "size", ULong.serializer()),
+                        vertex_count = field(fields, "vertex_count", UInt.serializer()),
+                        triangle_count = field(fields, "triangle_count", UInt.serializer()),
+                        has_uvs = field(fields, "has_uvs", Boolean.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        message = field(fields, "message", String.serializer()),
+                        updated_at = field(fields, "updated_at", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `SceneInfo`. */
+    @Serializable(with = SceneInfo.Companion.Wire::class)
     data class SceneInfo(
         val name: String,
         val environment: Environment,
@@ -590,9 +821,7 @@ class ModelsClient private constructor(
     ) {
         companion object {
             /** `SceneInfo`'s JSON form. */
-            fun serializer(): KSerializer<SceneInfo> = Wire
-
-            private object Wire : KSerializer<SceneInfo> {
+            internal object Wire : KSerializer<SceneInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -602,7 +831,7 @@ class ModelsClient private constructor(
                     (encoder as JsonEncoder).encodeJsonElement(
                         buildJsonObject {
                             put("name", encode(String.serializer(), value.name))
-                            put("environment", encode(JsonElement.serializer(), value.environment))
+                            put("environment", encode(Environment.serializer(), value.environment))
                             put("object_count", encode(UInt.serializer(), value.object_count))
                             put("mesh_count", encode(UInt.serializer(), value.mesh_count))
                             put("texture_count", encode(UInt.serializer(), value.texture_count))
@@ -618,13 +847,243 @@ class ModelsClient private constructor(
                     val fields = obj(data, "SceneInfo")
                     return SceneInfo(
                         name = field(fields, "name", String.serializer()),
-                        environment = field(fields, "environment", JsonElement.serializer()),
+                        environment = field(fields, "environment", Environment.serializer()),
                         object_count = field(fields, "object_count", UInt.serializer()),
                         mesh_count = field(fields, "mesh_count", UInt.serializer()),
                         texture_count = field(fields, "texture_count", UInt.serializer()),
                         member_count = field(fields, "member_count", UInt.serializer()),
                         me = field(fields, "me", String.serializer()),
                         my_role = field(fields, "my_role", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `SceneObject`. */
+    @Serializable(with = SceneObject.Companion.Wire::class)
+    data class SceneObject(
+        val id: String,
+        val name: String,
+        val kind: String,
+        val parent: String,
+        val position: Vec3,
+        val rotation: Vec3,
+        val scale: Vec3,
+        val visible: Boolean,
+        val material: Material,
+        val segments: UInt,
+        val intensity: Double,
+        val created_by: String,
+        val created_at: ULong,
+        val updated_at: ULong,
+    ) {
+        companion object {
+            /** `SceneObject`'s JSON form. */
+            internal object Wire : KSerializer<SceneObject> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: SceneObject,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("parent", encode(String.serializer(), value.parent))
+                            put("position", encode(Vec3.serializer(), value.position))
+                            put("rotation", encode(Vec3.serializer(), value.rotation))
+                            put("scale", encode(Vec3.serializer(), value.scale))
+                            put("visible", encode(Boolean.serializer(), value.visible))
+                            put("material", encode(Material.serializer(), value.material))
+                            put("segments", encode(UInt.serializer(), value.segments))
+                            put("intensity", encode(Double.serializer(), value.intensity))
+                            put("created_by", encode(String.serializer(), value.created_by))
+                            put("created_at", encode(ULong.serializer(), value.created_at))
+                            put("updated_at", encode(ULong.serializer(), value.updated_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): SceneObject {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "SceneObject")
+                    return SceneObject(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        parent = field(fields, "parent", String.serializer()),
+                        position = field(fields, "position", Vec3.serializer()),
+                        rotation = field(fields, "rotation", Vec3.serializer()),
+                        scale = field(fields, "scale", Vec3.serializer()),
+                        visible = field(fields, "visible", Boolean.serializer()),
+                        material = field(fields, "material", Material.serializer()),
+                        segments = field(fields, "segments", UInt.serializer()),
+                        intensity = field(fields, "intensity", Double.serializer()),
+                        created_by = field(fields, "created_by", String.serializer()),
+                        created_at = field(fields, "created_at", ULong.serializer()),
+                        updated_at = field(fields, "updated_at", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `TextureRef`. */
+    @Serializable(with = TextureRef.Companion.Wire::class)
+    data class TextureRef(
+        val id: String,
+        val name: String,
+        val blob_id: String,
+        val size: ULong,
+        val width: UInt,
+        val height: UInt,
+        val mime: String,
+        val color_space: String,
+        val author: String,
+        val message: String,
+        val updated_at: ULong,
+    ) {
+        companion object {
+            /** `TextureRef`'s JSON form. */
+            internal object Wire : KSerializer<TextureRef> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: TextureRef,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("id", encode(String.serializer(), value.id))
+                            put("name", encode(String.serializer(), value.name))
+                            put("blob_id", encode(String.serializer(), value.blob_id))
+                            put("size", encode(ULong.serializer(), value.size))
+                            put("width", encode(UInt.serializer(), value.width))
+                            put("height", encode(UInt.serializer(), value.height))
+                            put("mime", encode(String.serializer(), value.mime))
+                            put("color_space", encode(String.serializer(), value.color_space))
+                            put("author", encode(String.serializer(), value.author))
+                            put("message", encode(String.serializer(), value.message))
+                            put("updated_at", encode(ULong.serializer(), value.updated_at))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): TextureRef {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "TextureRef")
+                    return TextureRef(
+                        id = field(fields, "id", String.serializer()),
+                        name = field(fields, "name", String.serializer()),
+                        blob_id = field(fields, "blob_id", String.serializer()),
+                        size = field(fields, "size", ULong.serializer()),
+                        width = field(fields, "width", UInt.serializer()),
+                        height = field(fields, "height", UInt.serializer()),
+                        mime = field(fields, "mime", String.serializer()),
+                        color_space = field(fields, "color_space", String.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        message = field(fields, "message", String.serializer()),
+                        updated_at = field(fields, "updated_at", ULong.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `Vec3`. */
+    @Serializable(with = Vec3.Companion.Wire::class)
+    data class Vec3(
+        val x: Double,
+        val y: Double,
+        val z: Double,
+    ) {
+        companion object {
+            /** `Vec3`'s JSON form. */
+            internal object Wire : KSerializer<Vec3> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: Vec3,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("x", encode(Double.serializer(), value.x))
+                            put("y", encode(Double.serializer(), value.y))
+                            put("z", encode(Double.serializer(), value.z))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): Vec3 {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "Vec3")
+                    return Vec3(
+                        x = field(fields, "x", Double.serializer()),
+                        y = field(fields, "y", Double.serializer()),
+                        z = field(fields, "z", Double.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `VersionView`. */
+    @Serializable(with = VersionView.Companion.Wire::class)
+    data class VersionView(
+        val number: UInt,
+        val kind: String,
+        val blob_id: String,
+        val size: ULong,
+        val a: UInt,
+        val b: UInt,
+        val author: String,
+        val message: String,
+        val created_at: ULong,
+        val current: Boolean,
+    ) {
+        companion object {
+            /** `VersionView`'s JSON form. */
+            internal object Wire : KSerializer<VersionView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: VersionView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("number", encode(UInt.serializer(), value.number))
+                            put("kind", encode(String.serializer(), value.kind))
+                            put("blob_id", encode(String.serializer(), value.blob_id))
+                            put("size", encode(ULong.serializer(), value.size))
+                            put("a", encode(UInt.serializer(), value.a))
+                            put("b", encode(UInt.serializer(), value.b))
+                            put("author", encode(String.serializer(), value.author))
+                            put("message", encode(String.serializer(), value.message))
+                            put("created_at", encode(ULong.serializer(), value.created_at))
+                            put("current", encode(Boolean.serializer(), value.current))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): VersionView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "VersionView")
+                    return VersionView(
+                        number = field(fields, "number", UInt.serializer()),
+                        kind = field(fields, "kind", String.serializer()),
+                        blob_id = field(fields, "blob_id", String.serializer()),
+                        size = field(fields, "size", ULong.serializer()),
+                        a = field(fields, "a", UInt.serializer()),
+                        b = field(fields, "b", UInt.serializer()),
+                        author = field(fields, "author", String.serializer()),
+                        message = field(fields, "message", String.serializer()),
+                        created_at = field(fields, "created_at", ULong.serializer()),
+                        current = field(fields, "current", Boolean.serializer()),
                     )
                 }
             }

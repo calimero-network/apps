@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,9 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `AttachmentInput`: the ABI names it without its shape, so it is its JSON. */
-typealias AttachmentInput = JsonElement
 
 /**
  * The app's methods.
@@ -92,7 +90,7 @@ class ChatClient private constructor(
             "deleteMessage",
             buildJsonObject {
                 put("messageId", encode(String.serializer(), messageId))
-                put("parentId", encode(String.serializer().nullable, parentId))
+                if (parentId != null) put("parentId", encode(String.serializer().nullable, parentId))
             },
             idempotencyKey,
             String.serializer(),
@@ -112,7 +110,7 @@ class ChatClient private constructor(
                 put("messageId", encode(String.serializer(), messageId))
                 put("newMessage", encode(String.serializer(), newMessage))
                 put("timestamp", encode(U64AsString, timestamp))
-                put("parentId", encode(String.serializer().nullable, parentId))
+                if (parentId != null) put("parentId", encode(String.serializer().nullable, parentId))
             },
             idempotencyKey,
             MessageView.serializer(),
@@ -127,7 +125,7 @@ class ChatClient private constructor(
         invokeView(
             "getChannelInfo",
             buildJsonObject {
-                put("channel", encode(String.serializer().nullable, channel))
+                if (channel != null) put("channel", encode(String.serializer().nullable, channel))
             },
             stale,
             minIndex,
@@ -204,10 +202,10 @@ class ChatClient private constructor(
         invokeView(
             "getMessages",
             buildJsonObject {
-                put("parentMessage", encode(String.serializer().nullable, parentMessage))
-                put("limit", encode(UInt.serializer().nullable, limit))
-                put("offset", encode(UInt.serializer().nullable, offset))
-                put("searchTerm", encode(String.serializer().nullable, searchTerm))
+                if (parentMessage != null) put("parentMessage", encode(String.serializer().nullable, parentMessage))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
+                if (offset != null) put("offset", encode(UInt.serializer().nullable, offset))
+                if (searchTerm != null) put("searchTerm", encode(String.serializer().nullable, searchTerm))
             },
             stale,
             minIndex,
@@ -225,7 +223,7 @@ class ChatClient private constructor(
             "getMessagesFrom",
             buildJsonObject {
                 put("start", encode(U64AsString, start))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -308,8 +306,8 @@ class ChatClient private constructor(
         invokeView(
             "markMessagesAsRead",
             buildJsonObject {
-                put("channel", encode(String.serializer().nullable, channel))
-                put("timestamp", encode(U64AsString.nullable, timestamp))
+                if (channel != null) put("channel", encode(String.serializer().nullable, channel))
+                if (timestamp != null) put("timestamp", encode(U64AsString.nullable, timestamp))
             },
             stale,
             minIndex,
@@ -361,8 +359,8 @@ class ChatClient private constructor(
             "searchMessages",
             buildJsonObject {
                 put("query", encode(String.serializer(), query))
-                put("cursor", encode(String.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -381,8 +379,8 @@ class ChatClient private constructor(
             "searchMessagesScan",
             buildJsonObject {
                 put("query", encode(String.serializer(), query))
-                put("cursor", encode(String.serializer().nullable, cursor))
-                put("limit", encode(UInt.serializer().nullable, limit))
+                if (cursor != null) put("cursor", encode(String.serializer().nullable, cursor))
+                if (limit != null) put("limit", encode(UInt.serializer().nullable, limit))
             },
             stale,
             minIndex,
@@ -406,10 +404,10 @@ class ChatClient private constructor(
                 put("message", encode(String.serializer(), message))
                 put("mentions", encode(ListSerializer(String.serializer()), mentions))
                 put("mentionsUsernames", encode(ListSerializer(String.serializer()), mentionsUsernames))
-                put("parentMessage", encode(String.serializer().nullable, parentMessage))
+                if (parentMessage != null) put("parentMessage", encode(String.serializer().nullable, parentMessage))
                 put("timestamp", encode(U64AsString, timestamp))
-                put("files", encode(ListSerializer(JsonElement.serializer()).nullable, files))
-                put("images", encode(ListSerializer(JsonElement.serializer()).nullable, images))
+                if (files != null) put("files", encode(ListSerializer(AttachmentInput.serializer()).nullable, files))
+                if (images != null) put("images", encode(ListSerializer(AttachmentInput.serializer()).nullable, images))
             },
             idempotencyKey,
             MessageView.serializer(),
@@ -441,7 +439,7 @@ class ChatClient private constructor(
             "setProfile",
             buildJsonObject {
                 put("username", encode(String.serializer(), username))
-                put("avatar", encode(String.serializer().nullable, avatar))
+                if (avatar != null) put("avatar", encode(String.serializer().nullable, avatar))
             },
             idempotencyKey,
             String.serializer(),
@@ -456,8 +454,8 @@ class ChatClient private constructor(
         invokeCall(
             "updateInfo",
             buildJsonObject {
-                put("name", encode(String.serializer().nullable, name))
-                put("description", encode(String.serializer().nullable, description))
+                if (name != null) put("name", encode(String.serializer().nullable, name))
+                if (description != null) put("description", encode(String.serializer().nullable, description))
             },
             idempotencyKey,
             String.serializer(),
@@ -647,7 +645,49 @@ class ChatClient private constructor(
         }
     }
 
+    /** The app type `AttachmentInput`. */
+    @Serializable(with = AttachmentInput.Companion.Wire::class)
+    data class AttachmentInput(
+        val name: String,
+        val mimeType: String,
+        val size: ULong,
+        val blobIdStr: String,
+    ) {
+        companion object {
+            /** `AttachmentInput`'s JSON form. */
+            internal object Wire : KSerializer<AttachmentInput> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: AttachmentInput,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("name", encode(String.serializer(), value.name))
+                            put("mimeType", encode(String.serializer(), value.mimeType))
+                            put("size", encode(ULong.serializer(), value.size))
+                            put("blobIdStr", encode(String.serializer(), value.blobIdStr))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): AttachmentInput {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "AttachmentInput")
+                    return AttachmentInput(
+                        name = field(fields, "name", String.serializer()),
+                        mimeType = field(fields, "mimeType", String.serializer()),
+                        size = field(fields, "size", ULong.serializer()),
+                        blobIdStr = field(fields, "blobIdStr", String.serializer()),
+                    )
+                }
+            }
+        }
+    }
+
     /** The app type `AttachmentView`. */
+    @Serializable(with = AttachmentView.Companion.Wire::class)
     data class AttachmentView(
         val name: String,
         val mimeType: String,
@@ -657,9 +697,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `AttachmentView`'s JSON form. */
-            fun serializer(): KSerializer<AttachmentView> = Wire
-
-            private object Wire : KSerializer<AttachmentView> {
+            internal object Wire : KSerializer<AttachmentView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -693,6 +731,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `ContextInfo`. */
+    @Serializable(with = ContextInfo.Companion.Wire::class)
     data class ContextInfo(
         val name: String,
         val contextType: ContextType,
@@ -702,9 +741,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `ContextInfo`'s JSON form. */
-            fun serializer(): KSerializer<ContextInfo> = Wire
-
-            private object Wire : KSerializer<ContextInfo> {
+            internal object Wire : KSerializer<ContextInfo> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -738,6 +775,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `ContextType`. */
+    @Serializable(with = ContextType.Companion.Wire::class)
     sealed interface ContextType {
         /** `Channel`. */
         data object Channel : ContextType
@@ -747,9 +785,7 @@ class ChatClient private constructor(
 
         companion object {
             /** `ContextType`'s JSON form. */
-            fun serializer(): KSerializer<ContextType> = Wire
-
-            private object Wire : KSerializer<ContextType> {
+            internal object Wire : KSerializer<ContextType> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -778,6 +814,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `FullMessageResponse`. */
+    @Serializable(with = FullMessageResponse.Companion.Wire::class)
     data class FullMessageResponse(
         val totalCount: UInt,
         val messages: List<MessageView>,
@@ -785,9 +822,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `FullMessageResponse`'s JSON form. */
-            fun serializer(): KSerializer<FullMessageResponse> = Wire
-
-            private object Wire : KSerializer<FullMessageResponse> {
+            internal object Wire : KSerializer<FullMessageResponse> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -817,6 +852,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `MessageView`. */
+    @Serializable(with = MessageView.Companion.Wire::class)
     data class MessageView(
         val index: ULong,
         val timestamp: ULong,
@@ -836,9 +872,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `MessageView`'s JSON form. */
-            fun serializer(): KSerializer<MessageView> = Wire
-
-            private object Wire : KSerializer<MessageView> {
+            internal object Wire : KSerializer<MessageView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -892,6 +926,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `Role`. */
+    @Serializable(with = Role.Companion.Wire::class)
     sealed interface Role {
         /** `User`. */
         data object User : Role
@@ -907,9 +942,7 @@ class ChatClient private constructor(
 
         companion object {
             /** `Role`'s JSON form. */
-            fun serializer(): KSerializer<Role> = Wire
-
-            private object Wire : KSerializer<Role> {
+            internal object Wire : KSerializer<Role> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -942,6 +975,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `SearchHit`. */
+    @Serializable(with = SearchHit.Companion.Wire::class)
     data class SearchHit(
         val id: String,
         val parentMessageId: String? = null,
@@ -955,9 +989,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `SearchHit`'s JSON form. */
-            fun serializer(): KSerializer<SearchHit> = Wire
-
-            private object Wire : KSerializer<SearchHit> {
+            internal object Wire : KSerializer<SearchHit> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -999,6 +1031,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `SearchPage`. */
+    @Serializable(with = SearchPage.Companion.Wire::class)
     data class SearchPage(
         val hits: List<SearchHit>,
         val nextCursor: String? = null,
@@ -1006,9 +1039,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `SearchPage`'s JSON form. */
-            fun serializer(): KSerializer<SearchPage> = Wire
-
-            private object Wire : KSerializer<SearchPage> {
+            internal object Wire : KSerializer<SearchPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -1038,6 +1069,7 @@ class ChatClient private constructor(
     }
 
     /** The app type `UserProfile`. */
+    @Serializable(with = UserProfile.Companion.Wire::class)
     data class UserProfile(
         val identity: String,
         val username: String,
@@ -1045,9 +1077,7 @@ class ChatClient private constructor(
     ) {
         companion object {
             /** `UserProfile`'s JSON form. */
-            fun serializer(): KSerializer<UserProfile> = Wire
-
-            private object Wire : KSerializer<UserProfile> {
+            internal object Wire : KSerializer<UserProfile> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

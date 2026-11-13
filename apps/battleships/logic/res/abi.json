@@ -470,6 +470,19 @@
         ]
       ],
       "kind": "record"
+    },
+    "ShotsView": {
+      "fields": [
+        [
+          "size",
+          "u8"
+        ],
+        [
+          "shots",
+          "byte_list"
+        ]
+      ],
+      "kind": "record"
     }
   },
   "world": "calimero:app@0.5.1"

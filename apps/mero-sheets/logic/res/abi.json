@@ -1760,7 +1760,10 @@
             ],
             [
               "attributes",
-              "option<Attrs>"
+              "option<Attrs>",
+              {
+                "optional": true
+              }
             ]
           ],
           "name": "Retain"
@@ -1773,7 +1776,10 @@
             ],
             [
               "attributes",
-              "option<Attrs>"
+              "option<Attrs>",
+              {
+                "optional": true
+              }
             ]
           ],
           "name": "Insert"

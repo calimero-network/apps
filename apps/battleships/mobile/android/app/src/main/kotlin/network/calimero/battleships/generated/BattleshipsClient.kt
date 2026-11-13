@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -40,9 +41,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-/** The app type `ShotsView`: the ABI names it without its shape, so it is its JSON. */
-typealias ShotsView = JsonElement
 
 /**
  * The app's methods.
@@ -184,7 +182,7 @@ class BattleshipsClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            ShotsView.serializer(),
         )
 
     /** view `getMatchState`. */
@@ -258,7 +256,7 @@ class BattleshipsClient private constructor(
             },
             stale,
             minIndex,
-            JsonElement.serializer(),
+            ShotsView.serializer(),
         )
 
     /** view `getWinner`. */
@@ -548,6 +546,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `MatchRecord`. */
+    @Serializable(with = MatchRecord.Companion.Wire::class)
     data class MatchRecord(
         val match_id: String,
         val winner: String,
@@ -556,9 +555,7 @@ class BattleshipsClient private constructor(
     ) {
         companion object {
             /** `MatchRecord`'s JSON form. */
-            fun serializer(): KSerializer<MatchRecord> = Wire
-
-            private object Wire : KSerializer<MatchRecord> {
+            internal object Wire : KSerializer<MatchRecord> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -590,6 +587,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `MatchStateView`. */
+    @Serializable(with = MatchStateView.Companion.Wire::class)
     data class MatchStateView(
         val standing: String,
         val committed: List<String>,
@@ -602,9 +600,7 @@ class BattleshipsClient private constructor(
     ) {
         companion object {
             /** `MatchStateView`'s JSON form. */
-            fun serializer(): KSerializer<MatchStateView> = Wire
-
-            private object Wire : KSerializer<MatchStateView> {
+            internal object Wire : KSerializer<MatchStateView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -644,6 +640,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `MatchStatus`. */
+    @Serializable(with = MatchStatus.Companion.Wire::class)
     sealed interface MatchStatus {
         /** `Pending`. */
         data object Pending : MatchStatus
@@ -656,9 +653,7 @@ class BattleshipsClient private constructor(
 
         companion object {
             /** `MatchStatus`'s JSON form. */
-            fun serializer(): KSerializer<MatchStatus> = Wire
-
-            private object Wire : KSerializer<MatchStatus> {
+            internal object Wire : KSerializer<MatchStatus> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -689,6 +684,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `MatchSummary`. */
+    @Serializable(with = MatchSummary.Companion.Wire::class)
     data class MatchSummary(
         val match_id: String,
         val player1: String,
@@ -700,9 +696,7 @@ class BattleshipsClient private constructor(
     ) {
         companion object {
             /** `MatchSummary`'s JSON form. */
-            fun serializer(): KSerializer<MatchSummary> = Wire
-
-            private object Wire : KSerializer<MatchSummary> {
+            internal object Wire : KSerializer<MatchSummary> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -740,6 +734,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `PendingShotView`. */
+    @Serializable(with = PendingShotView.Companion.Wire::class)
     data class PendingShotView(
         val shot_id: UInt,
         val x: UByte,
@@ -748,9 +743,7 @@ class BattleshipsClient private constructor(
     ) {
         companion object {
             /** `PendingShotView`'s JSON form. */
-            fun serializer(): KSerializer<PendingShotView> = Wire
-
-            private object Wire : KSerializer<PendingShotView> {
+            internal object Wire : KSerializer<PendingShotView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -782,15 +775,14 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `PlayerEntry`. */
+    @Serializable(with = PlayerEntry.Companion.Wire::class)
     data class PlayerEntry(
         val account: String,
         val player: String,
     ) {
         companion object {
             /** `PlayerEntry`'s JSON form. */
-            fun serializer(): KSerializer<PlayerEntry> = Wire
-
-            private object Wire : KSerializer<PlayerEntry> {
+            internal object Wire : KSerializer<PlayerEntry> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -818,6 +810,7 @@ class BattleshipsClient private constructor(
     }
 
     /** The app type `PlayerStatsView`. */
+    @Serializable(with = PlayerStatsView.Companion.Wire::class)
     data class PlayerStatsView(
         val wins: ULong,
         val losses: ULong,
@@ -825,9 +818,7 @@ class BattleshipsClient private constructor(
     ) {
         companion object {
             /** `PlayerStatsView`'s JSON form. */
-            fun serializer(): KSerializer<PlayerStatsView> = Wire
-
-            private object Wire : KSerializer<PlayerStatsView> {
+            internal object Wire : KSerializer<PlayerStatsView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -850,6 +841,41 @@ class BattleshipsClient private constructor(
                         wins = field(fields, "wins", U64AsString),
                         losses = field(fields, "losses", U64AsString),
                         games_played = field(fields, "games_played", U64AsString),
+                    )
+                }
+            }
+        }
+    }
+
+    /** The app type `ShotsView`. */
+    @Serializable(with = ShotsView.Companion.Wire::class)
+    data class ShotsView(
+        val size: UByte,
+        val shots: List<UByte>,
+    ) {
+        companion object {
+            /** `ShotsView`'s JSON form. */
+            internal object Wire : KSerializer<ShotsView> {
+                override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+                override fun serialize(
+                    encoder: Encoder,
+                    value: ShotsView,
+                ) {
+                    (encoder as JsonEncoder).encodeJsonElement(
+                        buildJsonObject {
+                            put("size", encode(UByte.serializer(), value.size))
+                            put("shots", encode(ListSerializer(UByte.serializer()), value.shots))
+                        },
+                    )
+                }
+
+                override fun deserialize(decoder: Decoder): ShotsView {
+                    val data = (decoder as JsonDecoder).decodeJsonElement()
+                    val fields = obj(data, "ShotsView")
+                    return ShotsView(
+                        size = field(fields, "size", UByte.serializer()),
+                        shots = field(fields, "shots", ListSerializer(UByte.serializer())),
                     )
                 }
             }

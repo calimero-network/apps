@@ -114,9 +114,10 @@ from the component contract's ABI (`../logic/res/abi.json`) by core's `mero-app-
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). It speaks camelCase method and argument names
 (`updateLayer { id, blendMode, scaleX, updatedAt, … }`), sends the u64 / i64 arguments (`updatedAt`,
-`timestamp`, `x`, `y`) as decimal strings and an unset optional as `null`. Until the logic derives
-`AbiType`, the ABI names the document's types without their shape, so the client answers their
-JSON and the kept types read it (`PixartCore/Records.swift`, `generated/PixartRecords.kt`).
+`timestamp`, `x`, `y`) as decimal strings and an unset optional as `null`. The ABI describes the
+document's types (their 64-bit fields are JSON numbers, which the logic marks `#[abi(plain)]`), so
+the client answers them typed; the screens still read the kept types (`PixartCore/Records.swift`,
+`generated/PixartRecords.kt`), through each answer's JSON, until they move to the generated ones.
 Refusals are `422 APP_ERROR` (`ViewOnly`, `OwnerOnly`, `Invalid { message }`), shown in plain words
 (`PixartFormat.errorText`). `WireTests` / `WireTest` pin the wire.
 

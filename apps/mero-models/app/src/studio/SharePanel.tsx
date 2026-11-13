@@ -45,7 +45,7 @@ export function SharePanel({
   const load = useCallback(async () => {
     if (!client) return;
     try {
-      setMembers((await client.getMembers()) as MemberView[]);
+      setMembers(await client.getMembers());
     } catch (e) {
       setError(messageOf(e));
     }

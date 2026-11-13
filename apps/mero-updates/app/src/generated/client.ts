@@ -6,7 +6,7 @@ import type { ConfirmCallback, NodeEvent } from '@calimero-network/mero-js';
 
 /** The app type `AskInput`. */
 export interface AskInput {
-  id: string | null;
+  id?: string | null;
   kind: string;
   title: string;
   detail: string;

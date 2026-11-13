@@ -1071,13 +1071,10 @@
           "tokenHash",
           "grantId",
           "title",
-          "description",
           "durationMinutes",
           "weeklyHours",
           "utcOffsetMinutes",
-          "horizonDays",
-          "minNoticeMinutes",
-          "expiresAtMs"
+          "horizonDays"
         ],
         "type": "object",
         "x-calimero-abi-type": "CreateBookingLink"
@@ -1171,8 +1168,7 @@
           "start",
           "end",
           "event_type",
-          "color",
-          "peers"
+          "color"
         ],
         "type": "object",
         "x-calimero-abi-type": "CreateCalendarEvent"
@@ -1872,8 +1868,7 @@
         },
         "required": [
           "name",
-          "email",
-          "note"
+          "email"
         ],
         "type": "object",
         "x-calimero-abi-type": "GuestDetails"
@@ -2287,15 +2282,7 @@
             ]
           }
         },
-        "required": [
-          "title",
-          "description",
-          "start",
-          "end",
-          "event_type",
-          "color",
-          "peers"
-        ],
+        "required": [],
         "type": "object",
         "x-calimero-abi-type": "UpdateCalendarEvent"
       },

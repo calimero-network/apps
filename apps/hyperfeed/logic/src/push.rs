@@ -67,7 +67,8 @@ pub struct PushDeviceInput {
 }
 
 /// A device as [`crate::Hyperfeed::push_devices`] returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct PushDeviceView {
     pub endpoint: String,
     pub p256dh: String,
@@ -78,7 +79,8 @@ pub struct PushDeviceView {
 }
 
 /// The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, AbiType)]
+#[abi(plain)]
 pub struct PushKeyView {
     pub public_key: String,
     pub by: String,

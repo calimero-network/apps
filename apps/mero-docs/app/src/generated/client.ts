@@ -26,8 +26,8 @@ export interface Block {
 
 /** The app type `Change`. */
 export type Change =
-  | { retain: number; attributes: AttrDelta | null }
-  | { insert: string; attributes: AttrDelta | null }
+  | { retain: number; attributes?: AttrDelta | null }
+  | { insert: string; attributes?: AttrDelta | null }
   | { delete: number };
 
 /** The app type `CommentView`. */

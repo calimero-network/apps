@@ -307,24 +307,24 @@ public struct CalendarClient: Sendable {
         public var tokenHash: String
         public var grantId: String
         public var title: String
-        public var description: String
+        public var description: String?
         public var durationMinutes: UInt32
         public var weeklyHours: [WeeklyWindow]
         public var utcOffsetMinutes: Int32
         public var horizonDays: UInt32
-        public var minNoticeMinutes: UInt32
+        public var minNoticeMinutes: UInt32?
         public var expiresAtMs: UInt64?
 
         public init(
             tokenHash: String,
             grantId: String,
             title: String,
-            description: String,
+            description: String? = nil,
             durationMinutes: UInt32,
             weeklyHours: [WeeklyWindow],
             utcOffsetMinutes: Int32,
             horizonDays: UInt32,
-            minNoticeMinutes: UInt32,
+            minNoticeMinutes: UInt32? = nil,
             expiresAtMs: UInt64? = nil
         ) {
             self.tokenHash = tokenHash
@@ -344,12 +344,12 @@ public struct CalendarClient: Sendable {
             let v0 = try fields.decode(String.self, forKey: Key("tokenHash"))
             let v1 = try fields.decode(String.self, forKey: Key("grantId"))
             let v2 = try fields.decode(String.self, forKey: Key("title"))
-            let v3 = try fields.decode(String.self, forKey: Key("description"))
+            let v3 = try fields.decodeIfPresent(String.self, forKey: Key("description"))
             let v4 = try fields.decode(UInt32.self, forKey: Key("durationMinutes"))
             let v5 = try fields.decode([WeeklyWindow].self, forKey: Key("weeklyHours"))
             let v6 = try fields.decode(Int32.self, forKey: Key("utcOffsetMinutes"))
             let v7 = try fields.decode(UInt32.self, forKey: Key("horizonDays"))
-            let v8 = try fields.decode(UInt32.self, forKey: Key("minNoticeMinutes"))
+            let v8 = try fields.decodeIfPresent(UInt32.self, forKey: Key("minNoticeMinutes"))
             let v9 = try fields.decodeIfPresent(DecimalString<UInt64>.self, forKey: Key("expiresAtMs"))?.value
             self.tokenHash = v0
             self.grantId = v1
@@ -368,13 +368,13 @@ public struct CalendarClient: Sendable {
             try fields.encode(self.tokenHash, forKey: Key("tokenHash"))
             try fields.encode(self.grantId, forKey: Key("grantId"))
             try fields.encode(self.title, forKey: Key("title"))
-            try fields.encode(self.description, forKey: Key("description"))
+            try fields.encodeIfPresent(self.description, forKey: Key("description"))
             try fields.encode(self.durationMinutes, forKey: Key("durationMinutes"))
             try fields.encode(self.weeklyHours, forKey: Key("weeklyHours"))
             try fields.encode(self.utcOffsetMinutes, forKey: Key("utcOffsetMinutes"))
             try fields.encode(self.horizonDays, forKey: Key("horizonDays"))
-            try fields.encode(self.minNoticeMinutes, forKey: Key("minNoticeMinutes"))
-            try fields.encode(self.expiresAtMs.map { DecimalString($0) }, forKey: Key("expiresAtMs"))
+            try fields.encodeIfPresent(self.minNoticeMinutes, forKey: Key("minNoticeMinutes"))
+            try fields.encodeIfPresent(self.expiresAtMs.map { DecimalString($0) }, forKey: Key("expiresAtMs"))
         }
     }
 
@@ -386,7 +386,7 @@ public struct CalendarClient: Sendable {
         public var end: String
         public var event_type: String
         public var color: String
-        public var peers: [String]
+        public var peers: [String]?
 
         public init(
             title: String,
@@ -395,7 +395,7 @@ public struct CalendarClient: Sendable {
             end: String,
             event_type: String,
             color: String,
-            peers: [String]
+            peers: [String]? = nil
         ) {
             self.title = title
             self.description = description
@@ -414,7 +414,7 @@ public struct CalendarClient: Sendable {
             let v3 = try fields.decode(String.self, forKey: Key("end"))
             let v4 = try fields.decode(String.self, forKey: Key("event_type"))
             let v5 = try fields.decode(String.self, forKey: Key("color"))
-            let v6 = try fields.decode([String].self, forKey: Key("peers"))
+            let v6 = try fields.decodeIfPresent([String].self, forKey: Key("peers"))
             self.title = v0
             self.description = v1
             self.start = v2
@@ -432,7 +432,7 @@ public struct CalendarClient: Sendable {
             try fields.encode(self.end, forKey: Key("end"))
             try fields.encode(self.event_type, forKey: Key("event_type"))
             try fields.encode(self.color, forKey: Key("color"))
-            try fields.encode(self.peers, forKey: Key("peers"))
+            try fields.encodeIfPresent(self.peers, forKey: Key("peers"))
         }
     }
 
@@ -440,12 +440,12 @@ public struct CalendarClient: Sendable {
     public struct GuestDetails: Codable, Sendable, Equatable {
         public var name: String
         public var email: String
-        public var note: String
+        public var note: String?
 
         public init(
             name: String,
             email: String,
-            note: String
+            note: String? = nil
         ) {
             self.name = name
             self.email = email
@@ -456,7 +456,7 @@ public struct CalendarClient: Sendable {
             let fields = try decoder.container(keyedBy: Key.self)
             let v0 = try fields.decode(String.self, forKey: Key("name"))
             let v1 = try fields.decode(String.self, forKey: Key("email"))
-            let v2 = try fields.decode(String.self, forKey: Key("note"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("note"))
             self.name = v0
             self.email = v1
             self.note = v2
@@ -466,7 +466,7 @@ public struct CalendarClient: Sendable {
             var fields = encoder.container(keyedBy: Key.self)
             try fields.encode(self.name, forKey: Key("name"))
             try fields.encode(self.email, forKey: Key("email"))
-            try fields.encode(self.note, forKey: Key("note"))
+            try fields.encodeIfPresent(self.note, forKey: Key("note"))
         }
     }
 
@@ -558,13 +558,13 @@ public struct CalendarClient: Sendable {
 
         public func encode(to encoder: Encoder) throws {
             var fields = encoder.container(keyedBy: Key.self)
-            try fields.encode(self.title, forKey: Key("title"))
-            try fields.encode(self.description, forKey: Key("description"))
-            try fields.encode(self.start, forKey: Key("start"))
-            try fields.encode(self.end, forKey: Key("end"))
-            try fields.encode(self.event_type, forKey: Key("event_type"))
-            try fields.encode(self.color, forKey: Key("color"))
-            try fields.encode(self.peers, forKey: Key("peers"))
+            try fields.encodeIfPresent(self.title, forKey: Key("title"))
+            try fields.encodeIfPresent(self.description, forKey: Key("description"))
+            try fields.encodeIfPresent(self.start, forKey: Key("start"))
+            try fields.encodeIfPresent(self.end, forKey: Key("end"))
+            try fields.encodeIfPresent(self.event_type, forKey: Key("event_type"))
+            try fields.encodeIfPresent(self.color, forKey: Key("color"))
+            try fields.encodeIfPresent(self.peers, forKey: Key("peers"))
         }
     }
 

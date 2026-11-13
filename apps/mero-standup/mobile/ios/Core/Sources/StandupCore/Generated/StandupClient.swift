@@ -520,7 +520,7 @@ public struct StandupClient: Sendable {
         minIndex: Int = 0
     ) async throws -> DayPage {
         var args = Args()
-        args.add("before", before)
+        if let value = before { args.add("before", value) }
         args.add("limit", limit)
         let result = try await invokeView("listDays", args, stale: stale, minIndex: minIndex, as: DayPage.self)
         return result
@@ -538,11 +538,11 @@ public struct StandupClient: Sendable {
         minIndex: Int = 0
     ) async throws -> DecisionPage {
         var args = Args()
-        args.add("search", search)
-        args.add("tag", tag)
-        args.add("fromDay", fromDay)
+        if let value = search { args.add("search", value) }
+        if let value = tag { args.add("tag", value) }
+        if let value = fromDay { args.add("fromDay", value) }
         args.add("standingOnly", standingOnly)
-        args.add("cursor", cursor)
+        if let value = cursor { args.add("cursor", value) }
         args.add("limit", limit)
         let result = try await invokeView("listDecisions", args, stale: stale, minIndex: minIndex, as: DecisionPage.self)
         return result
@@ -564,10 +564,10 @@ public struct StandupClient: Sendable {
         args.add("title", title)
         args.add("decision", decision)
         args.add("rationale", rationale)
-        args.add("supersedes", supersedes)
+        if let value = supersedes { args.add("supersedes", value) }
         args.add("tags", tags)
         args.add("with", with)
-        args.add("fromDay", fromDay)
+        if let value = fromDay { args.add("fromDay", value) }
         let result = try await invokeCall("logDecision", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
     }

@@ -15,27 +15,296 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct ModelsClient: Sendable {
-    /// The app type `Environment`: the ABI names it without its shape, so it is its JSON.
-    public typealias Environment = JSONValue
 
-    /// The app type `LockView`: the ABI names it without its shape, so it is its JSON.
-    public typealias LockView = JSONValue
+    /// The app type `Environment`.
+    public struct Environment: Codable, Sendable, Equatable {
+        public var name: String
+        public var background: String
+        public var ambient_color: String
+        public var ambient_intensity: Double
+        public var updated_at: UInt64
 
-    /// The app type `MemberView`: the ABI names it without its shape, so it is its JSON.
-    public typealias MemberView = JSONValue
+        public init(
+            name: String,
+            background: String,
+            ambient_color: String,
+            ambient_intensity: Double,
+            updated_at: UInt64
+        ) {
+            self.name = name
+            self.background = background
+            self.ambient_color = ambient_color
+            self.ambient_intensity = ambient_intensity
+            self.updated_at = updated_at
+        }
 
-    /// The app type `MeshRef`: the ABI names it without its shape, so it is its JSON.
-    public typealias MeshRef = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(String.self, forKey: Key("background"))
+            let v2 = try fields.decode(String.self, forKey: Key("ambient_color"))
+            let v3 = try fields.decode(Double.self, forKey: Key("ambient_intensity"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("updated_at"))
+            self.name = v0
+            self.background = v1
+            self.ambient_color = v2
+            self.ambient_intensity = v3
+            self.updated_at = v4
+        }
 
-    /// The app type `SceneObject`: the ABI names it without its shape, so it is its JSON.
-    public typealias SceneObject = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.background, forKey: Key("background"))
+            try fields.encode(self.ambient_color, forKey: Key("ambient_color"))
+            try fields.encode(self.ambient_intensity, forKey: Key("ambient_intensity"))
+            try fields.encode(self.updated_at, forKey: Key("updated_at"))
+        }
+    }
 
-    /// The app type `TextureRef`: the ABI names it without its shape, so it is its JSON.
-    public typealias TextureRef = JSONValue
+    /// The app type `LockView`.
+    public struct LockView: Codable, Sendable, Equatable {
+        public var asset_id: String
+        public var holder: String
+        public var since: UInt64
+        public var expires_at: UInt64
+        public var mine: Bool
 
-    /// The app type `VersionView`: the ABI names it without its shape, so it is its JSON.
-    public typealias VersionView = JSONValue
+        public init(
+            asset_id: String,
+            holder: String,
+            since: UInt64,
+            expires_at: UInt64,
+            mine: Bool
+        ) {
+            self.asset_id = asset_id
+            self.holder = holder
+            self.since = since
+            self.expires_at = expires_at
+            self.mine = mine
+        }
 
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("asset_id"))
+            let v1 = try fields.decode(String.self, forKey: Key("holder"))
+            let v2 = try fields.decode(UInt64.self, forKey: Key("since"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("expires_at"))
+            let v4 = try fields.decode(Bool.self, forKey: Key("mine"))
+            self.asset_id = v0
+            self.holder = v1
+            self.since = v2
+            self.expires_at = v3
+            self.mine = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.asset_id, forKey: Key("asset_id"))
+            try fields.encode(self.holder, forKey: Key("holder"))
+            try fields.encode(self.since, forKey: Key("since"))
+            try fields.encode(self.expires_at, forKey: Key("expires_at"))
+            try fields.encode(self.mine, forKey: Key("mine"))
+        }
+    }
+
+    /// The app type `Material`.
+    public struct Material: Codable, Sendable, Equatable {
+        public var color: String
+        public var metalness: Double
+        public var roughness: Double
+        public var opacity: Double
+        public var emissive: String
+        public var wireframe: Bool
+        public var flat_shading: Bool
+        public var base_color_map: String
+        public var normal_map: String
+        public var normal_scale: Double
+        public var orm_map: String
+        public var emissive_map: String
+
+        public init(
+            color: String,
+            metalness: Double,
+            roughness: Double,
+            opacity: Double,
+            emissive: String,
+            wireframe: Bool,
+            flat_shading: Bool,
+            base_color_map: String,
+            normal_map: String,
+            normal_scale: Double,
+            orm_map: String,
+            emissive_map: String
+        ) {
+            self.color = color
+            self.metalness = metalness
+            self.roughness = roughness
+            self.opacity = opacity
+            self.emissive = emissive
+            self.wireframe = wireframe
+            self.flat_shading = flat_shading
+            self.base_color_map = base_color_map
+            self.normal_map = normal_map
+            self.normal_scale = normal_scale
+            self.orm_map = orm_map
+            self.emissive_map = emissive_map
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("color"))
+            let v1 = try fields.decode(Double.self, forKey: Key("metalness"))
+            let v2 = try fields.decode(Double.self, forKey: Key("roughness"))
+            let v3 = try fields.decode(Double.self, forKey: Key("opacity"))
+            let v4 = try fields.decode(String.self, forKey: Key("emissive"))
+            let v5 = try fields.decode(Bool.self, forKey: Key("wireframe"))
+            let v6 = try fields.decode(Bool.self, forKey: Key("flat_shading"))
+            let v7 = try fields.decode(String.self, forKey: Key("base_color_map"))
+            let v8 = try fields.decode(String.self, forKey: Key("normal_map"))
+            let v9 = try fields.decode(Double.self, forKey: Key("normal_scale"))
+            let v10 = try fields.decode(String.self, forKey: Key("orm_map"))
+            let v11 = try fields.decode(String.self, forKey: Key("emissive_map"))
+            self.color = v0
+            self.metalness = v1
+            self.roughness = v2
+            self.opacity = v3
+            self.emissive = v4
+            self.wireframe = v5
+            self.flat_shading = v6
+            self.base_color_map = v7
+            self.normal_map = v8
+            self.normal_scale = v9
+            self.orm_map = v10
+            self.emissive_map = v11
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.metalness, forKey: Key("metalness"))
+            try fields.encode(self.roughness, forKey: Key("roughness"))
+            try fields.encode(self.opacity, forKey: Key("opacity"))
+            try fields.encode(self.emissive, forKey: Key("emissive"))
+            try fields.encode(self.wireframe, forKey: Key("wireframe"))
+            try fields.encode(self.flat_shading, forKey: Key("flat_shading"))
+            try fields.encode(self.base_color_map, forKey: Key("base_color_map"))
+            try fields.encode(self.normal_map, forKey: Key("normal_map"))
+            try fields.encode(self.normal_scale, forKey: Key("normal_scale"))
+            try fields.encode(self.orm_map, forKey: Key("orm_map"))
+            try fields.encode(self.emissive_map, forKey: Key("emissive_map"))
+        }
+    }
+
+    /// The app type `MemberView`.
+    public struct MemberView: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var role: String
+        public var joined_at: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            role: String,
+            joined_at: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.role = role
+            self.joined_at = joined_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("role"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("joined_at"))
+            self.id = v0
+            self.name = v1
+            self.role = v2
+            self.joined_at = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.role, forKey: Key("role"))
+            try fields.encode(self.joined_at, forKey: Key("joined_at"))
+        }
+    }
+
+    /// The app type `MeshRef`.
+    public struct MeshRef: Codable, Sendable, Equatable {
+        public var id: String
+        public var blob_id: String
+        public var size: UInt64
+        public var vertex_count: UInt32
+        public var triangle_count: UInt32
+        public var has_uvs: Bool
+        public var author: String
+        public var message: String
+        public var updated_at: UInt64
+
+        public init(
+            id: String,
+            blob_id: String,
+            size: UInt64,
+            vertex_count: UInt32,
+            triangle_count: UInt32,
+            has_uvs: Bool,
+            author: String,
+            message: String,
+            updated_at: UInt64
+        ) {
+            self.id = id
+            self.blob_id = blob_id
+            self.size = size
+            self.vertex_count = vertex_count
+            self.triangle_count = triangle_count
+            self.has_uvs = has_uvs
+            self.author = author
+            self.message = message
+            self.updated_at = updated_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("blob_id"))
+            let v2 = try fields.decode(UInt64.self, forKey: Key("size"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("vertex_count"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("triangle_count"))
+            let v5 = try fields.decode(Bool.self, forKey: Key("has_uvs"))
+            let v6 = try fields.decode(String.self, forKey: Key("author"))
+            let v7 = try fields.decode(String.self, forKey: Key("message"))
+            let v8 = try fields.decode(UInt64.self, forKey: Key("updated_at"))
+            self.id = v0
+            self.blob_id = v1
+            self.size = v2
+            self.vertex_count = v3
+            self.triangle_count = v4
+            self.has_uvs = v5
+            self.author = v6
+            self.message = v7
+            self.updated_at = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.blob_id, forKey: Key("blob_id"))
+            try fields.encode(self.size, forKey: Key("size"))
+            try fields.encode(self.vertex_count, forKey: Key("vertex_count"))
+            try fields.encode(self.triangle_count, forKey: Key("triangle_count"))
+            try fields.encode(self.has_uvs, forKey: Key("has_uvs"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.message, forKey: Key("message"))
+            try fields.encode(self.updated_at, forKey: Key("updated_at"))
+        }
+    }
 
     /// The app type `SceneInfo`.
     public struct SceneInfo: Codable, Sendable, Equatable {
@@ -98,6 +367,298 @@ public struct ModelsClient: Sendable {
             try fields.encode(self.member_count, forKey: Key("member_count"))
             try fields.encode(self.me, forKey: Key("me"))
             try fields.encode(self.my_role, forKey: Key("my_role"))
+        }
+    }
+
+    /// The app type `SceneObject`.
+    public struct SceneObject: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var kind: String
+        public var parent: String
+        public var position: Vec3
+        public var rotation: Vec3
+        public var scale: Vec3
+        public var visible: Bool
+        public var material: Material
+        public var segments: UInt32
+        public var intensity: Double
+        public var created_by: String
+        public var created_at: UInt64
+        public var updated_at: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            kind: String,
+            parent: String,
+            position: Vec3,
+            rotation: Vec3,
+            scale: Vec3,
+            visible: Bool,
+            material: Material,
+            segments: UInt32,
+            intensity: Double,
+            created_by: String,
+            created_at: UInt64,
+            updated_at: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.kind = kind
+            self.parent = parent
+            self.position = position
+            self.rotation = rotation
+            self.scale = scale
+            self.visible = visible
+            self.material = material
+            self.segments = segments
+            self.intensity = intensity
+            self.created_by = created_by
+            self.created_at = created_at
+            self.updated_at = updated_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("kind"))
+            let v3 = try fields.decode(String.self, forKey: Key("parent"))
+            let v4 = try fields.decode(Vec3.self, forKey: Key("position"))
+            let v5 = try fields.decode(Vec3.self, forKey: Key("rotation"))
+            let v6 = try fields.decode(Vec3.self, forKey: Key("scale"))
+            let v7 = try fields.decode(Bool.self, forKey: Key("visible"))
+            let v8 = try fields.decode(Material.self, forKey: Key("material"))
+            let v9 = try fields.decode(UInt32.self, forKey: Key("segments"))
+            let v10 = try fields.decode(Double.self, forKey: Key("intensity"))
+            let v11 = try fields.decode(String.self, forKey: Key("created_by"))
+            let v12 = try fields.decode(UInt64.self, forKey: Key("created_at"))
+            let v13 = try fields.decode(UInt64.self, forKey: Key("updated_at"))
+            self.id = v0
+            self.name = v1
+            self.kind = v2
+            self.parent = v3
+            self.position = v4
+            self.rotation = v5
+            self.scale = v6
+            self.visible = v7
+            self.material = v8
+            self.segments = v9
+            self.intensity = v10
+            self.created_by = v11
+            self.created_at = v12
+            self.updated_at = v13
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.parent, forKey: Key("parent"))
+            try fields.encode(self.position, forKey: Key("position"))
+            try fields.encode(self.rotation, forKey: Key("rotation"))
+            try fields.encode(self.scale, forKey: Key("scale"))
+            try fields.encode(self.visible, forKey: Key("visible"))
+            try fields.encode(self.material, forKey: Key("material"))
+            try fields.encode(self.segments, forKey: Key("segments"))
+            try fields.encode(self.intensity, forKey: Key("intensity"))
+            try fields.encode(self.created_by, forKey: Key("created_by"))
+            try fields.encode(self.created_at, forKey: Key("created_at"))
+            try fields.encode(self.updated_at, forKey: Key("updated_at"))
+        }
+    }
+
+    /// The app type `TextureRef`.
+    public struct TextureRef: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var blob_id: String
+        public var size: UInt64
+        public var width: UInt32
+        public var height: UInt32
+        public var mime: String
+        public var color_space: String
+        public var author: String
+        public var message: String
+        public var updated_at: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            blob_id: String,
+            size: UInt64,
+            width: UInt32,
+            height: UInt32,
+            mime: String,
+            color_space: String,
+            author: String,
+            message: String,
+            updated_at: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.blob_id = blob_id
+            self.size = size
+            self.width = width
+            self.height = height
+            self.mime = mime
+            self.color_space = color_space
+            self.author = author
+            self.message = message
+            self.updated_at = updated_at
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("blob_id"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("size"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("width"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("height"))
+            let v6 = try fields.decode(String.self, forKey: Key("mime"))
+            let v7 = try fields.decode(String.self, forKey: Key("color_space"))
+            let v8 = try fields.decode(String.self, forKey: Key("author"))
+            let v9 = try fields.decode(String.self, forKey: Key("message"))
+            let v10 = try fields.decode(UInt64.self, forKey: Key("updated_at"))
+            self.id = v0
+            self.name = v1
+            self.blob_id = v2
+            self.size = v3
+            self.width = v4
+            self.height = v5
+            self.mime = v6
+            self.color_space = v7
+            self.author = v8
+            self.message = v9
+            self.updated_at = v10
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.blob_id, forKey: Key("blob_id"))
+            try fields.encode(self.size, forKey: Key("size"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(self.mime, forKey: Key("mime"))
+            try fields.encode(self.color_space, forKey: Key("color_space"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.message, forKey: Key("message"))
+            try fields.encode(self.updated_at, forKey: Key("updated_at"))
+        }
+    }
+
+    /// The app type `Vec3`.
+    public struct Vec3: Codable, Sendable, Equatable {
+        public var x: Double
+        public var y: Double
+        public var z: Double
+
+        public init(
+            x: Double,
+            y: Double,
+            z: Double
+        ) {
+            self.x = x
+            self.y = y
+            self.z = z
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Double.self, forKey: Key("x"))
+            let v1 = try fields.decode(Double.self, forKey: Key("y"))
+            let v2 = try fields.decode(Double.self, forKey: Key("z"))
+            self.x = v0
+            self.y = v1
+            self.z = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+        }
+    }
+
+    /// The app type `VersionView`.
+    public struct VersionView: Codable, Sendable, Equatable {
+        public var number: UInt32
+        public var kind: String
+        public var blob_id: String
+        public var size: UInt64
+        public var a: UInt32
+        public var b: UInt32
+        public var author: String
+        public var message: String
+        public var created_at: UInt64
+        public var current: Bool
+
+        public init(
+            number: UInt32,
+            kind: String,
+            blob_id: String,
+            size: UInt64,
+            a: UInt32,
+            b: UInt32,
+            author: String,
+            message: String,
+            created_at: UInt64,
+            current: Bool
+        ) {
+            self.number = number
+            self.kind = kind
+            self.blob_id = blob_id
+            self.size = size
+            self.a = a
+            self.b = b
+            self.author = author
+            self.message = message
+            self.created_at = created_at
+            self.current = current
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(UInt32.self, forKey: Key("number"))
+            let v1 = try fields.decode(String.self, forKey: Key("kind"))
+            let v2 = try fields.decode(String.self, forKey: Key("blob_id"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("size"))
+            let v4 = try fields.decode(UInt32.self, forKey: Key("a"))
+            let v5 = try fields.decode(UInt32.self, forKey: Key("b"))
+            let v6 = try fields.decode(String.self, forKey: Key("author"))
+            let v7 = try fields.decode(String.self, forKey: Key("message"))
+            let v8 = try fields.decode(UInt64.self, forKey: Key("created_at"))
+            let v9 = try fields.decode(Bool.self, forKey: Key("current"))
+            self.number = v0
+            self.kind = v1
+            self.blob_id = v2
+            self.size = v3
+            self.a = v4
+            self.b = v5
+            self.author = v6
+            self.message = v7
+            self.created_at = v8
+            self.current = v9
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.number, forKey: Key("number"))
+            try fields.encode(self.kind, forKey: Key("kind"))
+            try fields.encode(self.blob_id, forKey: Key("blob_id"))
+            try fields.encode(self.size, forKey: Key("size"))
+            try fields.encode(self.a, forKey: Key("a"))
+            try fields.encode(self.b, forKey: Key("b"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.message, forKey: Key("message"))
+            try fields.encode(self.created_at, forKey: Key("created_at"))
+            try fields.encode(self.current, forKey: Key("current"))
         }
     }
 

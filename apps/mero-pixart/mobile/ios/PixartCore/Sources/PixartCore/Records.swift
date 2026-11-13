@@ -3,13 +3,13 @@ import MeroKit
 
 // The document's types, as the contract (`../../logic/res/abi.json`) answers them. The calls are
 // the generated `PixartClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root), and so
-// are the types the ABI describes (`DocumentInfo`, `MemberRole`). The ABI still leaves `Layer`,
-// `CursorState` and `Member` `unknown`, so the client answers their JSON and the types here read it
-// (`JSONValue.decoded(as:)`).
+// are the types aliased here (`DocumentInfo`, `MemberRole`). The ABI also describes `Layer`,
+// `CursorState` and `Member` (their 64-bit fields are JSON numbers, `#[abi(plain)]`), but the
+// screens still use the types here, which read each answer's JSON (`decoded(as:)`).
 
 extension Encodable {
-    /// This answer as the app type `T`: one of the types below the ABI still leaves `unknown`,
-    /// which the generated client answers as JSON.
+    /// This answer of the generated client as the app type `T`, one of the types below, through
+    /// its JSON.
     public func decoded<T: Decodable>(as type: T.Type) throws -> T {
         try MeroJSON.decode(type, from: MeroJSON.encode(self))
     }

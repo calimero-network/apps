@@ -62,8 +62,11 @@ export interface PlayerStatsView {
   games_played: string;
 }
 
-/** The app type `ShotsView`: the ABI names it without its shape. */
-export type ShotsView = unknown;
+/** The app type `ShotsView`. */
+export interface ShotsView {
+  size: number;
+  shots: number[];
+}
 
 /** The arguments of `acknowledgeShot`. */
 export interface AcknowledgeShotArgs {

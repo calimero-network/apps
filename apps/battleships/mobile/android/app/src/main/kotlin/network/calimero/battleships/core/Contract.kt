@@ -1,16 +1,11 @@
 package network.calimero.battleships.core
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.serializer
 import network.calimero.battleships.generated.BattleshipsClient
 import java.util.Base64
 
 // The Battleships component contract (`../logic/res/abi.json`). The calls are [BattleshipsClient],
 // generated from it by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`), and so are the
-// answer types but [ShotsView]; this file keeps the method lists of the web app's
+// answer types; this file keeps the method lists of the web app's
 // `src/battleships.ts`: camelCase method and argument names,
 // snake_case result fields, 64-bit integers as decimal strings, bytes as base64url, refusals as
 // `422 APP_ERROR {code, fields}`. (Swift `Contract.swift`.)
@@ -28,8 +23,7 @@ object BattleshipsMethods {
 // ---- Results ----------------------------------------------------------------------------------
 
 // The answer types are the generated client's ([BattleshipsClient], from the ABI), field names as
-// the contract has them (`match_id`, `created_ms`, ...). [ShotsView] is the one the ABI still leaves
-// `unknown`, so it is read from the generated client's JSON below.
+// the contract has them (`match_id`, `created_ms`, ...).
 
 typealias MatchStatus = BattleshipsClient.MatchStatus
 
@@ -54,24 +48,11 @@ typealias PendingShotView = BattleshipsClient.PendingShotView
  */
 typealias MatchStateView = BattleshipsClient.MatchStateView
 
-/** The caller's shots (`getShots`) or the shots at the caller (`getIncomingShots`), one [Cell] byte per square. */
-@Serializable
-data class ShotsView(
-    val size: UInt,
-    val shots: List<UByte>,
-)
-
-// ---- Reading the generated client's answers ---------------------------------------------------
-
-/** The JSON the contract speaks. */
-internal val contractJson = Json { ignoreUnknownKeys = true }
-
 /**
- * This answer of the generated [BattleshipsClient] as the app type [T]. The ABI leaves `ShotsView`
- * `unknown` (its `shots` are bytes the logic does not describe yet), so the client answers its JSON
- * and [ShotsView] reads it.
+ * The caller's shots (`getShots`) or the shots at the caller (`getIncomingShots`), one [Cell] byte
+ * per square: a JSON array of bytes, which the logic marks `#[abi(plain)]`.
  */
-internal inline fun <reified T> Any.toAppType(): T = contractJson.decodeFromJsonElement<T>(asContractJson())
+typealias ShotsView = BattleshipsClient.ShotsView
 
 /** Bytes as the generated client takes them (it writes base64url itself). */
 internal fun List<Int>.toBytes(): ByteArray = ByteArray(size) { this[it].toByte() }
@@ -82,14 +63,3 @@ object Base64Url {
 
     fun decode(text: String): List<Int>? = runCatching { Base64.getUrlDecoder().decode(text).map { it.toInt() and 0xff } }.getOrNull()
 }
-
-/** A value of the generated client (a typed record, or the JSON of a type the ABI does not describe) as its JSON. */
-fun Any.asContractJson(): JsonElement = this as? JsonElement ?: contractArgJson.encodeToJsonElement(serializer(javaClass), this)
-
-/** The JSON between the app's types and the generated client's: every default written, unknown keys and missing options tolerated. */
-val contractArgJson =
-    Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }

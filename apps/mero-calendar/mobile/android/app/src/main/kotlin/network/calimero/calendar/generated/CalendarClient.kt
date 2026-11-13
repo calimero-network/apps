@@ -16,6 +16,7 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -501,6 +502,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `BookingLinkView`. */
+    @Serializable(with = BookingLinkView.Companion.Wire::class)
     data class BookingLinkView(
         val linkId: String,
         val grantId: String,
@@ -518,9 +520,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `BookingLinkView`'s JSON form. */
-            fun serializer(): KSerializer<BookingLinkView> = Wire
-
-            private object Wire : KSerializer<BookingLinkView> {
+            internal object Wire : KSerializer<BookingLinkView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -570,6 +570,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `BookingPage`. */
+    @Serializable(with = BookingPage.Companion.Wire::class)
     data class BookingPage(
         val title: String,
         val description: String,
@@ -581,9 +582,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `BookingPage`'s JSON form. */
-            fun serializer(): KSerializer<BookingPage> = Wire
-
-            private object Wire : KSerializer<BookingPage> {
+            internal object Wire : KSerializer<BookingPage> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -621,6 +620,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `BookingView`. */
+    @Serializable(with = BookingView.Companion.Wire::class)
     data class BookingView(
         val startMs: ULong,
         val endMs: ULong,
@@ -632,9 +632,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `BookingView`'s JSON form. */
-            fun serializer(): KSerializer<BookingView> = Wire
-
-            private object Wire : KSerializer<BookingView> {
+            internal object Wire : KSerializer<BookingView> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -672,6 +670,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `CalendarEvent`. */
+    @Serializable(with = CalendarEvent.Companion.Wire::class)
     data class CalendarEvent(
         val id: String,
         val title: String,
@@ -686,9 +685,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `CalendarEvent`'s JSON form. */
-            fun serializer(): KSerializer<CalendarEvent> = Wire
-
-            private object Wire : KSerializer<CalendarEvent> {
+            internal object Wire : KSerializer<CalendarEvent> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -732,23 +729,22 @@ class CalendarClient private constructor(
     }
 
     /** The app type `CreateBookingLink`. */
+    @Serializable(with = CreateBookingLink.Companion.Wire::class)
     data class CreateBookingLink(
         val tokenHash: String,
         val grantId: String,
         val title: String,
-        val description: String,
+        val description: String? = null,
         val durationMinutes: UInt,
         val weeklyHours: List<WeeklyWindow>,
         val utcOffsetMinutes: Int,
         val horizonDays: UInt,
-        val minNoticeMinutes: UInt,
+        val minNoticeMinutes: UInt? = null,
         val expiresAtMs: ULong? = null,
     ) {
         companion object {
             /** `CreateBookingLink`'s JSON form. */
-            fun serializer(): KSerializer<CreateBookingLink> = Wire
-
-            private object Wire : KSerializer<CreateBookingLink> {
+            internal object Wire : KSerializer<CreateBookingLink> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -760,13 +756,13 @@ class CalendarClient private constructor(
                             put("tokenHash", encode(String.serializer(), value.tokenHash))
                             put("grantId", encode(String.serializer(), value.grantId))
                             put("title", encode(String.serializer(), value.title))
-                            put("description", encode(String.serializer(), value.description))
+                            if (value.description != null) put("description", encode(String.serializer().nullable, value.description))
                             put("durationMinutes", encode(UInt.serializer(), value.durationMinutes))
                             put("weeklyHours", encode(ListSerializer(WeeklyWindow.serializer()), value.weeklyHours))
                             put("utcOffsetMinutes", encode(Int.serializer(), value.utcOffsetMinutes))
                             put("horizonDays", encode(UInt.serializer(), value.horizonDays))
-                            put("minNoticeMinutes", encode(UInt.serializer(), value.minNoticeMinutes))
-                            put("expiresAtMs", encode(U64AsString.nullable, value.expiresAtMs))
+                            if (value.minNoticeMinutes != null) put("minNoticeMinutes", encode(UInt.serializer().nullable, value.minNoticeMinutes))
+                            if (value.expiresAtMs != null) put("expiresAtMs", encode(U64AsString.nullable, value.expiresAtMs))
                         },
                     )
                 }
@@ -778,12 +774,12 @@ class CalendarClient private constructor(
                         tokenHash = field(fields, "tokenHash", String.serializer()),
                         grantId = field(fields, "grantId", String.serializer()),
                         title = field(fields, "title", String.serializer()),
-                        description = field(fields, "description", String.serializer()),
+                        description = field(fields, "description", String.serializer().nullable),
                         durationMinutes = field(fields, "durationMinutes", UInt.serializer()),
                         weeklyHours = field(fields, "weeklyHours", ListSerializer(WeeklyWindow.serializer())),
                         utcOffsetMinutes = field(fields, "utcOffsetMinutes", Int.serializer()),
                         horizonDays = field(fields, "horizonDays", UInt.serializer()),
-                        minNoticeMinutes = field(fields, "minNoticeMinutes", UInt.serializer()),
+                        minNoticeMinutes = field(fields, "minNoticeMinutes", UInt.serializer().nullable),
                         expiresAtMs = field(fields, "expiresAtMs", U64AsString.nullable),
                     )
                 }
@@ -792,6 +788,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `CreateCalendarEvent`. */
+    @Serializable(with = CreateCalendarEvent.Companion.Wire::class)
     data class CreateCalendarEvent(
         val title: String,
         val description: String,
@@ -799,13 +796,11 @@ class CalendarClient private constructor(
         val end: String,
         val event_type: String,
         val color: String,
-        val peers: List<String>,
+        val peers: List<String>? = null,
     ) {
         companion object {
             /** `CreateCalendarEvent`'s JSON form. */
-            fun serializer(): KSerializer<CreateCalendarEvent> = Wire
-
-            private object Wire : KSerializer<CreateCalendarEvent> {
+            internal object Wire : KSerializer<CreateCalendarEvent> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -820,7 +815,7 @@ class CalendarClient private constructor(
                             put("end", encode(String.serializer(), value.end))
                             put("event_type", encode(String.serializer(), value.event_type))
                             put("color", encode(String.serializer(), value.color))
-                            put("peers", encode(ListSerializer(String.serializer()), value.peers))
+                            if (value.peers != null) put("peers", encode(ListSerializer(String.serializer()).nullable, value.peers))
                         },
                     )
                 }
@@ -835,7 +830,7 @@ class CalendarClient private constructor(
                         end = field(fields, "end", String.serializer()),
                         event_type = field(fields, "event_type", String.serializer()),
                         color = field(fields, "color", String.serializer()),
-                        peers = field(fields, "peers", ListSerializer(String.serializer())),
+                        peers = field(fields, "peers", ListSerializer(String.serializer()).nullable),
                     )
                 }
             }
@@ -843,16 +838,15 @@ class CalendarClient private constructor(
     }
 
     /** The app type `GuestDetails`. */
+    @Serializable(with = GuestDetails.Companion.Wire::class)
     data class GuestDetails(
         val name: String,
         val email: String,
-        val note: String,
+        val note: String? = null,
     ) {
         companion object {
             /** `GuestDetails`'s JSON form. */
-            fun serializer(): KSerializer<GuestDetails> = Wire
-
-            private object Wire : KSerializer<GuestDetails> {
+            internal object Wire : KSerializer<GuestDetails> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -863,7 +857,7 @@ class CalendarClient private constructor(
                         buildJsonObject {
                             put("name", encode(String.serializer(), value.name))
                             put("email", encode(String.serializer(), value.email))
-                            put("note", encode(String.serializer(), value.note))
+                            if (value.note != null) put("note", encode(String.serializer().nullable, value.note))
                         },
                     )
                 }
@@ -874,7 +868,7 @@ class CalendarClient private constructor(
                     return GuestDetails(
                         name = field(fields, "name", String.serializer()),
                         email = field(fields, "email", String.serializer()),
-                        note = field(fields, "note", String.serializer()),
+                        note = field(fields, "note", String.serializer().nullable),
                     )
                 }
             }
@@ -882,6 +876,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `Member`. */
+    @Serializable(with = Member.Companion.Wire::class)
     data class Member(
         val id: String,
         val username: String,
@@ -890,9 +885,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `Member`'s JSON form. */
-            fun serializer(): KSerializer<Member> = Wire
-
-            private object Wire : KSerializer<Member> {
+            internal object Wire : KSerializer<Member> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -924,6 +917,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `UpdateCalendarEvent`. */
+    @Serializable(with = UpdateCalendarEvent.Companion.Wire::class)
     data class UpdateCalendarEvent(
         val title: String? = null,
         val description: String? = null,
@@ -935,9 +929,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `UpdateCalendarEvent`'s JSON form. */
-            fun serializer(): KSerializer<UpdateCalendarEvent> = Wire
-
-            private object Wire : KSerializer<UpdateCalendarEvent> {
+            internal object Wire : KSerializer<UpdateCalendarEvent> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(
@@ -946,13 +938,13 @@ class CalendarClient private constructor(
                 ) {
                     (encoder as JsonEncoder).encodeJsonElement(
                         buildJsonObject {
-                            put("title", encode(String.serializer().nullable, value.title))
-                            put("description", encode(String.serializer().nullable, value.description))
-                            put("start", encode(String.serializer().nullable, value.start))
-                            put("end", encode(String.serializer().nullable, value.end))
-                            put("event_type", encode(String.serializer().nullable, value.event_type))
-                            put("color", encode(String.serializer().nullable, value.color))
-                            put("peers", encode(ListSerializer(String.serializer()).nullable, value.peers))
+                            if (value.title != null) put("title", encode(String.serializer().nullable, value.title))
+                            if (value.description != null) put("description", encode(String.serializer().nullable, value.description))
+                            if (value.start != null) put("start", encode(String.serializer().nullable, value.start))
+                            if (value.end != null) put("end", encode(String.serializer().nullable, value.end))
+                            if (value.event_type != null) put("event_type", encode(String.serializer().nullable, value.event_type))
+                            if (value.color != null) put("color", encode(String.serializer().nullable, value.color))
+                            if (value.peers != null) put("peers", encode(ListSerializer(String.serializer()).nullable, value.peers))
                         },
                     )
                 }
@@ -975,6 +967,7 @@ class CalendarClient private constructor(
     }
 
     /** The app type `WeeklyWindow`. */
+    @Serializable(with = WeeklyWindow.Companion.Wire::class)
     data class WeeklyWindow(
         val weekday: UByte,
         val startMinute: UShort,
@@ -982,9 +975,7 @@ class CalendarClient private constructor(
     ) {
         companion object {
             /** `WeeklyWindow`'s JSON form. */
-            fun serializer(): KSerializer<WeeklyWindow> = Wire
-
-            private object Wire : KSerializer<WeeklyWindow> {
+            internal object Wire : KSerializer<WeeklyWindow> {
                 override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
 
                 override fun serialize(

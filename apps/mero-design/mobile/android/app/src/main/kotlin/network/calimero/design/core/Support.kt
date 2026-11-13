@@ -47,8 +47,8 @@ const val ELEMENT_PAGE = 1_000u
 val designJson = Json { ignoreUnknownKeys = true }
 
 /**
- * An answer of the generated client as the board type [T]: one the ABI still leaves `unknown`
- * (`Element`, `Comment`, `CursorState`, `Member`), which the client answers as JSON.
+ * An answer of the generated client as the board type [T] (`Element`, `Comment`, `CursorState`,
+ * `Member` in `generated/DesignRecords.kt`), through its JSON.
  */
 inline fun <reified T> Any.toDesign(): T = designJson.decodeFromJsonElement(asContractJson())
 

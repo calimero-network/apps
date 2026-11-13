@@ -191,7 +191,8 @@ pub struct Profile {
 // ── arguments and results ────────────────────────────────────────────────────
 
 /// An attachment as `sendMessage` takes it.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, AbiType)]
+#[abi(plain)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentInput {
     pub name: String,

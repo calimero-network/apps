@@ -924,9 +924,9 @@ public struct SignClient: Sendable {
         args.add("hash", hash)
         args.add("pdfBlobIdStr", pdfBlobIdStr)
         args.add("fileSize", DecimalString(fileSize))
-        args.add("embeddings", embeddings)
-        args.add("extractedText", extractedText)
-        args.add("chunks", chunks)
+        if let value = embeddings { args.add("embeddings", value) }
+        if let value = extractedText { args.add("extractedText", value) }
+        if let value = chunks { args.add("chunks", value) }
         let result = try await invokeCall("uploadDocument", args, idempotencyKey: idempotencyKey, as: String.self)
         return result
     }
