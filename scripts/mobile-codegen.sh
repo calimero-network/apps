@@ -9,16 +9,20 @@
 #   scripts/mobile-codegen.sh --check    # regenerate, then fail on any difference
 #   scripts/mobile-codegen.sh --install  # put the pinned generator in $MERO_APP_BUILD_ROOT/bin first
 #
-# The generator is core at REV below: the Swift and Kotlin targets are on core
-# master ahead of a release (they ship in 1.0.0-rc.19). Once a tag has them,
-# pin it here and in scripts/install-mero-app-build.sh, and keep the two equal.
-# Moving REV changes what every client looks like, so regenerate them all in
-# the same PR.
+# The generator is core's `mero-app-build` at REF below, the same tag
+# scripts/install-mero-app-build.sh pins (which `--install` runs): keep the two
+# equal. Moving REF changes what every client looks like, so regenerate them all
+# in the same PR.
+#
+# Every Android module applies the kotlinx.serialization compiler plugin, so the
+# Kotlin clients are generated with `--kotlin-serialization-plugin` (core
+# 1.0.0-rc.21): the plugin writes each type's `serializer()`, and a hand-written
+# one would clash with it.
 #
 # The web apps' clients are the frontend job's (`pnpm -r codegen`, ci.yml).
 set -euo pipefail
 
-REV=3f2bc52b0a4bf1f422c6579bf5350a347f33f9ef
+REF=1.0.0-rc.21
 ROOT="${MERO_APP_BUILD_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
 
 # app | lang | output directory | client name | Kotlin package
@@ -74,15 +78,7 @@ for arg in "$@"; do
   case "$arg" in
     --check) check=true ;;
     --install)
-      stamp="$ROOT/.mero-app-build-rev"
-      if [ -x "$ROOT/bin/mero-app-build" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$REV" ]; then
-        echo "mero-app-build $REV already in $ROOT/bin"
-      else
-        cargo install --locked --force --root "$ROOT" \
-          --git https://github.com/calimero-network/core --rev "$REV" \
-          calimero-app-build
-        echo "$REV" > "$stamp"
-      fi
+      MERO_APP_BUILD_REF="$REF" MERO_APP_BUILD_ROOT="$ROOT" scripts/install-mero-app-build.sh
       export PATH="$ROOT/bin:$PATH"
       ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
@@ -96,6 +92,7 @@ for entry in "${CLIENTS[@]}"; do
   IFS='|' read -r app lang out name package <<<"$entry"
   args=(codegen --abi "apps/$app/logic/res/abi.json" --lang "$lang" --name "$name" --no-openapi -o "$out")
   [ -n "$package" ] && args+=(--package "$package")
+  [ "$lang" = kotlin ] && args+=(--kotlin-serialization-plugin)
   mero-app-build "${args[@]}"
   outs+=("$out")
 done

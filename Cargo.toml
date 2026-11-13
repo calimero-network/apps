@@ -98,13 +98,13 @@ repository = "https://github.com/calimero-network/apps"
 # Bumping core: edit these three lines, update `min-runtime-version` and
 # `merod-image` below, run `cargo update`, and let CI rebuild every app.
 [workspace.dependencies]
-calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.20" }
-calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.20" }
+calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.21" }
+calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.21" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.21" }
 # Host-build only, for apps that describe their own id newtypes with
 # `impl_bytes32_abi!` (mero-chat). Same tag as the SDK, always — fleet-bump
 # rewrites every core git tag in this table together.
-calimero-wasm-abi       = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.20" }
+calimero-wasm-abi       = { git = "https://github.com/calimero-network/core.git", tag = "1.0.0-rc.21" }
 
 thiserror = "1.0.56"
 bs58      = "0.5.1"
@@ -145,13 +145,15 @@ unicode-normalization = { version = "0.1.25", default-features = false }
 # Hence a table of our own. Nothing calimero-owned belongs at workspace level in
 # this repo.
 [workspace.metadata.mero-apps]
-# Keep equal to the SDK tag above. A build imports host functions that only
-# exist from that release on; an older node installs the bundle happily and then
-# dies at context creation with `link error: unknown import`.
+# Keep equal to the SDK tag above, unless that release added no host function
+# (1.0.0-rc.21 did not, see `component-min-runtime-version`). A build imports
+# host functions that only exist from that release on; an older node installs
+# the bundle happily and then dies at context creation with `link error:
+# unknown import`.
 min-runtime-version = "1.0.0-rc.20"
 # The merod release the browser and journey jobs run (`setup-merod` reads the tag
 # from this), matched to the SDK tag so contract and node always agree.
-merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.20"
+merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.21"
 # ── component apps (the 1.0 runtime) ─────────────────────────────────────────
 #
 # The core release every component app, `tools/component-bundle` and the
@@ -171,9 +173,13 @@ merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.20"
 # its WIT world to `calimero:app@0.5.1`, which every app's res/abi.json records;
 # 1.0.0-rc.10 lets frontends a node serves reach the attestation mirror
 # (core#4861), so they can verify a TDX node and sign people in.
-component-core-tag = "1.0.0-rc.20"
+component-core-tag = "1.0.0-rc.21"
 # What a component bundle declares as `minRuntimeVersion`: a 1.0 node compares
-# it with its own version, so it is the core tag above.
+# it with its own version and refuses to install a bundle naming a newer one.
+# Normally the core tag above; it stays at 1.0.0-rc.20 while that tag is
+# 1.0.0-rc.21, because rc.21 changed only the ABI description and the code
+# generator (core#5027), not what a component imports (`calimero:app@0.5.1`
+# both), so bundles built on it still install and run on rc.20 nodes.
 component-min-runtime-version = "1.0.0-rc.20"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
