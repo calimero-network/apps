@@ -24,7 +24,8 @@
   },
   "peerDependencies": {
     "@calimero-network/mero-js": ">=31.0.0",
-    "react": ">=18"
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*"
@@ -33,6 +34,7 @@
     "@calimero-network/mero-js": "catalog:component",
     "@testing-library/react": "catalog:",
     "@types/react": "^19.2.18",
+    "@types/react-dom": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "jsdom": "catalog:",

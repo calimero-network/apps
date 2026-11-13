@@ -4,12 +4,14 @@ const h = vi.hoisted(() => ({
   me: vi.fn(),
   openConsentPage: vi.fn(),
   resumeConsent: vi.fn(),
+  confirmConsentHandoff: vi.fn(),
 }));
 
 vi.mock("./platform", () => ({
   run: (fn: (c: unknown) => Promise<unknown>) =>
     fn({ auth: { me: h.me }, openConsentPage: h.openConsentPage, resumeConsent: h.resumeConsent }),
 }));
+vi.mock("@calimero-apps/passkey", () => ({ confirmConsentHandoff: h.confirmConsentHandoff }));
 vi.mock("../utils/servedByNode", () => ({ nodeBasename: () => "/1.0.0/" }));
 
 import {
@@ -60,14 +62,16 @@ describe("Chat's consent page", () => {
 
   it("keeps what Chat was doing, shows the page's code first, and forgets it when the person stays", async () => {
     const intent = { kind: "createOrg" as const, name: "Acme", selfName: "Ann" };
-    h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
-      expect(consentIntent()).toEqual(intent);
-      opts.confirm({ code: "ABC-DEF" });
-      return { requestId: "r1" };
-    });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    h.openConsentPage.mockImplementation(
+      async (_req, opts: { confirm: (s: { code: string }) => Promise<boolean> }) => {
+        expect(consentIntent()).toEqual(intent);
+        await opts.confirm({ code: "ABC-DEF" });
+        return { requestId: "r1" };
+      },
+    );
+    h.confirmConsentHandoff.mockResolvedValue(false);
     await expect(askOnConsentPage(intent, consentRequest(intent))).resolves.toBe(false);
-    expect(confirm.mock.calls[0]?.[0]).toContain("ABC-DEF");
+    expect(h.confirmConsentHandoff).toHaveBeenCalledWith({ code: "ABC-DEF", action: "Create the workspace “Acme”" });
     expect(sessionStorage.getItem(CONSENT_INTENT_KEY)).toBeNull();
   });
 
