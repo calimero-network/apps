@@ -32,7 +32,7 @@ function fakeClient(): CalimeroClient {
 
 /**
  * Registers the gate for `app`, the name its session is stored under.
- * `mount` renders the app's root, or its session layer where the root takes no deps, with the deps it is given.
+ * `mount` renders the app's real root, or its session layer where the test project cannot hold the root, with the deps it is given.
  */
 export function nodeShieldGate(app: string, mount: (deps: SessionDeps) => void) {
   afterEach(() => {

@@ -60,7 +60,7 @@ account, nothing to install, no permissions to grant.
   (`@calimero-apps/passkey/nodeShield`, no React in the app) where it connects.
   Every app has a `nodeShield.gate.test.tsx`: one `nodeShieldGate(app, mount)` call
   (`@calimero-apps/passkey/testing`) that mounts its real root (its session layer where the
-  root takes no deps) signed in and fails unless exactly one shield is on the page;
+  test project cannot hold the root) signed in and fails unless exactly one shield is on the page;
   `scripts/check-node-shield-gate.py` fails an app whose gate did not run and pass.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice

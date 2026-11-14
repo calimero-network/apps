@@ -107,6 +107,7 @@ jobs:
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
               - 'scripts/check-service-workers.py'
+              - 'scripts/check-node-shield-gate.py'
               # The generator every app's `codegen` runs, at its pinned release.
               - 'scripts/install-meroctl.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
