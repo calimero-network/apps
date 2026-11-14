@@ -127,7 +127,7 @@ export default function Topbar({
    containing block for fixed descendants; the only things that open from it
    are absolute-positioned dropdowns, which is fine. */
 const Bar = styled.header`
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 12px;
   padding: 10px 10px 10px 20px; min-height: 64px; flex: 0 0 auto;
   margin: 12px 16px 0; border: 1px solid ${t.color.edge}; border-radius: 22px;
   position: sticky; top: 12px; z-index: 5;
@@ -136,7 +136,7 @@ const Bar = styled.header`
   box-shadow: ${t.shadow};
   @media (max-width: 940px) { padding-left: 8px; }
   @media (max-width: 720px) {
-    margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
+    flex-wrap: wrap; margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
   }
 `;
 const MenuBtn = styled.button`
@@ -146,7 +146,7 @@ const MenuBtn = styled.button`
   &:hover { background: ${t.color.hover}; }
 `;
 const Heading = styled.div`
-  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto;
+  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 0 auto;
 `;
 const ViewTitle = styled.div`
   margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.025em;
@@ -196,6 +196,11 @@ const Search = styled.div`
 `;
 const End = styled.div`
   display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  /* The shield is icon only where the bar has no room for its label. */
+  @media (max-width: 1240px) {
+    .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .cp-shield__chip { width: 28px; padding: 0; justify-content: center; }
+  }
   @media (max-width: 720px) { margin-left: auto; }
 `;
 const NewBtn = styled.button`
