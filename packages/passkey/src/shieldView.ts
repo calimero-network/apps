@@ -63,7 +63,7 @@ export function shortHash(hash: string): string {
   return hash.length > 12 ? `${hash.slice(0, 4)}…${hash.slice(-4)}` : hash;
 }
 
-function hostOf(url: string | undefined): string {
+export function hostOf(url: string | undefined): string {
   try {
     return new URL(url ?? "").host;
   } catch {
