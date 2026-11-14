@@ -1,7 +1,7 @@
-import { render } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { nodeShieldGate } from "@calimero-apps/passkey/testing";
 
-import { App } from "./App";
-import { APP } from "./session";
+import { APP, useSession } from "./session";
 
-nodeShieldGate(APP, (deps) => render(<App deps={deps} />));
+// Not the root: the test project leaves App.tsx out, with the generated landing page it imports.
+nodeShieldGate(APP, (deps) => renderHook(() => useSession(deps)));
