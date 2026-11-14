@@ -39,7 +39,7 @@ import {
 import { useLive, type GroupMember, type Namespace } from '@/calimero/react';
 import { targetKey } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { useInstanceRelease } from '@calimero-apps/passkey';
+import { useInstanceRelease, useNodeShieldApp } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { REGISTRY_APP_KEY, type OrgView } from '@/calimero/orgs';
 import { MeroDocsClient } from '@/lib/docsApi';
@@ -279,6 +279,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Registry instance ---
   const pinned = view?.metadata[REGISTRY_APP_KEY];
   const registryContextId = typeof pinned === 'string' && pinned ? pinned : null;
+  useNodeShieldApp(registryContextId, source);
   const [regError, setRegError] = useState<Error | null>(null);
   // A workspace whose registry was never created (its creation was cut
   // short): its owner or an admin creates it; anyone else waits for them.
