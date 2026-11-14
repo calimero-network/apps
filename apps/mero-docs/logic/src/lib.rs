@@ -299,8 +299,8 @@ fn body_of(doc: &str, block: &str) -> RichText {
 
 #[app::logic]
 impl MeroDocs {
-    /// An empty instance; the creator (`env::app_owner()`) is the registry's
-    /// owner, or the folder's moderator.
+    /// Starts an empty folder of documents. Its creator (`env::app_owner()`) is
+    /// the registry's owner, or the folder's moderator.
     #[app::init]
     pub fn init() -> app::Result<Self> {
         Ok(Self::load())
@@ -308,9 +308,9 @@ impl MeroDocs {
 
     // ── documents ────────────────────────────────────────────────────────────
 
-    /// Creates a document with the given title (at most 1024 characters) and an
-    /// empty body, and returns its id. Not idempotent: a retry after a lost
-    /// response creates a second document. Emits `DocCreated`.
+    /// Creates a new document with a title and an empty body. Returns its id.
+    /// The title is at most 1024 characters. Not idempotent: a retry after a
+    /// lost response creates a second document. Emits `DocCreated`.
     pub fn create_doc(&mut self, title: String) -> app::Result<String> {
         let me = account()?;
         check_chars("title", &title, MAX_TITLE_LEN)?;
@@ -331,15 +331,16 @@ impl MeroDocs {
         Ok(id)
     }
 
-    /// One document's header. `NotFound` for a missing document.
+    /// Shows a document's title, tags and details. Its text is read through
+    /// `getDocument`. `NotFound` for a missing document.
     #[app::view]
     pub fn get_doc(&self, id: String) -> app::Result<DocView> {
         let meta = self.meta(&id)?;
         self.doc_view(&id, &meta)
     }
 
-    /// Every document of the folder (archived ones only with `includeArchived`),
-    /// in id order.
+    /// Lists the documents in the folder, in id order. Archived ones are
+    /// included only with `includeArchived`.
     #[app::view]
     pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocView>> {
         let mut out = Vec::new();
@@ -351,12 +352,13 @@ impl MeroDocs {
         Ok(out)
     }
 
-    /// Searches the folder's titles and bodies: every word of `query` must start
-    /// a word of the document (case-insensitive), a title match scoring double;
-    /// best match first. `cursor` is the previous page's `nextCursor`; `limit`
-    /// defaults to 20, at most 100. A blank query finds nothing; one over 256
-    /// bytes is `Invalid`. Reads every document's text: core `1.0.0-rc.7` has no
-    /// full-text index for components.
+    /// Finds documents whose title or text matches the words you search for.
+    /// Every word of `query` must start a word of the document
+    /// (case-insensitive), a title match scoring double; best match first.
+    /// `cursor` is the previous page's `nextCursor`; `limit` defaults to 20, at
+    /// most 100. A blank query finds nothing; one over 256 bytes is `Invalid`.
+    /// Reads every document's text: core `1.0.0-rc.7` has no full-text index
+    /// for components.
     #[app::view]
     pub fn search_docs(
         &self,
@@ -419,7 +421,8 @@ impl MeroDocs {
         Ok(page)
     }
 
-    /// Replaces the whole title. Emits `TitleChanged` and `DocEdited`.
+    /// Renames a document. Replaces the whole title. Emits `TitleChanged` and
+    /// `DocEdited`.
     pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
         let len = rich::chars(&title_of(&id))?.len() as u32;
         let ops = vec![
@@ -434,23 +437,25 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Hides a document from the default list. Emits `DocArchived`.
+    /// Hides a document from the default list without deleting it. Emits
+    /// `DocArchived`.
     pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
         self.set_archived(&id, true)?;
         env::emit(Event::DocArchived { id }, Audience::All)?;
         Ok(())
     }
 
-    /// Brings an archived document back. Emits `DocUnarchived`.
+    /// Brings an archived document back into the default list. Emits
+    /// `DocUnarchived`.
     pub fn unarchive_doc(&mut self, id: String) -> app::Result<()> {
         self.set_archived(&id, false)?;
         env::emit(Event::DocUnarchived { id }, Audience::All)?;
         Ok(())
     }
 
-    /// Deletes a document with its title, body, tags and comments. Only its
-    /// creator or the folder's moderator (whoever created this instance) may
-    /// (`Forbidden`). Emits `DocDeleted`.
+    /// Deletes a document together with its title, body, tags and comments.
+    /// Only its creator or the folder's moderator (whoever created this
+    /// instance) may (`Forbidden`). Emits `DocDeleted`.
     pub fn delete_doc(&mut self, id: String) -> app::Result<()> {
         let meta = self.meta(&id)?;
         if !may_delete(&meta.created_by)? {
@@ -518,9 +523,9 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Tags a document; a tag it has already is a no-op. `tag` is a key of
-    /// lowercase letters, digits and dashes (1 to 64), else `Invalid`. Leaves
-    /// `updatedBy`. Emits `DocTagsChanged`.
+    /// Adds a tag to a document. A tag it has already is a no-op. `tag` is a
+    /// key of lowercase letters, digits and dashes (1 to 64), else `Invalid`.
+    /// Leaves `updatedBy`. Emits `DocTagsChanged`.
     pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         if !is_valid_tag_key(&tag) {
             return Err(invalid("invalid tag key"));
@@ -531,8 +536,8 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Removes a tag; one the document does not have is a no-op. Emits
-    /// `DocTagsChanged`.
+    /// Removes a tag from a document. One the document does not have is a
+    /// no-op. Emits `DocTagsChanged`.
     pub fn remove_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         let _meta = self.meta(&id)?;
         let _was = self.doc_tags.remove(&(id.clone(), tag))?;
@@ -542,14 +547,15 @@ impl MeroDocs {
 
     // ── title ────────────────────────────────────────────────────────────────
 
-    /// The title text.
+    /// Shows a document's title.
     #[app::view]
     pub fn get_title(&self, doc: String) -> app::Result<String> {
         let _meta = self.meta(&doc)?;
         Ok(rich::plain(&rich::chars(&title_of(&doc))?))
     }
 
-    /// The title with the id of each of its characters.
+    /// Shows a document's title together with an id for each character. Editors
+    /// use the ids to merge edits made at the same time.
     #[app::view]
     pub fn get_title_state(&self, doc: String) -> app::Result<TitleState> {
         let _meta = self.meta(&doc)?;
@@ -560,9 +566,9 @@ impl MeroDocs {
         })
     }
 
-    /// Applies Quill steps (no `attributes`: the title is plain) to the title;
-    /// returns the undo token for `titleUndo`. At most 1024 characters after.
-    /// Emits `TitleChanged`.
+    /// Edits a document's title. Applies Quill steps (no `attributes`: the
+    /// title is plain) to the title and returns the undo token for `titleUndo`.
+    /// At most 1024 characters after. Emits `TitleChanged`.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
         self.touch(&doc)?;
         let mut title = title_of(&doc);
@@ -573,8 +579,9 @@ impl MeroDocs {
         Ok(token)
     }
 
-    /// `titleApplyDelta`, only if the title is still `base` and, with an
-    /// `anchor`, the steps are an insert right at it; otherwise nothing is
+    /// Edits a document's title only if nobody has changed it in the meantime.
+    /// That is `titleApplyDelta`, only if the title is still `base` and, with
+    /// an `anchor`, the steps are an insert right at it; otherwise nothing is
     /// written and the current title comes back to rebase onto.
     pub fn title_apply_delta_on(
         &mut self,
@@ -616,8 +623,9 @@ impl MeroDocs {
         })
     }
 
-    /// Applies an undo token from `titleApplyDelta` (or `titleUndo`); returns
-    /// the token that undoes this. Emits `TitleChanged`.
+    /// Undoes an edit to a document's title. Applies an undo token from
+    /// `titleApplyDelta` (or `titleUndo`) and returns the token that undoes
+    /// this. Emits `TitleChanged`.
     pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
         let edit = rich::Edit::from_token(&token)?;
         self.touch(&doc)?;
@@ -626,7 +634,8 @@ impl MeroDocs {
         Ok(redo)
     }
 
-    /// An anchor for the gap at `position` of the title, stuck to the character
+    /// Marks a spot in a document's title so it can be found again after other
+    /// edits. The anchor is for the gap at `position`, stuck to the character
     /// after it (`before`) or before it.
     #[app::view]
     pub fn title_anchor_at(&self, doc: String, position: u32, before: bool) -> app::Result<String> {
@@ -634,7 +643,8 @@ impl MeroDocs {
         rich::anchor_at(&rich::chars(&title_of(&doc))?, position, before)
     }
 
-    /// Where each title anchor sits now; `null` for an unknown one.
+    /// Finds where marked spots in a document's title are now. `null` for an
+    /// unknown one.
     #[app::view]
     pub fn title_resolve(
         &self,
@@ -649,6 +659,7 @@ impl MeroDocs {
 
     // ── body structure ───────────────────────────────────────────────────────
 
+    /// Adds a new empty block, such as a paragraph or a heading, to a document.
     /// Inserts an empty block of `kind` at `depth` after the block `after`
     /// (`null`: first), and returns its id. Emits `BlockInserted`.
     pub fn insert_block(
@@ -670,8 +681,8 @@ impl MeroDocs {
         Ok(block)
     }
 
-    /// Takes a block out of the document; its text is kept, so ids that name
-    /// it still resolve. Emits `BlockDeleted`.
+    /// Removes a block from a document. Its text is kept, so ids that name it
+    /// still resolve. Emits `BlockDeleted`.
     pub fn delete_block(&mut self, doc: String, block: String) -> app::Result<()> {
         self.touch(&doc)?;
         let mut row = self.block_row(&doc, &block)?;
@@ -684,7 +695,8 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Moves a block after `after` (`null`: first). Emits `BlockMoved`.
+    /// Moves a block to another place in a document. It goes after `after`
+    /// (`null`: first). Emits `BlockMoved`.
     pub fn move_block(
         &mut self,
         doc: String,
@@ -711,17 +723,20 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Sets a block's type (BlockNote's own string). Emits `BlockChanged`.
+    /// Changes what a block is, for example from a paragraph to a heading.
+    /// `kind` is BlockNote's own string. Emits `BlockChanged`.
     pub fn set_kind(&mut self, doc: String, block: String, kind: String) -> app::Result<()> {
         self.change_block(doc, block, |row| row.kind = kind)
     }
 
-    /// Sets a block's nesting depth. Emits `BlockChanged`.
+    /// Indents or outdents a block by setting its nesting depth. Emits
+    /// `BlockChanged`.
     pub fn set_depth(&mut self, doc: String, block: String, depth: u8) -> app::Result<()> {
         self.change_block(doc, block, |row| row.depth = depth)
     }
 
-    /// Sets a block attribute, or removes it with `null`. Emits `BlockChanged`.
+    /// Sets a formatting property of a block, such as a heading's level.
+    /// Removes it with `null`. Emits `BlockChanged`.
     pub fn set_attr(
         &mut self,
         doc: String,
@@ -737,10 +752,10 @@ impl MeroDocs {
         })
     }
 
-    /// Splits a block at character `at`: the text from `at` on moves, with its
-    /// formatting, to a new block of the same type, depth and attributes right
-    /// after it, whose id is returned. The head keeps the block's id. Emits
-    /// `BlockInserted` and `BlockChanged`.
+    /// Splits a block in two at a character. The text from `at` on moves, with
+    /// its formatting, to a new block of the same type, depth and attributes
+    /// right after it, whose id is returned. The head keeps the block's id.
+    /// Emits `BlockInserted` and `BlockChanged`.
     pub fn split_block(&mut self, doc: String, block: String, at: u32) -> app::Result<String> {
         self.touch(&doc)?;
         let row = self.block_row(&doc, &block)?;
@@ -771,9 +786,9 @@ impl MeroDocs {
         Ok(new)
     }
 
-    /// Appends `second`'s text (with its formatting) to `first` and takes
-    /// `second` out of the document. At most 100,000 characters joined. Emits
-    /// `BlockChanged` and `BlockDeleted`.
+    /// Joins two blocks into one. Appends `second`'s text (with its formatting)
+    /// to `first` and takes `second` out of the document. At most 100,000
+    /// characters joined. Emits `BlockChanged` and `BlockDeleted`.
     pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
         if first == second {
             return Err(invalid("a block cannot merge into itself"));
@@ -806,12 +821,12 @@ impl MeroDocs {
 
     // ── body text ────────────────────────────────────────────────────────────
 
-    /// Applies Quill steps to a block's text; returns the undo token for
-    /// `undo`. An insert's `attributes` are its complete formatting; a retain's
-    /// change only the keys they name. Keys outside the schema (`bold`,
-    /// `italic`, `underline`, `strike`, `textColor`, `backgroundColor`, `link`,
-    /// `code`, `comment`) are `Invalid`. At most 100,000 characters after.
-    /// Emits `TextChanged`.
+    /// Edits the text of a block. Applies Quill steps to it and returns the
+    /// undo token for `undo`. An insert's `attributes` are its complete
+    /// formatting; a retain's change only the keys they name. Keys outside the
+    /// schema (`bold`, `italic`, `underline`, `strike`, `textColor`,
+    /// `backgroundColor`, `link`, `code`, `comment`) are `Invalid`. At most
+    /// 100,000 characters after. Emits `TextChanged`.
     pub fn apply_delta(
         &mut self,
         doc: String,
@@ -832,8 +847,9 @@ impl MeroDocs {
         Ok(token)
     }
 
-    /// `applyDelta`, only if the block's text is still `base` and, with an
-    /// `anchor`, the steps are an insert right at it; otherwise nothing is
+    /// Edits the text of a block only if nobody has changed it in the meantime.
+    /// That is `applyDelta`, only if the block's text is still `base` and, with
+    /// an `anchor`, the steps are an insert right at it; otherwise nothing is
     /// written and the block's current spans and ids come back to rebase onto.
     pub fn apply_delta_on(
         &mut self,
@@ -876,8 +892,9 @@ impl MeroDocs {
         })
     }
 
-    /// Applies an undo token from `applyDelta` (or `undo`) to the block;
-    /// returns the token that undoes this. Emits `TextChanged`.
+    /// Undoes an edit to a block's text. Applies an undo token from
+    /// `applyDelta` (or `undo`) to the block and returns the token that undoes
+    /// this. Emits `TextChanged`.
     pub fn undo(&mut self, doc: String, block: String, token: String) -> app::Result<String> {
         let edit = rich::Edit::from_token(&token)?;
         self.touch(&doc)?;
@@ -887,9 +904,10 @@ impl MeroDocs {
         Ok(redo)
     }
 
-    /// Formats the characters `[start, end)` of a block: `key` to `value`, or
-    /// removes it with `null`. Returns the mark's id (`null` for an empty
-    /// range). Emits `MarkApplied`.
+    /// Formats a stretch of a block's text, for example as bold or a link. Sets
+    /// `key` to `value` on the characters `[start, end)`, or removes it with
+    /// `null`. Returns the mark's id (`null` for an empty range). Emits
+    /// `MarkApplied`.
     pub fn mark(
         &mut self,
         doc: String,
@@ -923,7 +941,7 @@ impl MeroDocs {
 
     // ── body reads ───────────────────────────────────────────────────────────
 
-    /// Every block of the document, in order.
+    /// Shows every block of a document, in order.
     #[app::view]
     pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
         let _meta = self.meta(&doc)?;
@@ -933,7 +951,7 @@ impl MeroDocs {
             .collect()
     }
 
-    /// One block, or `null` when it is not in the document.
+    /// Shows one block of a document. `null` when it is not in the document.
     #[app::view]
     pub fn get_block(&self, doc: String, block: String) -> app::Result<Option<Block>> {
         let _meta = self.meta(&doc)?;
@@ -943,21 +961,22 @@ impl MeroDocs {
         }
     }
 
-    /// A block's text as runs of equally formatted characters.
+    /// Shows a block's text with its formatting. Comes as runs of equally
+    /// formatted characters.
     #[app::view]
     pub fn get_block_delta(&self, doc: String, block: String) -> app::Result<Vec<Span>> {
         let _row = self.block_row(&doc, &block)?;
         Ok(rich::spans(&rich::chars(&body_of(&doc, &block))?))
     }
 
-    /// A block's plain text.
+    /// Shows a block's text without its formatting.
     #[app::view]
     pub fn get_text(&self, doc: String, block: String) -> app::Result<String> {
         let _row = self.block_row(&doc, &block)?;
         Ok(rich::plain(&rich::chars(&body_of(&doc, &block))?))
     }
 
-    /// The ids of the document's blocks, in order.
+    /// Lists the ids of a document's blocks, in order.
     #[app::view]
     pub fn list_blocks(&self, doc: String) -> app::Result<Vec<String>> {
         let _meta = self.meta(&doc)?;
@@ -968,8 +987,9 @@ impl MeroDocs {
             .collect())
     }
 
-    /// The whole body as one string, `kind/depth[attr=value]{marks:text};` per
-    /// block: two readers agree on a document exactly when their digests match.
+    /// Summarizes a document's whole body as one string, so two copies can be
+    /// compared. It reads `kind/depth[attr=value]{marks:text};` per block: two
+    /// readers agree on a document exactly when their digests match.
     #[app::view]
     pub fn get_state_digest(&self, doc: String) -> app::Result<String> {
         let _meta = self.meta(&doc)?;
@@ -994,7 +1014,8 @@ impl MeroDocs {
         Ok(out)
     }
 
-    /// How many times `needle` occurs in a block's text (non-overlapping).
+    /// Counts how often a word or phrase appears in a block's text. Occurrences
+    /// do not overlap.
     #[app::view]
     pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<u32> {
         let _row = self.block_row(&doc, &block)?;
@@ -1005,7 +1026,8 @@ impl MeroDocs {
         Ok(text.matches(&needle).count() as u32)
     }
 
-    /// An anchor for the gap at `position` of a block, stuck to the character
+    /// Marks a spot in a block's text so it can be found again after other
+    /// edits. The anchor is for the gap at `position`, stuck to the character
     /// after it (`before`) or before it.
     #[app::view]
     pub fn anchor_at(
@@ -1019,7 +1041,8 @@ impl MeroDocs {
         rich::anchor_at(&rich::chars(&body_of(&doc, &block))?, position, before)
     }
 
-    /// Where each of a block's anchors sits now; `null` for an unknown one.
+    /// Finds where marked spots in a block's text are now. `null` for an
+    /// unknown one.
     #[app::view]
     pub fn resolve_ids(
         &self,
@@ -1035,8 +1058,8 @@ impl MeroDocs {
 
     // ── comments ─────────────────────────────────────────────────────────────
 
-    /// Adds the caller's comment (at most 10,000 characters) to a document and
-    /// returns its id. Emits `CommentAdded`.
+    /// Adds a comment to a document. The comment is the caller's, at most
+    /// 10,000 characters, and its id is returned. Emits `CommentAdded`.
     pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
         let me = account()?;
         check_chars("comment", &body, MAX_COMMENT_LEN)?;
@@ -1056,7 +1079,8 @@ impl MeroDocs {
         Ok(id)
     }
 
-    /// A document's comments, oldest id first; none for a missing document.
+    /// Lists a document's comments, oldest id first. None for a missing
+    /// document.
     #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentView>> {
         let mut out = Vec::new();
@@ -1079,28 +1103,30 @@ impl MeroDocs {
         }
     }
 
-    /// One comment. `NotFound` for a missing one.
+    /// Shows one comment. `NotFound` for a missing one.
     #[app::view]
     pub fn get_comment(&self, id: String) -> app::Result<CommentView> {
         let (doc, row) = self.comment(&id)?;
         Ok(comment_view(id, doc, row))
     }
 
-    /// How many comments the folder's documents hold.
+    /// Counts the comments on all the folder's documents.
     #[app::view]
     pub fn comment_count(&self) -> app::Result<u64> {
         Ok(self.comment_total.get()?)
     }
 
-    /// The schema version a comment was written under: 1 for every live
-    /// comment (one schema since the port), `null` for a missing one.
+    /// Shows which version of the comment format a comment was saved in. 1 for
+    /// every live comment (one schema since the port), `null` for a missing
+    /// one.
     #[app::view]
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
         Ok(self.comment_docs.get(&id)?.map(|_| 1))
     }
 
-    /// Replaces the text of the caller's own comment. Anyone else's is
-    /// `Forbidden`. Emits `CommentEdited`.
+    /// Changes the text of a comment you wrote. Replaces the text of the
+    /// caller's own comment. Anyone else's is `Forbidden`. Emits
+    /// `CommentEdited`.
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let me = account()?;
         check_chars("comment", &body, MAX_COMMENT_LEN)?;
@@ -1114,8 +1140,8 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Deletes a comment: its author's own, or any as the folder's moderator.
-    /// Emits `CommentDeleted`.
+    /// Deletes a comment. Its author may, and the folder's moderator may delete
+    /// any. Emits `CommentDeleted`.
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         let (doc, row) = self.comment(&id)?;
         if !may_delete(&row.author)? {
@@ -1132,15 +1158,16 @@ impl MeroDocs {
 
     // ── registry: owner and managers ─────────────────────────────────────────
 
-    /// The registry's owner: the account that created this instance.
+    /// Shows who owns this folder. That is the account that created this
+    /// instance.
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
         Ok(env::app_owner())
     }
 
     /// Makes a member of the organization a manager. Only the owner may
-    /// (`Forbidden`); the owner itself, or someone outside the organization,
-    /// is `Invalid`. Emits `ManagerAdded`.
+    /// (`Forbidden`); the owner itself, or someone outside the organization, is
+    /// `Invalid`. Emits `ManagerAdded`.
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
         self.owner_only("add managers")?;
         if member == env::app_owner() {
@@ -1154,8 +1181,9 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Takes a manager's role away. Only the owner may (`Forbidden`); someone
-    /// who is not a manager is `NotFound`. Emits `ManagerRemoved`.
+    /// Takes a manager's role away from someone. Only the owner may
+    /// (`Forbidden`); someone who is not a manager is `NotFound`. Emits
+    /// `ManagerRemoved`.
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
         self.owner_only("remove managers")?;
         if !self.managers.remove(&member)? {
@@ -1165,7 +1193,7 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// The managers (the owner not included), in account order.
+    /// Lists the managers, in account order. The owner is not included.
     #[app::view]
     pub fn list_managers(&self) -> app::Result<Vec<String>> {
         let mut out = Vec::new();
@@ -1186,9 +1214,10 @@ impl MeroDocs {
 
     // ── registry: tags ───────────────────────────────────────────────────────
 
-    /// Creates or renames a workspace tag. `key`: 1 to 64 lowercase letters,
-    /// digits and dashes; `name`: 1 to 32 characters after trimming; `color`:
-    /// `#rrggbb`. A deleted tag's key is `Invalid` for good. Emits `TagChanged`.
+    /// Creates a workspace tag, or changes its name and color. `key`: 1 to 64
+    /// lowercase letters, digits and dashes; `name`: 1 to 32 characters after
+    /// trimming; `color`: `#rrggbb`. A deleted tag's key is `Invalid` for good.
+    /// Emits `TagChanged`.
     pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
         if !is_valid_tag_key(&key) {
             return Err(invalid(format!("invalid tag key: {key}")));
@@ -1211,8 +1240,8 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Deletes a workspace tag for good (its key stays taken). `NotFound` for
-    /// an unknown key. Emits `TagChanged`.
+    /// Deletes a workspace tag for good. Its key stays taken. `NotFound` for an
+    /// unknown key. Emits `TagChanged`.
     pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
         let Some(mut row) = self.tags.get(&key)? else {
             return Err(not_found("tag", &key));
@@ -1223,7 +1252,7 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Every workspace tag, deleted ones included, in key order.
+    /// Lists the workspace's tags, in key order. Deleted ones are included.
     #[app::view]
     pub fn list_tags(&self) -> app::Result<Vec<TagView>> {
         let mut out = Vec::new();
@@ -1249,9 +1278,10 @@ impl MeroDocs {
 
     // ── registry: saved views ────────────────────────────────────────────────
 
-    /// Saves (or renames) a view. `id`: 1 to 64 ASCII letters, digits and
-    /// dashes; `name`: 1 to 60 bytes after trimming; `query`: at most 1000
-    /// bytes. The first saver is its `createdBy`. Emits `ViewChanged`.
+    /// Saves a named view for the workspace, or renames or changes one already
+    /// saved. `id`: 1 to 64 ASCII letters, digits and dashes; `name`: 1 to 60
+    /// bytes after trimming; `query`: at most 1000 bytes. The first saver is
+    /// its `createdBy`. Emits `ViewChanged`.
     pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
         let me = account()?;
         let valid_id = (1..=64).contains(&id.len())
@@ -1282,7 +1312,7 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Deletes a view. `NotFound` for an unknown id. Emits `ViewChanged`.
+    /// Deletes a saved view. `NotFound` for an unknown id. Emits `ViewChanged`.
     pub fn delete_view(&mut self, id: String) -> app::Result<()> {
         if self.views.remove(&id)?.is_none() {
             return Err(not_found("view", &id));
@@ -1291,7 +1321,7 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Every saved view, in id order.
+    /// Lists the saved views, in id order.
     #[app::view]
     pub fn list_views(&self) -> app::Result<Vec<ViewView>> {
         let mut out = Vec::new();
