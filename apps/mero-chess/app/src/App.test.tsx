@@ -463,6 +463,27 @@ describe("App", () => {
     });
   });
 
+  it("tells the node shield which table is open, so its popover checks the node's code", async () => {
+    at("/play");
+    const client = fakeClient([], tableView({ status: "inProgress", white: seat("white", "acct-alice", "Alice"), black: seat("black", "acct-bob", "Bob"), myColor: "white" }));
+    // A node that passes its check and binds the dev bundle's hash to the open instance.
+    const attestApp = vi.fn(async () => ({ url: "https://n1.example", mock: false, appHash: "bundle-hash", checkedAt: Date.now() }));
+    Object.assign(client, {
+      nodeUrl: "https://n1.example",
+      verification: () => undefined,
+      verify: vi.fn(async () => ({ status: "verified", url: "https://n1.example", mock: false, release: "2.3.148", profile: "locked-read-only", checkedAt: Date.now() })),
+      attestApp,
+    });
+    const storage = new Memory();
+    opened(storage);
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByTestId("square-e2");
+    await waitFor(() => expect(screen.getByTestId("node-shield").getAttribute("aria-label")).toBe("Verified node"));
+    fireEvent.click(screen.getByTestId("node-shield"));
+    await waitFor(() => expect(attestApp).toHaveBeenCalledWith("app-1"));
+    await screen.findByText("Node runs the bundle this build names");
+  });
+
   it("places the node shield in the top bar, with no floating one beside it", async () => {
     at("/play");
     const storage = new Memory();

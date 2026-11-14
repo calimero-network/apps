@@ -7,7 +7,7 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, SignInPanel, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { KvStoreClient } from "./generated/client";
@@ -83,6 +83,7 @@ export function App({
   const client = session.status === "signed-in" ? session.client : null;
   // A store is an app instance, served the frontend of the release it runs.
   useInstanceRelease(client, opened?.appId);
+  useNodeShieldApp(opened?.appId, source);
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   const after = useCallback(() => {
     if (client) store?.sync(client);
