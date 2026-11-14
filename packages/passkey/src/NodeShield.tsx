@@ -11,6 +11,7 @@ import { bindShieldSession, placeShield, readShield, useShieldStore, type Shield
 const RETRY_BASE_MS = 2_000;
 const RETRY_MAX_MS = 30_000;
 const COPIED_MS = 2_000;
+const NODE_POLL_MS = 1_000; // how often to notice that the client failed over
 const EDGE_PX = 12; // the popover's distance from the viewport's edge
 const GAP_PX = 8; // and from the chip
 
@@ -36,10 +37,17 @@ function peek(client: CalimeroClient | null): NodeVerificationState {
   return known ?? { status: "checking", url: client?.nodeUrl ?? "" };
 }
 
-/** The node's check, asked again after each failure to reach it and whenever `refresh` is called. */
+/** The check of the node in use, asked again after a failure to reach it, a failover, and whenever `refresh` is called. */
 function useNodeVerification(client: CalimeroClient | null): [NodeVerificationState, () => void] {
   const [state, setState] = useState(() => peek(client));
   const [round, setRound] = useState(0);
+  const [url, setUrl] = useState(client?.nodeUrl);
+  useEffect(() => {
+    setUrl(client?.nodeUrl);
+    if (!client) return;
+    const poll = setInterval(() => setUrl(client.nodeUrl), NODE_POLL_MS);
+    return () => clearInterval(poll);
+  }, [client]);
   useEffect(() => {
     if (!client) return;
     let live = true;
@@ -56,24 +64,26 @@ function useNodeVerification(client: CalimeroClient | null): [NodeVerificationSt
       live = false;
       clearTimeout(timer);
     };
-  }, [client, round]);
-  return [state, useCallback(() => setRound((n) => n + 1), [])];
+  }, [client, round, url]);
+  // Never describe a node the client has moved on from.
+  const shown: NodeVerificationState = url && state.url !== url ? { status: "checking", url } : state;
+  return [shown, useCallback(() => setRound((n) => n + 1), [])];
 }
 
 /** The app's code check, run each time the popover opens for a node that passed its own check. */
 function useAppCode(client: CalimeroClient | null, app: ShieldApp | null, active: boolean): AppCodeCheck | null {
-  const [result, setResult] = useState<{ app: ShieldApp; code: AppCodeCheck } | null>(null);
+  const [result, setResult] = useState<{ client: CalimeroClient; app: ShieldApp; code: AppCodeCheck } | null>(null);
   useEffect(() => {
     if (!client || !app || !active) return;
     let live = true;
     void checkAppCode(client, app.id, app.source).then((code) => {
-      if (live) setResult({ app, code });
+      if (live) setResult({ client, app, code });
     });
     return () => {
       live = false;
     };
   }, [client, app, active]);
-  return app && result?.app === app ? result.code : null;
+  return result?.client === client && result?.app === app ? result.code : null;
 }
 
 /** Where the popover sits: right edges aligned with the chip, below it or above when that is where the room is, inside the viewport. */
@@ -91,7 +101,7 @@ function usePlacement(open: boolean, chip: React.RefObject<HTMLElement | null>, 
       setAt({
         top: room === below ? anchor.bottom + GAP_PX : anchor.top - GAP_PX - Math.min(height, room),
         left: Math.min(Math.max(anchor.right - width, EDGE_PX), window.innerWidth - width - EDGE_PX),
-        maxHeight: room,
+        maxHeight: Math.max(room, 0),
       });
     };
     place();
@@ -217,7 +227,6 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   useEffect(() => {
     if (!open) return;
     refresh();
-    pop.current?.focus();
     const close = (refocus: boolean) => {
       setOpen(false);
       if (refocus) chip.current?.focus();
@@ -234,6 +243,12 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
       document.removeEventListener("mousedown", onDown);
     };
   }, [open, refresh]);
+
+  // Focus waits for the placement: a popover still hidden for it cannot take focus.
+  const placed = placement !== null;
+  useEffect(() => {
+    if (open && placed) pop.current?.focus();
+  }, [open, placed]);
 
   if (!session) return null;
   const view = describeShield(state, { cluster: session.cluster, code });
@@ -259,12 +274,7 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   );
 }
 
-/**
- * A header chip for the node this app talks to: what the browser's check of
- * the node verified, with a popover that says it in plain words. Place it just
- * left of the account avatar; an app that places none still gets the floating
- * one (`bindNodeShield`). Renders nothing until `usePasskeySession` has a client.
- */
+/** A header chip for the node this app talks to, with a popover of what the browser's check verified. */
 export function NodeShield() {
   const id = useId();
   useLayoutEffect(() => placeShield(id), [id]);
@@ -296,12 +306,7 @@ function unmountFloating() {
   if (gone) queueMicrotask(() => (gone.root.unmount(), gone.host.remove()));
 }
 
-/**
- * Show the node shield for `client` (in `cluster`, as `describeTarget` says it)
- * until the returned function is called: a floating chip in the page's top
- * right corner, unless an app placed a `<NodeShield />`. `usePasskeySession`
- * does this for every app.
- */
+/** Show the shield for `client` in `cluster` until unbound: a floating chip unless an app placed a `<NodeShield />`. */
 export function bindNodeShield(client: CalimeroClient, cluster: string): () => void {
   const unbind = bindShieldSession({ client, cluster });
   mountFloating();

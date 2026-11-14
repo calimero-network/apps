@@ -1,10 +1,4 @@
-/**
- * What every shield on the page shares: the session's client (set by
- * `usePasskeySession`), the app instance an app registers for the code check,
- * which shields an app placed, and open requests. One store per page, so a
- * placed `<NodeShield />` needs no props and the built-in floating one knows
- * when to step aside.
- */
+/** What every shield on the page shares: the bound sessions, the registered app, placed shields and open requests. */
 import { useEffect, useSyncExternalStore } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
@@ -67,11 +61,7 @@ export function openNodeShield() {
   update({ opens: snapshot.opens + 1 });
 }
 
-/**
- * Tell the shield which app instance this page runs and where its code comes
- * from (`appSource`), so the popover can check the node runs that exact code.
- * Without it the popover leaves the app code out.
- */
+/** Tell the shield which app instance this page runs and where its code comes from, so the popover can check it. */
 export function useNodeShieldApp(id: string | null | undefined, source: AppSource) {
   const key = typeof source === "string" ? source : `${source.package}@${source.version ?? ""}`;
   useEffect(() => {

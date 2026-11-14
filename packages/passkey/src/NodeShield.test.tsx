@@ -25,13 +25,18 @@ function fakeClient(first: NodeVerificationState) {
   let answer = first;
   const verify = vi.fn(async () => answer);
   const client = {
-    nodeUrl: NODE,
+    nodeUrl: first.url,
     verification: vi.fn(() => answer),
     verify,
     attestApp: vi.fn(async () => ({ url: NODE, mock: false, appHash: BUNDLE, checkedAt: Date.now() })),
     packageCapabilities: vi.fn(),
   };
-  return { client: client as unknown as CalimeroClient, ...client, answer: (next: NodeVerificationState) => void (answer = next) };
+  return {
+    client: client as unknown as CalimeroClient,
+    ...client,
+    answer: (next: NodeVerificationState) => void (answer = next),
+    failOverTo: (url: string) => void (client.nodeUrl = url),
+  };
 }
 
 let unbind: Array<() => void> = [];
@@ -75,6 +80,7 @@ describe("the placed shield", () => {
     open();
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("You are talking to a genuine Calimero TEE node");
+    await waitFor(() => expect(document.activeElement).toBe(dialog));
     expect(chip().getAttribute("aria-expanded")).toBe("true");
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -141,6 +147,26 @@ describe("the placed shield", () => {
     expect(chip().textContent).toContain("Verified node");
   });
 
+  it("checks the node again when the client fails over to another", async () => {
+    vi.useFakeTimers();
+    const f = fakeClient(sealed);
+    f.verify.mockImplementation(async () => ({ ...sealed, url: f.client.nodeUrl }));
+    bind(f.client);
+    render(<NodeShield />);
+    await act(async () => {});
+    open();
+    await act(async () => {});
+    expect(screen.getByRole("dialog").textContent).toContain("node-3.relay.example.net");
+
+    f.failOverTo("https://node-9.relay.example.net");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    const text = screen.getByRole("dialog").textContent;
+    expect(text).toContain("node-9.relay.example.net");
+    expect(text).not.toContain("node-3.relay.example.net");
+  });
+
   it("does not take the app down when the client cannot be checked", async () => {
     bind({ nodeUrl: NODE } as unknown as CalimeroClient);
     render(<NodeShield />);
@@ -179,6 +205,21 @@ describe("the app code check", () => {
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(dialog.textContent).toContain("Does not match this app's release"));
     expect(dialog.textContent).not.toContain("Node runs the bundle this build names");
+  });
+
+  it("never shows one client's code check against another client", async () => {
+    const a = fakeClient(sealed);
+    bind(a.client);
+    render(<App source={BUNDLE} />);
+    await screen.findByText("Verified node");
+    open();
+    await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names"));
+
+    const b = fakeClient(sealed);
+    b.attestApp.mockImplementation(() => new Promise(() => {}));
+    act(() => bind(b.client));
+    await waitFor(() => expect(b.attestApp).toHaveBeenCalled());
+    expect(screen.getByRole("dialog").textContent).not.toContain("App code");
   });
 
   it("checks only once the popover is opened", async () => {
