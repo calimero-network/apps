@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
+import styled from 'styled-components';
 import { lastUsedName } from '@calimero-apps/names';
+import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
+import { tokens as t } from '../theme';
+import { useSignedIn } from '../sessionContext';
+import { newWorkspaceRelease } from '../workspaces';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;
@@ -11,10 +16,62 @@ interface Props {
   onClose: () => void;
 }
 
-/** New-workspace (namespace) dialog. Name is required, and so is your name in
- *  the workspace (asked here, once, for every pipeline in it; it starts on the
- *  name used for the last workspace); delegates to useWorkspace.createNamespace,
- *  which creates + selects the namespace and writes your name to it.
+type Release =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; release: ReviewRelease | null };
+
+/** The release the new workspace's repositories will run, read when the dialog opens; `retry` asks again. */
+function useNewWorkspaceRelease(): [Release, () => void] {
+  const { client, source } = useSignedIn();
+  const [release, setRelease] = useState<Release>({ status: 'loading' });
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setRelease({ status: 'loading' });
+    newWorkspaceRelease(client, source).then(
+      (found) => live && setRelease({ status: 'ready', release: found }),
+      () => live && setRelease({ status: 'error' }),
+    );
+    return () => { live = false; };
+  }, [client, source, round]);
+  return [release, () => setRound((n) => n + 1)];
+}
+
+/** Step 2: the shared review of the release, or why there is none to review. */
+function ReviewStep({ release, retry, busy, onBack, onCreate }: {
+  release: Release;
+  retry: () => void;
+  busy: boolean;
+  onBack: () => void;
+  onCreate: () => void;
+}) {
+  if (release.status === 'ready' && release.release) {
+    return <WorkspaceReview release={release.release} creating={busy} onBack={onBack} onCreate={onCreate} />;
+  }
+  const none = release.status === 'ready';
+  return (
+    <>
+      <h3>Review before creating</h3>
+      <p className="sub">
+        {release.status === 'loading' && 'Reading the app\'s release from this node...'}
+        {release.status === 'error' && 'The app\'s release could not be read from this node.'}
+        {none && 'This is a development build: it runs a local bundle, not a signed release, so there is nothing to review.'}
+      </p>
+      <Actions>
+        <SecondaryBtn onClick={onBack} disabled={busy}>Back</SecondaryBtn>
+        {release.status === 'error' && <PrimaryBtn onClick={retry}>Try again</PrimaryBtn>}
+        {none && <PrimaryBtn onClick={onCreate} disabled={busy}>{busy ? <Spin /> : 'Create workspace'}</PrimaryBtn>}
+      </Actions>
+    </>
+  );
+}
+
+/** New-workspace (namespace) dialog in two steps. Step 1: name is required, and
+ *  so is your name in the workspace (asked here, once, for every pipeline in it;
+ *  it starts on the name used for the last workspace). Step 2: the review of the
+ *  app release, which is where it is created, through useWorkspace.createNamespace
+ *  (creates + selects the namespace and writes your name to it).
  *
  *  When the workspace was created but its member defaults could not be set
  *  (the passkey prompt was cancelled), the dialog stays open to say so: the
@@ -26,6 +83,8 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hostingNotice, setHostingNotice] = useState<string | null>(null);
+  const [step, setStep] = useState<'name' | 'review'>('name');
+  const [release, retry] = useNewWorkspaceRelease();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
@@ -33,7 +92,11 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const submit = async () => {
+  const valid = !!name.trim() && !!selfName.trim();
+  const next = () => { if (valid && !busy) setStep('review'); };
+  const back = () => { setError(null); setStep('name'); };
+
+  const create = async () => {
     const trimmed = name.trim();
     const me = selfName.trim();
     if (!trimmed || !me || busy) return;
@@ -68,47 +131,72 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
     );
   }
 
+  const reviewing = step === 'review';
   return (
     <Overlay onClick={() => !busy && onClose()}>
-      <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ns-create-title">
+      <Wide
+        $wide={reviewing}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={reviewing ? undefined : 'ns-create-title'}
+        aria-label={reviewing ? 'Review the new workspace' : undefined}
+      >
         <Close onClick={() => !busy && onClose()} aria-label="Close">×</Close>
-        <h3 id="ns-create-title">New workspace</h3>
-        <p className="sub">Name your team workspace. You will add repositories to it next.</p>
-        <Field>
-          <label htmlFor="ns-create-name">Workspace name</label>
-          <input
-            id="ns-create-name"
-            data-testid="ns-create-name"
-            autoFocus
-            maxLength={MAX_NAME}
-            value={name}
-            onChange={(e) => { setName(e.target.value); setError(null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            placeholder="e.g. Platform team"
-            disabled={busy}
-          />
-        </Field>
-        <Field>
-          <label htmlFor="ns-create-self-name">Your name in this workspace</label>
-          <input
-            id="ns-create-self-name"
-            data-testid="ns-create-self-name"
-            maxLength={MAX_SELF_NAME}
-            value={selfName}
-            onChange={(e) => { setSelfName(e.target.value); setError(null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            placeholder="e.g. ronit"
-            disabled={busy}
-          />
-        </Field>
-        {error && <ErrorLine>{error}</ErrorLine>}
-        <Actions>
-          <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
-          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!name.trim() || !selfName.trim() || busy}>
-            {busy ? <Spin /> : 'Create workspace'}
-          </PrimaryBtn>
-        </Actions>
-      </Dialog>
+        <Stepper aria-label="Steps">
+          <span aria-current={reviewing ? undefined : 'step'}>1 Name</span>
+          <span aria-hidden="true">›</span>
+          <span aria-current={reviewing ? 'step' : undefined}>2 Review</span>
+        </Stepper>
+        {reviewing ? (
+          <>
+            <ReviewStep release={release} retry={retry} busy={busy} onBack={back} onCreate={create} />
+            {error && <ErrorLine>{error}</ErrorLine>}
+          </>
+        ) : (
+          <>
+            <h3 id="ns-create-title">New workspace</h3>
+            <p className="sub">Name your team workspace. You will add repositories to it next.</p>
+            <Field>
+              <label htmlFor="ns-create-name">Workspace name</label>
+              <input
+                id="ns-create-name"
+                data-testid="ns-create-name"
+                autoFocus
+                maxLength={MAX_NAME}
+                value={name}
+                onChange={(e) => { setName(e.target.value); setError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+                placeholder="e.g. Platform team"
+              />
+            </Field>
+            <Field>
+              <label htmlFor="ns-create-self-name">Your name in this workspace</label>
+              <input
+                id="ns-create-self-name"
+                data-testid="ns-create-self-name"
+                maxLength={MAX_SELF_NAME}
+                value={selfName}
+                onChange={(e) => { setSelfName(e.target.value); setError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+                placeholder="e.g. ronit"
+              />
+            </Field>
+            <Actions>
+              <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
+              <PrimaryBtn data-testid="ns-create-submit" onClick={next} disabled={!valid}>Continue</PrimaryBtn>
+            </Actions>
+          </>
+        )}
+      </Wide>
     </Overlay>
   );
 }
+
+const Wide = styled(Dialog)<{ $wide: boolean }>`
+  max-width: ${({ $wide }) => ($wide ? '600px' : '420px')};
+`;
+const Stepper = styled.div`
+  display: flex; gap: 6px; margin: 0 0 14px; font-size: 11.5px; color: ${t.color.text3};
+  [aria-current='step'] { color: ${t.color.text}; font-weight: 600; }
+`;

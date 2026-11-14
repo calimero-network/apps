@@ -22,6 +22,7 @@ import {
   type LeftApp,
   type PendingInvite,
 } from '@calimero-apps/connect';
+import type { ReviewRelease } from '@calimero-apps/passkey';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
@@ -126,6 +127,20 @@ export async function createWorkspace(
       ? 'The workspace was created, but people you invite will not be able to add repositories or invite others until an admin fixes the defaults on the Members page.'
       : null,
   };
+}
+
+/**
+ * The release a new workspace's first repository is created from: the one the
+ * source names, else the newest the node has (what creating without a version
+ * takes). `null` for a development bundle, which is no release.
+ */
+export async function newWorkspaceRelease(
+  client: ClientRoutes<{ packages: 'get' }>,
+  source: AppSource,
+): Promise<ReviewRelease | null> {
+  if (typeof source === 'string') return null;
+  const version = source.version ?? (await client.packages.get({ package: source.package })).latest;
+  return { package: source.package, version };
 }
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */

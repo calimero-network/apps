@@ -364,7 +364,9 @@ describe('App', () => {
       expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
       fireEvent.change(self, { target: { value: 'Alice' } });
       client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }] }));
+      // Continue to the review (a development bundle has no release to show), then create from it.
       fireEvent.click(screen.getByTestId('ns-create-submit'));
+      fireEvent.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'Create workspace' }, SLOW));
 
       await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-new', 'acct-alice', { name: 'Alice' }), SLOW);
       await waitFor(() => expect(readActiveNs()).toBe('org-new'), SLOW);
