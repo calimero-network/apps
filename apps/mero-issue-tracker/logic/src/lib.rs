@@ -172,14 +172,14 @@ pub struct IssueTracker {
 
 #[app::logic]
 impl IssueTracker {
-    /// The empty board. The node runs it once, when the app is created; it takes
-    /// no arguments.
+    /// Starts an empty issue board. The node runs it once, when the app is
+    /// created; it takes no arguments.
     #[app::init]
     pub fn init() -> app::Result<Self> {
         Ok(Self::load())
     }
 
-    /// Sets or changes the repository URL this board tracks. Any member may.
+    /// Sets or changes the repository this board tracks. Any member may.
     /// `Invalid` when `url` is empty or does not start with `http://` or
     /// `https://`. Emits `RepoUrlChanged`.
     pub fn set_repo_url(&mut self, url: String) -> app::Result<()> {
@@ -189,7 +189,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// This board's repository URL, empty until `setRepoUrl`.
+    /// Shows the repository this board tracks. Its URL is empty until
+    /// `setRepoUrl`.
     #[app::view]
     pub fn get_repo_info(&self) -> app::Result<RepoInfo> {
         Ok(RepoInfo {
@@ -197,10 +198,10 @@ impl IssueTracker {
         })
     }
 
-    /// Files an issue and returns its id, `issue-<ms>-<8 hex>`. It starts
-    /// `Open`, filed by the caller. `title` and each label are 1 to 64
-    /// characters, the four sections must not be blank, and `priority` is one of
-    /// `low`, `medium`, `high`, `urgent`; anything else is `Invalid`. Emits
+    /// Files a new issue on the board. Returns its id, `issue-<ms>-<8 hex>`. It
+    /// starts `Open`, filed by the caller. `title` and each label are 1 to 64
+    /// characters, the four sections must not be blank, and `priority` is one
+    /// of `low`, `medium`, `high`, `urgent`; anything else is `Invalid`. Emits
     /// `IssueCreated`.
     // Each argument is a named field of the ABI; a params struct would change it.
     #[allow(clippy::too_many_arguments)]
@@ -254,9 +255,9 @@ impl IssueTracker {
         Ok(id)
     }
 
-    /// Moves an issue to another column: `status` is exactly `Open`,
-    /// `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound` for an
-    /// unknown issue. Emits `IssueStatusChanged`.
+    /// Moves an issue to another column of the board. `status` is exactly
+    /// `Open`, `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound`
+    /// for an unknown issue. Emits `IssueStatusChanged`.
     pub fn set_status(&mut self, issue_id: String, status: String) -> app::Result<()> {
         validate_status(&status)?;
         let next = status.clone();
@@ -271,7 +272,7 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Replaces an issue's summary (not blank). Emits `IssueEdited`.
+    /// Rewrites an issue's summary. It must not be blank. Emits `IssueEdited`.
     pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
         validate_section("summary", &summary)?;
         self.triage(&issue_id, |i| i.summary = summary)?;
@@ -279,7 +280,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Replaces an issue's impact (not blank). Emits `IssueEdited`.
+    /// Rewrites the description of what an issue affects. It must not be blank.
+    /// Emits `IssueEdited`.
     pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
         validate_section("impact", &impact)?;
         self.triage(&issue_id, |i| i.impact = impact)?;
@@ -287,7 +289,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Replaces an issue's reproduction steps (not blank). Emits `IssueEdited`.
+    /// Rewrites the steps that reproduce an issue. They must not be blank.
+    /// Emits `IssueEdited`.
     pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
         validate_section("repro", &repro)?;
         self.triage(&issue_id, |i| i.repro = repro)?;
@@ -295,7 +298,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Replaces an issue's resolution criteria (not blank). Emits `IssueEdited`.
+    /// Rewrites what has to be true for an issue to count as resolved. It must
+    /// not be blank. Emits `IssueEdited`.
     pub fn set_resolution_criteria(
         &mut self,
         issue_id: String,
@@ -307,8 +311,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Changes an issue's priority: `low`, `medium`, `high` or `urgent` (else
-    /// `Invalid`). Emits `IssuePriorityChanged`.
+    /// Changes how urgent an issue is. Takes `low`, `medium`, `high` or
+    /// `urgent` (else `Invalid`). Emits `IssuePriorityChanged`.
     pub fn set_priority(&mut self, issue_id: String, priority: String) -> app::Result<()> {
         validate_priority(&priority)?;
         let next = priority.clone();
@@ -323,16 +327,17 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Sets an issue's assignee (free text, conventionally an account id), or
-    /// clears it with `null`. Emits `IssueAssigneeChanged`.
+    /// Assigns an issue to someone, or clears the assignee with `null`. The
+    /// assignee is free text, conventionally an account id. Emits
+    /// `IssueAssigneeChanged`.
     pub fn set_assignee(&mut self, issue_id: String, assignee: Option<String>) -> app::Result<()> {
         self.triage(&issue_id, |i| i.assignee = assignee)?;
         env::emit(Event::IssueAssigneeChanged { id: issue_id }, Audience::All)?;
         Ok(())
     }
 
-    /// Adds a label (1 to 64 characters) to an issue; adding it twice keeps one.
-    /// Emits `IssueLabelsChanged`.
+    /// Adds a label to an issue. A label is 1 to 64 characters; adding it twice
+    /// keeps one. Emits `IssueLabelsChanged`.
     pub fn add_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         validate_label("label", &label)?;
         self.require_issue(&issue_id)?;
@@ -341,7 +346,7 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Removes a label from an issue; removing one it lacks succeeds. Emits
+    /// Removes a label from an issue. Removing one it lacks succeeds. Emits
     /// `IssueLabelsChanged` either way, as v1 did.
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         self.require_issue(&issue_id)?;
@@ -350,8 +355,9 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Issues oldest first, filtered by exact `status`, `assignee` and `label`
-    /// (`null` for no filter). At most the first 1,000 matches.
+    /// Lists the board's issues, oldest first, optionally narrowed by status,
+    /// assignee or label. The filters are exact matches (`null` for no filter),
+    /// and at most the first 1,000 matches come back.
     #[app::view]
     pub fn list_issues(
         &self,
@@ -418,8 +424,8 @@ impl IssueTracker {
         }
     }
 
-    /// One issue with its comment thread, oldest comment first (at most the
-    /// first 1,000 comments). `NotFound` for an unknown issue.
+    /// Shows one issue with its comments, oldest first. At most the first 1,000
+    /// comments. `NotFound` for an unknown issue.
     #[app::view]
     pub fn get_issue(&self, issue_id: String) -> app::Result<IssueDetail> {
         let issue = self.require_issue(&issue_id)?;
@@ -437,8 +443,9 @@ impl IssueTracker {
         })
     }
 
-    /// Issue counts per status, in column order: `Open`, `In progress`,
-    /// `Blocked`, `Done`. Maintained counts: no issue is read.
+    /// Shows how many issues sit in each column of the board. Counts come in
+    /// column order: `Open`, `In progress`, `Blocked`, `Done`. Maintained
+    /// counts: no issue is read.
     #[app::view]
     pub fn get_status_counts(&self) -> app::Result<Vec<StatusCount>> {
         let mut out = Vec::with_capacity(STATUSES.len());
@@ -453,9 +460,9 @@ impl IssueTracker {
         Ok(out)
     }
 
-    /// Posts a comment (not blank) as the caller and returns its id,
-    /// `comment-<ms>-<8 hex>`. `NotFound` for an unknown issue. Emits
-    /// `CommentAdded`.
+    /// Posts a comment on an issue. The comment must not be blank. Returns its
+    /// id, `comment-<ms>-<8 hex>`, with the caller as its author. `NotFound`
+    /// for an unknown issue. Emits `CommentAdded`.
     pub fn add_comment(&mut self, issue_id: String, body: String) -> app::Result<String> {
         let author = account()?;
         if body.trim().is_empty() {
@@ -482,8 +489,9 @@ impl IssueTracker {
         Ok(id)
     }
 
-    /// Replaces a comment's text (not blank) and stamps `editedAt`. Only its
-    /// author may: anyone else gets `Forbidden`. Emits `CommentEdited`.
+    /// Changes the text of a comment. It must not be blank, and `editedAt` is
+    /// stamped. Only its author may: anyone else gets `Forbidden`. Emits
+    /// `CommentEdited`.
     pub fn edit_comment(&mut self, comment_id: String, new_body: String) -> app::Result<()> {
         if new_body.trim().is_empty() {
             return Err(invalid("comment body must not be empty"));
@@ -507,9 +515,9 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Deletes an issue with its labels and its whole comment thread. Only its
-    /// creator may: anyone else gets `Forbidden`. `NotFound` for an unknown
-    /// issue. Emits `IssueDeleted`.
+    /// Deletes an issue together with its labels and its whole comment thread.
+    /// Only its creator may: anyone else gets `Forbidden`. `NotFound` for an
+    /// unknown issue. Emits `IssueDeleted`.
     pub fn delete_issue(&mut self, issue_id: String) -> app::Result<()> {
         let issue = self.require_issue(&issue_id)?;
         if account()? != issue.created_by {
