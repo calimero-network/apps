@@ -1,13 +1,14 @@
 /**
- * Does the node run this app's exact code? The node binds its own record of
- * the instance's bundle hash into an attestation ({@link CalimeroClient.attestApp});
- * a hash the page pinned would only be echoed back, so it proves nothing. The
- * node-bound hash is compared with the hash the app's source says it is: the
- * signed release's bundle hash from the registry, or the raw dev bundle.
+ * Does the attested node report this app's code as the release it lists? Both
+ * sides come from the same node over its attested channel: the bundle hash it
+ * bound from its own record of the instance ({@link CalimeroClient.attestApp}),
+ * and the bundle hash its registry lists for the release the instance runs
+ * (or, in development, the raw bundle hash). A match is a consistency check
+ * inside an attested node, not a registry or signature check made here.
  */
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
-import { instanceRelease, type ReleaseClient } from "./release";
+import { instancePackage, type ReleaseClient } from "./release";
 import type { AppSource } from "./target";
 
 /** What {@link checkAppCode} reads. */
@@ -21,23 +22,30 @@ export type AppCodeCheck =
 
 const normalize = (hash: string | undefined): string => (hash ?? "").trim().toLowerCase();
 
+/** The bundle hash `source` stands for: the dev bundle itself, or the listed hash of the release `app` runs. */
 async function expectedBundle(client: CodeCheckClient, app: string, source: AppSource): Promise<string> {
   if (typeof source === "string") return source;
-  const version = source.version ?? (await instanceRelease(client, app));
-  if (!version) throw new Error(`the release of ${source.package} that ${app} runs is not known`);
-  return (await client.packageCapabilities(source.package, version)).bundle;
+  const running = await instancePackage(client, app);
+  if (!running) throw new Error(`the release of ${source.package} that ${app} runs is not known`);
+  if (running.package !== source.package) throw new Error(`${app} runs ${running.package}, not ${source.package}`);
+  const listed = await client.packageCapabilities(running.package, running.version);
+  if (running.service && listed.service !== running.service) {
+    throw new Error(`${app} runs service ${running.service}, which ${running.version}'s listing does not name`);
+  }
+  return listed.bundle;
 }
 
 /**
  * Attests instance `app` and compares the hash the node bound with the bundle
- * hash of `source`: the release it runs (`source.version`, else the one the
- * instance reports) or a raw bundle hash. Never throws.
+ * hash of `source`: the release the instance runs (its own report, not
+ * `source.version`) or a raw bundle hash. A mock quote is never a match. Never throws.
  */
 export async function checkAppCode(client: CodeCheckClient, app: string, source: AppSource): Promise<AppCodeCheck> {
   try {
     const expected = normalize(await expectedBundle(client, app, source));
     if (!expected) throw new Error("the app's release lists no bundle hash");
     const verified = await client.attestApp(app);
+    if (verified.mock) throw new Error("test server: the node's quote is a mock");
     if (!verified.appHash) throw new Error("the node bound no code hash for this app");
     const appHash = normalize(verified.appHash);
     return appHash === expected

@@ -67,11 +67,13 @@ export {
   RELEASE_FOLLOW_KEY,
   followInstanceRelease,
   followRelease,
+  instancePackage,
   instanceRelease,
   instanceReleaseUrl,
   servedRelease,
   type FollowInstanceReleaseOptions,
   type FollowReleaseOptions,
+  type InstancePackage,
   type ReleaseClient,
 } from "./release";
 export {

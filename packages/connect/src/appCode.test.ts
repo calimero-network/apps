@@ -6,28 +6,35 @@ import { checkAppCode, type CodeCheckClient } from "./appCode";
 const HASH = "ab".repeat(32);
 const OTHER = "cd".repeat(32);
 
-function verification(appHash: string | null): NodeVerification {
-  return { url: "https://node.example", mock: false, checkedAt: 1700, ...(appHash ? { appHash } : {}) };
+function verification(appHash: string | null, mock: boolean): NodeVerification {
+  return { url: "https://node.example", mock, checkedAt: 1700, ...(appHash ? { appHash } : {}) };
 }
+
+const PACKAGE = "com.example.app";
+type Ref = { package: string; version: string; service?: string };
 
 function client(options: {
   attested?: string | null | Error;
+  mock?: boolean;
   bundle?: string | Error;
-  release?: string | null;
+  /** Per version; the others answer `bundle`. */
+  bundles?: Record<string, string>;
+  capabilitiesService?: string | null;
+  ref?: Ref | null;
 }): CodeCheckClient & { attestApp: ReturnType<typeof vi.fn>; packageCapabilities: ReturnType<typeof vi.fn> } {
-  const { attested = HASH, bundle = HASH, release = "1.2.0" } = options;
+  const { attested = HASH, mock = false, bundle = HASH, bundles = {}, capabilitiesService = null, ref = { package: PACKAGE, version: "1.2.0" } } = options;
   return {
     attestApp: vi.fn(async () => {
       if (attested instanceof Error) throw attested;
-      return verification(attested);
+      return verification(attested, mock);
     }),
-    packageCapabilities: vi.fn(async () => {
+    packageCapabilities: vi.fn(async (_pkg: string, version: string) => {
       if (bundle instanceof Error) throw bundle;
-      return { bundle } as PackageCapabilities;
+      return { bundle: bundles[version] ?? bundle, service: capabilitiesService } as PackageCapabilities;
     }),
     apps: { get: vi.fn(async () => ({ org: null }) as never) },
     appsReportAll: vi.fn(
-      async () => ({ apps: [{ app: "app-1", package: release ? { package: "p", version: release } : null }] }) as unknown as AppsReport,
+      async () => ({ apps: [{ app: "app-1", package: ref }] }) as unknown as AppsReport,
     ),
   };
 }
@@ -44,10 +51,41 @@ describe("checkAppCode", () => {
     expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0");
   });
 
-  it("reads the release the instance runs when the source names no version", async () => {
-    const c = client({ release: "1.3.0" });
-    expect((await checkAppCode(c, "app-1", { package: "com.example.app" })).status).toBe("match");
-    expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.3.0");
+  it("expects the hash of the release the instance runs, not the source's version", async () => {
+    const c = client({ ref: { package: PACKAGE, version: "1.3.0" }, bundles: { "1.2.0": OTHER } });
+    expect((await checkAppCode(c, "app-1", { package: PACKAGE, version: "1.2.0" })).status).toBe("match");
+    expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
+    expect(c.packageCapabilities).toHaveBeenCalledTimes(2);
+    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0");
+  });
+
+  it("is never a match for a mock quote", async () => {
+    const c = client({ mock: true });
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toEqual({
+      status: "unknown",
+      reason: "test server: the node's quote is a mock",
+    });
+    expect((await checkAppCode(client({ mock: true }), "app-1", HASH)).status).toBe("unknown");
+  });
+
+  it("is unknown when the instance's service is not the capabilities' service", async () => {
+    const other = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "web" });
+    expect(await checkAppCode(other, "app-1", { package: PACKAGE })).toMatchObject({ status: "unknown" });
+    const none = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: null });
+    expect((await checkAppCode(none, "app-1", { package: PACKAGE })).status).toBe("unknown");
+    const same = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "worker" });
+    expect((await checkAppCode(same, "app-1", { package: PACKAGE })).status).toBe("match");
+  });
+
+  it("is unknown when the instance runs another package than the source's", async () => {
+    const c = client({ ref: { package: "com.example.other", version: "1.2.0" } });
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toMatchObject({ status: "unknown" });
+    expect(c.packageCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("ignores whitespace around either hash", async () => {
+    const c = client({ attested: ` ${HASH}\n`, bundle: `\t${HASH} ` });
+    expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
   });
 
   it("is a mismatch, with both hashes, when the node runs other code", async () => {
@@ -89,7 +127,7 @@ describe("checkAppCode", () => {
   });
 
   it("is unknown when the instance's release is not known", async () => {
-    const c = client({ release: null });
+    const c = client({ ref: null });
     expect((await checkAppCode(c, "app-1", { package: "com.example.app" })).status).toBe("unknown");
     expect(c.packageCapabilities).not.toHaveBeenCalled();
   });

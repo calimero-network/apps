@@ -138,20 +138,23 @@ React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`
 
 ## Checking the node runs the app's code
 
-`checkAppCode(client, app, source)` (`appCode.ts`) answers whether the node
-runs the app's exact code. It attests the instance
-(`client.attestApp(app)`), so the hash it gets is the bundle hash the node
-bound from its own record of the instance, and compares it with the bundle
-hash of `source` (what `appSource` returned): the signed release's, from
-`packageCapabilities(package, version).bundle` (the version is
-`source.version`, else the release the instance reports), or the raw
-`VITE_CALIMERO_BUNDLE` hash. It never throws:
+`checkAppCode(client, app, source)` (`appCode.ts`) asks whether the attested
+node reports this instance's code as the release it lists. It attests the
+instance (`client.attestApp(app)`), so the hash it gets is the bundle hash the
+node bound from its own record of the instance, and compares it with the
+bundle hash the node lists for the release the instance runs
+(`packageCapabilities(package, version).bundle`, the release from the
+instance's own report, never `VITE_CALIMERO_VERSION`) or, in development,
+the raw `VITE_CALIMERO_BUNDLE` hash. It never throws.
+Both sides come from the same attested node: `match` is a consistency check
+inside the TEE, not an independent registry check and not a signature check
+made by this client.
 
 | status | meaning |
 |---|---|
 | `match` | both hashes present and equal (`appHash`, `checkedAt`) |
-| `mismatch` | the node runs other code (`appHash`, `expected`) |
-| `unknown` | not checked: attestation refused or failed, no hash bound, release unknown (`reason`) |
+| `mismatch` | the node reports different code for this app than its release lists (`appHash`, `expected`) |
+| `unknown` | not checked: attestation refused or failed, a mock quote (test server), no hash bound, the instance's release, package or service not known or not the source's (`reason`) |
 
 `policyFor` stays the node-level policy: a client connects before any
 instance exists, and an `appHash` it pinned would only be echoed back by the
