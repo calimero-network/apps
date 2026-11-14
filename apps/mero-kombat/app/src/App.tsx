@@ -15,7 +15,7 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, PasskeySignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
@@ -36,7 +36,6 @@ import {
   type SessionApi,
   type SessionDeps,
 } from "./session";
-import { shortAccount } from "./useCornerNames";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -316,12 +315,7 @@ function AppShell({ children }: { children: ReactNode }) {
           </button>
           {session.status === "signed-in" && (
             <div className="session">
-              <span className="node-pill" title={`${describeTarget(session.target)} · ${session.accountId}`}>
-                <span className="presence online" aria-hidden="true" />
-                <span className="mono">
-                  {describeTarget(session.target)} · {shortAccount(session.accountId)}
-                </span>
-              </span>
+              <NodeShield />
               <button className="ghost small" onClick={() => void signOut()}>
                 Log out
               </button>
