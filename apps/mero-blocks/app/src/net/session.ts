@@ -72,6 +72,7 @@ export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   }
   try {
     const client = await deps.makeClient(target);
+    // The page keeps the shield for its life, signed in or out, so nothing unbinds it.
     bindNodeShield(client, describeTarget(target));
     const sessions = new SessionStore(APP, target, deps.storage);
     if (sessions.restore(client) && client.session) {
