@@ -179,9 +179,9 @@ impl IssueTracker {
         Ok(Self::load())
     }
 
-    /// Sets or changes the repository this board tracks. Any member may.
-    /// `Invalid` when `url` is empty or does not start with `http://` or
-    /// `https://`. Emits `RepoUrlChanged`.
+    /// Sets or changes the repository this board tracks. `Invalid` when `url`
+    /// is empty or does not start with `http://` or `https://`. Emits
+    /// `RepoUrlChanged`.
     pub fn set_repo_url(&mut self, url: String) -> app::Result<()> {
         validate_repo_url(&url)?;
         self.repo_url.set(&url)?;
@@ -327,8 +327,8 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Assigns an issue to someone, or clears the assignee with `null`. The
-    /// assignee is free text, conventionally an account id. Emits
+    /// Assigns an issue to someone, or unassigns it. Pass `null` to clear the
+    /// assignee; otherwise it is free text, conventionally an account id. Emits
     /// `IssueAssigneeChanged`.
     pub fn set_assignee(&mut self, issue_id: String, assignee: Option<String>) -> app::Result<()> {
         self.triage(&issue_id, |i| i.assignee = assignee)?;
@@ -347,7 +347,7 @@ impl IssueTracker {
     }
 
     /// Removes a label from an issue. Removing one it lacks succeeds. Emits
-    /// `IssueLabelsChanged` either way, as v1 did.
+    /// `IssueLabelsChanged` either way.
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         self.require_issue(&issue_id)?;
         let _removed = self.labels.remove(&(issue_id.clone(), label))?;
@@ -444,8 +444,7 @@ impl IssueTracker {
     }
 
     /// Shows how many issues sit in each column of the board. Counts come in
-    /// column order: `Open`, `In progress`, `Blocked`, `Done`. Maintained
-    /// counts: no issue is read.
+    /// column order: `Open`, `In progress`, `Blocked`, `Done`.
     #[app::view]
     pub fn get_status_counts(&self) -> app::Result<Vec<StatusCount>> {
         let mut out = Vec::with_capacity(STATUSES.len());
