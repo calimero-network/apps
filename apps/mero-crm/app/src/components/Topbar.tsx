@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
+import { NodeShield } from '@calimero-apps/passkey';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { IconMenu, IconPlus, IconSearch } from './icons';
@@ -18,8 +19,8 @@ const TITLES: Record<string, string> = {
 };
 
 /** Floating top bar: view title, the active pipeline's name, the owner filter
- *  (Everyone / Mine / a teammate), client-side search, the light/dark switch,
- *  and New deal. On a phone it gains the menu button that opens the nav
+ *  (Everyone / Mine / a teammate), client-side search, the node shield,
+ *  the light/dark switch, and New deal. On a phone it gains the menu button that opens the nav
  *  drawer, and the filter + search drop to a second row. */
 export default function Topbar({
   onOpenNav,
@@ -112,6 +113,7 @@ export default function Topbar({
         </Search>
       </Tools>
       <End>
+        <NodeShield />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-deal-btn" onClick={onNewDeal} title="New deal (N)">
           <IconPlus size={13} /> Deal
