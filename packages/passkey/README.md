@@ -41,7 +41,7 @@ account, nothing to install, no permissions to grant.
   popover that says in plain words what this browser's check of the node
   (`client.verify()`) verified.
   Place it just left of the account avatar.
-  An app that places none still gets a floating one in the page's top right
+  An app that places none still gets a floating one in the page's bottom left
   corner, mounted by `usePasskeySession` (`data-testid="node-shield"`): there is
   no switch to turn it off.
   The states: "Verified node" (green: a real quote, the sealed

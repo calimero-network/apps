@@ -222,6 +222,32 @@ describe("the app code check", () => {
     expect(screen.getByRole("dialog").textContent).not.toContain("App code");
   });
 
+  it("hides the code check of the node the client failed over from until the new node's check finishes", async () => {
+    vi.useFakeTimers();
+    const f = fakeClient(sealed);
+    f.verify.mockImplementation(async () => ({ ...sealed, url: f.client.nodeUrl }));
+    bind(f.client);
+    render(<App source={BUNDLE} />);
+    await act(async () => {});
+    open();
+    await act(async () => {});
+    expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names");
+
+    let finish!: () => void;
+    f.attestApp.mockImplementation(
+      () => new Promise((resolve) => (finish = () => resolve({ url: "https://node-9.relay.example.net", mock: false, appHash: BUNDLE, checkedAt: Date.now() }))),
+    );
+    f.failOverTo("https://node-9.relay.example.net");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByRole("dialog").textContent).toContain("node-9.relay.example.net");
+    expect(screen.getByRole("dialog").textContent).not.toContain("App code");
+
+    await act(async () => finish());
+    expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names");
+  });
+
   it("checks only once the popover is opened", async () => {
     const { client, attestApp } = fakeClient(sealed);
     bind(client);

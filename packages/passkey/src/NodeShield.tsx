@@ -65,25 +65,27 @@ function useNodeVerification(client: CalimeroClient | null): [NodeVerificationSt
       clearTimeout(timer);
     };
   }, [client, round, url]);
-  // Never describe a node the client has moved on from.
-  const shown: NodeVerificationState = url && state.url !== url ? { status: "checking", url } : state;
+  // Never describe a node the client has moved on from: compared with the node in use now, not the last poll.
+  const inUse = client?.nodeUrl;
+  const shown: NodeVerificationState = inUse && state.url !== inUse ? { status: "checking", url: inUse } : state;
   return [shown, useCallback(() => setRound((n) => n + 1), [])];
 }
 
-/** The app's code check, run each time the popover opens for a node that passed its own check. */
-function useAppCode(client: CalimeroClient | null, app: ShieldApp | null, active: boolean): AppCodeCheck | null {
-  const [result, setResult] = useState<{ client: CalimeroClient; app: ShieldApp; code: AppCodeCheck } | null>(null);
+/** The app's code check of verified node `url`, run when the popover opens and shown only while that node is still the one in use. */
+function useAppCode(client: CalimeroClient | null, app: ShieldApp | null, url: string | null): AppCodeCheck | null {
+  const [result, setResult] = useState<{ client: CalimeroClient; app: ShieldApp; url: string; code: AppCodeCheck } | null>(null);
   useEffect(() => {
-    if (!client || !app || !active) return;
+    if (!client || !app || !url) return;
     let live = true;
     void checkAppCode(client, app.id, app.source).then((code) => {
-      if (live) setResult({ client, app, code });
+      if (live && client.nodeUrl === url) setResult({ client, app, url, code });
     });
     return () => {
       live = false;
     };
-  }, [client, app, active]);
-  return result?.client === client && result?.app === app ? result.code : null;
+  }, [client, app, url]);
+  const current = result?.client === client && result?.app === app && result?.url === url && client?.nodeUrl === url;
+  return current ? result.code : null;
 }
 
 /** Where the popover sits: right edges aligned with the chip, below it or above when that is where the room is, inside the viewport. */
@@ -216,7 +218,7 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   const popId = useId();
   const seenOpens = useRef(opens);
   const placement = usePlacement(open, chip, pop);
-  const code = useAppCode(client, app, open && state.status === "verified");
+  const code = useAppCode(client, app, open && state.status === "verified" ? state.url : null);
 
   useEffect(() => {
     if (opens === seenOpens.current) return;
