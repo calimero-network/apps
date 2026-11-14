@@ -137,6 +137,7 @@
 .cp-review__claims { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .cp-review__claims li { display: flex; align-items: flex-start; gap: 7px; }
 .cp-review__claims .cp-shield__tick { margin-top: 3px; color: var(--_good-ink); }
+.cp-review__claims--plain b { font-weight: 500; color: var(--_muted); }
 .cp-review__claims + .cp-review__grey { margin-top: 10px; }
 .cp-review__how { margin-top: 6px; }
 .cp-review__how ul { margin: 0 0 4px; padding-left: 18px; color: var(--_muted); font-size: 12.5px; }
