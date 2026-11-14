@@ -1,6 +1,17 @@
-import { renderHook } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { nodeShieldGate } from "@calimero-apps/passkey/testing";
+import { MemoryRouter } from "react-router-dom";
 
-import { APP, useSession } from "./api/session";
+import App from "./App";
+import { SessionProvider } from "./api/sessionContext";
+import { APP } from "./api/session";
 
-nodeShieldGate(APP, (deps) => renderHook(() => useSession(deps)));
+nodeShieldGate(APP, (deps) =>
+  render(
+    <SessionProvider deps={deps}>
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>
+    </SessionProvider>,
+  ),
+);
