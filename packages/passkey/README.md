@@ -37,6 +37,25 @@ account, nothing to install, no permissions to grant.
   team, doc, route, the app's own parameters), so the app opens what the link
   pointed at. Without it, the token goes with a sign-up only on an `invite`
   cluster, as before.
+- `<NodeShield />` is the header chip for the node the app talks to, with a
+  popover that says in plain words what this browser's check of the node
+  (`client.verify()`) verified.
+  Place it just left of the account avatar.
+  An app that places none still gets a floating one in the page's top right
+  corner, mounted by `usePasskeySession` (`data-testid="node-shield"`): there is
+  no switch to turn it off.
+  The states: "Verified node" (green: a real quote, the sealed
+  `locked-read-only` profile), "Test server: not sealed" (grey: a mock, or any
+  other profile, never green), "Node refused" (red, with the reason) and
+  "Checking node…" (also an unreachable node, asked again with a backoff).
+  The popover lists only facts the check established; the cluster is the one
+  the app is configured for, not an attested fact.
+  "Verify independently" opens the public verifier for the node, shown only for
+  a real node a signed release judged.
+  `useNodeShieldApp(appId, source)` tells the shield which instance and
+  `AppSource` the page runs; with it the popover checks the node runs that exact
+  code (`checkAppCode`), and without it leaves the app code out.
+  `openNodeShield()` opens the popover from an account menu's "Connected to" row.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button
