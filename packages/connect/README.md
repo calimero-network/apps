@@ -136,6 +136,27 @@ React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`
   release of the same WASM); arriving clears the note. With no storage for
   the note it never moves.
 
+## Checking the node runs the app's code
+
+`checkAppCode(client, app, source)` (`appCode.ts`) answers whether the node
+runs the app's exact code. It attests the instance
+(`client.attestApp(app)`), so the hash it gets is the bundle hash the node
+bound from its own record of the instance, and compares it with the bundle
+hash of `source` (what `appSource` returned): the signed release's, from
+`packageCapabilities(package, version).bundle` (the version is
+`source.version`, else the release the instance reports), or the raw
+`VITE_CALIMERO_BUNDLE` hash. It never throws:
+
+| status | meaning |
+|---|---|
+| `match` | both hashes present and equal (`appHash`, `checkedAt`) |
+| `mismatch` | the node runs other code (`appHash`, `expected`) |
+| `unknown` | not checked: attestation refused or failed, no hash bound, release unknown (`reason`) |
+
+`policyFor` stays the node-level policy: a client connects before any
+instance exists, and an `appHash` it pinned would only be echoed back by the
+node, so the app check is made per instance, after `createApp`.
+
 ## Organizations
 
 An account is in organizations made for other apps (a Mero Blocks world, a
