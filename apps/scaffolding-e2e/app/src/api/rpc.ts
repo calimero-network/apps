@@ -3,7 +3,7 @@
 // Every section calls the contract through the functions in `kvStore.ts`, and
 // reads back the envelope it displays (`{ result: { output } }` or `{ error }`).
 // Those functions call `ScaffoldingE2eClient` (`src/generated/client.ts`, which
-// `mero-app-build codegen` writes from `logic/res/abi.json`) with the ABI's
+// `meroctl app codegen` writes from `logic/res/abi.json`) with the ABI's
 // method and argument names; this file is what sits around it:
 //
 //   • `contract()` is the class over the open instance's signed-in client;

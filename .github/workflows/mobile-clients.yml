@@ -1,8 +1,9 @@
 # The native apps' generated contract clients (Swift for iOS, Kotlin for
 # Android) are current with each app's committed ABI. scripts/mobile-codegen.sh
-# regenerates them with core's `mero-app-build codegen` at the revision it pins
-# and fails on any difference. The ABI itself is proven current by ci.yml's
-# `wasm` job (components.yml's `rust` for a component app).
+# regenerates them with core's `meroctl app codegen` at the release
+# scripts/install-meroctl.sh pins, and fails on any difference. The ABI itself
+# is proven current by ci.yml's `wasm` job (components.yml's `rust` for a
+# component app).
 name: Mobile clients
 
 on:
@@ -11,7 +12,7 @@ on:
       - apps/*/logic/res/abi.json
       - apps/*/mobile/**
       - scripts/mobile-codegen.sh
-      - scripts/install-mero-app-build.sh
+      - scripts/install-meroctl.sh
       - .github/workflows/mobile-clients.yml
   push:
     branches: [main]
@@ -19,7 +20,7 @@ on:
       - apps/*/logic/res/abi.json
       - apps/*/mobile/**
       - scripts/mobile-codegen.sh
-      - scripts/install-mero-app-build.sh
+      - scripts/install-meroctl.sh
       - .github/workflows/mobile-clients.yml
   workflow_dispatch:
 
@@ -38,17 +39,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Keyed by the generator tag the script pins: a run that does not move
-      # it does not compile it.
-      - name: Generator revision
-        id: rev
-        run: echo "rev=$(sed -n 's/^REF=//p' scripts/mobile-codegen.sh)" >> "$GITHUB_OUTPUT"
+      # Keyed by the installer, which holds the pin: a run that does not move
+      # it does not download it.
       - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/mero-app-build
-          key: mobile-mero-app-build-${{ runner.os }}-${{ steps.rev.outputs.rev }}
+          path: ${{ runner.temp }}/meroctl
+          key: mobile-meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
 
       - name: Regenerate and compare
         env:
-          MERO_APP_BUILD_ROOT: ${{ runner.temp }}/mero-app-build
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
         run: scripts/mobile-codegen.sh --install --check

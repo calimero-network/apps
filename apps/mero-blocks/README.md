@@ -83,6 +83,7 @@ apps are built, run and tested in this repo.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-blocks       # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-blocks  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -182,7 +183,7 @@ Playwright from `package.json`. **Now:** the target comes from the build
 contexts) each in an **organization** of its own (v1's namespace), sharing is an
 **org invite link** (kept in `@calimero-apps/connect`'s invite store) redeemed
 after sign-in once the player says Join, and the game calls the contract
-through `MeroBlocksClient` (`src/generated/client.ts`), which `mero-app-build
+through `MeroBlocksClient` (`src/generated/client.ts`), which `meroctl app
 codegen` writes from `logic/res/abi.json` (`pnpm -F mero-blocks codegen` after a
 contract change; CI fails when the committed copy is stale), adapted to the
 engine by `src/net/blocks.ts`. The ABI names its records without their shapes
@@ -231,8 +232,7 @@ listing's link; they are not where people sign in.
 
 ```bash
 pnpm -F mero-blocks build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-blocks/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-blocks/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

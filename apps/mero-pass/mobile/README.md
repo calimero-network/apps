@@ -196,7 +196,7 @@ AutoFill is the biggest win for a phone and is deliberately not in this PR. What
 
 `PassClient` (`ios/PassCore/Sources/PassGenerated/PassClient.swift`,
 `android/app/src/main/kotlin/network/calimero/pass/generated/client/PassClient.kt`) is generated from
-the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`: run
+the component ABI (`../logic/res/abi.json`) by core's `meroctl app codegen`: run
 `scripts/mobile-codegen.sh` at the repo root after a contract change (CI's `Mobile clients` workflow
 fails on a stale client). Until the logic derives `AbiType`, the ABI names the vault's types without
 their shape, so the client takes and answers their JSON and the kept types read it

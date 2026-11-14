@@ -96,7 +96,7 @@ export function base64url(bytes: Uint8Array): string {
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
 // The lobby's contract is called through `BattleshipsClient`, which
-// `mero-app-build codegen` writes from logic/res/abi.json
+// `meroctl app codegen` writes from logic/res/abi.json
 // (`src/generated/client.ts`): camelCase arguments, bytes as base64url
 // (`base64url` above). The ABI describes its records, so the generated client
 // types what the contract answers; the `to*` functions convert them to the

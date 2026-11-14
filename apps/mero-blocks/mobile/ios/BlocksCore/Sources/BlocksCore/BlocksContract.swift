@@ -4,7 +4,7 @@ import MeroKit
 // The world contract (`../../logic`, `res/abi.json`), as the component runtime speaks it:
 // camelCase methods, u64 values (`now`, `seed`, `createdAt`) as decimal strings, and the growing
 // reads (`getOverrides`, `getPlayers`) paged at 1,000 rows. The calls are `BlocksClient`, generated
-// from the ABI into `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`);
+// from the ABI into `Generated/` by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`);
 // this file keeps the paged reads (the world's types are the generated ones). Same as the Kotlin
 // `BlocksContract.kt`.
 

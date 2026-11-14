@@ -7,7 +7,7 @@ import MeroKit
 public typealias Member = StreamClient.Member
 
 /// The room contract (`../../logic`, `res/abi.json`) is `StreamClient`, generated from it into
-/// `Generated/` by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`). The phone calls
+/// `Generated/` by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`). The phone calls
 /// only `join` and `getMembers`: the probe's in-WASM codec and chunk paths are measurement tools the
 /// web keeps.
 extension StreamClient {

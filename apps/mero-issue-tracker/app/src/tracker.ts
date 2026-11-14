@@ -1,6 +1,6 @@
 /**
  * The board's contract is called through `MeroIssueTrackerClient`, which
- * `mero-app-build codegen` writes from logic/res/abi.json
+ * `meroctl app codegen` writes from logic/res/abi.json
  * (`src/generated/client.ts`), which types its records from the ABI; each
  * answer passes through the `fromWire*` / `to*` below into the shapes the
  * screens use.

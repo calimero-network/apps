@@ -13,7 +13,7 @@
     "test": "vitest run",
     "preview": "vite preview",
     "starter": "node scripts/build-starter.mjs && node scripts/build-starter-presentation.mjs",
-    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-design -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-design -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

@@ -2,7 +2,7 @@
 export const PACKAGE = "com.calimero.mero-models";
 
 /**
- * The contract is called through `MeroModelsClient`, which `mero-app-build
+ * The contract is called through `MeroModelsClient`, which `meroctl app
  * codegen` writes from logic/res/abi.json (`src/generated/client.ts`): the
  * ABI's camelCase arguments, u64s as decimal strings (`u64` below). The
  * records keep v1's snake_case fields and their u64 fields as JSON numbers,

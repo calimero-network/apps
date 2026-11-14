@@ -1,6 +1,6 @@
 /**
  * A workbook (an app instance) through `MeroSheetsClient`
- * (`src/generated/client.ts`, which `mero-app-build codegen` writes from
+ * (`src/generated/client.ts`, which `meroctl app codegen` writes from
  * `logic/res/abi.json`), plus what the contract cannot do itself.
  *
  * The hooks call the generated class with the contract's arguments

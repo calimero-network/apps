@@ -3,7 +3,7 @@ export const PACKAGE = 'com.calimero.mero-pass';
 
 /**
  * The vault's contract is called through `MeroPassClient`, which
- * `mero-app-build codegen` writes from logic/res/abi.json
+ * `meroctl app codegen` writes from logic/res/abi.json
  * (`src/generated/client.ts`), which types its records from the ABI: the
  * `*Wire` names below are those types (`vaultApi.ts` turns them into the
  * screens').

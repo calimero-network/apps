@@ -1,7 +1,7 @@
 /**
  * The ONE place the forum contract's answers are adapted to the shapes the
  * screens use. The contract is called through `MeroForumClient`, which
- * `mero-app-build codegen` writes from logic/res/abi.json
+ * `meroctl app codegen` writes from logic/res/abi.json
  * (`src/generated/client.ts`) and types its records from the ABI; each read
  * passes its answer through the adapter for its shape below.
  *

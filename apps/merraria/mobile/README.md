@@ -100,7 +100,7 @@ WKWebView / Android WebView from files bundled in the app:
 
 `MerrariaClient` (`ios/MerrariaCore/Sources/MerrariaCore/Generated/` and
 `android/app/src/main/kotlin/network/calimero/merraria/generated/`) is generated from
-`../logic/res/abi.json` by core's `mero-app-build codegen`: after an ABI change, run
+`../logic/res/abi.json` by core's `meroctl app codegen`: after an ABI change, run
 `scripts/mobile-codegen.sh` at the repo root and commit (CI's `Mobile clients` workflow fails on a
 stale client). Until the logic derives `AbiType`, the ABI names the world's types without their
 shape, so the client takes and answers their JSON; `Contract/MerrariaContract.swift` and

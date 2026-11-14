@@ -45,6 +45,7 @@ apps are built, run and tested in this repo.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-calendar     # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-calendar  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -83,7 +84,7 @@ through `@calimero-apps/connect`'s org-app module
 | | what it covers | needs a node |
 |---|---|---|
 | `cargo test --manifest-path apps/mero-calendar/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules as method checks (forged owners, another account's private rows, a peer editing an owner's event); booking through an API key acting for its owner; access and wire checks; the booking slot rules (unit tests in `src/booking.rs`); every `scenarios/*.json`, on core's wasmtime engine | no |
-| `pnpm -F mero-calendar test` | the generated client (`MeroCalendarClient`, `src/generated/`: `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F mero-calendar codegen` after a contract change) has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the conversions of its `unknown` record answers (the ABI predates `#[derive(AbiType)]`) and the messages; booking links (API key + record); the booking page; teams, calendars and invitations (mocked client); member names | no |
+| `pnpm -F mero-calendar test` | the generated client (`MeroCalendarClient`, `src/generated/`: `meroctl app codegen` from `logic/res/abi.json`, committed; `pnpm -F mero-calendar codegen` after a contract change) has exactly the committed ABI's methods, sent as calls or views with its parameter names, and syncs the session after each; the conversions of its `unknown` record answers (the ABI predates `#[derive(AbiType)]`) and the messages; booking links (API key + record); the booking page; teams, calendars and invitations (mocked client); member names | no |
 | `pnpm merod-local e2e mero-calendar` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios are the six merobox workflows, ported: `logic.json`
@@ -155,8 +156,7 @@ listing's link; they are not where people sign in.
 
 ```bash
 pnpm -F mero-calendar build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-calendar/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-calendar/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

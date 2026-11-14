@@ -27,7 +27,7 @@ Both apps talk to a Calimero 1.0 cluster over the SDKs' sealed channel and sign 
 - **Approvals** (an update of Mero Standup, a node release) show the node's confirmation code, then
   open its consent page in the system browser (a Custom Tab on Android).
 - **Contract calls** go through `StandupClient`, generated from the **component contract**'s ABI
-  (`logic/res/abi.json`) by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo
+  (`logic/res/abi.json`) by core's `meroctl app codegen` (`scripts/mobile-codegen.sh` at the repo
   root; CI's `Mobile clients` workflow fails on a stale one): camelCase methods, arguments and results,
   timestamps as decimal strings, refusals as `APP_ERROR` codes put into words.
 - **Live updates** come from the node's event stream (coalesced), with a poll as a fallback.

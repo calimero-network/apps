@@ -115,7 +115,7 @@ Authors show as "You" or a short id.
 ### The contract
 
 `DocsClient` (`ios/DocsCore/Sources/DocsCore/Generated/`, `android/…/docs/generated/`) is
-generated from the component ABI (`../logic/res/abi.json`) by core's `mero-app-build codegen`
+generated from the component ABI (`../logic/res/abi.json`) by core's `meroctl app codegen`
 (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale
 one). The apps call the read and comment half of the web's typed adapter
 (`../app/src/lib/docsApi.ts`): `listDocs`, `getDoc`, `searchDocs`, `getDocument`, `listComments`

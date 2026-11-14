@@ -6,7 +6,7 @@ import network.calimero.blocks.generated.BlocksClient
 // The world contract (`../../logic`, `res/abi.json`), as the component runtime speaks it: camelCase
 // methods, u64 values (`now`, `seed`, `createdAt`) as decimal strings, and the growing reads
 // (`getOverrides`, `getPlayers`) paged at 1,000 rows. The calls are [BlocksClient], generated from
-// the ABI by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh`); this file keeps the paged
+// the ABI by core's `meroctl app codegen` (`scripts/mobile-codegen.sh`); this file keeps the paged
 // reads (the world's types are the generated ones). Same as the Swift `BlocksContract.swift`.
 
 // The world's types are the generated client's ([BlocksClient], from the ABI).

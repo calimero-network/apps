@@ -13,7 +13,7 @@ export type { ArenaView, FighterView, HitView, MatchSummary } from "./generated/
 
 // ── Calling the contract ─────────────────────────────────────────────────────
 //
-// The contract is called through `MeroKombatClient`, which `mero-app-build
+// The contract is called through `MeroKombatClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`), typed
 // from the ABI's record shapes.
 

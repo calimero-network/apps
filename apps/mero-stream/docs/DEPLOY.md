@@ -36,13 +36,11 @@ connecting anywhere. See `app/.env.example`.
 
 ```bash
 pnpm -F mero-stream build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-stream/logic --key <production key> --app-version <x.y.z>
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  inspect dist/com.calimero.mero-stream-<x.y.z>.mpk
+meroctl app pack apps/mero-stream/logic --key <production key> --app-version <x.y.z>
+meroctl app inspect apps/mero-stream/logic/dist/com.calimero.mero-stream-<x.y.z>.mpk
 ```
 
-`--dev` signs with the well-known development key instead (fine on
+Without `--key`, the well-known development key signs instead (fine on
 `merod local`, refused by the registry).
 
 ## Known gap

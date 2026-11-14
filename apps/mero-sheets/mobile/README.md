@@ -142,7 +142,7 @@ Left out, and why:
 
 The clients (`ios/Core/Sources/SheetsCore/Generated/SheetsClient.swift`,
 `android/.../generated/client/SheetsClient.kt`) are generated from the component contract's ABI
-(`../logic/res/abi.json`) by core's `mero-app-build codegen`: run `scripts/mobile-codegen.sh` at the
+(`../logic/res/abi.json`) by core's `meroctl app codegen`: run `scripts/mobile-codegen.sh` at the
 repo root after a contract change (CI's `Mobile clients` workflow fails on a stale client). Method
 and argument names are camelCase
 (`setCell { sheetId, rowId, colId, rawValue }`), answers keep their snake_case fields, and every

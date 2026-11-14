@@ -20,7 +20,7 @@ import type {
  *   numbers (every one here is a millisecond time, well inside 2^53);
  * - errors are typed (`AppError` with a code): turned back into v1's messages.
  *
- * The contract is called through `MeroCalendarClient`, which `mero-app-build
+ * The contract is called through `MeroCalendarClient`, which `meroctl app
  * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`;
  * `client.test.ts` checks it against the ABI), typed from the ABI's record
  * shapes: each answer passes through the `to*` here, and each record argument

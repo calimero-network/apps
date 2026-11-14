@@ -68,6 +68,7 @@ through `@calimero-apps/connect`'s org-app module
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-sheets    # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/mero-sheets  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey and create a spreadsheet. To try a second person, open
@@ -162,7 +163,7 @@ as in v1.
   modal, the session stored per app and per target. The dev server runs on
   exactly `http://localhost:5173/` (`pnpm dev:local`).
 - The contract is called through `MeroSheetsClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-sheets codegen` after a contract change, and CI fails when it is
   stale), with the ABI's argument names; `src/client.test.ts` checks it against
   the ABI. `src/api/spreadsheet/workbook.ts` builds it for a workbook over a

@@ -1,5 +1,5 @@
 /**
- * The contract is called through `MeroSignClient`, which `mero-app-build
+ * The contract is called through `MeroSignClient`, which `meroctl app
  * codegen` writes from `logic/res/abi.json` (`src/generated/client.ts`) and
  * types its records from the ABI: this file turns each answer back into the
  * snake_case, number-valued shapes the screens have always used

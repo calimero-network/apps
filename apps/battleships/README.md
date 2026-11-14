@@ -20,7 +20,7 @@ apps/battleships/
 │   ├── scenarios/           match-lifecycle, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-│   ├── src/generated/       BattleshipsClient: `mero-app-build codegen` from res/abi.json (committed)
+│   ├── src/generated/       BattleshipsClient: `meroctl app codegen` from res/abi.json (committed)
 │   └── src/battleships.ts   the screens' shapes, the adapter to them, and the refusals in words
 └── mobile/                  native iOS / Android apps (still v1: see mobile/README.md)
 ```
@@ -34,6 +34,7 @@ apps are built, run and tested in this repo.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local battleships       # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/battleships  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`).
@@ -174,7 +175,7 @@ game state does not carry over: lobbies are created anew.
 ## The generated client
 
 ```bash
-scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+scripts/install-meroctl.sh            # once, from the repo root: meroctl at its pinned release
 pnpm -F battleships codegen           # logic/res/abi.json -> app/src/generated/
 ```
 
@@ -194,7 +195,7 @@ it and fails when it is stale (see
 
 `pnpm -F battleships build` with `VITE_CALIMERO_CLUSTER` and
 `VITE_CALIMERO_MIN_RELEASE` set (see `app/.env.example`), then
-`mero-component bundle apps/battleships/logic` packs that build as the bundle's
+`meroctl app pack apps/battleships/logic --key <production key>` packs that build as the bundle's
 frontend: a Cloud node serves it from the package's own origin, which is the
 only origin it trusts passkey ceremonies from. Instances are created from the
 package `com.calimero.battleships`.

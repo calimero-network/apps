@@ -27,6 +27,7 @@ port (see [Mobile](#mobile)).
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-stream       # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-stream  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -250,7 +251,7 @@ The frontend changed with it:
   `presenceStream`); `/stream` listens on the room's event stream
   (`client.events`).
 - The contract is called through `MeroStreamClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-stream codegen` after a contract change, and CI fails when it
   is stale); `src/client.test.ts` checks it against the ABI. The ABI names its
   records without their shapes, so the generated types are `unknown`:
@@ -297,8 +298,7 @@ listing's link; they are not where people sign in. See
 
 ```bash
 pnpm -F mero-stream build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-stream/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-stream/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

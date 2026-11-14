@@ -6,6 +6,17 @@ wasmtime runtime), developed against **`merod local`**, and a frontend that
 talks to **Calimero Cloud** in production and to the local nodes in development
 through mero-js's **`CalimeroClient`**.
 
+The developer tool is core's **`meroctl`** (1.0.0-rc.24 or later):
+`meroctl app new my-app` starts an app from this repo's `apps/kv-store` (the
+default template), `meroctl local dev apps/<app>` runs it on a local cluster
+with its frontend, and `meroctl app pack`, `app inspect` and `app codegen`
+build, check and type it. Install it with core's installer (into
+`~/.local/bin`, checked against the release's `SHA256SUMS`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/calimero-network/core/master/scripts/install.sh | sh
+```
+
 Every app in this repo is now a component app: each moved in a PR of its own
 from the v1 SDK (wasmer, merobox, `MeroJs`), and no v1 app remains.
 [`apps/kv-store`](../apps/kv-store) was the first and is the template for a new
@@ -29,8 +40,9 @@ followed.
 | | what | where |
 |---|---|---|
 | core pin | `component-core-tag` (now `1.0.0-rc.23`) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
-| builder / bundler | `mero-component build \| bundle \| inspect \| abi`: core's `calimero-app-build` and `calimero-bundle` at the pinned tag | [`tools/component-bundle`](../tools/component-bundle) |
-| local cluster | `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
+| developer CLI | core's `meroctl`: `app new`, `app pack`, `app inspect`, `app codegen` (at the release `scripts/install-meroctl.sh` pins), `local up \| dev \| test` | [core](https://github.com/calimero-network/core) releases |
+| CI builder / bundler | `res/abi.json` and the release `.mpk` in CI: core's `calimero-app-build` and `calimero-bundle` at the pinned tag; the same `.mpk` `meroctl app pack` writes | [`tools/component-bundle`](../tools/component-bundle) |
+| local cluster | `meroctl local dev apps/<app>`; the repo's own `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
 | frontend helper | `@calimero-apps/connect`: target (local / cloud) from env, the client, the stored session | [`packages/connect`](../packages/connect) |
 | CI | `Components` workflow | [`.github/workflows/components.yml`](../.github/workflows/components.yml) |
 | JS client | `@calimero-network/mero-js` 33 via `"catalog:component"` | `pnpm-workspace.yaml` |
@@ -103,19 +115,22 @@ min-runtime-version = "1.0.0-rc.10"
 rustup target add wasm32-wasip2
 
 M=tools/component-bundle/Cargo.toml
-cargo test --manifest-path apps/<app>/logic/Cargo.toml                    # harness + scenarios
+meroctl local test apps/<app>/logic                                       # harness + scenarios (cargo test)
 cargo run --release --manifest-path $M -- build  apps/<app>/logic          # res/<lib>.wasm + res/abi.json
-cargo run --release --manifest-path $M -- bundle apps/<app>/logic --dev    # dist/<package>-<version>.mpk
-cargo run --release --manifest-path $M -- bundle apps/<app>/logic --key key.json --app-version 1.2.3
-cargo run --release --manifest-path $M -- inspect <file.mpk>               # files + verified manifest
+meroctl app pack apps/<app>/logic                                         # logic/dist/<package>-<version>.mpk, dev key
+meroctl app signer new key.json                                           # once: a production signing key
+meroctl app pack apps/<app>/logic --key key.json --app-version 1.2.3
+meroctl app inspect <file.mpk>                                            # verified manifest + signer
 ```
 
 `build` is core's `build_component`: `cargo build --release --target
 wasm32-wasip2`, then the `calimero:abi` section lifted to the component's top
-level. `bundle --dev` signs with the well-known development key (fine on
-`merod local`, refused by the registry); `--key` (or `MERO_SIGN_KEY`) with a
-production key from `cargo mero key generate`. `frontend-dir` from the metadata
-is packed when it exists (`--no-frontend` skips it).
+level, and the ABI written to `res/abi.json`, the file CI diffs. `meroctl app
+pack DIR` reads the crate's `[package.metadata.calimero]` (`package`,
+`min-runtime-version`, `frontend-dir`) and `version`, builds the component
+itself, and packs `frontend-dir` when it exists (`--no-frontend` skips it).
+Without `--key` it signs with the well-known development key (fine on `merod
+local`, refused by the registry).
 
 ## Local development on merod local
 
@@ -123,6 +138,16 @@ is packed when it exists (`--no-frontend` skips it).
 `127.0.0.1:2501-2503`, mock attestation, a development storage key, passkey
 ceremonies trusted from `http://localhost:3000` and `http://localhost:5173`. It
 replaces merobox and Docker for component apps.
+
+```bash
+meroctl local dev apps/<app>     # cluster + build + upload + .env.development.local + pnpm dev on :5173, rebuilt on save
+```
+
+`meroctl local dev` starts the cluster unless one runs (`meroctl local up`,
+saved as the node `local`; `meroctl local status`, `meroctl local down`), with
+`merod` from the `PATH` or `MEROD`, or the release's image with `--docker`.
+The repository's own runner does the same in its own way and stays the one CI
+uses:
 
 ```bash
 # merod at component-core-tag, once (either):
@@ -228,14 +253,14 @@ await my.set({ key: "a", value: "1" });
 
 ## The app's typed client
 
-A frontend calls its contract through the class core's `mero-app-build codegen`
+A frontend calls its contract through the class core's `meroctl app codegen`
 writes from the app's committed ABI, never through `client.apps.call` /
 `client.apps.view` with method names in strings. [`apps/kv-store`](../apps/kv-store)
 is the worked example; core's guide is `docs/src/content/docs/build/guides/typed-clients.mdx`
 at the generator's tag.
 
 ```bash
-scripts/install-mero-app-build.sh     # once: mero-app-build at its pinned ref, into ~/.cargo/bin
+scripts/install-meroctl.sh            # once: meroctl at its pinned release, into ~/.local/bin
 pnpm -F <app> codegen                 # logic/res/abi.json -> app/src/generated/{client.ts,openapi.json}
 ```
 
@@ -245,7 +270,7 @@ How an app adopts it:
    (it names the class: `kv-store` gives `KvStoreClient`):
 
    ```json
-   "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name <app> -o src/generated"
+   "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name <app> -o src/generated"
    ```
 
    Run it and **commit** `src/generated/` (both files). It is generated from
@@ -277,16 +302,17 @@ How an app adopts it:
    `@calimero-apps/connect/testing`) rather than mocking the class: it has
    private fields, so an object literal does not type as it.
 
-Kept fresh by CI: `ci.yml`'s `frontend` job installs `mero-app-build` with
-`scripts/install-mero-app-build.sh`, runs every app's `codegen`, and fails when
+Kept fresh by CI: `ci.yml`'s `frontend` job installs `meroctl` with
+`scripts/install-meroctl.sh`, runs every app's `codegen`, and fails when
 `apps/*/app/src/generated` differs from what is committed; the `rust` job of
 `components.yml` already fails when `logic/res/abi.json` differs from the
-build. So a contract change is: build (`mero-component build`), `pnpm -F <app>
+build. So a contract change is: build (`res/abi.json`, above), `pnpm -F <app>
 codegen`, fix what `tsc -b` now reports, commit all three.
 
-The generator has its own pin (`REF` in `scripts/install-mero-app-build.sh`, a tag or a core commit),
-which may run ahead of `component-core-tag`: moving it regenerates every app's
-client in the same PR. A record or enum type in the ABI is an interface or a
+The generator has its own pin (`TAG="${MEROCTL_TAG:-…}"` in `scripts/install-meroctl.sh`, a
+core release, which core's fleet bump moves), which may run ahead of
+`component-core-tag`: moving it regenerates every app's client (and
+`scripts/mobile-codegen.sh`'s native ones) in the same PR. A record or enum type in the ABI is an interface or a
 union only when the contract derives `Record` or `AbiType` and was built at
 `1.0.0-rc.18` or later; otherwise it is `unknown`, so cast it where it is used.
 A plain serde record whose `u64` / `i64` / `Vec<u8>` fields travel as JSON
@@ -469,7 +495,7 @@ that appends to it.
 | a node URL + auth frontend login | passkeys: `client.signUp(browserPasskey(), name)` / `signIn(browserPasskey())` |
 | application id + context | a **package** + an **app instance** (`createApp`, `listApps({ package })`) |
 | namespace / group, namespace invitations | an **org** (`createOrg`, `invite`, `redeemInvite`), instances created `{ org }` |
-| abi-codegen client from `res/abi.json` | `mero-app-build codegen --lang ts` from `res/abi.json` into `src/generated/` (camelCase names, typed arguments, results, errors and events): [The app's typed client](#the-apps-typed-client) |
+| abi-codegen client from `res/abi.json` | `meroctl app codegen --lang ts` from `res/abi.json` into `src/generated/` (camelCase names, typed arguments, results, errors and events): [The app's typed client](#the-apps-typed-client) |
 | SSE subscriptions | `client.events(app, from, signal)`, an async generator of `{ id, kind, data }` |
 
 ## Porting an app: the checklist
@@ -527,7 +553,7 @@ per app, branched off `main` once this groundwork has merged.
    `"@calimero-apps/connect": "workspace:*"` and
    `"@calimero-apps/passkey": "workspace:*"`; scripts `dev`, `build`,
    `typecheck`, `test`, `lint` (an `eslint.config.js` like kv-store's), and
-   `codegen` running `mero-app-build codegen` (not abi-codegen). Keep
+   `codegen` running `meroctl app codegen` (not abi-codegen). Keep
    `vercel.json` (the v1 guards still check it).
 9. Replace the provider, node login and context picker with kv-store's
     `session.ts` (a few lines over `@calimero-apps/passkey`'s
@@ -560,7 +586,7 @@ per app, branched off `main` once this groundwork has merged.
     `MeroProvider`),
     `pnpm -F <app> lint typecheck test build`, and `pnpm -r typecheck test`
     when the lockfile moved.
-14. `pnpm dev:local <app>`: sign up in the browser, exercise every method and
+14. `meroctl local dev apps/<app>` (or `pnpm dev:local <app>`): sign up in the browser, exercise every method and
     an invitation between two browser profiles. `pnpm merod-local e2e <app>`:
     every scenario passes on the cluster.
 15. Update the app's README (run, test, what changed and why, production) and

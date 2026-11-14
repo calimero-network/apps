@@ -30,6 +30,7 @@ checkout, so this move does not touch it.
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local scaffolding-e2e   # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/scaffolding-e2e  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod local` is core's development cluster in one process: three nodes on
@@ -154,7 +155,7 @@ owner holds every first seat v1 gave the context creator.
   redeemed after sign-in, which opens that org's instance). The pending invite
   is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out.
 - The contract is called through `ScaffoldingE2eClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F scaffolding-e2e codegen` after a contract change, and CI fails when
   it is stale). `src/api/kvStore.ts` has one function per contract method for
   the sections, each calling the class with the ABI's argument names (`u64` for

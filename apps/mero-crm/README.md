@@ -138,6 +138,7 @@ last touch and contact name, computed in one pass over activities and notes.
 pnpm install                       # once, at the repo root
 rustup target add wasm32-wasip2    # once
 pnpm dev:local mero-crm            # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-crm    # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -209,7 +210,7 @@ permissions, aliases, the light/dark theme. Behind them:
 - **new**: `src/session.ts` + `src/sessionContext.tsx` (target → client →
   passkey sign-in/up, the stored session), `src/workspaces.ts` (orgs, app
   instances, invites, member names), `src/generated/` (`MeroCrmClient`:
-  `mero-app-build codegen` from `logic/res/abi.json`, committed; `pnpm -F
+  `meroctl app codegen` from `logic/res/abi.json`, committed; `pnpm -F
   mero-crm codegen` after a contract change, and CI fails when it is stale),
   `src/crm.ts` (v1's shapes and the conversion of each answer to them: the ABI
   names its records without their shapes, so the generated types are
@@ -250,8 +251,7 @@ The `frontend` link in `logic/Cargo.toml` and the Vercel project
 
 ```bash
 pnpm -F mero-crm build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-crm/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-crm/logic --key <production key> --app-version <x.y.z>
 ```
 
 The package id stays `com.calimero.mero-crm`, but a 1.0 cluster starts from

@@ -142,7 +142,7 @@ export function App({
     })();
   }, [client, landing, source, key, storage, after, open]);
 
-  // The store's contract, through the client `mero-app-build codegen` generated
+  // The store's contract, through the client `meroctl app codegen` generated
   // from logic/res/abi.json; `after` keeps the stored session current.
   const kv = useMemo(
     () => (client && opened ? new KvStoreClient(client, opened.appId, { after }) : null),

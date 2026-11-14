@@ -88,7 +88,7 @@ mero-pixart/
 │   ├── scenarios/         neutral steps, run by cargo test AND on merod local
 │   └── res/abi.json       the component's ABI, committed, diffed in CI
 ├── app/                   Vite + React; CalimeroClient through @calimero-apps/connect
-│   ├── src/generated/     MeroPixartClient: `mero-app-build codegen` from logic/res/abi.json (`pnpm -F mero-pixart codegen`)
+│   ├── src/generated/     MeroPixartClient: `meroctl app codegen` from logic/res/abi.json (`pnpm -F mero-pixart codegen`)
 │   └── src/api/           session, teams (orgs), pixart.ts (the transport: refusals in v1's words), useApi
 └── mobile/                native iOS / Android viewers, still on the v1 contract (see mobile/README.md)
 ```
@@ -98,6 +98,7 @@ mero-pixart/
 ```bash
 # merod at component-core-tag (Linux), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-pixart         # merod local, build + deploy, the app on http://localhost:5173
+meroctl local dev apps/mero-pixart # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, create a team, then a project. To try collaboration,
@@ -110,7 +111,7 @@ a second browser profile and sign up there.
 M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/mero-pixart/logic/Cargo.toml                 # harness + scenarios
 cargo run --release --manifest-path $M -- build  apps/mero-pixart/logic       # res/abi.json
-cargo run --release --manifest-path $M -- bundle apps/mero-pixart/logic --dev # dist/*.mpk
+meroctl app pack apps/mero-pixart/logic                                       # logic/dist/*.mpk, dev-signed
 pnpm merod-local e2e mero-pixart                                              # scenarios on merod local
 pnpm -F mero-pixart lint typecheck test build
 ```

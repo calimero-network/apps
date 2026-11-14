@@ -17,7 +17,7 @@ apps/mero-models/
 │   ├── tests/harness.rs       TestApp on core's engine: every method, role and limit
 │   ├── tests/scenarios.rs     every scenarios/*.json in the harness
 │   ├── scenarios/             neutral steps, also run on merod local (`pnpm merod-local e2e`)
-│   └── res/abi.json           the component's ABI, emitted by `mero-component build`
+│   └── res/abi.json           the component's ABI, emitted by `tools/component-bundle`'s `build`
 └── app/                       Vite + React + TypeScript + three.js
     ├── src/editor/            the modeller: no React in here except hooks.ts
     │   ├── model.ts           kinds, limits, hierarchy rules (mirrors the contract)
@@ -47,7 +47,7 @@ apps/mero-models/
     │   ├── io.ts              OBJ/STL/glTF import, glTF/OBJ/STL/JSON export
     │   └── hooks.ts           sync, join, the event stream and presence, as React hooks
     ├── src/studio/            the panels: menu bar, toolbar, outliner, properties, share
-    ├── src/generated/         MeroModelsClient: `mero-app-build codegen` from res/abi.json (committed)
+    ├── src/generated/         MeroModelsClient: `meroctl app codegen` from res/abi.json (committed)
     ├── src/meroModels.ts      v1's answer shapes, and `u64` for the contract's u64 arguments
     ├── src/session.ts         target → client → passkey sign-in/up, the stored session
     ├── src/scenes.ts          scenes (app instances) in studios (orgs), invitations
@@ -59,6 +59,7 @@ apps/mero-models/
 ```bash
 pnpm install
 pnpm dev:local mero-models     # merod local + build + deploy + the Vite dev server on :5173
+meroctl local dev apps/mero-models  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up in the browser with a passkey and press **New scene**: that creates a
@@ -287,7 +288,7 @@ told to ask an owner), keeps
 blobs through `CalimeroClient.uploadBlob` / `downloadBlob`, follows the scene
 with `client.events`, streams presence with `publishPresence` /
 `presenceStream`, and calls the contract through `MeroModelsClient` (`src/generated/client.ts`),
-which `mero-app-build codegen` writes from `logic/res/abi.json` (`pnpm -F
+which `meroctl app codegen` writes from `logic/res/abi.json` (`pnpm -F
 mero-models codegen` after a contract change; CI fails when the committed copy
 is stale). The records keep v1's snake_case fields and JSON-number `u64`s,
 which the contract marks `#[abi(plain)]`, so the generated types describe them
@@ -310,6 +311,5 @@ Vercel project (`app/vercel.json`) stay as the listing's link.
 
 ```bash
 pnpm -F mero-models build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-models/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-models/logic --key <production key> --app-version <x.y.z>
 ```

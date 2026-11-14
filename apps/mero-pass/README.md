@@ -264,7 +264,7 @@ logic/              the contract: a standalone crate on calimero-sdk (wasm32-was
   res/abi.json      the component's ABI, committed, diffed in CI
 app/                React + Vite frontend
   src/calimero.tsx  the session: local nodes in dev, the Cloud cluster in production, passkeys
-  src/generated/       MeroPassClient: `mero-app-build codegen` from res/abi.json (committed; `pnpm -F mero-pass codegen`)
+  src/generated/       MeroPassClient: `meroctl app codegen` from res/abi.json (committed; `pnpm -F mero-pass codegen`)
   src/lib/meroPass.ts  the shapes of its answers (the ABI names its records without their shapes, so the generated types are `unknown`)
   src/lib/vaultApi.ts  the one adapter from the contract's answers to the vault core's records
   src/lib/vaults.ts    teams (orgs), vaults (app instances), invites, members
@@ -286,6 +286,7 @@ cargo run --release --manifest-path $M -- build apps/mero-pass/logic   # res/mer
 
 # Everything on merod local: the cluster, the contract, the dev server on :5173
 pnpm dev:local mero-pass
+meroctl local dev apps/mero-pass   # the same with core's meroctl (1.0.0-rc.24 or later)
 pnpm merod-local e2e mero-pass   # every scenarios/*.json as real accounts on three nodes
 
 # Frontend
@@ -306,8 +307,7 @@ then bundle:
 
 ```bash
 pnpm -F mero-pass build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-pass/logic --key key.json --app-version <version>
+meroctl app pack apps/mero-pass/logic --key key.json --app-version <version>
 ```
 
 Known limits on a cluster-served page today: the breach check (Have I Been

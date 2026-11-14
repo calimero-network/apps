@@ -242,6 +242,7 @@ cargo test --manifest-path apps/mero-forms/logic/Cargo.toml        # harness + s
 cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-forms/logic
 
 pnpm dev:local mero-forms        # merod local + deploy + the app on http://localhost:5173
+meroctl local dev apps/mero-forms  # the same with core's meroctl (1.0.0-rc.24 or later)
 pnpm merod-local e2e mero-forms  # the scenarios as real accounts on the cluster
 
 pnpm -F mero-forms lint typecheck test build
@@ -258,7 +259,7 @@ bundle (`frontend-dir`).
 logic/src/lib.rs            the contract
 logic/tests/harness.rs      TestApp tests: every method, keys, links, captchas, access
 logic/scenarios/            neutral steps: run by cargo test and on merod local
-app/src/generated/          MeroFormsClient: `mero-app-build codegen` from logic/res/abi.json (`pnpm -F mero-forms codegen`)
+app/src/generated/          MeroFormsClient: `meroctl app codegen` from logic/res/abi.json (`pnpm -F mero-forms codegen`)
 app/src/formsApi.ts         the screens' shapes (`to*` / `from*`) and formsTransport (refusals as v1's Error)
 app/src/client.test.ts      the generated client against the committed ABI
 app/src/crmApi.ts           the Mero CRM calls the hand-off makes

@@ -21,7 +21,7 @@
     "preview": "vite preview",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "codegen": "mero-app-build codegen --abi ../logic/res/abi.json --lang ts --name mero-stream -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-stream -o src/generated"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

@@ -15,7 +15,7 @@ export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps
 
 /**
  * The typed client bound to one team (an app instance): `MeroStandupClient`,
- * which `mero-app-build codegen` writes from logic/res/abi.json, plus a `version` that
+ * which `meroctl app codegen` writes from logic/res/abi.json, plus a `version` that
  * bumps whenever the team's state may have changed: a local write, or an event
  * from the app's stream (a teammate's write). Views re-read when it moves.
  *

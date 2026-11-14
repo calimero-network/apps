@@ -1,4 +1,4 @@
-// The world's contract is called through `MerrariaClient`, which `mero-app-build
+// The world's contract is called through `MerrariaClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`);
 // tests/generatedClient.test.ts checks it covers exactly the committed ABI. The
 // ABI describes its records (`WorldMeta`, `OverridesPage`, `PlayerView`, ...),

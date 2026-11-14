@@ -4,7 +4,7 @@ import kotlinx.serialization.json.Json
 import network.calimero.issues.generated.IssueTrackerClient
 
 // The tracker contract's component ABI (`logic/res/abi.json`). The calls are [IssueTrackerClient],
-// generated from it by core's `mero-app-build codegen` (`scripts/mobile-codegen.sh` at the repo
+// generated from it by core's `meroctl app codegen` (`scripts/mobile-codegen.sh` at the repo
 // root), and so are the answer types; this file keeps the method lists `ContractWireTest` pins, in
 // step with the web client (`app/src/tracker.ts`) and the Swift `Contract/IssueTrackerContract.swift`.
 //

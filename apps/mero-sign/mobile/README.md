@@ -140,7 +140,7 @@ cd android && ./scripts/fetch-sdk.sh
 
 `SignClient` (Swift `ios/SignCore/Sources/SignCore/Generated/SignClient.swift`, Kotlin
 `android/.../generated/client/SignClient.kt`) is generated from `../logic/res/abi.json` by core's
-`mero-app-build codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
+`meroctl app codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
 commit, and update the method table in the contract-surface tests; CI's `Mobile clients` workflow
 fails on a stale client. Until the logic derives `AbiType`, the ABI names the answer types without
 their shape, so the client takes and answers their JSON and the kept types read it

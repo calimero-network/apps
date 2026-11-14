@@ -44,7 +44,7 @@ Sign-in (iOS `ios/Sources/App/CloudAccess.swift`, Android `ui/CloudAccess.kt` + 
 ## The contract
 
 The apps call the component contract as the web app does, through `BattleshipsClient`, generated
-from `../logic/res/abi.json` by core's `mero-app-build codegen` into
+from `../logic/res/abi.json` by core's `meroctl app codegen` into
 `ios/BattleshipsCore/Sources/BattleshipsCore/Generated/` and `android/.../generated/`. Run
 `scripts/mobile-codegen.sh` at the repo root after an ABI change (CI's `Mobile clients` workflow
 fails on a stale client). The ABI describes every type the contract takes and answers (`ShotsView`'s

@@ -8,7 +8,7 @@ export const PACKAGE = "com.calimero.mero-standup";
 // camelCase with 64-bit integers as decimal strings; `decode*` below is the one
 // place that converts.
 //
-// The contract is called through `MeroStandupClient`, which `mero-app-build
+// The contract is called through `MeroStandupClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`) and
 // types its records from the ABI; each read passes its answer through the
 // `decode*` for its shape, which also fills in a field an older contract left out.

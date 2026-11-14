@@ -7,7 +7,7 @@ import { KvStoreClient, type AppTransport } from "./generated/client";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 /**
- * `src/generated/client.ts` is `mero-app-build codegen`'s output for the
+ * `src/generated/client.ts` is `meroctl app codegen`'s output for the
  * committed ABI (`logic/res/abi.json`, which CI rebuilds and diffs); CI also
  * regenerates the client and fails when it is stale
  * (`scripts/check-generated-clients.sh`). These tests are the same promise

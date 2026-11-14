@@ -75,6 +75,7 @@ banned members, as in v1.
 rustup target add wasm32-wasip2
 # merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
 pnpm dev:local mero-chat     # merod local + the contract + the app on http://localhost:5173/
+meroctl local dev apps/mero-chat  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up with a passkey, create a workspace (it starts with `#general`), and
@@ -179,7 +180,7 @@ layer under them.
   passkey sign-in/up, stored per app and per target) and the conversation on
   screen; `pages/Login/SignInPopup.tsx` is the sign-in.
 - The contract is called through `MeroChatClient` (`src/generated/client.ts`),
-  which `mero-app-build codegen` writes from `logic/res/abi.json` (committed;
+  which `meroctl app codegen` writes from `logic/res/abi.json` (committed;
   `pnpm -F mero-chat codegen` after a contract change, and CI fails when it is
   stale); `src/client.test.ts` checks it against the ABI.
   `src/api/meroChat.ts` is the **one adapter** for it: `ClientApiDataSource`

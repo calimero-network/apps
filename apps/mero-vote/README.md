@@ -137,7 +137,7 @@ logic/                  a standalone component crate (its own [workspace] and Ca
   scenarios/            neutral steps, also run on merod local by CI's e2e job
   res/abi.json          the component's ABI (committed, diffed in CI)
 app/
-  src/generated/           MeroVoteClient: `mero-app-build codegen` from logic/res/abi.json (committed)
+  src/generated/           MeroVoteClient: `meroctl app codegen` from logic/res/abi.json (committed)
   src/meroVote.ts          v1's answer shapes, and `decode` from the contract's answers to them
   src/session.ts           target (merod local / Cloud) → client → passkey session
   src/groups.ts            voting groups (app instances in their own org), invite links
@@ -164,6 +164,7 @@ in Rust, and the matching test in `verify.test.ts`).
 ```bash
 pnpm install
 pnpm dev:local mero-vote     # merod local + build + deploy + the Vite dev server on :5173
+meroctl local dev apps/mero-vote  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 Sign up in the browser with a passkey, **Create voting group**, join the roster with a name, and
@@ -229,7 +230,7 @@ target from the build (`@calimero-apps/connect`: `merod local` under `vite`, a C
 an organization of their own: v1's context in a namespace), invites with an **org invite link**
 (making it is approved with your passkey; opening it, then signing in, redeems it and opens that
 group; the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the
-contract through `MeroVoteClient` (`src/generated/client.ts`), which `mero-app-build codegen`
+contract through `MeroVoteClient` (`src/generated/client.ts`), which `meroctl app codegen`
 writes from `logic/res/abi.json` (`pnpm -F mero-vote codegen` after a contract change; CI fails
 when the committed copy is stale), with the contract's camelCase arguments. The ABI names its
 records without their shapes, so the generated types are `unknown`: every answer the screens read
@@ -263,6 +264,5 @@ served by the cluster from the package's own origin, and instances are created f
 
 ```bash
 pnpm -F mero-vote build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-vote/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-vote/logic --key <production key> --app-version <x.y.z>
 ```

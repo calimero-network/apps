@@ -24,7 +24,7 @@ apps/mero-kombat/
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
 │   ├── src/game/            the engine: physics, poses, renderer, stage, HUD, sound, CPU, netcode
-│   ├── src/generated/       MeroKombatClient: `mero-app-build codegen` from res/abi.json (committed)
+│   ├── src/generated/       MeroKombatClient: `meroctl app codegen` from res/abi.json (committed)
 │   ├── src/kombat.ts        the shapes of the contract's answers, and its refusals in words
 │   ├── src/presence.ts      movement over the node's presence channel
 │   └── scripts/             icon generator
@@ -40,6 +40,7 @@ apps are built, run and tested in this repo.
 pnpm install                     # once, at the repo root
 rustup target add wasm32-wasip2  # once
 pnpm dev:local mero-kombat       # merod local + build + deploy + http://localhost:5173/
+meroctl local dev apps/mero-kombat  # the same with core's meroctl (1.0.0-rc.24 or later)
 ```
 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
@@ -153,14 +154,14 @@ the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on
 sign-out; a member who may not add an arena is told to ask an owner), streams movement over the
 node's **presence** channel and the arena's **event stream**, and calls the
 contract through `MeroKombatClient` (`src/generated/client.ts`), which
-`mero-app-build codegen` writes from `logic/res/abi.json`. A corner with no name given shows a short account
+`meroctl app codegen` writes from `logic/res/abi.json`. A corner with no name given shows a short account
 id (v1 fell back to the name its holder set for the namespace; an org has no
 such record yet). The game engine (`src/game`) is unchanged.
 
 ## The generated client
 
 ```bash
-scripts/install-mero-app-build.sh     # once, from the repo root: mero-app-build at its pinned tag
+scripts/install-meroctl.sh            # once, from the repo root: meroctl at its pinned release
 pnpm -F mero-kombat codegen           # logic/res/abi.json -> app/src/generated/
 ```
 
@@ -205,8 +206,7 @@ listing's link; they are not where people sign in.
 
 ```bash
 pnpm -F mero-kombat build
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
-  bundle apps/mero-kombat/logic --key <production key> --app-version <x.y.z>
+meroctl app pack apps/mero-kombat/logic --key <production key> --app-version <x.y.z>
 ```
 
 ⚠️ Known gap: mero-js checks a Cloud node's release against

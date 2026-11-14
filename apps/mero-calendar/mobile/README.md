@@ -23,7 +23,7 @@ links; approvals (app upgrades, node releases) open the node's consent page in
 the system browser after showing its confirmation code.
 
 Contract calls go through `CalendarClient`, generated from the **component
-contract**'s ABI (`logic/res/abi.json`) by core's `mero-app-build codegen`
+contract**'s ABI (`logic/res/abi.json`) by core's `meroctl app codegen`
 (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow
 fails on a stale one):
 camelCase methods and arguments, account ids as strings, `u64` values as

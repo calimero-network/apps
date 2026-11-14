@@ -1,6 +1,6 @@
 /**
  * The chat contract, through `MeroChatClient` (`src/generated/client.ts`, which
- * `mero-app-build codegen` writes from `logic/res/abi.json`).
+ * `meroctl app codegen` writes from `logic/res/abi.json`).
  *
  * The screens and `ClientApiDataSource` still speak v1: snake_case method
  * names (`send_message`), snake_case arguments and answers, numbers for

@@ -35,6 +35,7 @@ pnpm -F mero-sheets lint typecheck test build
 
 # everything on merod local: the cluster, the component, the dev server on :5173
 pnpm dev:local mero-sheets
+meroctl local dev apps/mero-sheets   # the same with core's meroctl (1.0.0-rc.24 or later)
 pnpm merod-local e2e mero-sheets   # every scenario as real accounts on three nodes
 ```
 

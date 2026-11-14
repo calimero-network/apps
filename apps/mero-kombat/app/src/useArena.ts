@@ -46,7 +46,7 @@ export interface KombatClient {
 
 /**
  * The typed contract, bound to this arena: `MeroKombatClient`, which
- * `mero-app-build codegen` writes from the committed `logic/res/abi.json`.
+ * `meroctl app codegen` writes from the committed `logic/res/abi.json`.
  */
 export function useKombatClient(conn: ArenaConn): KombatClient {
   const { client, appId, after } = conn;
