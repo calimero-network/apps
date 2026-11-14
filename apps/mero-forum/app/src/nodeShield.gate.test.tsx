@@ -1,6 +1,7 @@
-import { renderHook } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { nodeShieldGate } from "@calimero-apps/passkey/testing";
 
-import { APP, useSession } from "./session";
+import App from "./App";
+import { APP } from "./session";
 
-nodeShieldGate(APP, (deps) => renderHook(() => useSession(deps)));
+nodeShieldGate(APP, (deps) => render(<App deps={deps} />));
