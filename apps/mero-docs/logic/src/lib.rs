@@ -299,8 +299,9 @@ fn body_of(doc: &str, block: &str) -> RichText {
 
 #[app::logic]
 impl MeroDocs {
-    /// Starts an empty folder of documents. Its creator (`env::app_owner()`) is
-    /// the registry's owner, or the folder's moderator.
+    /// Starts an empty folder of documents, or a workspace's shared settings.
+    /// Its creator (`env::app_owner()`) is the registry's owner, or the
+    /// folder's moderator.
     #[app::init]
     pub fn init() -> app::Result<Self> {
         Ok(Self::load())
@@ -339,8 +340,8 @@ impl MeroDocs {
         self.doc_view(&id, &meta)
     }
 
-    /// Lists the documents in the folder, in id order. Archived ones are
-    /// included only with `includeArchived`.
+    /// Lists the documents in the folder. Archived ones are included only with
+    /// `includeArchived`.
     #[app::view]
     pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocView>> {
         let mut out = Vec::new();
@@ -357,8 +358,6 @@ impl MeroDocs {
     /// (case-insensitive), a title match scoring double; best match first.
     /// `cursor` is the previous page's `nextCursor`; `limit` defaults to 20, at
     /// most 100. A blank query finds nothing; one over 256 bytes is `Invalid`.
-    /// Reads every document's text: core `1.0.0-rc.7` has no full-text index
-    /// for components.
     #[app::view]
     pub fn search_docs(
         &self,
@@ -525,7 +524,7 @@ impl MeroDocs {
 
     /// Adds a tag to a document. A tag it has already is a no-op. `tag` is a
     /// key of lowercase letters, digits and dashes (1 to 64), else `Invalid`.
-    /// Leaves `updatedBy`. Emits `DocTagsChanged`.
+    /// Does not change `updatedBy`. Emits `DocTagsChanged`.
     pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         if !is_valid_tag_key(&tag) {
             return Err(invalid("invalid tag key"));
@@ -634,9 +633,9 @@ impl MeroDocs {
         Ok(redo)
     }
 
-    /// Marks a spot in a document's title so it can be found again after other
-    /// edits. The anchor is for the gap at `position`, stuck to the character
-    /// after it (`before`) or before it.
+    /// Gets a marker for a spot in a document's title that still points to it
+    /// after other edits. The anchor is for the gap at `position`, stuck to the
+    /// character after it (`before`) or before it.
     #[app::view]
     pub fn title_anchor_at(&self, doc: String, position: u32, before: bool) -> app::Result<String> {
         let _meta = self.meta(&doc)?;
@@ -823,10 +822,10 @@ impl MeroDocs {
 
     /// Edits the text of a block. Applies Quill steps to it and returns the
     /// undo token for `undo`. An insert's `attributes` are its complete
-    /// formatting; a retain's change only the keys they name. Keys outside the
-    /// schema (`bold`, `italic`, `underline`, `strike`, `textColor`,
-    /// `backgroundColor`, `link`, `code`, `comment`) are `Invalid`. At most
-    /// 100,000 characters after. Emits `TextChanged`.
+    /// formatting; a retain's change only the keys they name. Allowed
+    /// formatting keys are `bold`, `italic`, `underline`, `strike`,
+    /// `textColor`, `backgroundColor`, `link`, `code`, `comment`; any other is
+    /// `Invalid`. At most 100,000 characters after. Emits `TextChanged`.
     pub fn apply_delta(
         &mut self,
         doc: String,
@@ -1014,8 +1013,8 @@ impl MeroDocs {
         Ok(out)
     }
 
-    /// Counts how often a word or phrase appears in a block's text. Occurrences
-    /// do not overlap.
+    /// Counts how often a piece of text appears in a block's text. Exact and
+    /// case-sensitive; matches inside words count. Occurrences do not overlap.
     #[app::view]
     pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<u32> {
         let _row = self.block_row(&doc, &block)?;
@@ -1026,9 +1025,9 @@ impl MeroDocs {
         Ok(text.matches(&needle).count() as u32)
     }
 
-    /// Marks a spot in a block's text so it can be found again after other
-    /// edits. The anchor is for the gap at `position`, stuck to the character
-    /// after it (`before`) or before it.
+    /// Gets a marker for a spot in a block's text that still points to it after
+    /// other edits. The anchor is for the gap at `position`, stuck to the
+    /// character after it (`before`) or before it.
     #[app::view]
     pub fn anchor_at(
         &self,
@@ -1079,8 +1078,8 @@ impl MeroDocs {
         Ok(id)
     }
 
-    /// Lists a document's comments, oldest id first. None for a missing
-    /// document.
+    /// Lists a document's comments. In no particular order; an empty list for a
+    /// missing document.
     #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentView>> {
         let mut out = Vec::new();
@@ -1117,15 +1116,13 @@ impl MeroDocs {
     }
 
     /// Shows which version of the comment format a comment was saved in. 1 for
-    /// every live comment (one schema since the port), `null` for a missing
-    /// one.
+    /// every live comment, `null` for a missing one.
     #[app::view]
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
         Ok(self.comment_docs.get(&id)?.map(|_| 1))
     }
 
-    /// Changes the text of a comment you wrote. Replaces the text of the
-    /// caller's own comment. Anyone else's is `Forbidden`. Emits
+    /// Changes the text of a comment. Only its author may (`Forbidden`). Emits
     /// `CommentEdited`.
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let me = account()?;
@@ -1158,8 +1155,8 @@ impl MeroDocs {
 
     // ── registry: owner and managers ─────────────────────────────────────────
 
-    /// Shows who owns this folder. That is the account that created this
-    /// instance.
+    /// Shows who owns this workspace or folder. That is the account that
+    /// created this instance.
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
         Ok(env::app_owner())
