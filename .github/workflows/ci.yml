@@ -344,6 +344,13 @@ jobs:
       - name: Assert the org-app module check still catches what it claims to
         run: python3 scripts/tests/org-app-module-test.py
 
+      # Each app's nodeShield.gate.test.tsx runs in the frontend job; this
+      # fails an app that has none, which is how a new app cannot skip it.
+      - name: Assert every app has a node shield gate or a reason to go without
+        run: python3 scripts/check-node-shield-gate.py
+      - name: Assert the node shield gate check still catches what it claims to
+        run: python3 scripts/tests/node-shield-gate-test.py
+
       # `battleships.vercel.app` served a create-react-app build for an unknown
       # length of time after the app moved to Vite in this repo. The repo was
       # fine and every existing check passed; the Vercel project simply never
