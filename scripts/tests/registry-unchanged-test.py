@@ -8,8 +8,9 @@ Run against a stub registry that answers the way app-registry does: the
 (`sanitizeBundle`), both with the response-only fields the sanitizer adds and
 the server-stamped `_` keys and `metadata.author` that push.js writes.
 
-UNCHANGED_CMD replaces the command under test (it gets MANIFEST PACKAGE
-[VERSION] and CALIMERO_REGISTRY_URL, and must print same=true|false).
+UNCHANGED_CMD replaces the command under test (it gets INSPECT PACKAGE
+[VERSION] and CALIMERO_REGISTRY_URL, and must print same=true|false). INSPECT
+is a file in the shape `meroctl app inspect` prints: `{bundleHash, manifest}`.
 """
 
 import copy
@@ -29,7 +30,8 @@ SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "registry-unchanged.py"
 CMD = shlex.split(os.environ.get("UNCHANGED_CMD", "")) or [sys.executable, str(SCRIPT)]
 PACKAGE = "com.calimero.example"
 
-# What `mero-component inspect` prints for a built bundle.
+# The signed manifest of a built bundle: the `manifest` member of what
+# `meroctl app inspect` prints (`inspected` below wraps it).
 BUILT = {
     "version": "1.0",
     "package": PACKAGE,
@@ -130,13 +132,17 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 REGISTRY = f"http://127.0.0.1:{server.server_port}"
 
 
-def same(built, latest, *version):
-    Registry.latest = latest
-    Registry.requests = []
+def inspected(manifest):
+    """What `meroctl app inspect` prints for a bundle whose signed manifest is
+    `manifest`: the bundle's hash beside it."""
+    return {"bundleHash": "37216054853fbd0abe16c0e30cbe930ee39201a5196bddf3f4408300160c97fc", "manifest": manifest}
+
+
+def run(document, *version):
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-        json.dump(built, f)
+        json.dump(document, f)
     try:
-        r = subprocess.run(
+        return subprocess.run(
             [*CMD, f.name, PACKAGE, *version],
             capture_output=True,
             check=False,
@@ -152,6 +158,12 @@ def same(built, latest, *version):
         )
     finally:
         os.unlink(f.name)
+
+
+def same(built, latest, *version):
+    Registry.latest = latest
+    Registry.requests = []
+    r = run(inspected(built), *version)
     assert r.returncode == 0, r
     out = [l for l in r.stdout.splitlines() if l.startswith("same=")]
     assert out in (["same=true"], ["same=false"]), r
@@ -208,6 +220,11 @@ case("package not on the registry -> publish", same(BUILT, None), False)
 same(BUILT, stored(BUILT))
 lookups = Registry.requests
 case("every lookup passes fresh=1", bool(lookups) and all(q.get("fresh") == "1" for q in lookups), True)
+
+# A bare manifest is not what the workflow's `meroctl app inspect` writes:
+# refused, never compared (the wrapper would never match, so it would always publish).
+Registry.latest = stored(BUILT)
+case("a bare manifest is refused", run(BUILT).returncode, 2)
 
 server.shutdown()
 if failures:

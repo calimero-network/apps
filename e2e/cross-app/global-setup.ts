@@ -1,7 +1,8 @@
 /**
  * Starts `merod local --fresh` trusting the three dev servers' origins, and
  * builds the two packages the suite's org holds: Chat and KV Store, each a
- * dev-signed `.mpk` (`mero-component bundle --dev`). A package is installed
+ * dev-signed `.mpk` (`scripts/component-build.sh`, then `meroctl app pack`
+ * with no `--key`: the development key). A package is installed
  * per account, so the spec installs them on Alice's; nobody's org is made
  * here: Alice makes hers in Chat, in the browser.
  *
@@ -42,23 +43,18 @@ function devBundle(app: string, pkg: string): string {
   } catch {
     /* not built yet */
   }
-  execFileSync(
-    "cargo",
-    [
-      "run",
-      "--release",
-      "--manifest-path",
-      "tools/component-bundle/Cargo.toml",
-      "--",
-      "bundle",
-      `apps/${app}/logic`,
-      "--dev",
-      "--no-frontend",
-      "--output",
-      out,
-    ],
-    { cwd: ROOT, stdio: "inherit" },
-  );
+  const wasm = execFileSync(join(ROOT, "scripts/component-build.sh"), [`apps/${app}/logic`], {
+    cwd: ROOT,
+    stdio: ["ignore", "pipe", "inherit"],
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .pop()!;
+  execFileSync("meroctl", ["app", "pack", `apps/${app}/logic`, "--wasm", wasm, "--no-frontend", "--out", out], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
   return out;
 }
 

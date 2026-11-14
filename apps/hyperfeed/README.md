@@ -568,9 +568,8 @@ words, and an agent should never call them for itself. The agent's side of lense
 
 ```bash
 rustup target add wasm32-wasip2
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/hyperfeed/logic/Cargo.toml                    # harness + scenarios
-cargo run --release --manifest-path $M -- build  apps/hyperfeed/logic           # res/hyperfeed.wasm + res/abi.json
+scripts/component-build.sh apps/hyperfeed/logic                                 # res/hyperfeed.wasm + res/abi.json
 meroctl app pack apps/hyperfeed/logic                                           # a dev-signed .mpk
 pnpm dev:local hyperfeed            # merod local + build + deploy + the dev server on http://localhost:5173
 meroctl local dev apps/hyperfeed    # the same with core's meroctl (1.0.0-rc.24 or later)

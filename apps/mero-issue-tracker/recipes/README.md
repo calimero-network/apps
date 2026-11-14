@@ -37,6 +37,6 @@ All of them target **Calimero 1.0**: contracts on the component SDK
    `authored-feed`).
 2. For Rust recipes, add the fields to the app's `#[app::state]` and the
    methods (and the `#[app::error]`/`#[app::event]` variants) to its
-   `#[app::logic]` module, then `mero-component build` to refresh `res/abi.json`.
+   `#[app::logic]` module, then `scripts/component-build.sh` to refresh `res/abi.json`.
 3. For TypeScript recipes, pass the signed-in `CalimeroClient` and the app's
    `AppSource` (`appSource(import.meta.env, PACKAGE)`).

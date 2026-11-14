@@ -40,19 +40,17 @@ followed.
 | | what | where |
 |---|---|---|
 | core pin | `component-core-tag` (now `1.0.0-rc.23`) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
-| developer CLI | core's `meroctl`: `app new`, `app pack`, `app inspect`, `app codegen` (at the release `scripts/install-meroctl.sh` pins), `local up \| dev \| test` | [core](https://github.com/calimero-network/core) releases |
-| CI builder / bundler | `res/abi.json` and the release `.mpk` in CI: core's `calimero-app-build` and `calimero-bundle` at the pinned tag; the same `.mpk` `meroctl app pack` writes | [`tools/component-bundle`](../tools/component-bundle) |
+| developer CLI and CI builder | core's `meroctl`: `app new`, `app build`, `app pack`, `app inspect`, `app abi show`, `app codegen`, `local up \| dev \| test`, at the release `scripts/install-meroctl.sh` pins; CI builds, packs and signs every release with it | [core](https://github.com/calimero-network/core) releases |
+| build script | `scripts/component-build.sh <logic>`: `meroctl app build` into `res/<lib>.wasm` and `meroctl app abi show` into `res/abi.json`, the file CI diffs | [`scripts/component-build.sh`](../scripts/component-build.sh) |
 | local cluster | `meroctl local dev apps/<app>`; the repo's own `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
 | frontend helper | `@calimero-apps/connect`: target (local / cloud) from env, the client, the stored session | [`packages/connect`](../packages/connect) |
 | CI | `Components` workflow | [`.github/workflows/components.yml`](../.github/workflows/components.yml) |
 | JS client | `@calimero-network/mero-js` 33 via `"catalog:component"` | `pnpm-workspace.yaml` |
 
-Why a separate builder: `cargo mero bundle` at the pinned tag builds
-`wasm32-unknown-unknown` (v1) only and cannot take a prebuilt component.
-`mero-component` writes the same `.mpk` a single-service v1 app gets
-(`manifest.json` signed with core's own signer, `app.wasm`, `frontend/…`), from
-the same `[package.metadata.calimero]` table, and the node verifies it with the
-same `calimero-bundle`. The manifest has no `abi` artifact: a component carries
+`meroctl app pack` writes the same `.mpk` a single-service v1 app got from
+`cargo mero bundle` (`manifest.json` signed with core's own signer, `app.wasm`,
+`frontend/…`), from the same `[package.metadata.calimero]` table, and the node
+verifies it with the same `calimero-bundle`. The manifest has no `abi` artifact: a component carries
 its ABI in its own `calimero:abi` section, which is what the node reads.
 
 ## Layout of a component app
@@ -114,21 +112,24 @@ min-runtime-version = "1.0.0-rc.10"
 ```bash
 rustup target add wasm32-wasip2
 
-M=tools/component-bundle/Cargo.toml
 meroctl local test apps/<app>/logic                                       # harness + scenarios (cargo test)
-cargo run --release --manifest-path $M -- build  apps/<app>/logic          # res/<lib>.wasm + res/abi.json
+scripts/component-build.sh apps/<app>/logic                                # res/<lib>.wasm + res/abi.json
 meroctl app pack apps/<app>/logic                                         # logic/dist/<package>-<version>.mpk, dev key
 meroctl app signer new key.json                                           # once: a production signing key
 meroctl app pack apps/<app>/logic --key key.json --app-version 1.2.3
 meroctl app inspect <file.mpk>                                            # verified manifest + signer
 ```
 
-`build` is core's `build_component`: `cargo build --release --target
-wasm32-wasip2`, then the `calimero:abi` section lifted to the component's top
-level, and the ABI written to `res/abi.json`, the file CI diffs. `meroctl app
-pack DIR` reads the crate's `[package.metadata.calimero]` (`package`,
+`meroctl app build` is core's `build_component`: `cargo build --release
+--target wasm32-wasip2`, then the `calimero:abi` section lifted to the
+component's top level; `scripts/component-build.sh` then writes the ABI to
+`res/abi.json` (`meroctl app abi show`), the file CI diffs. `meroctl app pack
+DIR` reads the crate's `[package.metadata.calimero]` (`package`,
 `min-runtime-version`, `frontend-dir`) and `version`, builds the component
-itself, and packs `frontend-dir` when it exists (`--no-frontend` skips it).
+itself unless `--wasm` names one, and packs `frontend-dir` when it exists
+(`--no-frontend` skips it). CI always passes `--wasm`: meroctl 1.0.0-rc.24's own
+build ignores `CARGO_TARGET_DIR` (core#5064), and `scripts/component-build.sh`
+hands it an absolute `--target-dir`.
 Without `--key` it signs with the well-known development key (fine on `merod
 local`, refused by the registry).
 
@@ -161,7 +162,7 @@ pnpm dev:local <app>             # everything below in one command; Ctrl-C stops
 
 1. starts `merod local` (state and log in `.merod-local/`, kept across runs;
    `--fresh` starts over), or uses one already running on :2501;
-2. builds the component (`mero-component build`);
+2. builds the component (`scripts/component-build.sh`, meroctl app build);
 3. signs up a throwaway deployer account with a software passkey and uploads
    the component as a raw bundle (`POST /bundles`, development clusters only);
 4. writes `apps/<app>/app/.env.development.local` (gitignored):
@@ -328,8 +329,8 @@ ABI from the same release.
 
 | job | runs (pull request) | what |
 |---|---|---|
-| `checks` | always | `check-component-pins.py` (+ its test); `tools/component-bundle` fmt, clippy, test; `packages/connect` and `packages/merod-local` typecheck and test |
-| `rust` | per app whose contract changed (`logic/**`, or the icon its manifest packs) | `cargo fmt --check`; `cargo clippy -D warnings` on the host (tests included) and on `wasm32-wasip2`; `cargo test` (TestApp harness + scenarios); release build; committed `res/abi.json` current; a dev-signed `.mpk` packed and verified |
+| `checks` | always | `check-component-pins.py` (+ its test); `packages/connect` and `packages/merod-local` typecheck and test |
+| `rust` | per app whose contract changed (`logic/**`, or the icon its manifest packs) | `cargo fmt --check`; `cargo clippy -D warnings` on the host (tests included) and on `wasm32-wasip2`; `cargo test` (TestApp harness + scenarios); release build (`scripts/component-build.sh`); committed `res/abi.json` current; a dev-signed `.mpk` packed and verified (`meroctl app pack`, `meroctl app inspect`) |
 | `e2e` | per app whose contract changed; every app when the JS that drives a node changed | core's release `merod` at `component-core-tag` (checked against its `SHA256SUMS`), `merod local`, then `pnpm merod-local e2e <app>`: every `scenarios/*.json` as real accounts on three nodes. A leg whose contract did not change builds its own release wasm instead of waiting on a `rust` leg |
 | `browser` | per app with `app/playwright.config.ts` whose frontend, contract, imported packages or harness inputs changed | its Playwright suite on `merod local` |
 | `cross-app` | Chat, Home or KV Store, `e2e/cross-app` or a package they import changed | the cross-app suite |
@@ -340,7 +341,8 @@ freshness: [The app's typed client](#the-apps-typed-client)) is `ci.yml`'s
 `frontend` job, over the members a change reaches.
 
 `python3 scripts/ci-scope.py components --explain <paths>` prints which jobs a
-change runs and why. The workflow, `tools/component-bundle`, the scope scripts
+change runs and why. The workflow, meroctl's pin (`scripts/install-meroctl.sh`),
+`scripts/component-build.sh`, the scope scripts
 and the core pin in the root `Cargo.toml` run everything; `packages/merod-local`,
 the root `package.json` and a moved catalog or lockfile pin run every `e2e`,
 `browser` and `cross-app` leg without rebuilding every contract; an app's
@@ -369,8 +371,12 @@ gh workflow run release.yml -f app=kv-store -f version=1.0.0
    variable `CALIMERO_CLUSTER` (default `eu-shared-1`) and
    `VITE_CALIMERO_MIN_RELEASE` from `CALIMERO_MIN_RELEASE` (required). No
    Vercel deploy is involved.
-3. `mero-component bundle --key` signs it with `MERO_SIGN_KEY`; the key file is
-   removed right after.
+3. `meroctl app pack --key` packs and signs it with `MERO_SIGN_KEY` (a 0600
+   file: meroctl refuses a key others can read); the key file is removed right
+   after. `meroctl app inspect` then verifies the signature and prints
+   `{bundleHash, manifest}`; every check below reads `.manifest`. The run's
+   notice and summary record the core commit the app resolved and
+   `meroctl --version`.
 4. The signed manifest's `signerId` must be the package's published one
    (`scripts/registry-release.sh check-signer`): the registry pins the signer
    and the node derives the application id from (package, signer).
@@ -383,9 +389,10 @@ lists what it would have released.
 ## Moving to a new core release
 
 1. `component-core-tag` and `component-min-runtime-version` in the root `Cargo.toml`.
-2. The tag in `tools/component-bundle/Cargo.toml` and in each component app's
-   `Cargo.toml` (`python3 scripts/check-component-pins.py` lists every one
-   left), then `cargo update` in each.
+2. The tag in each component app's `Cargo.toml` (`python3
+   scripts/check-component-pins.py` lists every one left), then `cargo update`
+   in each. `meroctl` is pinned on its own, in `scripts/install-meroctl.sh`
+   (core's fleet bump moves it).
 3. `"@calimero-network/mero-js"` in the `component` catalog of
    `pnpm-workspace.yaml`, to the release that speaks that node's API.
 4. Rebuild each app's `res/abi.json`; CI's e2e job downloads the new `merod`.
@@ -542,7 +549,7 @@ per app, branched off `main` once this groundwork has merged.
 7. `rustup target add wasm32-wasip2` for the toolchain `cargo` uses (the tests
    build the crate for it), then `cargo fmt`, `cargo clippy --all-targets -D
    warnings`, `cargo clippy --target wasm32-wasip2 -D warnings`, `cargo test`,
-   and `mero-component build` to write `res/abi.json`; commit it. Delete
+   and `scripts/component-build.sh` to write `res/abi.json`; commit it. Delete
    `res/state-schema.json` (v1 only).
 
 **Frontend**

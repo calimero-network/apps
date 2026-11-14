@@ -11,8 +11,9 @@
 #   scripts/component-apps.sh from-paths   JSON array of those a change reaches (paths on stdin)
 #
 # A change to what every component app builds against (the pin in the root
-# Cargo.toml, tools/component-bundle, packages/merod-local, packages/connect,
-# the components workflow) reaches all of them; ci uses `all` for that.
+# Cargo.toml, meroctl's pin in scripts/install-meroctl.sh,
+# scripts/component-build.sh, packages/merod-local, packages/connect, the
+# components workflow) reaches all of them; ci uses `all` for that.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

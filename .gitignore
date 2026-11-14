@@ -1,9 +1,8 @@
 # Rust
 /target/
-# Component apps and tools/component-bundle are standalone crates, each with
-# its own target dir unless CARGO_TARGET_DIR says otherwise.
+# Component apps are standalone crates, each with its own target dir unless
+# CARGO_TARGET_DIR says otherwise (scripts/component-build.sh).
 apps/*/logic/target/
-tools/*/target/
 **/*.rs.bk
 
 # `cargo mero build` writes the contract into the app's res/ alongside abi.json.

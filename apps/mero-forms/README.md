@@ -239,7 +239,7 @@ through `@calimero-apps/connect`'s org-app module
 ```bash
 rustup target add wasm32-wasip2
 cargo test --manifest-path apps/mero-forms/logic/Cargo.toml        # harness + scenarios
-cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-forms/logic
+scripts/component-build.sh apps/mero-forms/logic
 
 pnpm dev:local mero-forms        # merod local + deploy + the app on http://localhost:5173
 meroctl local dev apps/mero-forms  # the same with core's meroctl (1.0.0-rc.24 or later)

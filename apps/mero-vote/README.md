@@ -175,10 +175,9 @@ every proof.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/mero-vote/logic/Cargo.toml          # crypto + vectors, harness, scenarios
 UPDATE_VECTORS=1 cargo test --manifest-path apps/mero-vote/logic/Cargo.toml -p mero-vote-crypto --test vectors
-cargo run --release --manifest-path $M -- build apps/mero-vote/logic # res/mero_vote.wasm + res/abi.json
+scripts/component-build.sh apps/mero-vote/logic                      # res/mero_vote.wasm + res/abi.json
 pnpm -F mero-vote lint && pnpm -F mero-vote typecheck && pnpm -F mero-vote test && pnpm -F mero-vote build
 pnpm merod-local e2e mero-vote                                       # the scenarios on merod local
 ```

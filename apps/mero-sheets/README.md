@@ -77,13 +77,12 @@ Sign up with a passkey and create a spreadsheet. To try a second person, open
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 L=apps/mero-sheets/logic
 cargo fmt --manifest-path $L/Cargo.toml -- --check
 cargo clippy --manifest-path $L/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path $L/Cargo.toml --target wasm32-wasip2 -- -D warnings
 cargo test --manifest-path $L/Cargo.toml        # engine + harness + scenarios
-cargo run --release --manifest-path $M -- build $L   # res/abi.json
+scripts/component-build.sh $L                        # res/abi.json
 pnpm merod-local e2e mero-sheets                 # the scenarios on merod local
 pnpm -F mero-sheets lint && pnpm -F mero-sheets typecheck && pnpm -F mero-sheets test && pnpm -F mero-sheets build
 ```

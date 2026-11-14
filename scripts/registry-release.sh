@@ -29,8 +29,8 @@ registry="${CALIMERO_REGISTRY_URL:-https://apps.calimero.network}"
 api="${registry%/}/api/v2/bundles"
 
 # The well-known development key's signerId (core's `mero_sign::dev_signer_id`,
-# the same key cargo-mero's --dev used): `mero-component bundle --dev` signs
-# with it.
+# the same key cargo-mero's --dev used): `meroctl app pack` without `--key`
+# signs with it.
 DEV_SIGNER=did:key:z6MknF3p5L5FDHJQ7FREUapuX4Wmp4MtF6WrHYaXS2B3eZQd
 
 notice() { echo "::notice::$*" >&2; }

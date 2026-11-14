@@ -35,11 +35,12 @@ The apps are independent products, but they are not independent codebases. They 
 - **The same SDKs** — [`calimero-sdk`](https://github.com/calimero-network/core) (Rust, the
   component SDK) and [`mero-js`](https://github.com/calimero-network/mero-js)'s `CalimeroClient`.
 - **The same design language** — [`design-system`](https://github.com/calimero-network/design-system).
-- **The same build tooling** — core's `meroctl`: `meroctl app pack` builds each contract for
-  `wasm32-wasip2` and packs it from its `[package.metadata.calimero]`, `meroctl app codegen` writes
-  the typed client, `meroctl local dev` runs it on a local cluster; Vite + TypeScript for
-  frontends. (CI still packs with [`tools/component-bundle`](tools/component-bundle), which
-  writes the same `.mpk` from the same table.)
+- **The same build tooling** — core's `meroctl`: `meroctl app build` builds each contract for
+  `wasm32-wasip2` ([`scripts/component-build.sh`](scripts/component-build.sh) also writes its
+  `res/abi.json`), `meroctl app pack` packs it from its `[package.metadata.calimero]`,
+  `meroctl app codegen` writes the typed client, `meroctl local dev` runs it on a local cluster;
+  Vite + TypeScript for frontends. CI builds, packs and signs releases with the same released
+  `meroctl`, at the release [`scripts/install-meroctl.sh`](scripts/install-meroctl.sh) pins.
 - **The same release path** — signed `.mpk` packages published to the
   [app registry](https://apps.calimero.network/).
 - **The same integration surface** — passkey sign-in, organizations and invitations, a local
@@ -152,7 +153,7 @@ pnpm merod-local e2e kv-store      # the app's scenarios as real accounts on the
 puts it in `~/.local/bin` (`sh -s -- merod meroctl` adds `merod`, Linux only).
 
 [**`docs/COMPONENT-APPS.md`**](docs/COMPONENT-APPS.md) has the layout, the
-build and bundle tool (`tools/component-bundle`), local development
+build and pack steps (`meroctl`, `scripts/component-build.sh`), local development
 (`packages/merod-local`), the frontend helper (`packages/connect`), CI
 (`.github/workflows/components.yml`), the v1 → component SDK migration guide
 and the porting checklist that moved each app off the v1 SDK.
@@ -169,7 +170,7 @@ apps/my-app/
 │   │                     #   the registry manifest; its own [workspace] and Cargo.lock
 │   ├── tests/            #   TestApp: the component on core's wasmtime engine. No node needed.
 │   ├── scenarios/        #   steps run by cargo test AND as real accounts on merod local
-│   └── res/abi.json      #   the component's ABI, emitted by mero-component build, committed
+│   └── res/abi.json      #   the component's ABI, written by scripts/component-build.sh, committed
 └── app/                  # Frontend. Vite + React (or vanilla) + TypeScript.
     ├── src/              #   mero-js CalimeroClient, through @calimero-apps/connect
     │   └── generated/    #   typed client, meroctl app codegen from ../logic/res/abi.json
@@ -214,10 +215,9 @@ scripts/
   vercel-ignore-build.py    Vercel skips an app's deploy when a push does not reach it
   component-apps.sh         the component-app matrix (logic/ depends on calimero-sdk)
   check-component-pins.py   every component crate pins component-core-tag
+  component-build.sh        meroctl app build: res/<lib>.wasm + res/abi.json
+  install-meroctl.sh        core's meroctl at the pinned release (build, pack, codegen)
   tests/                    unit tests for the gates above
-
-tools/
-  component-bundle/         writes res/abi.json; CI packs releases with it (locally: meroctl app pack)
 
 packages/
   connect/                  frontend: merod local in dev, Calimero Cloud in production
@@ -279,9 +279,8 @@ pnpm install                          # whole workspace, one lockfile
 rustup target add wasm32-wasip2       # once
 scripts/install-meroctl.sh            # once: core's meroctl at the pinned release, for codegen
 
-M=tools/component-bundle/Cargo.toml
 cargo test --manifest-path apps/<app>/logic/Cargo.toml                 # TestApp harness + scenarios
-cargo run --release --manifest-path $M -- build apps/<app>/logic        # component + res/abi.json
+scripts/component-build.sh apps/<app>/logic                             # component + res/abi.json
 pnpm -F <app> codegen                 # ABI → typed client (meroctl app codegen)
 meroctl local dev apps/<app>          # local cluster + build + upload + the dev server on :5173
 pnpm dev:local <app>                  # the same through packages/merod-local
@@ -326,7 +325,7 @@ the change does not reach it counts as a pass):
 | `ci.yml` | `metadata` | always | the manifest / icon / node-wire / org-module / live-frontend / lockfile gates, plus their own unit tests |
 | `ci.yml` | `frontend` | a member's frontend, contract or a package it imports changed, or a workspace-wide JS change | lint, typecheck, codegen diff, unit tests, build, `check-vercel-output.sh`, over those members only |
 | `ci.yml` | `conformance` | the rig, a package or a JS pin changed | `conformance.yml` |
-| `components.yml` | `checks` | always | pins, `tools/component-bundle`, `packages/connect` + `passkey` + `merod-local` |
+| `components.yml` | `checks` | always | pins, `packages/connect` + `passkey` + `merod-local` |
 | `components.yml` | `rust` | per app whose **contract** changed | fmt, clippy, `cargo test` (scenarios), release build, ABI current, dev `.mpk` |
 | `components.yml` | `e2e` | per app whose contract changed, or every app when `packages/merod-local` / a mero-js pin changed | scenarios on `merod local` |
 | `components.yml` | `browser` | per app with a Playwright suite whose frontend, contract or harness inputs changed | the suite on `merod local` |
@@ -364,9 +363,10 @@ new core release"):
    `[workspace.metadata.mero-apps]` of the root `Cargo.toml` (and the
    `[workspace.dependencies]` tags and `min-runtime-version` / `merod-image`
    beside them, which move together).
-2. The tag in `tools/component-bundle/Cargo.toml` and in each app's
-   `logic/Cargo.toml` (`python3 scripts/check-component-pins.py` lists every
-   one left), then `cargo update` in each crate.
+2. The tag in each app's `logic/Cargo.toml` (`python3
+   scripts/check-component-pins.py` lists every one left), then `cargo update`
+   in each crate. The `meroctl` that builds and packs them is pinned on its own,
+   in `scripts/install-meroctl.sh` (core's fleet bump moves it).
 3. `"@calimero-network/mero-js"` in the `component` catalog of
    `pnpm-workspace.yaml`, to the release that speaks that node's API.
 4. Rebuild each app's `res/abi.json` and regenerate its client

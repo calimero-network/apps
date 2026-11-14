@@ -278,11 +278,10 @@ mobile/             native iOS and Android apps (their Calimero 1.0 port is #699
 
 ```bash
 rustup target add wasm32-wasip2
-M=tools/component-bundle/Cargo.toml
 
 # Contract: harness + scenarios, then the component and its ABI
 cargo test --manifest-path apps/mero-pass/logic/Cargo.toml
-cargo run --release --manifest-path $M -- build apps/mero-pass/logic   # res/mero_pass.wasm + res/abi.json
+scripts/component-build.sh apps/mero-pass/logic                        # res/mero_pass.wasm + res/abi.json
 
 # Everything on merod local: the cluster, the contract, the dev server on :5173
 pnpm dev:local mero-pass

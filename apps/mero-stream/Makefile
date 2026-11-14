@@ -3,7 +3,8 @@
 # Run from the repo root's tools; every target works from this directory.
 ROOT := ../..
 LOGIC := logic
-BUNDLER := cargo run --release --manifest-path $(ROOT)/tools/component-bundle/Cargo.toml --
+# core's `meroctl` (scripts/install-meroctl.sh) builds and packs the component.
+BUILD := $(ROOT)/scripts/component-build.sh
 
 help:
 	@echo ""
@@ -37,10 +38,10 @@ logic-lint:
 	cargo clippy --manifest-path $(LOGIC)/Cargo.toml --target wasm32-wasip2 -- -D warnings
 
 logic-build:
-	$(BUNDLER) build $(LOGIC)
+	$(BUILD) $(LOGIC)
 
 logic-bundle: logic-build
-	$(BUNDLER) bundle $(LOGIC) --dev
+	meroctl app pack $(LOGIC) --wasm $(LOGIC)/res/mero_stream.wasm
 
 app-test:
 	pnpm -F mero-stream test

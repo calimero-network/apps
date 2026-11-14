@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Whether a built component bundle equals the registry's latest of its package.
 
-    scripts/registry-unchanged.py MANIFEST PACKAGE [EXPLICIT_VERSION]
+    scripts/registry-unchanged.py INSPECT PACKAGE [EXPLICIT_VERSION]
 
-MANIFEST is the built bundle's signed manifest (`mero-component inspect`).
+INSPECT is what `meroctl app inspect` printed for the built bundle, after it
+verified the signature: `{"bundleHash": ..., "manifest": {...}}`, of which the
+signed manifest (`.manifest`) is compared. Anything else is refused (exit 2):
+comparing the wrapper would never match, and a bare manifest would mean the
+signature was not checked by the step that wrote it.
 Prints `same=true` or `same=false` for $GITHUB_OUTPUT, and why on stderr.
 CALIMERO_REGISTRY_URL overrides https://apps.calimero.network.
 
@@ -152,12 +156,23 @@ def decide(built, package, explicit_version="", registry=DEFAULT_REGISTRY, fetch
     return True, f"identical to the registry's {latest['appVersion']}"
 
 
+def built_manifest(inspected):
+    """The signed manifest out of `meroctl app inspect`'s output, or None
+    when it is not that shape."""
+    if isinstance(inspected, dict) and isinstance(inspected.get("manifest"), dict) and "bundleHash" in inspected:
+        return inspected["manifest"]
+    return None
+
+
 def main(argv):
     if len(argv) not in (3, 4):
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         return 2
     with open(argv[1]) as f:
-        built = json.load(f)
+        built = built_manifest(json.load(f))
+    if built is None:
+        print(f"{argv[1]} is not `meroctl app inspect` output ({{bundleHash, manifest}})", file=sys.stderr)
+        return 2
     explicit = argv[3] if len(argv) == 4 else ""
     registry = os.environ.get("CALIMERO_REGISTRY_URL") or DEFAULT_REGISTRY
     same, reason = decide(built, argv[2], explicit, registry)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every component app and tool pins core at `component-core-tag`.
+"""Every component app pins core at `component-core-tag`.
 
 A component app is a standalone crate (its own `[workspace]`), so it cannot
 inherit `[workspace.dependencies]` the way a v1 app inherits `calimero-sdk`:
@@ -8,8 +8,7 @@ ONE edit" true for them: bump `component-core-tag` in the root Cargo.toml and
 this check lists every crate still on the old tag.
 
 Checked, for `apps/*/logic/Cargo.toml` that depend on `calimero-sdk` from core's
-git (a v1 app inherits its `calimero-sdk` from the root workspace instead) and
-for `tools/component-bundle/Cargo.toml`:
+git (a v1 app inherits its `calimero-sdk` from the root workspace instead):
 
 * no dependency still names `calimero-app-sdk`, the name core renamed to
   `calimero-sdk` in 1.0.0-rc.9 (kept there only as an alias);
@@ -19,7 +18,10 @@ for `tools/component-bundle/Cargo.toml`:
 * `min-runtime-version` in `[package.metadata.calimero]` equals
   `component-min-runtime-version`;
 * the crate is its own workspace root (`[workspace]`) and the root Cargo.toml
-  excludes it (apps only), or cargo refuses both workspaces.
+  excludes it, or cargo refuses both workspaces.
+
+The tool that builds and packs them is core's released `meroctl`, pinned by
+scripts/install-meroctl.sh, not a crate here: it has no core dependency to check.
 
 Usage: scripts/check-component-pins.py [REPO_ROOT]
 """
@@ -58,7 +60,7 @@ def dependency_tables(manifest: dict) -> list[tuple[str, dict]]:
     return out
 
 
-def check_crate(path: Path, tag: str, runtime: str | None, root: Path, excluded: set[str]) -> list[str]:
+def check_crate(path: Path, tag: str, runtime: str, root: Path, excluded: set[str]) -> list[str]:
     errors = []
     manifest = tomllib.loads(path.read_text())
     rel = path.relative_to(root)
@@ -78,14 +80,13 @@ def check_crate(path: Path, tag: str, runtime: str | None, root: Path, excluded:
                 errors.append(f"{rel}: [{label}] {name} pins {got}, expected tag = \"{tag}\"")
     if "workspace" not in manifest:
         errors.append(f"{rel}: not its own workspace root; add an empty [workspace] table")
-    if runtime is not None:
-        meta = manifest.get("package", {}).get("metadata", {}).get("calimero", {})
-        got = meta.get("min-runtime-version")
-        if got != runtime:
-            errors.append(f"{rel}: min-runtime-version is {got!r}, expected {runtime!r}")
-        crate_dir = str(path.parent.relative_to(root))
-        if crate_dir not in excluded:
-            errors.append(f"{rel}: the root Cargo.toml does not exclude {crate_dir} (add it to [workspace].exclude)")
+    meta = manifest.get("package", {}).get("metadata", {}).get("calimero", {})
+    got = meta.get("min-runtime-version")
+    if got != runtime:
+        errors.append(f"{rel}: min-runtime-version is {got!r}, expected {runtime!r}")
+    crate_dir = str(path.parent.relative_to(root))
+    if crate_dir not in excluded:
+        errors.append(f"{rel}: the root Cargo.toml does not exclude {crate_dir} (add it to [workspace].exclude)")
     return errors
 
 
@@ -107,15 +108,12 @@ def main() -> int:
     )
     for manifest in apps:
         errors += check_crate(manifest, tag, runtime, root, excluded)
-    tool = root / "tools/component-bundle/Cargo.toml"
-    if tool.exists():
-        errors += check_crate(tool, tag, None, root, excluded)
 
     for e in errors:
         print(f"::error::{e}")
     if errors:
         return 1
-    print(f"component crates pin core {tag}: {', '.join(str(p.parent.parent.name) for p in apps) or 'no apps yet'}, tools/component-bundle")
+    print(f"component crates pin core {tag}: {', '.join(str(p.parent.parent.name) for p in apps) or 'no apps yet'}")
     return 0
 
 

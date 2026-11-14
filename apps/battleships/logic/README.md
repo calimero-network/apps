@@ -17,5 +17,5 @@ from v1.
 
 ```bash
 cargo test                                                                    # rules + harness + scenarios
-cargo run --release --manifest-path ../../../tools/component-bundle/Cargo.toml -- build .   # res/abi.json
+../../../scripts/component-build.sh .                                         # res/abi.json
 ```

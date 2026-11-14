@@ -47,12 +47,11 @@ profile. **Run All Tests** runs the in-app suite against the open instance.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo fmt --manifest-path apps/scaffolding-e2e/logic/Cargo.toml -- --check
 cargo clippy --manifest-path apps/scaffolding-e2e/logic/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path apps/scaffolding-e2e/logic/Cargo.toml --target wasm32-wasip2 -- -D warnings
 cargo test --manifest-path apps/scaffolding-e2e/logic/Cargo.toml          # harness + scenarios
-cargo run --release --manifest-path $M -- build apps/scaffolding-e2e/logic  # res/abi.json
+scripts/component-build.sh apps/scaffolding-e2e/logic                       # res/abi.json
 pnpm merod-local e2e scaffolding-e2e                                      # the scenarios on merod local
 pnpm -F scaffolding-e2e lint && pnpm -F scaffolding-e2e typecheck && pnpm -F scaffolding-e2e test && pnpm -F scaffolding-e2e build
 ```

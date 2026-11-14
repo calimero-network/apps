@@ -7,7 +7,8 @@
 #
 # Component apps on push: the bundle carries the frontend the cluster serves, so
 # a change to the app's frontend, its logic, or what every component app builds
-# with (tools/component-bundle, packages/connect, the lockfiles) releases it.
+# with (meroctl's pin, scripts/component-build.sh, packages/connect, the
+# lockfiles) releases it.
 # That is opt-in through the repository variable RELEASE_COMPONENTS_ON_PUSH=true;
 # without it a push only reports what it would have released, and a release is
 # a dispatch.
@@ -34,7 +35,8 @@ on:
       - "Cargo.lock"
       # Component apps: the bundle packs the frontend, built with these.
       - "apps/*/app/**"
-      - "tools/component-bundle/**"
+      - "scripts/component-build.sh"
+      - "scripts/install-meroctl.sh"
       - "packages/connect/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -172,7 +174,7 @@ jobs:
           else
             # What every component app builds with, as in components.yml (minus
             # what only tests use): a change here reaches every bundle.
-            shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/connect/)'
+            shared='^(pnpm-workspace\.yaml|package\.json|scripts/component-build\.sh|scripts/install-meroctl\.sh|packages/connect/)'
             if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
                || ! changed=$(git diff --name-only "$BASE" HEAD); then
               apps="$all"

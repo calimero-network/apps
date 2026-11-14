@@ -7,7 +7,7 @@ import { MeroCalendarClient } from "../generated/client";
 import { BOOKING_GUEST_METHODS, messageOf, toEvents, toMembers, updateArgs } from "./calendar";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
-/** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
+/** The committed ABI of the contract (`scripts/component-build.sh` (meroctl app build); CI asserts it is current). */
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../../logic/res/abi.json"), "utf8")) as {
   methods: Record<string, { kind: string; params: Array<[string, string]> }>;
 };

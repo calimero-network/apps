@@ -5,7 +5,7 @@ node_modules/
 dist/
 app/dist-types/
 
-# Rust / component build output (`mero-component build` writes the .wasm next
+# Rust / component build output (`scripts/component-build.sh` writes the .wasm next
 # to the committed res/abi.json)
 logic/target/
 logic/res/*.wasm

@@ -3,7 +3,7 @@
 name = "mero-updates"
 description = "Investor updates and investor relations on Calimero, on the component SDK"
 # NOT the release version: the release workflow passes the next appVersion to
-# `mero-component bundle --app-version`. Cargo requires the field.
+# `meroctl app pack --app-version`. Cargo requires the field.
 version = "0.1.0"
 edition = "2021"
 authors = ["Calimero Limited <info@calimero.network>"]
@@ -32,7 +32,7 @@ calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "
 calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.23" }
 serde_json = "1"
 
-# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# Read by `meroctl app pack`, with the keys
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-updates"

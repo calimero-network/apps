@@ -59,12 +59,11 @@ link in another browser profile.
 ## Test it
 
 ```bash
-M=tools/component-bundle/Cargo.toml
 cargo fmt --manifest-path apps/mero-docs/logic/Cargo.toml -- --check
 cargo clippy --manifest-path apps/mero-docs/logic/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path apps/mero-docs/logic/Cargo.toml --target wasm32-wasip2 -- -D warnings
 cargo test --manifest-path apps/mero-docs/logic/Cargo.toml       # harness + scenarios + guide
-cargo run --release --manifest-path $M -- build apps/mero-docs/logic   # res/abi.json
+scripts/component-build.sh apps/mero-docs/logic                        # res/abi.json
 pnpm merod-local e2e mero-docs                                   # the scenarios on merod local
 pnpm -F mero-docs lint && pnpm -F mero-docs typecheck && pnpm -F mero-docs test && pnpm -F mero-docs build
 ```

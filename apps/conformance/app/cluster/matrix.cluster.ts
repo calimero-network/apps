@@ -3,7 +3,7 @@
  * `Conformance (1.0, merod local)` and `pnpm -F conformance-1.0 test:cluster`.
  *
  *   CONFORMANCE_WASM   the built component (default ../logic/res/conformance.wasm:
- *                      `mero-component build apps/conformance/logic`)
+ *                      `scripts/component-build.sh apps/conformance/logic`)
  *   CONFORMANCE_NODES  the cluster's nodes, comma-separated (default merod local's
  *                      three, 127.0.0.1:2501-2503); passed to @calimero-apps/connect
  *                      as VITE_CALIMERO_NODES, so the clients are the page's

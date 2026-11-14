@@ -158,32 +158,41 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target-components
-          # The same key as components.yml's rust job, so a release reuses CI's build.
-          key: component-${{ inputs.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/logic/Cargo.lock', inputs.app), 'tools/component-bundle/Cargo.lock') }}
+          key: component-${{ inputs.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/logic/Cargo.lock', inputs.app), 'scripts/install-meroctl.sh') }}
           restore-keys: component-${{ inputs.app }}-${{ runner.os }}-
 
+      # core's released `meroctl` builds, packs, signs and inspects the bundle,
+      # at the release scripts/install-meroctl.sh pins (cached by its hash).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/meroctl
+          key: meroctl-${{ runner.os }}-${{ hashFiles('scripts/install-meroctl.sh') }}
+      - name: Install meroctl
+        env:
+          MEROCTL_ROOT: ${{ runner.temp }}/meroctl
+        run: |
+          scripts/install-meroctl.sh
+          echo "$MEROCTL_ROOT/bin" >> "$GITHUB_PATH"
+
       # Recorded so a signed release is never traceable only to a moving tag
-      # name. The app's SDK and the bundler are pinned to the same tag
-      # (check-component-pins.py), so they resolve to one commit.
+      # name: the core commit the app's SDK resolved to, and the meroctl release
+      # that built and packed it (its version, describe and commit). The two
+      # are different pins (component-core-tag and scripts/install-meroctl.sh),
+      # so they are logged side by side, not required to be equal.
       - name: Record the core revision
         id: core
         run: |
           set -euo pipefail
-          rev_of() {
-            awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' "$1" | tr -d '"'
-          }
-          app_rev=$(rev_of "$LOGIC/Cargo.lock")
-          tool_rev=$(rev_of tools/component-bundle/Cargo.lock)
-          if [ -z "$app_rev" ] || [ -z "$tool_rev" ]; then
-            echo "::error::could not determine which core revision $LOGIC/Cargo.lock and tools/component-bundle/Cargo.lock resolved to"
+          app_rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' "$LOGIC/Cargo.lock" | tr -d '"')
+          if [ -z "$app_rev" ]; then
+            echo "::error::could not determine which core revision $LOGIC/Cargo.lock resolved to"
             exit 1
           fi
-          if [ "$app_rev" != "$tool_rev" ]; then
-            echo "::error::$APP builds against core $app_rev but the bundler against $tool_rev — run cargo update in both"
-            exit 1
-          fi
+          meroctl=$(meroctl --version | tr '\n' ' ' | sed 's/ *$//')
+          [ -n "$meroctl" ] || { echo "::error::meroctl --version printed nothing"; exit 1; }
           echo "rev=$app_rev" >> "$GITHUB_OUTPUT"
-          echo "::notice::signing a bundle built against core $app_rev"
+          echo "meroctl=$meroctl" >> "$GITHUB_OUTPUT"
+          echo "::notice::signing a bundle built against core $app_rev with $meroctl"
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -223,35 +232,39 @@ jobs:
           printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
 
       # `--app-version`: the check job already resolved it against the registry.
-      # `--output` pins the file name, so the publish can never pick up another
+      # `--out` pins the file name, so the publish can never pick up another
       # .mpk. The frontend is `frontend-dir` from the metadata, built above.
+      # Built first and passed as `--wasm`, so the build uses CARGO_TARGET_DIR
+      # (the cache above), which `meroctl app pack DIR` does not.
       - name: Build & sign bundle
         run: |
-          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
-            bundle "$LOGIC" \
+          set -euo pipefail
+          wasm=$(scripts/component-build.sh "$LOGIC")
+          meroctl app pack "$LOGIC" \
+            --wasm "$wasm" \
             --key "$RUNNER_TEMP/mero-sign-key.json" \
             --app-version "$VERSION" \
-            --output "$MPK"
+            --out "$MPK"
 
       - name: Remove signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
 
       # From the signed manifest itself, after its signature verifies: what is
-      # checked is exactly what is uploaded.
+      # checked is exactly what is uploaded. `meroctl app inspect` verifies the
+      # signature and prints `{bundleHash, manifest}`; the manifest is `.manifest`.
       - name: Verify the bundle and its signer
         id: verify
         run: |
           set -euo pipefail
-          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
-            inspect "$MPK" > "$RUNNER_TEMP/manifest.json"
-          jq -e --arg p "$PACKAGE" --arg v "$VERSION" '.package == $p and .appVersion == $v' \
-            "$RUNNER_TEMP/manifest.json" >/dev/null ||
+          meroctl app inspect "$MPK" > "$RUNNER_TEMP/inspect.json"
+          jq -e --arg p "$PACKAGE" --arg v "$VERSION" '.manifest.package == $p and .manifest.appVersion == $v' \
+            "$RUNNER_TEMP/inspect.json" >/dev/null ||
             { echo "::error::$MPK is not $PACKAGE $VERSION"; exit 1; }
-          signer=$(jq -er '.signerId' "$RUNNER_TEMP/manifest.json")
+          signer=$(jq -er '.manifest.signerId' "$RUNNER_TEMP/inspect.json")
           CALIMERO_REGISTRY_URL="$REGISTRY" scripts/registry-release.sh check-signer "$PACKAGE" "$signer"
           echo "signer=$signer" >> "$GITHUB_OUTPUT"
-          echo "min-runtime=$(jq -r '.minRuntimeVersion' "$RUNNER_TEMP/manifest.json")" >> "$GITHUB_OUTPUT"
+          echo "min-runtime=$(jq -er '.manifest.minRuntimeVersion' "$RUNNER_TEMP/inspect.json")" >> "$GITHUB_OUTPUT"
 
       # Every Release dispatch rebuilds every app, and a shared change (the
       # lockfile, packages/connect) reaches all of them. Publishing a bundle whose
@@ -268,7 +281,7 @@ jobs:
         run: |
           set -euo pipefail
           CALIMERO_REGISTRY_URL="$REGISTRY" python3 scripts/registry-unchanged.py \
-            "$RUNNER_TEMP/manifest.json" "$PACKAGE" "$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            "$RUNNER_TEMP/inspect.json" "$PACKAGE" "$INPUT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish to the App Registry
         if: steps.unchanged.outputs.same != 'true'
@@ -280,6 +293,7 @@ jobs:
         if: steps.unchanged.outputs.same != 'true'
         env:
           CORE_REV: ${{ steps.core.outputs.rev }}
+          MEROCTL: ${{ steps.core.outputs.meroctl }}
           SIGNER: ${{ steps.verify.outputs.signer }}
           MIN_RUNTIME: ${{ steps.verify.outputs.min-runtime }}
           FRONTEND: ${{ steps.frontend.outputs.dir }}
@@ -293,6 +307,7 @@ jobs:
             echo "- **Version:** \`$VERSION\` (component, min runtime \`$MIN_RUNTIME\`)"
             echo "- **Signer:** \`$SIGNER\`"
             echo "- **Core revision:** \`$CORE_REV\`"
+            echo "- **Built and packed by:** \`$MEROCTL\`"
             if [ -n "$FRONTEND" ]; then
               echo "- **Frontend:** served by the cluster, built for cloud cluster \`$CLUSTER\`, mero-tee release >= \`$MIN_RELEASE\`"
             else
