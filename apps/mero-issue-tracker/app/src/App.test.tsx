@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -453,5 +453,34 @@ describe('the release the open repo runs (useInstanceRelease)', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(client.getApp).not.toHaveBeenCalled();
     expect(release.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('the node shield', () => {
+  const NODE = 'https://node-1.example.net';
+  const state = () => ({ status: 'verified', url: NODE, mock: false, release: '2.3.148', profile: 'locked-read-only', checkedAt: Date.now() });
+
+  /** Signed in, in the remembered workspace, on a node whose own check passes. */
+  function openWorkspace() {
+    const client = Object.assign(fakeClient({ signedIn: true }), {
+      nodeUrl: NODE,
+      verification: state,
+      verify: async () => state(),
+      attestApp: vi.fn(async () => ({ url: NODE, mock: false, checkedAt: 1, appHash: 'bundle-hash' })),
+    });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+
+  it('sits in the header just left of the theme switch, and is the only shield on the page', async () => {
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    const header = document.querySelector('header')!;
+    const shield = within(header).getByTestId('node-shield');
+    expect(screen.getAllByTestId('node-shield')).toHaveLength(1);
+    expect(shield.compareDocumentPosition(screen.getByTestId('theme-toggle')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

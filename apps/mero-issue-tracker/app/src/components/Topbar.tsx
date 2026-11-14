@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
+import { NodeShield } from '@calimero-apps/passkey';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { shortIssueId } from '../utils/display';
@@ -8,7 +9,8 @@ import { IconExternal, IconMenu, IconPlus, IconRepo, IconSearch } from './icons'
 import ThemeToggle from './ThemeToggle';
 
 /** Floating top bar: contextual view title, the active repo and its GitHub
- *  link, client-side issue search, the light/dark switch, New-issue button.
+ *  link, client-side issue search, the node shield, the light/dark switch,
+ *  New-issue button.
  *  On a phone it gains the menu button that opens the nav drawer, and search
  *  drops to a second row. */
 export default function Topbar({
@@ -97,6 +99,7 @@ export default function Topbar({
         {!searchQuery && <span className="kbd">/</span>}
       </Search>
       <End>
+        <NodeShield />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue} title="New issue (C)">
           <IconPlus size={13} /> New issue
