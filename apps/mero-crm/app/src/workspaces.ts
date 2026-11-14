@@ -12,6 +12,7 @@ import {
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
+  servedRelease,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
@@ -23,6 +24,7 @@ import {
   type PendingInvite,
 } from '@calimero-apps/connect';
 import { nodeBasename } from '@calimero-apps/node-served';
+import type { ReviewRelease } from '@calimero-apps/passkey';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
 import { MeroCrmClient } from './generated/client';
@@ -104,6 +106,22 @@ export interface CreatedWorkspace {
   namespaceId: string;
   /** Set when the org exists but its member defaults could not be set (a cancelled passkey). */
   warning: string | null;
+}
+
+/**
+ * `source`, pinned to the release this page is served from when it names no
+ * version, so the review of a new workspace shows the release its instance is
+ * created from.
+ */
+export function pinnedSource(source: AppSource, href: string): AppSource {
+  if (typeof source === 'string' || source.version) return source;
+  const served = servedRelease(href);
+  return served ? { ...source, version: served } : source;
+}
+
+/** The package release `source` creates, or `null` for a raw bundle or an unversioned source (nothing signed to review). */
+export function reviewRelease(source: AppSource): ReviewRelease | null {
+  return typeof source === 'string' || !source.version ? null : { package: source.package, version: source.version };
 }
 
 /**

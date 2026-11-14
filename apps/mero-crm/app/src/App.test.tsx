@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -36,6 +36,7 @@ function holdInvite(token: string, target: { org?: string; route?: string } = {}
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
+const PACKAGE_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-crm', VITE_CALIMERO_VERSION: '1.4.0' };
 
 const STAGES = [
   { id: 'stage-lead', name: 'Lead in', probability: 10, position: 0 },
@@ -77,6 +78,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     getSettings: { currency: 'USD', rotting_days: 14 },
   };
   const client = withRoutes({
+    nodes: [],
     get session() {
       return session;
     },
@@ -119,9 +121,9 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
   return client;
 }
 
-function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
+function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps['env'] = DEV_ENV): SessionDeps {
   return {
-    env: DEV_ENV,
+    env,
     makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
@@ -452,6 +454,24 @@ describe('App', () => {
       await new Promise((r) => setTimeout(r, 200));
       expect(screen.queryByTestId('alias-gate')).toBeNull();
       expect(localStorage.getItem('calimero-names:last')).toBe('Alice');
+    });
+
+    it('reviews the release a package app creates from before it creates the workspace', async () => {
+      const client = fakeClient({ signedIn: true });
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(PACKAGE_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, PACKAGE_ENV)} />);
+
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('Review before creating', {}, SLOW)).toBeTruthy();
+      expect(client.createOrg).not.toHaveBeenCalled();
+
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create workspace' }));
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
     });
 
     it('asks once right after joining a workspace that has no name for you', async () => {

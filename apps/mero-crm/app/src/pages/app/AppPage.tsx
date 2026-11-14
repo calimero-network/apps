@@ -232,6 +232,7 @@ export default function AppPage(): React.ReactElement | null {
     <>
       {showCreateNs && (
         <NamespaceCreateDialog
+          release={ws.createRelease}
           onCreate={ws.createNamespace}
           onClose={() => setShowCreateNs(false)}
         />

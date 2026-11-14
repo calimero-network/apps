@@ -4,11 +4,12 @@ import { appSource, type AppSource, type Target } from '@calimero-apps/connect';
 
 import { APP_PACKAGE } from './config';
 import { defaultDeps, useSession, type SessionApi, type SessionDeps } from './session';
+import { pinnedSource } from './workspaces';
 
 interface SessionValue {
   api: SessionApi;
   deps: SessionDeps;
-  /** Where instances come from: the dev bundle, or the package in production. */
+  /** Where instances come from: the dev bundle, or the package release in production. */
   source: AppSource;
 }
 
@@ -20,7 +21,7 @@ const SessionContext = createContext<SessionValue | null>(null);
  */
 export function SessionProvider({ deps = defaultDeps, children }: { deps?: SessionDeps; children: ReactNode }) {
   const api = useSession(deps);
-  const source = useMemo(() => appSource(deps.env, APP_PACKAGE), [deps.env]);
+  const source = useMemo(() => pinnedSource(appSource(deps.env, APP_PACKAGE), window.location.href), [deps.env]);
   const value = useMemo(() => ({ api, deps, source }), [api, deps, source]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

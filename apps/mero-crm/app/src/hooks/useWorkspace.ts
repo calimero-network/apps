@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { useInstanceRelease } from '@calimero-apps/passkey';
+import { useInstanceRelease, type ReviewRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import {
@@ -27,6 +27,7 @@ import {
   listPipelines,
   listWorkspaces,
   readMembers,
+  reviewRelease,
   type OrgMembers,
   type PipelineEntry,
   type Workspace,
@@ -65,6 +66,8 @@ export interface UseWorkspaceReturn {
   selectNamespace: (id: string) => void;
   /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
   createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
+  /** The release a new workspace's pipelines are created from, to review before creating; `null` for a raw bundle. */
+  createRelease: ReviewRelease | null;
   createNamespaceError: Error | null;
   /**
    * Mints an invitation (a passkey step-up) naming this app's team, and
@@ -367,6 +370,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     [org, accountId],
   );
 
+  const createRelease = useMemo(() => reviewRelease(source), [source]);
+
   return {
     loadOtherOrgs,
     connectOrg,
@@ -377,6 +382,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     activeNs,
     selectNamespace,
     createNamespace,
+    createRelease,
     createNamespaceError,
     invite,
     leaveWorkspace: leave,
