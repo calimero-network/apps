@@ -22,7 +22,7 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
-import { ManageInHomeLink } from '@calimero-apps/passkey';
+import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { useMero } from '@/calimero/react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
@@ -83,7 +83,7 @@ export function WorkspaceLayout() {
     stage,
     refetch,
   } = useDriveWorkspace();
-  const { nodeUrl, nodeLabel, logout, session } = useMero();
+  const { logout, session } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
@@ -96,11 +96,6 @@ export function WorkspaceLayout() {
     namespaceId ?? '',
     selectedFolder?.id ?? '',
   );
-
-  // Which cluster this session is on: merod local in development, the
-  // Calimero Cloud cluster in production.
-  const displayNode =
-    nodeLabel ?? 'disconnected';
 
   const { route, goWorkspace, goHome, goFolder, goDoc, goSettings } =
     useAppRoute();
@@ -312,25 +307,21 @@ export function WorkspaceLayout() {
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {/* Connection indicator - shows the cluster and online
-              state. Hidden on narrow viewports; title carries the
-              full URL for copy-paste. */}
-          {nodeUrl && (
-            <div
-              className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground px-2"
-              title={nodeUrl}
-              aria-label={`Connected to ${nodeUrl}${isOnline ? '' : ' (offline)'}`}
-            >
-              <Circle
-                className={`h-2 w-2 ${
-                  isOnline
-                    ? 'fill-sync-synced text-sync-synced'
-                    : 'fill-destructive text-destructive'
-                }`}
-              />
-              <span className="max-w-[16ch] truncate">{displayNode}</span>
-            </div>
-          )}
+          <NodeShield />
+          <span
+            role="img"
+            aria-label={isOnline ? 'Online' : 'Offline'}
+            title={isOnline ? 'Online' : 'Offline'}
+            className="px-1"
+          >
+            <Circle
+              className={`h-2 w-2 ${
+                isOnline
+                  ? 'fill-sync-synced text-sync-synced'
+                  : 'fill-destructive text-destructive'
+              }`}
+            />
+          </span>
           <ThemeToggle />
           <ManageInHomeLink
             session={session}
