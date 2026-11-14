@@ -8,6 +8,7 @@ import React, {
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
+import { useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useIssues } from "../../hooks/useItems";
@@ -40,8 +41,9 @@ const EMPTY_FILTERS: Filters = {
  * or joining it) -> blocking alias gate, once per workspace.
  */
 export default function AppPage(): React.ReactElement | null {
-  const { client, after } = useSignedIn();
+  const { client, after, source } = useSignedIn();
   const ws = useWorkspace();
+  useNodeShieldApp(ws.activeRepo, source);
   const toast = useToast();
   const [searchParams] = useSearchParams();
 

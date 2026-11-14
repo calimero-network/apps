@@ -483,4 +483,13 @@ describe('the node shield', () => {
     expect(screen.getAllByTestId('node-shield')).toHaveLength(1);
     expect(shield.compareDocumentPosition(screen.getByTestId('theme-toggle')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('tells the shield which repo is open, so its popover checks that app code', async () => {
+    const client = openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('node-shield'));
+    const popover = await screen.findByTestId('node-shield-popover', {}, SLOW);
+    expect(await within(popover).findByText('App code', {}, SLOW)).toBeTruthy();
+    expect(client.attestApp).toHaveBeenCalledWith('app-1');
+  });
 });
