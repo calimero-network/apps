@@ -1,0 +1,160 @@
+/** What the node shield says about a node, from the check mero-js ran: only what that check verified. */
+import { verifyNodeUrl, type NodeVerificationState } from "@calimero-network/mero-js";
+import type { AppCodeCheck } from "@calimero-apps/connect";
+
+/** The release profile that seals a node's data (read-only, no operator access). */
+const SEALED_PROFILE = "locked-read-only";
+const JUST_NOW_SECONDS = 10;
+const AGO = [
+  ["day", 86_400],
+  ["hour", 3_600],
+  ["minute", 60],
+] as const;
+const ago = new Intl.RelativeTimeFormat("en");
+
+export type ShieldKind = "checking" | "verified" | "unsealed" | "refused";
+
+export interface ShieldRow {
+  label: string;
+  value: string;
+  /** What `value` abbreviates, for the copied details. */
+  full?: string;
+  mono?: boolean;
+  tone?: "bad";
+}
+
+export interface ShieldView {
+  kind: ShieldKind;
+  /** The chip's text. */
+  label: string;
+  title: string;
+  sub: string;
+  rows: ShieldRow[];
+  /** Facts the check verified for this node, and nothing else. */
+  checks: string[];
+  /** The public verifier's page for this node; `null` unless a signed release judged a real quote. */
+  verifyUrl: string | null;
+}
+
+export const SHIELD_LABEL: Record<ShieldKind, string> = {
+  checking: "Checking node…",
+  verified: "Verified node",
+  unsealed: "Test server: not sealed",
+  refused: "Node refused",
+};
+
+/** Sealed means the locked profile on a real quote; `unreachable` is no answer yet, so it reads as checking. */
+export function shieldKind(state: NodeVerificationState): ShieldKind {
+  if (state.status === "refused") return "refused";
+  if (state.status !== "verified") return "checking";
+  return !state.mock && state.profile === SEALED_PROFILE ? "verified" : "unsealed";
+}
+
+/** "2 minutes ago", or "just now" for the last few seconds. */
+export function checkedAgo(at: number, now: number = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
+  if (seconds < JUST_NOW_SECONDS) return "just now";
+  const [unit, size] = AGO.find(([, size]) => seconds >= size) ?? (["second", 1] as const);
+  return ago.format(-Math.floor(seconds / size), unit);
+}
+
+/** `7f3a…c91e`. */
+export function shortHash(hash: string): string {
+  return hash.length > 12 ? `${hash.slice(0, 4)}…${hash.slice(-4)}` : hash;
+}
+
+function hostOf(url: string | undefined): string {
+  try {
+    return new URL(url ?? "").host;
+  } catch {
+    return url ?? "";
+  }
+}
+
+function codeRow(code: AppCodeCheck | null): ShieldRow | null {
+  if (code?.status === "match") return { label: "App code", value: shortHash(code.appHash), full: code.appHash, mono: true };
+  if (code?.status === "mismatch") {
+    return {
+      label: "App code",
+      value: `Does not match this app's release (node runs ${shortHash(code.appHash)})`,
+      full: `Does not match this app's release (node runs ${code.appHash}, expected ${code.expected})`,
+      tone: "bad",
+    };
+  }
+  return null;
+}
+
+function copy(state: NodeVerificationState, kind: ShieldKind, ago: string): Pick<ShieldView, "title" | "sub"> {
+  switch (kind) {
+    case "verified":
+      return {
+        title: "You are talking to a genuine Calimero TEE node",
+        sub: `Checked by this browser ${ago}, before anything was sent.`,
+      };
+    case "unsealed":
+      return {
+        title: SHIELD_LABEL.unsealed,
+        sub:
+          state.status === "verified" && state.mock
+            ? `A test server with no hardware enclave, so its data is not sealed. Checked by this browser ${ago}.`
+            : `This node did not show it runs the sealed, read-only profile, so its data is not sealed. Checked by this browser ${ago}.`,
+      };
+    case "refused":
+      return { title: SHIELD_LABEL.refused, sub: "This app refused the node and sent nothing." };
+    case "checking":
+      return {
+        title: SHIELD_LABEL.checking,
+        sub:
+          state.status === "unreachable"
+            ? "The node could not be reached. Trying again."
+            : "This browser is checking the node before anything is sent.",
+      };
+  }
+}
+
+/** Everything the popover shows, for `state` in the cluster the app is configured for and the app's code check. */
+export function describeShield(
+  state: NodeVerificationState,
+  { cluster, code, now = Date.now() }: { cluster: string; code: AppCodeCheck | null; now?: number },
+): ShieldView {
+  const kind = shieldKind(state);
+  const sealedNode = state.status === "verified" ? state : null;
+  const release = sealedNode?.release;
+  const rows: ShieldRow[] = [
+    { label: "Cluster", value: cluster },
+    { label: "Node", value: hostOf(state.url), mono: true },
+  ];
+  if (release) rows.push({ label: "Software", value: `mero-tee v${release}${sealedNode.profile ? ` · ${sealedNode.profile}` : ""}` });
+  const app = sealedNode ? codeRow(code) : null;
+  if (app) rows.push(app);
+  if (state.status === "refused" || state.status === "unreachable") {
+    rows.push({ label: "Reason", value: state.reason, ...(state.status === "refused" ? { tone: "bad" as const } : {}) });
+  }
+
+  const checks: string[] = [];
+  if (kind === "verified") checks.push("Running in an Intel TDX enclave (not debug)");
+  if (release) checks.push(`Measurements match the signed v${release} release`);
+  if (sealedNode && !sealedNode.mock) checks.push("Your connection is encrypted to this enclave's key");
+  if (app && code?.status === "match") checks.push("Node runs this app's exact code");
+
+  const checkedMs = "checkedAt" in state ? state.checkedAt : now;
+  return {
+    kind,
+    label: SHIELD_LABEL[kind],
+    ...copy(state, kind, checkedAgo(checkedMs, now)),
+    rows,
+    checks,
+    verifyUrl: release && !sealedNode.mock ? verifyNodeUrl(sealedNode.url, release) : null,
+  };
+}
+
+/** The popover's facts as plain text, for "Copy details". */
+export function shieldDetails(view: ShieldView): string {
+  return [
+    view.title,
+    view.sub,
+    "",
+    ...view.rows.map((r) => `${r.label}: ${r.full ?? r.value}`),
+    ...(view.checks.length ? ["", ...view.checks.map((c) => `- ${c}`)] : []),
+  ].join("\n");
+}
