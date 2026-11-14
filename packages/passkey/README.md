@@ -66,14 +66,15 @@ account, nothing to install, no permissions to grant.
   It shows what the app is (name, version, publisher, code hash), what it can do, where it runs and what that means for the person's data.
   Everything comes from the release's signed capability card (`client.packageCapabilities`) and the node's own check, so it needs a session bound by `usePasskeySession`.
   Before the workspace exists the node cannot attest the app's code, so the code line says "from the signed release", never "attested by this node".
-  "What it can do" has three levels: a summary (passkey-protected actions, public views, outside services, timers, other apps), "See all actions" in plain-word groups with filter chips and each action's technical facts, and the signed raw facts with a JSON download of the full ABI.
+  "What it can do" has three levels: a summary (passkey-protected actions, public views, public calls, outside services, timers, other apps), "See all actions" in plain-word groups with filter chips and each action's technical facts, and the signed raw facts with a JSON download of the full ABI.
   The publisher's own description of an action is shown apart from the facts.
-  "Your data" makes its three claims ("Only you control it.", "Only people you invite can open it.", "Calimero can't read it.") only for a sealed node, and otherwise says "Test server: not sealed" in grey.
-  The amber lines under it (one per public view and per outside host) come from the card.
+  "Your data" says "Only you control it." and "Only people invited to it can open it." for a node that passed its check, and "Calimero can't read it." only for a sealed one; a test server says "Test server: not sealed" in grey in its place.
+  The amber lines under it (one per public view, public call and outside host) come from the card; only a method the node's call check can let a caller through counts, so a method for the app's own actions or a compute result is never listed as open.
+  "Create workspace" is disabled, with the reason, while the node has refused its check.
   The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
-  A card that cannot load is said plainly, with "Try again", and the workspace can still be created.
+  A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created.
   The registry's review state and the SDK version are not in the card, so the review does not show them.
-- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab), and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code.
+- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab), and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button

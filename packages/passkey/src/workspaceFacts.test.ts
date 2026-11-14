@@ -9,6 +9,7 @@ import {
   dataStatements,
   exceptions,
   humanize,
+  reachable,
   rawFacts,
   shortSigner,
   summarize,
@@ -88,10 +89,10 @@ describe("humanize", () => {
 describe("summarize", () => {
   it("says what matters, each line only when the card backs it", () => {
     const lines = summarize(crm);
-    expect(lines.map((l) => l.id)).toEqual(["passkey", "public", "outside", "timers", "apps"]);
+    expect(lines.map((l) => l.id)).toEqual(["passkey", "public", "outside", "timers"]);
     expect(line(crm, "passkey")?.title).toBe("Asks for your passkey before 3 sensitive actions");
     expect(line(crm, "passkey")?.detail).toBe("Delete workspace, Remove member, Export all");
-    expect(line(crm, "public")?.title).toBe("Shows 1 thing to anyone, without signing in");
+    expect(line(crm, "public")?.title).toBe("Shows 1 thing to anyone");
     expect(line(crm, "outside")?.detail).toBe("api.stripe.com");
     expect(line(crm, "timers")?.title).toBe("Runs 1 task on its own");
     expect(line(crm, "timers")?.detail).toBe("Every 1 hour: Send reminders");
@@ -102,21 +103,47 @@ describe("summarize", () => {
     expect(summarize(bare).map((l) => l.id)).toEqual(["apps"]);
   });
 
-  it("claims no other app can use the data only when no method allows an app", () => {
-    expect(line(crm, "apps")?.title).toBe("No other app can use your data");
-    const listed = summarize(crm, false).find((l) => l.id === "apps");
+  it("claims no other app can use the data only when no reachable method allows an app or is public", () => {
+    const closed = caps({ abi: abi({ createDeal: method(), listDeals: method({ kind: "view" }) }) });
+    expect(line(closed, "apps")?.title).toBe("No other app can use your data");
+    expect(line(closed, "apps")?.tone).toBe("ok");
+    const listed = summarize(closed, false).find((l) => l.id === "apps");
     expect(listed?.title).toBe("No other app can use your data, as this test server lists it");
     expect(listed?.tone).toBeUndefined();
+    expect(line(crm, "apps")).toBeUndefined();
+    const anyone = caps({ abi: abi({ ping: method({ public: true }) }) });
+    expect(line(anyone, "apps")).toBeUndefined();
     const shared = caps({ abi: abi({ onPayment: method({ allowApps: ["billing"] }), other: method({ allowApps: [] }) }) });
     expect(line(shared, "apps")?.title).toBe("Lets other apps call 1 action");
     expect(line(shared, "apps")?.detail).toBe("billing");
     expect(line(shared, "apps")?.tone).toBe("warn");
   });
 
-  it("counts an app allowed on a hidden method too, and reads * as any app", () => {
-    const hidden = caps({ abi: abi({ step: method({ allowAction: true, allowApps: ["*"] }) }) });
-    expect(line(hidden, "apps")?.title).toBe("Lets other apps call 1 action");
-    expect(line(hidden, "apps")?.detail).toBe("Any app");
+  it("reads * as any app", () => {
+    const open = caps({ abi: abi({ onPayment: method({ allowApps: ["*"] }) }) });
+    expect(line(open, "apps")?.title).toBe("Lets other apps call 1 action");
+    expect(line(open, "apps")?.detail).toBe("Any app");
+  });
+
+  it("ignores an app allowed on a method no outside caller can reach", () => {
+    const hidden = caps({ abi: abi({ step: method({ allowAction: true, allowApps: ["*"] }), result: method({ computeResult: true, allowApps: ["*"] }) }) });
+    expect(line(hidden, "apps")?.title).toBe("No other app can use your data");
+  });
+
+  it("splits what anyone can see from what anyone can do", () => {
+    const open = caps({ abi: abi({ listDeals: method({ kind: "view", public: true }), signUp: method({ public: true }), joinWaitlist: method({ public: true }) }) });
+    expect(line(open, "public")?.title).toBe("Shows 1 thing to anyone");
+    expect(line(open, "public")?.detail).toBe("List deals");
+    const calls = line(open, "publicCalls");
+    expect(calls?.title).toBe("Lets anyone use 2 actions without signing in");
+    expect(calls?.detail).toBe("Sign up, Join waitlist");
+    expect(calls?.tone).toBe("warn");
+  });
+
+  it("does not call a public method anyone when nobody outside can reach it", () => {
+    const none = caps({ abi: abi({ init: method({ kind: "init", public: true }), step: method({ allowAction: true, public: true }), result: method({ kind: "view", computeResult: true, public: true }), tick: method({ kind: "timer", public: true }) }) });
+    expect(line(none, "public")).toBeUndefined();
+    expect(line(none, "publicCalls")).toBeUndefined();
   });
 
   it("makes no claim about the app's actions when it publishes no action list", () => {
@@ -159,7 +186,7 @@ describe("actionGroups", () => {
   });
 
   it("lists outside services as enforced by the node and events by name", () => {
-    expect(group(groups, "outside")?.items.map((i) => i.title)).toEqual(["https://api.stripe.com/v1/"]);
+    expect(group(groups, "outside")?.items.map((i) => i.title)).toEqual(["api.stripe.com"]);
     expect(group(groups, "outside")?.blurb).toContain("enforced by the node");
     expect(group(groups, "events")?.items.map((i) => i.title)).toEqual(["Deal moved", "Note added"]);
   });
@@ -197,7 +224,17 @@ describe("actionGroups", () => {
     expect(who(method({ public: true }))).toBe("Anyone, no sign-in");
     expect(who(method({ allowSystem: true }))).toBe("You, signed in to this app; the system");
     expect(who(method({ allowApps: ["billing", "*"] }))).toBe("You, signed in to this app; apps: billing, any app");
-    expect(who(method({ allowAction: true, public: true }))).toBe("Anyone, no sign-in; the app's own actions");
+    expect(who(method({ allowAction: true, confirm: true, public: true, allowSystem: true, allowApps: ["*"] }))).toBe("Only the app's own actions");
+    expect(who(method({ kind: "action" }))).toBe("You, signed in to this app");
+    expect(who(method({ kind: "compute" }))).toBe("The app itself");
+  });
+
+  it("tags and groups a method public only when a caller without a session can reach it", () => {
+    const c = caps({ abi: abi({ ping: method({ public: true }), act: method({ kind: "action", public: true }), step: method({ allowAction: true, public: true, confirm: true }) }) });
+    const g = actionGroups(c);
+    expect(group(g, "public")?.items.map((i) => i.name)).toEqual(["ping"]);
+    expect(group(g, "changes")?.items.find((i) => i.name === "act")?.tags).toEqual(["changes data"]);
+    expect(group(g, "passkey")?.items.find((i) => i.name === "step")?.tags).toEqual(["passkey", "changes data"]);
   });
 
   it("shows the limit of a public view and the interval of a timer", () => {
@@ -220,49 +257,68 @@ describe("actionGroups", () => {
   });
 });
 
+describe("reachable", () => {
+  it.each([
+    [method(), true],
+    [method({ kind: "view", public: true }), true],
+    [method({ kind: "action" }), true],
+    [method({ allowAction: true, public: true, allowSystem: true, allowApps: ["*"] }), false],
+    [method({ computeResult: true, allowSystem: true }), false],
+    [method({ kind: "init", public: true }), false],
+    [method({ kind: "timer", public: true }), false],
+  ])("%j -> %s", (m, expected) => expect(reachable(m)).toBe(expected));
+});
+
 describe("a publisher-controlled abi", () => {
-  const exposed = caps({
+  const odd = caps({
     abi: abi({
-      init: method({ kind: "init", public: true, confirm: true }),
-      receiveResult: method({ kind: "view", computeResult: true, allowApps: ["billing"] }),
+      init: method({ kind: "init", public: true }),
+      confirmedInit: method({ kind: "init", confirm: true }),
+      receiveResult: method({ kind: "view", computeResult: true, allowApps: ["billing"], public: true }),
       stepOne: method({ allowAction: true, public: true }),
-      stepTwo: method({ allowAction: true, allowSystem: true }),
+      stepTwo: method({ allowAction: true, allowSystem: true, allowApps: ["*"] }),
+      stepConfirm: method({ allowAction: true, confirm: true }),
       quiet: method({ allowAction: true }),
     }),
   });
-  const shown = () => actionGroups(exposed).flatMap((g) => g.items.map((i) => i.name));
+  const shown = () => actionGroups(odd).flatMap((g) => g.items.map((i) => i.name));
 
-  it("shows an init or computeResult method that is public or open to an app, in Level 1 and the groups", () => {
-    expect(line(exposed, "public")?.title).toBe("Shows 2 things to anyone, without signing in");
-    expect(line(exposed, "passkey")?.title).toBe("Asks for your passkey before 1 sensitive action");
-    expect(line(exposed, "apps")?.title).toBe("Lets other apps call 1 action");
-    expect(shown()).toEqual(expect.arrayContaining(["init", "receiveResult", "stepOne", "stepTwo"]));
-    expect(actionCount(exposed.abi)).toBe(4);
+  it("makes no outward claim for a method abi_check lets no outside caller through", () => {
+    expect(line(odd, "public")).toBeUndefined();
+    expect(line(odd, "publicCalls")).toBeUndefined();
+    expect(line(odd, "apps")?.title).toBe("No other app can use your data");
+    expect(exceptions(odd)).toEqual([]);
   });
 
-  it("names a public view among the exceptions even when it is a computeResult method", () => {
-    const view = caps({ abi: abi({ receiveResult: method({ kind: "view", computeResult: true, public: true }) }) });
-    expect(exceptions(view)).toEqual(["Anyone can see: Receive result"]);
+  it("still counts a passkey method it hides nothing about", () => {
+    expect(line(odd, "passkey")?.title).toBe("Asks for your passkey before 2 sensitive actions");
+    expect(shown()).toEqual(expect.arrayContaining(["confirmedInit", "stepConfirm"]));
   });
 
-  it("hides only a method with no outward exposure", () => {
-    expect(shown()).not.toContain("quiet");
+  it("lists no method that nothing outside can reach and that asks for no passkey", () => {
+    for (const name of ["init", "receiveResult", "stepOne", "stepTwo", "quiet"]) expect(shown()).not.toContain(name);
+    expect(actionCount(odd.abi)).toBe(2);
   });
 });
 
 describe("exceptions", () => {
-  it("names each public view and each outbound host", () => {
+  it("names each public view, each public call and each outbound host", () => {
     expect(exceptions(crm)).toEqual(["Anyone can see: Pipeline summary", "Leaves the sealed hardware: api.stripe.com"]);
+    const c = caps({ abi: abi({ ping: method({ public: true }), listDeals: method({ kind: "view" }), openDeals: method({ kind: "view", public: true }) }) });
+    expect(exceptions(c)).toEqual(["Anyone can see: Open deals", "Anyone can change: Ping"]);
   });
 
-  it("does not count a public call or a private view", () => {
-    const c = caps({ abi: abi({ ping: method({ public: true }), listDeals: method({ kind: "view" }) }) });
-    expect(exceptions(c)).toEqual([]);
+  it("does not name a private view", () => {
+    expect(exceptions(caps({ abi: abi({ listDeals: method({ kind: "view" }) }) }))).toEqual([]);
   });
 
   it("lists several hosts one per line", () => {
     const c = caps({ outbound: ["a.example.com", "https://b.example.com/x"] });
     expect(exceptions(c)).toEqual(["Leaves the sealed hardware: a.example.com", "Leaves the sealed hardware: b.example.com"]);
+  });
+
+  it("does not speak of sealed hardware for a test server", () => {
+    expect(exceptions(crm, false)).toEqual(["Anyone can see: Pipeline summary", "Contacts: api.stripe.com"]);
   });
 });
 
@@ -313,20 +369,24 @@ describe("codeLine", () => {
     const shown = codeLine(listed, { status: "match", appHash: BUNDLE, checkedAt: 1, package: "network.calimero.crm", version: "1.3.0" });
     expect(shown.tone).toBe("bad");
     expect(shown.text).toBe("The node reports different code: it runs network.calimero.crm v1.3.0 (bundle 7f3a…c91e)");
+    expect(shown.divergence).toBe("release");
     const other = codeLine(listed, { status: "match", appHash: BUNDLE, checkedAt: 1, package: "network.calimero.other", version: "1.4.0" });
     expect(other.tone).toBe("bad");
+    expect(other.divergence).toBe("release");
   });
 
   it("does not attest a match whose hash is not the card's", () => {
     const shown = codeLine(listed, { status: "match", appHash: NODE_HASH, checkedAt: 1, package: "network.calimero.crm", version: "1.4.0" });
     expect(shown.tone).toBe("bad");
     expect(shown.text).not.toContain("attested");
+    expect(shown.divergence).toBe("code");
   });
 
   it("flags a mismatch and says what the node runs", () => {
     const shown = codeLine(listed, { status: "mismatch", appHash: NODE_HASH, expected: BUNDLE });
     expect(shown.tone).toBe("bad");
     expect(shown.text).toBe("Does not match the signed release: the node runs bundle aa11…bb22");
+    expect(shown.divergence).toBe("code");
   });
 
   it("falls back to the signed release when the node could not check", () => {
@@ -343,9 +403,15 @@ describe("codeLine", () => {
 });
 
 describe("dataStatements", () => {
-  it("makes the three claims only for a sealed node", () => {
-    expect(dataStatements("verified")).toEqual(["Only you control it.", "Only people you invite can open it.", "Calimero can't read it."]);
-    for (const kind of ["unsealed", "checking", "refused"] as const) expect(dataStatements(kind)).toEqual([]);
+  it("makes the org claims for a node that passed its check, and the third only for a sealed one", () => {
+    expect(dataStatements("verified", "creator")).toEqual(["Only you control it.", "Only people invited to it can open it.", "Calimero can't read it."]);
+    expect(dataStatements("unsealed", "creator")).toEqual(["Only you control it.", "Only people invited to it can open it."]);
+    for (const kind of ["checking", "refused"] as const) expect(dataStatements(kind, "creator")).toEqual([]);
+  });
+
+  it("says the owners control a workspace that exists, as the viewer may be a later member", () => {
+    expect(dataStatements("verified", "member")).toEqual(["Only the workspace's owners control it.", "Only people invited to it can open it.", "Calimero can't read it."]);
+    expect(dataStatements("unsealed", "member")).toEqual(["Only the workspace's owners control it.", "Only people invited to it can open it."]);
   });
 });
 

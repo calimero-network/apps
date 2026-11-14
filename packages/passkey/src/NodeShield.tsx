@@ -5,11 +5,11 @@ import { createRoot, type Root } from "react-dom/client";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { useAppCode, useNodeVerification } from "./nodeChecks";
+import { useCopy } from "./useCopy";
 import { ExternalIcon, ShieldIcon, Tick } from "./shieldIcons";
 import { describeShield, shieldDetails, type ShieldView } from "./shieldView";
 import { bindShieldSession, placeShield, readShield, useShieldStore } from "./nodeShieldStore";
 
-const COPIED_MS = 2_000;
 const EDGE_PX = 12; // the popover's distance from the viewport's edge
 const GAP_PX = 8; // and from the chip
 
@@ -47,19 +47,7 @@ function usePlacement(open: boolean, chip: React.RefObject<HTMLElement | null>, 
 }
 
 function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string; placement: ReturnType<typeof usePlacement>; popRef: React.RefObject<HTMLDivElement | null> }) {
-  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
-  useEffect(() => {
-    if (copied === "idle") return;
-    const timer = setTimeout(() => setCopied("idle"), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  const copy = () =>
-    Promise.resolve()
-      .then(() => navigator.clipboard.writeText(shieldDetails(view)))
-      .then(
-        () => setCopied("done"),
-        () => setCopied("failed"),
-      );
+  const [copied, copy] = useCopy();
   return createPortal(
     <div
       ref={popRef}
@@ -104,7 +92,7 @@ function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string
             <ExternalIcon />
           </a>
         )}
-        <button type="button" className="cp-shield__btn" onClick={() => void copy()}>
+        <button type="button" className="cp-shield__btn" onClick={() => copy(shieldDetails(view))}>
           {copied === "done" ? "Copied" : copied === "failed" ? "Could not copy" : "Copy details"}
         </button>
       </div>

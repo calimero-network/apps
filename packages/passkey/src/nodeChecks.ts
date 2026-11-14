@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CalimeroClient, NodeVerificationState } from "@calimero-network/mero-js";
+import type { CalimeroClient, NodeVerificationState, PackageCapabilities } from "@calimero-network/mero-js";
 import { checkAppCode, type AppCodeCheck } from "@calimero-apps/connect";
 
 import type { ShieldApp } from "./nodeShieldStore";
@@ -79,4 +79,52 @@ export function useAppCode(client: CalimeroClient | null, app: ShieldApp | null,
   }, [client, app, url]);
   const current = result?.client === client && result?.app === app && result?.url === url && client?.nodeUrl === url;
   return current ? result.code : null;
+}
+
+/** The package release a review is about. */
+export interface ReviewRelease {
+  package: string;
+  version: string;
+}
+
+export type CardState =
+  | { status: "loading" }
+  | { status: "ready"; card: PackageCapabilities }
+  | { status: "error"; message: string }
+  /** The node did not pass its own check, so it is not asked and not retried. */
+  | { status: "refused" };
+
+/** A plain sentence for a failed card request: never the node's raw error text. */
+export function cardError(e: unknown): string {
+  const status = typeof e === "object" && e !== null && "status" in e ? (e as { status: unknown }).status : undefined;
+  if (status === 404) return "This node cannot show app reviews yet.";
+  if (status === 401 || status === 403) return "You no longer have access to this app's details.";
+  return "The review of this app could not load.";
+}
+
+/** The release's capability card from the node the session talks to, asked only once the node's own check verified it, and again on `retry`. */
+export function useCard(client: CalimeroClient | null, release: ReviewRelease, node: NodeVerificationState): [CardState, () => void] {
+  const [state, setState] = useState<CardState>({ status: "loading" });
+  const [round, setRound] = useState(0);
+  const gate = node.status === "verified" ? "verified" : node.status === "refused" ? "refused" : "waiting";
+  useEffect(() => {
+    if (!client) {
+      setState({ status: "error", message: "Not connected to a node." });
+      return;
+    }
+    if (gate !== "verified") {
+      setState(gate === "refused" ? { status: "refused" } : { status: "loading" });
+      return;
+    }
+    let live = true;
+    setState({ status: "loading" });
+    client.packageCapabilities(release.package, release.version).then(
+      (card) => live && setState({ status: "ready", card }),
+      (e: unknown) => live && setState({ status: "error", message: cardError(e) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, release.package, release.version, round, gate]);
+  return [state, useCallback(() => setRound((n) => n + 1), [])];
 }

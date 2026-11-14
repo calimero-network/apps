@@ -9,13 +9,16 @@ const SIGNER_SHORT_AFTER = 16;
 const SIGNER_HEAD = 12;
 const SIGNER_TAIL = 4;
 const EVERY_UNITS: Record<string, string> = { s: "second", m: "minute", h: "hour" };
-const SEALED_STATEMENTS = ["Only you control it.", "Only people you invite can open it.", "Calimero can't read it."];
+const INVITED_ONLY = "Only people invited to it can open it.";
+const NOT_READABLE = "Calimero can't read it.";
+const CONTROL = { creator: "Only you control it.", member: "Only the workspace's owners control it." };
+const CALLED_KINDS = new Set(["call", "view", "action"]); // what a caller can start directly
 
 /** What the review reads from a capability card. */
 export type ReviewCard = Pick<PackageCapabilities, "outbound" | "abi">;
 
 export interface SummaryLine {
-  id: "passkey" | "public" | "outside" | "timers" | "apps";
+  id: "passkey" | "public" | "publicCalls" | "outside" | "timers" | "apps";
   title: string;
   detail: string;
   tone?: "warn" | "ok";
@@ -79,10 +82,20 @@ function namesOf(entries: unknown): string[] {
 
 const hasApps = (m: AppAbiMethod) => (m.allowApps?.length ?? 0) > 0;
 
-/** Not listed for people: setup, the node's compute callback and calls for the app's own actions, only while nothing outside can reach them. */
+/** Whether the node's call check can let any caller through: not a setup, timer or compute call, not an app-only call, not a compute result. */
+export function reachable(m: AppAbiMethod): boolean {
+  return CALLED_KINDS.has(m.kind) && !m.allowAction && !m.computeResult;
+}
+
+/** Reachable by someone who is not signed in or is another app: only a call or a view, never an action. */
+const plainCall = (m: AppAbiMethod) => reachable(m) && (m.kind === "call" || m.kind === "view");
+const publicView = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "view";
+const publicCall = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "call";
+const sharedWithApps = (m: AppAbiMethod) => plainCall(m) && hasApps(m);
+
+/** Not listed for people: setup, the node's compute callback and calls for the app's own actions, unless one asks for a passkey. */
 function internal(m: AppAbiMethod): boolean {
-  const reserved = m.kind === "init" || !!m.computeResult || (!!m.allowAction && !m.allowSystem);
-  return reserved && !m.public && !hasApps(m) && !m.confirm;
+  return (m.kind === "init" || !!m.computeResult || !!m.allowAction) && !m.confirm;
 }
 
 const allMethods = (abi: AppAbi | null) => Object.entries(abi?.methods ?? {});
@@ -104,28 +117,26 @@ export function summarize(card: ReviewCard, signed = true): SummaryLine[] {
 
   const passkey = titles((m) => m.confirm);
   if (passkey.length) lines.push({ id: "passkey", title: `Asks for your passkey before ${plural(passkey.length, "sensitive action")}`, detail: list(passkey), tone: "warn" });
-  const open = titles((m) => m.public);
-  if (open.length) lines.push({ id: "public", title: `Shows ${plural(open.length, "thing")} to anyone, without signing in`, detail: list(open), tone: "warn" });
+  const seen = titles(publicView);
+  if (seen.length) lines.push({ id: "public", title: `Shows ${plural(seen.length, "thing")} to anyone`, detail: list(seen), tone: "warn" });
+  const changed = titles(publicCall);
+  if (changed.length) lines.push({ id: "publicCalls", title: `Lets anyone use ${plural(changed.length, "action")} without signing in`, detail: list(changed), tone: "warn" });
   if (card.outbound.length) lines.push({ id: "outside", title: `Contacts ${plural(card.outbound.length, "outside service")}`, detail: list(card.outbound.map(hostOf)) });
   const timers = all.filter(([, m]) => m.kind === "timer").map(([name, m]) => `${m.every ? `Every ${everyWords(m.every)}: ` : ""}${humanize(name)}`);
   if (timers.length) lines.push({ id: "timers", title: `Runs ${plural(timers.length, "task")} on its own`, detail: list(timers) });
 
   if (card.abi) {
-    const shared = Object.values(card.abi.methods).filter(hasApps);
-    if (shared.length === 0) {
+    const methods = Object.values(card.abi.methods);
+    const shared = methods.filter(sharedWithApps);
+    if (shared.length > 0) {
+      const apps = [...new Set(shared.flatMap((m) => m.allowApps ?? []))];
+      lines.push({ id: "apps", title: `Lets other apps call ${plural(shared.length, "action")}`, detail: apps.includes("*") ? "Any app" : list(apps), tone: "warn" });
+    } else if (!methods.some((m) => publicView(m) || publicCall(m))) {
       lines.push(
         signed
           ? { id: "apps", title: "No other app can use your data", detail: "No action is open to other apps", tone: "ok" }
           : { id: "apps", title: "No other app can use your data, as this test server lists it", detail: "No action is open to other apps" },
       );
-    } else {
-      const apps = [...new Set(shared.flatMap((m) => m.allowApps ?? []))];
-      lines.push({
-        id: "apps",
-        title: `Lets other apps call ${plural(shared.length, "action")}`,
-        detail: apps.includes("*") ? "Any app" : list(apps),
-        tone: "warn",
-      });
     }
   }
   return lines;
@@ -133,11 +144,13 @@ export function summarize(card: ReviewCard, signed = true): SummaryLine[] {
 
 function whoCanTrigger(m: AppAbiMethod): string | null {
   if (m.kind === "timer") return "The system, on a schedule";
+  if (m.allowAction) return "Only the app's own actions";
+  if (m.kind === "action") return "You, signed in to this app";
+  if (m.kind === "compute") return "The app itself";
   if (m.kind !== "call" && m.kind !== "view") return null;
   const who = [m.public ? "Anyone, no sign-in" : "You, signed in to this app"];
   if (m.allowSystem) who.push("the system");
   if (hasApps(m)) who.push(`apps: ${(m.allowApps ?? []).map((a) => (a === "*" ? "any app" : a)).join(", ")}`);
-  if (m.allowAction) who.push("the app's own actions");
   return who.join("; ");
 }
 
@@ -152,7 +165,7 @@ const KIND_LABEL: Record<string, string> = {
 function methodTags(m: AppAbiMethod): string[] {
   const tags: string[] = [];
   if (m.confirm) tags.push("passkey");
-  if (m.public) tags.push("public");
+  if (plainCall(m) && m.public) tags.push("public");
   if (m.kind === "call" || m.kind === "action") tags.push("changes data");
   else if (m.kind === "view") tags.push("reads data");
   else tags.push(m.kind);
@@ -182,7 +195,7 @@ function methodView(name: string, m: AppAbiMethod): ActionView {
 
 const MEMBERS: Array<Omit<ActionGroup, "items"> & { has: (m: AppAbiMethod) => boolean }> = [
   { id: "passkey", label: "Needs your passkey", chip: "Needs passkey", blurb: "The app cannot do these without you confirming", has: (m) => m.confirm },
-  { id: "public", label: "Visible to anyone", chip: "Public", blurb: "Can be used without signing in", has: (m) => m.public },
+  { id: "public", label: "Visible to anyone", chip: "Public", blurb: "Can be used without signing in", has: (m) => plainCall(m) && m.public },
   { id: "changes", label: "Changes your data", chip: "Changes data", blurb: "Create, update or delete what is stored", has: (m) => m.kind === "call" || m.kind === "action" },
   { id: "reads", label: "Reads your data", chip: "Reads data", blurb: "Look at what is stored without changing it", has: (m) => m.kind === "view" },
   { id: "timers", label: "Runs on its own", chip: "On its own", blurb: "Starts without anyone asking, on a schedule", has: (m) => m.kind === "timer" },
@@ -201,7 +214,7 @@ export function actionGroups(card: ReviewCard): ActionGroup[] {
     label: "Outside services",
     chip: "Outside",
     blurb: "The only sites the app may contact, enforced by the node",
-    items: card.outbound.map((host) => ({ name: host, title: host, tags: [], facts: [] })),
+    items: card.outbound.map((host) => ({ name: host, title: hostOf(host), tags: [], facts: [] })),
   });
   const events = card.abi?.events;
   groups.push({
@@ -225,10 +238,11 @@ export function actionGroups(card: ReviewCard): ActionGroup[] {
   return groups.filter((g) => g.items.length > 0);
 }
 
-/** Amber lines for what leaves the sealed boundary: each public view and each outside host. */
-export function exceptions(card: ReviewCard): string[] {
-  const seen = allMethods(card.abi).filter(([, m]) => m.kind === "view" && m.public).map(([name]) => `Anyone can see: ${humanize(name)}`);
-  return [...seen, ...card.outbound.map((host) => `Leaves the sealed hardware: ${hostOf(host)}`)];
+/** Amber lines for what leaves the sealed boundary: each public view, each public call and each outside host. A test server has no sealed hardware to leave. */
+export function exceptions(card: ReviewCard, sealed = true): string[] {
+  const named = (pick: (m: AppAbiMethod) => boolean, prefix: string) => allMethods(card.abi).filter(([, m]) => pick(m)).map(([name]) => `${prefix}${humanize(name)}`);
+  const hosts = card.outbound.map((host) => `${sealed ? "Leaves the sealed hardware" : "Contacts"}: ${hostOf(host)}`);
+  return [...named(publicView, "Anyone can see: "), ...named(publicCall, "Anyone can change: "), ...hosts];
 }
 
 /** Level 3: the signed hashes, in full. */
@@ -255,6 +269,8 @@ export interface CodeLine {
   text: string;
   tone?: "good" | "bad";
   note?: string;
+  /** The node runs another release than the card's, or the card's release with other code. */
+  divergence?: "release" | "code";
 }
 
 const norm = (hash: string) => hash.trim().toLowerCase();
@@ -269,7 +285,8 @@ export function codeLine(card: Pick<PackageCapabilities, "bundle" | "package" | 
       const pkg = evidence.package ?? card.package;
       const version = evidence.version ?? card.version;
       if (pkg !== card.package || version !== card.version || norm(evidence.appHash) !== norm(card.bundle)) {
-        return { text: `The node reports different code: it runs ${pkg} v${version} (bundle ${shortHash(evidence.appHash)})`, tone: "bad" };
+        const text = `The node reports different code: it runs ${pkg} v${version} (bundle ${shortHash(evidence.appHash)})`;
+        return { text, tone: "bad", divergence: pkg !== card.package || version !== card.version ? "release" : "code" };
       }
       return {
         text: `bundle ${shortHash(evidence.appHash)}, attested by this node`,
@@ -278,13 +295,14 @@ export function codeLine(card: Pick<PackageCapabilities, "bundle" | "package" | 
       };
     }
     case "mismatch":
-      return { text: `Does not match the signed release: the node runs bundle ${shortHash(evidence.appHash)}`, tone: "bad" };
+      return { text: `Does not match the signed release: the node runs bundle ${shortHash(evidence.appHash)}`, tone: "bad", divergence: "code" };
     case "unknown":
       return { text: fromRelease, note: `This node could not confirm it: ${evidence.reason}` };
   }
 }
 
-/** The claims about the person's data, made only for a sealed node. */
-export function dataStatements(kind: ShieldKind): string[] {
-  return kind === "verified" ? SEALED_STATEMENTS : [];
+/** The claims about the data: control and who can open it hold for a node that passed its check, "Calimero can't read it" only for a sealed one. `member` is a workspace that exists, seen by someone who may have joined later. */
+export function dataStatements(kind: ShieldKind, viewer: "creator" | "member"): string[] {
+  if (kind !== "verified" && kind !== "unsealed") return [];
+  return [CONTROL[viewer], INVITED_ONLY, ...(kind === "verified" ? [NOT_READABLE] : [])];
 }

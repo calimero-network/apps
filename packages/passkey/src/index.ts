@@ -98,4 +98,5 @@ export { ManageInHomeLink, useHomeLink, type ManageInHomeLinkProps } from "./Hom
 export { NativeApproval, type NativeApprovalProps } from "./NativeApproval";
 export { NodeShield, bindNodeShield } from "./NodeShield";
 export { openNodeShield, useNodeShieldApp } from "./nodeShieldStore";
-export { WorkspaceReview, WorkspaceTrust, type ReviewRelease, type WorkspaceReviewProps, type WorkspaceTrustProps } from "./WorkspaceReview";
+export type { ReviewRelease } from "./nodeChecks";
+export { WorkspaceReview, WorkspaceTrust, type WorkspaceReviewProps, type WorkspaceTrustProps } from "./WorkspaceReview";
