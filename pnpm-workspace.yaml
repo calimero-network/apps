@@ -264,9 +264,10 @@ catalog:
 # `auth.accountOutboundApproval` and `auth.accountReleaseApproval` (an account's
 # own apps are approved through `orgs.outboundApproval` and `orgs.releaseApproval`
 # on its personal org). Nothing here uses either; core 1.0.0-rc.23 carries both syncs.
+# `component` builds mero-js#396 (ce21f9d) from source until it is released, and must move to the released version before merge.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^35.2.1
+    "@calimero-network/mero-js": github:calimero-network/mero-js#ce21f9d
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
