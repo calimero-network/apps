@@ -62,6 +62,18 @@ account, nothing to install, no permissions to grant.
   (`@calimero-apps/passkey/testing`) that mounts its real root (its session layer where the
   test project cannot hold the root) signed in and fails unless exactly one shield is on the page;
   `scripts/check-node-shield-gate.py` fails an app whose gate did not run and pass.
+- `<WorkspaceReview release={{ package, version }} onBack={...} onCreate={...} />` is step 2 of creating a workspace, after the app's own "Name" step.
+  It shows what the app is (name, version, publisher, code hash), what it can do, where it runs and what that means for the person's data.
+  Everything comes from the release's signed capability card (`client.packageCapabilities`) and the node's own check, so it needs a session bound by `usePasskeySession`.
+  Before the workspace exists the node cannot attest the app's code, so the code line says "from the signed release", never "attested by this node".
+  "What it can do" has three levels: a summary (passkey-protected actions, public views, outside services, timers, other apps), "See all actions" in plain-word groups with filter chips and each action's technical facts, and the signed raw facts with a JSON download of the full ABI.
+  The publisher's own description of an action is shown apart from the facts.
+  "Your data" makes its three claims ("Only you control it.", "Only people you invite can open it.", "Calimero can't read it.") only for a sealed node, and otherwise says "Test server: not sealed" in grey.
+  The amber lines under it (one per public view and per outside host) come from the card.
+  The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
+  A card that cannot load is said plainly, with "Try again", and the workspace can still be created.
+  The registry's review state and the SDK version are not in the card, so the review does not show them.
+- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab), and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button

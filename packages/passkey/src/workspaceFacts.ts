@@ -96,8 +96,8 @@ export function actionCount(abi: AppAbi | null): number {
   return visibleMethods(abi).length;
 }
 
-/** Level 1: the few lines that matter, each only when the card says so. */
-export function summarize(card: ReviewCard): SummaryLine[] {
+/** Level 1: the few lines that matter, each only when the card says so; the claim about other apps is qualified when the card is not signed. */
+export function summarize(card: ReviewCard, signed = true): SummaryLine[] {
   const lines: SummaryLine[] = [];
   const all = allMethods(card.abi);
   const titles = (pick: (m: AppAbiMethod) => boolean) => all.filter(([, m]) => pick(m)).map(([name]) => humanize(name));
@@ -113,7 +113,11 @@ export function summarize(card: ReviewCard): SummaryLine[] {
   if (card.abi) {
     const shared = Object.values(card.abi.methods).filter(hasApps);
     if (shared.length === 0) {
-      lines.push({ id: "apps", title: "No other app can use your data", detail: "No action is open to other apps", tone: "ok" });
+      lines.push(
+        signed
+          ? { id: "apps", title: "No other app can use your data", detail: "No action is open to other apps", tone: "ok" }
+          : { id: "apps", title: "No other app can use your data, as this test server lists it", detail: "No action is open to other apps" },
+      );
     } else {
       const apps = [...new Set(shared.flatMap((m) => m.allowApps ?? []))];
       lines.push({

@@ -104,6 +104,9 @@ describe("summarize", () => {
 
   it("claims no other app can use the data only when no method allows an app", () => {
     expect(line(crm, "apps")?.title).toBe("No other app can use your data");
+    const listed = summarize(crm, false).find((l) => l.id === "apps");
+    expect(listed?.title).toBe("No other app can use your data, as this test server lists it");
+    expect(listed?.tone).toBeUndefined();
     const shared = caps({ abi: abi({ onPayment: method({ allowApps: ["billing"] }), other: method({ allowApps: [] }) }) });
     expect(line(shared, "apps")?.title).toBe("Lets other apps call 1 action");
     expect(line(shared, "apps")?.detail).toBe("billing");
