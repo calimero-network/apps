@@ -165,7 +165,7 @@ describe("the app code check", () => {
     await screen.findByText("Verified node");
     open();
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("Node runs this app's exact code"));
+    await waitFor(() => expect(dialog.textContent).toContain("Node runs the bundle this build names"));
     expect(dialog.textContent).toContain("7f3a…c91e");
     expect(attestApp).toHaveBeenCalledWith("app-1");
   });
@@ -178,7 +178,7 @@ describe("the app code check", () => {
     open();
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(dialog.textContent).toContain("Does not match this app's release"));
-    expect(dialog.textContent).not.toContain("Node runs this app's exact code");
+    expect(dialog.textContent).not.toContain("Node runs the bundle this build names");
   });
 
   it("checks only once the popover is opened", async () => {

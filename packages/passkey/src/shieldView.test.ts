@@ -26,7 +26,9 @@ const failed = (status: "refused" | "unreachable"): NodeVerificationState => ({
   reason: "the quote is for another key",
   checkedAt: NOW,
 });
-const match: AppCodeCheck = { status: "match", appHash: "7f3a00000000000000000000000000000000000000000000000000000000c91e", checkedAt: NOW };
+const HASH = "7f3a00000000000000000000000000000000000000000000000000000000c91e";
+const match: AppCodeCheck = { status: "match", appHash: HASH, checkedAt: NOW };
+const release: AppCodeCheck = { status: "match", appHash: HASH, checkedAt: NOW, package: "com.calimero.kv-store", version: "1.4.0" };
 
 const view = (state: NodeVerificationState, code: AppCodeCheck | null = null) =>
   describeShield(state, { cluster: "Calimero Cloud eu-shared-2", code, now: NOW });
@@ -61,7 +63,7 @@ describe("describeShield", () => {
       "Running in an Intel TDX enclave (not debug)",
       "Measurements match the signed v2.3.148 release",
       "Your connection is encrypted to this enclave's key",
-      "Node runs this app's exact code",
+      "Node runs the bundle this build names",
     ]);
     expect(v.verifyUrl).toBe(verifyNodeUrl(URL_, "2.3.148"));
   });
@@ -70,7 +72,7 @@ describe("describeShield", () => {
     for (const code of [null, { status: "unknown", reason: "no" } as AppCodeCheck]) {
       const v = view(verified(), code);
       expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node", "Software"]);
-      expect(v.checks).not.toContain("Node runs this app's exact code");
+      expect(v.checks).not.toContain("Node runs the bundle this build names");
     }
   });
 
@@ -78,17 +80,36 @@ describe("describeShield", () => {
     const v = view(verified(), { status: "mismatch", appHash: "ab".repeat(32), expected: "cd".repeat(32) });
     const row = v.rows.find((r) => r.label === "App code");
     expect(row).toMatchObject({ tone: "bad", value: "Does not match this app's release (node runs abab…abab)" });
-    expect(v.checks).not.toContain("Node runs this app's exact code");
+    expect(v.checks).not.toContain("Node runs the bundle this build names");
   });
 
-  it("a mock is a grey test server: no enclave claims, no verifier link", () => {
+  it("a mock is a grey test server: no enclave claims, no code claims, no verifier link", () => {
     const v = view(verified({ mock: true, release: undefined, profile: undefined }), match);
     expect(v.kind).toBe("unsealed");
     expect(v.label).toBe("Test server: not sealed");
     expect(v.sub).toMatch(/test server with no hardware enclave.*not sealed/);
-    expect(v.checks).toEqual(["Node runs this app's exact code"]);
-    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node", "App code"]);
+    expect(v.checks).toEqual([]);
+    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node"]);
     expect(v.verifyUrl).toBeNull();
+  });
+
+  it("enforces that a mock is not a real node, whatever else the record says", () => {
+    const v = view(verified({ mock: true }), release);
+    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node"]);
+    expect(v.checks).toEqual([]);
+  });
+
+  it("names the release a code match is for, and says what that proves", () => {
+    const v = view(verified(), release);
+    const row = v.rows.find((r) => r.label === "App code");
+    expect(row).toEqual({
+      label: "App code",
+      value: "com.calimero.kv-store v1.4.0 · 7f3a…c91e",
+      full: `com.calimero.kv-store v1.4.0 · ${HASH}`,
+      mono: true,
+    });
+    expect(v.checks).toContain("Node runs the code listed for com.calimero.kv-store v1.4.0");
+    expect(v.checks).not.toContain("Node runs the bundle this build names");
   });
 
   it("a mock never links the verifier, even with a release named", () => {

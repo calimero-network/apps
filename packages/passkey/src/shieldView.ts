@@ -71,8 +71,20 @@ function hostOf(url: string | undefined): string {
   }
 }
 
+function releaseName(code: Extract<AppCodeCheck, { status: "match" }>): string | null {
+  return code.package && code.version ? `${code.package} v${code.version}` : null;
+}
+
 function codeRow(code: AppCodeCheck | null): ShieldRow | null {
-  if (code?.status === "match") return { label: "App code", value: shortHash(code.appHash), full: code.appHash, mono: true };
+  if (code?.status === "match") {
+    const named = releaseName(code);
+    return {
+      label: "App code",
+      value: named ? `${named} · ${shortHash(code.appHash)}` : shortHash(code.appHash),
+      full: named ? `${named} · ${code.appHash}` : code.appHash,
+      mono: true,
+    };
+  }
   if (code?.status === "mismatch") {
     return {
       label: "App code",
@@ -118,14 +130,15 @@ export function describeShield(
   { cluster, code, now = Date.now() }: { cluster: string; code: AppCodeCheck | null; now?: number },
 ): ShieldView {
   const kind = shieldKind(state);
-  const sealedNode = state.status === "verified" ? state : null;
-  const release = sealedNode?.release;
+  // A mock is never a real node: nothing about releases or app code is claimed for one.
+  const real = state.status === "verified" && !state.mock ? state : null;
+  const release = real?.release;
   const rows: ShieldRow[] = [
     { label: "Cluster", value: cluster },
     { label: "Node", value: hostOf(state.url), mono: true },
   ];
-  if (release) rows.push({ label: "Software", value: `mero-tee v${release}${sealedNode.profile ? ` · ${sealedNode.profile}` : ""}` });
-  const app = sealedNode ? codeRow(code) : null;
+  if (real && release) rows.push({ label: "Software", value: `mero-tee v${release}${real.profile ? ` · ${real.profile}` : ""}` });
+  const app = real ? codeRow(code) : null;
   if (app) rows.push(app);
   if (state.status === "refused" || state.status === "unreachable") {
     rows.push({ label: "Reason", value: state.reason, ...(state.status === "refused" ? { tone: "bad" as const } : {}) });
@@ -133,9 +146,12 @@ export function describeShield(
 
   const checks: string[] = [];
   if (kind === "verified") checks.push("Running in an Intel TDX enclave (not debug)");
-  if (release) checks.push(`Measurements match the signed v${release} release`);
-  if (sealedNode && !sealedNode.mock) checks.push("Your connection is encrypted to this enclave's key");
-  if (app && code?.status === "match") checks.push("Node runs this app's exact code");
+  if (real && release) checks.push(`Measurements match the signed v${release} release`);
+  if (real) checks.push("Your connection is encrypted to this enclave's key");
+  if (app && code?.status === "match") {
+    const named = releaseName(code);
+    checks.push(named ? `Node runs the code listed for ${named}` : "Node runs the bundle this build names");
+  }
 
   const checkedMs = "checkedAt" in state ? state.checkedAt : now;
   return {
@@ -144,7 +160,7 @@ export function describeShield(
     ...copy(state, kind, checkedAgo(checkedMs, now)),
     rows,
     checks,
-    verifyUrl: release && !sealedNode.mock ? verifyNodeUrl(sealedNode.url, release) : null,
+    verifyUrl: real && release ? verifyNodeUrl(real.url, release) : null,
   };
 }
 
