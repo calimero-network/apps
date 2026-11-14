@@ -46,6 +46,8 @@ export default function Topbar({
     title = 'Board';
   } else if (loc.pathname === `${APP_ROUTE}/members`) {
     title = 'Members';
+  } else if (loc.pathname === `${APP_ROUTE}/trust`) {
+    title = 'Trust';
   } else if (loc.search.includes('assignee=me')) {
     title = 'My Issues';
   }

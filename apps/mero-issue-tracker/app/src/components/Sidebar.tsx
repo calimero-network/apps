@@ -7,7 +7,7 @@ import AvatarGlyph from './AvatarGlyph';
 import { SelectMenu } from './Dropdown';
 import type { RepoEntry, Workspace } from '../workspaces';
 import {
-  IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconLogout, IconPlus, IconRepo,
+  IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconShield, IconLogout, IconPlus, IconRepo,
 } from './icons';
 import { useSignOut } from '../auth/signOut';
 import { useSessionApi } from '../sessionContext';
@@ -71,6 +71,7 @@ export default function Sidebar({
   const onIssues = (loc.pathname === APP_ROUTE && !mine) || onDetail;
   const onBoard = loc.pathname === `${APP_ROUTE}/board`;
   const onMembers = loc.pathname === `${APP_ROUTE}/members`;
+  const onTrust = loc.pathname === `${APP_ROUTE}/trust`;
 
   const activeName = namespaces.find((n) => n.namespaceId === activeNs)?.name;
 
@@ -114,6 +115,10 @@ export default function Sidebar({
           <Item to={`${APP_ROUTE}/members`} $active={onMembers} data-testid="nav-members">
             <span className="ico"><IconMembers /></span>
             Members<span className="count">{membersCount}</span>
+          </Item>
+          <Item to={`${APP_ROUTE}/trust`} $active={onTrust} data-testid="nav-trust">
+            <span className="ico"><IconShield /></span>
+            Trust
           </Item>
         </Nav>
 
