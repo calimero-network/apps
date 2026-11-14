@@ -190,6 +190,16 @@ describe('App', () => {
     expect(shieldApp).toHaveBeenCalledWith('app-1', 'bundle-hash');
   });
 
+  it('shows the open pipeline\'s trust view in settings', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/crm/settings');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByTestId('trust-settings', {}, SLOW)).toBeTruthy();
+  });
+
   it('signs in with a passkey from the landing page', async () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);

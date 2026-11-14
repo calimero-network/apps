@@ -5,6 +5,8 @@ import { tokens as t, useTheme } from '../../theme';
 import { IconLogout, KindIcon } from '../../components/icons';
 import { Button, Input, Label, Page, Panel, Row, Select, Tabs } from '../../components/ui';
 import { useSignOut } from '../../auth/signOut';
+import { useSignedIn } from '../../sessionContext';
+import TrustPanel from '../../components/TrustPanel';
 import { ACTIVITY_KINDS, ACTIVITY_LABEL } from '../../utils/crm';
 import { describeError } from '../../utils/errors';
 import type { StageView } from '../../hooks/useCrm';
@@ -12,9 +14,11 @@ import { useAppCtx } from './appContext';
 
 /** Pipeline setup: stages, the automations that keep deals moving, and the
  *  two knobs (currency, rotting threshold), shared by everyone on the pipeline;
- *  then this browser's own appearance and the way out. */
+ *  the trust view of the release it runs; then this browser's own appearance
+ *  and the way out. */
 export default function SettingsPage(): React.ReactElement {
-  const { data } = useAppCtx();
+  const { data, ws } = useAppCtx();
+  const { client } = useSignedIn();
   const toast = useToast();
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     try {
@@ -99,6 +103,8 @@ export default function SettingsPage(): React.ReactElement {
           onRotting={(days) => run(() => data.act((c) => c.setRottingDays({ days })), 'Saved')}
         />
       </Panel>
+
+      {ws.activePipeline && <TrustPanel client={client} appId={ws.activePipeline} />}
 
       <Account />
     </Page>
