@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyNodeUrl, type CalimeroClient, type NodeVerificationState } from "@calimero-network/mero-js";
 
 import { NodeShield, bindNodeShield } from "./NodeShield";
+import { usePasskeySession, type SessionDeps } from "./session";
 import { openNodeShield, useNodeShieldApp } from "./nodeShieldStore";
 
 const NODE = "https://node-3.relay.example.net";
@@ -222,6 +223,21 @@ describe("the built-in floating shield", () => {
     placed.unmount();
     await waitFor(() => expect(screen.getAllByTestId("node-shield")).toHaveLength(1));
     expect(document.body.querySelector("[data-node-shield-host]")?.contains(chip())).toBe(true);
+  });
+
+  it("is what usePasskeySession mounts, for a signed-out session too", async () => {
+    const { client } = fakeClient(sealed);
+    const deps: SessionDeps = {
+      env: { DEV: true },
+      makeClient: async () => ({ ...client, session: null }) as unknown as CalimeroClient,
+      passkey: () => ({}) as never,
+      storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    };
+    const { result, unmount } = renderHook(() => usePasskeySession("test-app", deps));
+    await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
+    expect((await screen.findByTestId("node-shield")).textContent).toContain("Verified node");
+    unmount();
+    await waitFor(() => expect(screen.queryByTestId("node-shield")).toBeNull());
   });
 
   it("renders nothing with no client to check", () => {
