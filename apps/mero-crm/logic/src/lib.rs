@@ -489,8 +489,8 @@ impl Crm {
     /// Removes a stage and its automations from the pipeline. Refused
     /// (`Invalid`) while any open deal sits in it, and for the last remaining
     /// stage: a pipeline always has somewhere to put a deal. A closed deal that
-    /// closed from it and is reopened later is shown in the first stage (see
-    /// `deal_view`). Emits `StagesChanged`.
+    /// closed from it and is reopened later is shown in the first stage. Emits
+    /// `StagesChanged`.
     pub fn delete_stage(&mut self, stage_id: String) -> app::Result<()> {
         if !self.stages.contains(&stage_id)? {
             return Err(not_found("stage", &stage_id));
@@ -654,14 +654,15 @@ impl Crm {
     }
 
     /// Closes a deal as lost and records why. The reason is at most 120
-    /// characters and feeds the lost-reasons report. Emits `DealStatusChanged`.
+    /// characters. Emits `DealStatusChanged`.
     pub fn mark_lost(&mut self, deal_id: String, reason: String) -> app::Result<()> {
         validate_optional_name("reason", &reason)?;
         self.close_deal(deal_id, "lost", reason.trim().to_owned())
     }
 
-    /// Puts a closed deal back on the board, in the stage it closed from. An
-    /// open deal is left as it is. Emits `DealStatusChanged`.
+    /// Puts a closed deal back on the board, in the stage it closed from, or in
+    /// the first stage if that one was deleted. An open deal is left as it is.
+    /// Emits `DealStatusChanged`.
     pub fn reopen_deal(&mut self, deal_id: String) -> app::Result<()> {
         if self.load_deal(&deal_id)?.status == "open" {
             return Ok(());
@@ -686,8 +687,6 @@ impl Crm {
     /// Lists deals, newest first, optionally narrowed by status, stage or
     /// owner. The filters are exact matches on `status`, `stageId` and `owner`
     /// (`null` for no filter), and at most the newest 1,000 matches come back.
-    /// The most selective filter given is an index seek; the others filter what
-    /// it returns.
     #[app::view]
     pub fn list_deals(
         &self,
@@ -1018,7 +1017,7 @@ impl Crm {
         Ok(())
     }
 
-    /// Deletes an activity. Any member may. Emits `ActivityChanged`.
+    /// Deletes an activity. Emits `ActivityChanged`.
     pub fn delete_activity(&mut self, activity_id: String) -> app::Result<()> {
         if !self.activities.remove(&activity_id)? {
             return Err(not_found("activity", &activity_id));
@@ -1188,7 +1187,7 @@ impl Crm {
         Ok(())
     }
 
-    /// Deletes a follow-up rule. Any member may. Emits `AutomationsChanged`.
+    /// Deletes a follow-up rule. Emits `AutomationsChanged`.
     pub fn delete_automation(&mut self, automation_id: String) -> app::Result<()> {
         if !self.automations.remove(&automation_id)? {
             return Err(not_found("automation", &automation_id));
