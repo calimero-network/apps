@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, PasskeySignIn, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -383,12 +383,7 @@ function AppShell({ children }: { children: ReactNode }) {
           </button>
           {session.status === "signed-in" && (
             <div className="session">
-              <span className="node-pill" title={`${describeTarget(session.target)} · ${session.accountId}`}>
-                <span className="presence online" aria-hidden="true" />
-                <span className="mono">
-                  {describeTarget(session.target)} · {shortAccount(session.accountId)}
-                </span>
-              </span>
+              <NodeShield />
               <button className="ghost small" onClick={() => void signOut()}>
                 Log out
               </button>

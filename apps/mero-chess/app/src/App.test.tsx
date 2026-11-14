@@ -463,6 +463,16 @@ describe("App", () => {
     });
   });
 
+  it("places the node shield in the top bar, with no floating one beside it", async () => {
+    at("/play");
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(fakeClient())} storage={storage} />);
+    await screen.findByText("Sit down at a table");
+    expect(screen.getAllByTestId("node-shield")).toHaveLength(1);
+    expect(screen.getByTestId("node-shield").closest("header.topbar")).not.toBeNull();
+  });
+
   it("sends a signed-in visitor from the landing page into the app, and signs out", async () => {
     at("/");
     const client = fakeClient();

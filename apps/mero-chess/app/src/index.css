@@ -126,20 +126,6 @@ body {
 .brand:hover:not(:disabled) { background: none; color: var(--text); }
 .brand img { border-radius: 8px; display: block; }
 .session { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.node-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 280px;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-dim);
-  font-size: 0.78rem;
-}
-.node-pill .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 80px; }
 
@@ -767,7 +753,6 @@ body {
   .wrap { padding: 16px 12px 64px; }
   .topbar { margin: 8px 8px 0; top: 8px; }
   .topbar-inner { padding: 0 12px; }
-  .node-pill { display: none; }
   .card { padding: 15px; }
   .player-bar { min-height: 52px; }
   .avatar { width: 36px; height: 36px; }
