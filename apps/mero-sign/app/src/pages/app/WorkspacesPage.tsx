@@ -139,6 +139,8 @@ export default function WorkspacesPage({
   useEffect(() => {
     if (!resume || resumeDecided.current || loading) return;
     resumeDecided.current = true;
+    // The invitation prompt may have navigated on already; the router state lags the address bar.
+    if (window.location.pathname !== '/') return;
     const target = pickResumeWorkspace(
       rows.map((r) => r.namespaceId),
       getActiveWorkspace(),
