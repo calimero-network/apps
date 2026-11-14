@@ -24,9 +24,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { targetKey, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg, ManageInHomeLink } from '@calimero-apps/passkey';
+import { ConnectExistingOrg, ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { useSessionApi, useSignedIn } from '../../sessionContext';
-import { describeTarget } from '../../session';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
@@ -1539,7 +1538,7 @@ export default function AppPage() {
         <TitleBlock>
           <TitleName>{activeWorkspaceName}</TitleName>
           <TitleMeta>
-            <span>{describeTarget(target)}</span>
+            <NodeShield />
             <LivePill $on={connected} title={connected ? 'Live' : 'Offline'}>
               <span aria-hidden="true" />{connected ? 'live' : 'offline'}
             </LivePill>

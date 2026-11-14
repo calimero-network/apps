@@ -164,6 +164,15 @@ describe('App', () => {
     await waitFor(() => expect(client.events).toHaveBeenCalledWith('sheet-1', 2, expect.anything()));
   });
 
+  it('places the node shield in an open spreadsheet beside the live pill, with no floating one', async () => {
+    remember();
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByText('Q3 Budget'));
+    const pill = await screen.findByTitle(/^(Live|Offline)$/);
+    expect(screen.getAllByTestId('node-shield')).toHaveLength(1);
+    expect(pill.parentElement?.contains(screen.getByTestId('node-shield'))).toBe(true);
+  });
+
   it('creates the workspace with the first spreadsheet, then names it in the contract', async () => {
     remember();
     const client = fakeClient([]);
