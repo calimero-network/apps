@@ -157,6 +157,12 @@ describe("instancePackage", () => {
     expect(await instancePackage(c, "app-1")).toEqual(ref);
   });
 
+  it("marks a compute-only instance, which only the app record's release says", async () => {
+    const c = client("1.0.0");
+    c.apps.get.mockResolvedValue({ org: "org-1", release: { package: "p", version: "1.0.0", compute: true } } as never);
+    expect(await instancePackage(c, "app-1")).toEqual({ package: "p", version: "1.0.0", compute: true });
+  });
+
   it("is null when the instance is not in the report or the report cannot be read", async () => {
     expect(await instancePackage(client("1.0.0"), "app-9")).toBeNull();
     expect(await instancePackage(client(null), "app-1")).toBeNull();

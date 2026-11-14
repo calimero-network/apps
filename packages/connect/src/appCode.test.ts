@@ -11,7 +11,7 @@ function verification(appHash: string | null, mock: boolean): NodeVerification {
 }
 
 const PACKAGE = "com.example.app";
-type Ref = { package: string; version: string; service?: string };
+type Ref = { package: string; version: string; service?: string; compute?: boolean };
 
 function client(options: {
   attested?: string | null | Error;
@@ -32,9 +32,10 @@ function client(options: {
       if (bundle instanceof Error) throw bundle;
       return { bundle: bundles[version] ?? bundle, service: capabilitiesService } as PackageCapabilities;
     }),
-    apps: { get: vi.fn(async () => ({ org: null }) as never) },
+    // `compute` is on the app record's release, not in the report.
+    apps: { get: vi.fn(async () => ({ org: null, release: ref }) as never) },
     appsReportAll: vi.fn(
-      async () => ({ apps: [{ app: "app-1", package: ref }] }) as unknown as AppsReport,
+      async () => ({ apps: [{ app: "app-1", package: ref && { ...ref, compute: undefined } }] }) as unknown as AppsReport,
     ),
   };
 }
@@ -46,6 +47,8 @@ describe("checkAppCode", () => {
       status: "match",
       appHash: HASH,
       checkedAt: 1700,
+      package: PACKAGE,
+      version: "1.2.0",
     });
     expect(c.attestApp).toHaveBeenCalledWith("app-1");
     expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0");
@@ -53,7 +56,11 @@ describe("checkAppCode", () => {
 
   it("expects the hash of the release the instance runs, not the source's version", async () => {
     const c = client({ ref: { package: PACKAGE, version: "1.3.0" }, bundles: { "1.2.0": OTHER } });
-    expect((await checkAppCode(c, "app-1", { package: PACKAGE, version: "1.2.0" })).status).toBe("match");
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE, version: "1.2.0" })).toMatchObject({
+      status: "match",
+      package: PACKAGE,
+      version: "1.3.0",
+    });
     expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
     expect(c.packageCapabilities).toHaveBeenCalledTimes(2);
     expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0");
@@ -75,6 +82,26 @@ describe("checkAppCode", () => {
     expect((await checkAppCode(none, "app-1", { package: PACKAGE })).status).toBe("unknown");
     const same = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "worker" });
     expect((await checkAppCode(same, "app-1", { package: PACKAGE })).status).toBe("match");
+  });
+
+  it("is unknown when the listing names a service the instance's default does not", async () => {
+    const c = client({ capabilitiesService: "web" });
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toMatchObject({ status: "unknown" });
+  });
+
+  it("treats a listing with no service as the default service", async () => {
+    const c = client({});
+    c.packageCapabilities.mockResolvedValue({ bundle: HASH } as PackageCapabilities);
+    expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
+  });
+
+  it("is unknown for a compute-only instance", async () => {
+    const c = client({ ref: { package: PACKAGE, version: "1.2.0", compute: true } });
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toEqual({
+      status: "unknown",
+      reason: "compute-only instance",
+    });
+    expect(c.packageCapabilities).not.toHaveBeenCalled();
   });
 
   it("is unknown when the instance runs another package than the source's", async () => {

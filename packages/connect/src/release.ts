@@ -150,8 +150,8 @@ export function followRelease(options: FollowReleaseOptions): boolean {
 /** The part of the client {@link instanceRelease} reads. */
 export type ReleaseClient = Pick<CalimeroClient, "appsReportAll"> & ClientRoutes<{ apps: "get" }>;
 
-/** The package release an instance runs (`service` for a multi-service bundle). */
-export type InstancePackage = NonNullable<ReportedApp["package"]>;
+/** The package release an instance runs (`service` for a multi-service bundle, `compute` for its compute component). */
+export type InstancePackage = NonNullable<ReportedApp["package"]> & { compute?: true };
 
 /**
  * The package release `app` runs, as its scope's report says (the account's
@@ -159,10 +159,11 @@ export type InstancePackage = NonNullable<ReportedApp["package"]>;
  */
 export async function instancePackage(client: ReleaseClient, app: string): Promise<InstancePackage | null> {
   try {
-    const record = (await client.apps.get({ app })) as { org?: unknown };
+    const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
     const org = typeof record.org === "string" ? record.org : null;
     const report = await client.appsReportAll(org);
-    return report.apps.find((a) => a.app === app)?.package ?? null;
+    const running = report.apps.find((a) => a.app === app)?.package;
+    return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
   } catch {
     return null;
   }

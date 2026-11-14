@@ -152,9 +152,9 @@ made by this client.
 
 | status | meaning |
 |---|---|
-| `match` | both hashes present and equal (`appHash`, `checkedAt`) |
+| `match` | both hashes present and equal (`appHash`, `checkedAt`, and the `package` and `version` the instance runs, none for a dev bundle) |
 | `mismatch` | the node reports different code for this app than its release lists (`appHash`, `expected`) |
-| `unknown` | not checked: attestation refused or failed, a mock quote (test server), no hash bound, the instance's release, package or service not known or not the source's (`reason`) |
+| `unknown` | not checked: attestation refused or failed, a mock quote (test server), no hash bound, the instance's release, package or service not known or not the source's, a compute-only instance (`reason`) |
 
 `policyFor` stays the node-level policy: a client connects before any
 instance exists, and an `appHash` it pinned would only be echoed back by the
