@@ -1,26 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import {
-  CalimeroError,
-  type AppInfo,
-  type CalimeroClient,
-  type CalimeroSession,
-} from '@calimero-network/mero-js';
-import { SessionStore, resolveTarget } from '@calimero-apps/connect';
+import { CalimeroError } from '@calimero-network/mero-js';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
-import { APP } from './session';
-import { dropInvite, migrateLegacyInvite, pendingInvite } from './lib/invites';
+import { dropInvite, pendingInvite } from './lib/invites';
 
-/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
-function hold(legacy: string) {
-  localStorage.setItem('mero-sign:pending-invite', legacy);
-  migrateLegacyInvite();
-}
-import type { SessionDeps } from './session';
-import { LIBRARY_NAME } from './lib/agreements';
-import { withRoutes } from '@calimero-apps/connect/testing';
+import { DETAILS, ME, deps, fakeClient, hold, remember } from './test/fixtures';
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock('./pages/landing/LandingPage', () => ({
@@ -50,118 +36,6 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
 });
 afterEach(cleanup);
-
-const ME = 'acct-alice';
-const SESSION: CalimeroSession = {
-  accountId: ME,
-  sessionToken: 's',
-  refreshToken: 'r',
-  expiresAt: 9e12,
-};
-const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
-
-const instance = (appId: string, name: string, org: string | null): AppInfo => ({
-  appId,
-  name,
-  owner: ME,
-  org,
-  bundle: 'bundle-hash',
-  package: null,
-  version: null,
-});
-
-const AGREEMENT = instance('agr-1', 'Series A', 'org-1');
-const LIBRARY = instance('lib-1', LIBRARY_NAME, null);
-
-const DETAILS = {
-  contextId: 'agr-1',
-  contextName: 'Series A',
-  owner: ME,
-  isPrivate: false,
-  participantCount: '1',
-  participants: [{ userId: ME, permissionLevel: 'Admin' }],
-  documentCount: '1',
-  createdAt: '1700000000000',
-};
-
-const DOC = {
-  id: 'doc_1',
-  name: 'Term sheet.pdf',
-  hash: 'h',
-  uploadedBy: ME,
-  uploadedAt: '1700000000000',
-  status: 'Pending',
-  pdfBlobId: 'ab'.repeat(32),
-  size: '2048',
-  requiredSigners: [ME],
-  embeddings: null,
-  extractedText: null,
-  chunks: null,
-};
-
-function fakeClient() {
-  let session: CalimeroSession | undefined;
-  let next = 0;
-  return withRoutes({
-    get session() {
-      return session;
-    },
-    useSession: vi.fn((s: CalimeroSession) => {
-      session = s;
-    }),
-    signIn: vi.fn(async () => {
-      session = SESSION;
-      return SESSION;
-    }),
-    signUp: vi.fn(async () => {
-      session = SESSION;
-      return SESSION;
-    }),
-    signOut: vi.fn(async () => {
-      session = undefined;
-    }),
-    me: vi.fn(async () => ({
-      orgs: [{ orgId: 'org-1', name: 'Acme Legal', role: 'owner' }],
-    })),
-    getOrg: vi.fn(async () => ({
-      name: 'Acme Legal',
-      members: { [ME]: 'owner', 'acct-bob': 'member' },
-    })),
-    listApps: vi.fn(async () => [AGREEMENT, LIBRARY]),
-    createApp: vi.fn(async () => `new-${++next}`),
-    call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
-    view: vi.fn(async (_app: string, method: string) => ({
-      index: 1,
-      result:
-        method === 'listParticipants'
-          ? [ME]
-          : method === 'getContextDetails'
-            ? DETAILS
-            : method === 'listDocuments'
-              ? [DOC]
-              : method === 'whoami'
-                ? ME
-                : method === 'isDefaultPrivateContext'
-                  ? true
-                  : null,
-    })),
-    redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
-  });
-}
-
-function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
-  return {
-    env: DEV_ENV,
-    makeClient: vi.fn(async () => withRoutes(client)),
-    passkey: () => ({ create: vi.fn(), get: vi.fn() }),
-  };
-}
-
-/** A session an earlier visit left behind. */
-function remember() {
-  const store = new SessionStore(APP, resolveTarget(DEV_ENV));
-  store.sync({ session: SESSION } as unknown as CalimeroClient);
-}
 
 describe('App', () => {
   it('signs in with a passkey from the landing page and lands on the workspaces', async () => {
