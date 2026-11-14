@@ -1,8 +1,5 @@
-/*
- * The node shield. Themed with the same `--passkey-*` tokens as passkey.css;
- * each falls back to the glass token, then to a literal that follows the page's
- * `color-scheme`, so an app with neither still reads in light and dark.
- */
+/* Themed with passkey.css's `--passkey-*` tokens, then the glass tokens, then literals that follow
+   the page's `color-scheme`. */
 .cp-shield,
 .cp-shield__pop {
   --_ink: var(--passkey-ink, var(--glass-ink, light-dark(#0e1222, #eceef5)));
@@ -22,16 +19,16 @@
   font-family: var(--passkey-font, inherit);
 }
 
-[data-kind="verified"] { --_tone: var(--_good-ink); --_tone-bg: var(--_good-bg); }
-[data-kind="refused"] { --_tone: var(--_bad-ink); --_tone-bg: var(--_bad-bg); }
-[data-kind="checking"] { --_tone: var(--_busy-ink); --_tone-bg: var(--_busy-bg); }
-[data-kind="unsealed"] { --_tone: var(--_muted); --_tone-bg: color-mix(in srgb, var(--_muted) 14%, transparent); }
+.cp-shield__chip[data-kind="verified"], .cp-shield__pop[data-kind="verified"] { --_tone: var(--_good-ink); --_tone-bg: var(--_good-bg); }
+.cp-shield__chip[data-kind="refused"], .cp-shield__pop[data-kind="refused"] { --_tone: var(--_bad-ink); --_tone-bg: var(--_bad-bg); }
+.cp-shield__chip[data-kind="checking"], .cp-shield__pop[data-kind="checking"] { --_tone: var(--_busy-ink); --_tone-bg: var(--_busy-bg); }
+.cp-shield__chip[data-kind="unsealed"], .cp-shield__pop[data-kind="unsealed"] { --_tone: var(--_muted); --_tone-bg: color-mix(in srgb, var(--_muted) 14%, var(--_surface)); }
 
 .cp-shield { display: inline-flex; flex: none; }
 .cp-shield--floating {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
-  right: calc(env(safe-area-inset-right, 0px) + 10px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  left: calc(env(safe-area-inset-left, 0px) + 10px);
   z-index: 40;
 }
 
@@ -53,9 +50,13 @@
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
-/* The page's own `button:hover` and `:active` rules must not repaint it. */
+/* A page's own `button:hover`, `:focus` and `:active` rules must not repaint the chip. */
 button.cp-shield__chip:hover:not(:disabled),
-button.cp-shield__chip:active:not(:disabled) { background: var(--_bg, var(--_tone-bg)); border-color: var(--_tone); transform: none; }
+button.cp-shield__chip:focus:not(:disabled),
+button.cp-shield__chip:active:not(:disabled),
+button.cp-shield__chip[aria-expanded="true"]:not(:disabled) { background: var(--_bg, var(--_tone-bg)); color: var(--_ink); transform: none; }
+button.cp-shield__chip:hover:not(:disabled),
+button.cp-shield__chip:active:not(:disabled) { border-color: var(--_tone); }
 .cp-shield__chip:focus-visible,
 .cp-shield__btn:focus-visible { outline: 2px solid var(--_focus); outline-offset: 2px; }
 .cp-shield__icon { flex: none; color: var(--_tone); }
