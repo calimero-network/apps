@@ -226,32 +226,6 @@ select:focus {
   min-width: 0;
 }
 
-.node-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  max-width: 320px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--muted);
-}
-
-.presence {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-  flex: none;
-}
-
-.presence.online {
-  background: var(--ok);
-}
-
 .wrap {
   max-width: 1180px;
   width: 100%;
