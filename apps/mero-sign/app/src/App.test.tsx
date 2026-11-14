@@ -187,6 +187,15 @@ describe('App', () => {
     expect(screen.queryByTestId('create-agreement')).toBeNull();
   });
 
+  it('places the node shield in the top bar, with no floating one beside it', async () => {
+    remember();
+    window.history.replaceState(null, '', '/workspaces/org-1');
+    render(<App deps={deps(fakeClient())} />);
+    await screen.findByText('Series A');
+    expect(screen.getAllByTestId('node-shield')).toHaveLength(1);
+    expect(screen.getByTestId('node-shield').closest('header')).not.toBeNull();
+  });
+
   it('lists a workspace’s agreements and creates one: the instance in the org, then its setup', async () => {
     remember();
     window.history.replaceState(null, '', '/workspaces/org-1');
