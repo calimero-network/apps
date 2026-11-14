@@ -9,7 +9,9 @@
     "./ceremony": "./src/ceremony.ts",
     "./listing": "./src/listing.ts",
     "./native": "./src/native.ts",
+    "./nodeShield": "./src/NodeShield.tsx",
     "./signUpFlow": "./src/signUpFlow.ts",
+    "./testing": "./src/testing.ts",
     "./upgrade": "./src/upgrade.ts",
     "./passkey.css": "./src/passkey.css"
   },

@@ -56,6 +56,12 @@ account, nothing to install, no permissions to grant.
   `AppSource` the page runs; with it the popover checks the node runs that exact
   code (`checkAppCode`), and without it leaves the app code out.
   `openNodeShield()` opens the popover from an account menu's "Connected to" row.
+  An app that connects without the hook calls `bindNodeShield(client, describeTarget(target))`
+  (`@calimero-apps/passkey/nodeShield`, no React in the app) where it connects.
+  Every app has a `nodeShield.gate.test.tsx`: one `nodeShieldGate(app, mount)` call
+  (`@calimero-apps/passkey/testing`) that mounts its real session layer signed in and
+  fails unless the shield is on the page; `scripts/check-node-shield-gate.py` fails an
+  app that has none.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button
