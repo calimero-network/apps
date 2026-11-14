@@ -7,14 +7,14 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, SignInPanel, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { KvStoreClient } from "./generated/client";
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
 import { StorePicker } from "./StorePicker";
-import { LISTING, ONBOARDING, PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { LISTING, ONBOARDING, PACKAGE, defaultDeps, useSession, type SessionDeps } from "./session";
 import { instanceIn, invites as appInvites, listStores, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
@@ -243,8 +243,8 @@ export function App({
 
       {session.status === "signed-in" && (
         <footer className="row" style={{ justifyContent: "space-between", marginTop: 24 }}>
-          <span className="empty">
-            {describeTarget(session.target)} · account <code className="mono">{session.accountId}</code>
+          <span className="empty row">
+            <NodeShield /> account <code className="mono">{session.accountId}</code>
           </span>
           <button className="ghost" onClick={() => void api.signOut()}>
             Sign out

@@ -99,6 +99,15 @@ describe("App", () => {
     await screen.findByText(/VITE_CALIMERO_MIN_RELEASE is not set/);
   });
 
+  it("places the node shield in the signed-in footer, with no floating one beside it", async () => {
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(fakeClient())} storage={storage} />);
+    await screen.findByText("Your stores");
+    expect(screen.getAllByTestId("node-shield")).toHaveLength(1);
+    expect(screen.getByTestId("node-shield").closest("footer")).not.toBeNull();
+  });
+
   it("sends a listing page no cluster serves to the copy Calimero Cloud serves instead of failing", async () => {
     // A static listing build: no cluster and no floor, so it asks no directory either.
     const d = { ...deps(fakeClient(), { DEV: false }), servedNodes: async () => null };
