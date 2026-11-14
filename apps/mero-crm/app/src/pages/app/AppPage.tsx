@@ -8,6 +8,7 @@ import React, {
 import { Outlet } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
+import { useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useCrm } from "../../hooks/useCrm";
@@ -33,8 +34,9 @@ import { optU64, u64 } from '../../crm';
  * or joining it) -> blocking alias gate, once per workspace.
  */
 export default function AppPage(): React.ReactElement | null {
-  const { client, after } = useSignedIn();
+  const { client, source, after } = useSignedIn();
   const ws = useWorkspace();
+  useNodeShieldApp(ws.activePipeline, source);
   const toast = useToast();
 
   // The signed-in ACCOUNT: what the contract records as `created_by` and

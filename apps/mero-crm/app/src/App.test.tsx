@@ -14,10 +14,15 @@ import { withRoutes } from '@calimero-apps/connect/testing';
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
 // `href` it reads this test's own location: development, where it never moves.
 const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+const shieldApp = vi.hoisted(() => vi.fn());
 vi.mock('@calimero-apps/passkey', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@calimero-apps/passkey')>();
   return {
     ...actual,
+    useNodeShieldApp: (...args: Parameters<typeof actual.useNodeShieldApp>) => {
+      shieldApp(...args);
+      return actual.useNodeShieldApp(...args);
+    },
     useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
@@ -127,6 +132,7 @@ beforeEach(() => {
   sessionStorage.clear();
   release.href = null;
   release.navigate.mockClear();
+  shieldApp.mockClear();
   window.history.replaceState(null, '', '/');
   window.matchMedia ??= ((query: string) => ({
     matches: false,
@@ -169,6 +175,17 @@ describe('App', () => {
     fireEvent.click(choice);
     await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Pipeline', 'bundle-hash', { org: 'ow' }), SLOW);
     expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
+  it('tells the node shield which instance is open and where its code comes from', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/crm');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+    expect(shieldApp).toHaveBeenCalledWith('app-1', 'bundle-hash');
   });
 
   it('signs in with a passkey from the landing page', async () => {
