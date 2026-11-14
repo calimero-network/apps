@@ -11,6 +11,7 @@ import {
   exceptions,
   firstSentence,
   humanize,
+  MAX_DOC_CHARS,
   reachable,
   rawFacts,
   shortSigner,
@@ -98,6 +99,31 @@ describe("docParagraphs", () => {
 
   it("is empty for blank text", () => {
     expect(docParagraphs(" \n\n ")).toEqual([]);
+  });
+});
+
+describe("a publisher's description of any length", () => {
+  const hostile = ["a.".repeat(50_000), "e.g. E.g. ".repeat(10_000), " ".repeat(100_000), "x".repeat(100_000)];
+
+  it("is cut at the limit with an ellipsis before anything is parsed", () => {
+    for (const doc of hostile) {
+      const [paragraph] = docParagraphs(doc);
+      expect(paragraph?.length ?? 0).toBeLessThanOrEqual(MAX_DOC_CHARS + 1);
+    }
+    expect(docParagraphs("a. ".repeat(10_000))[0]?.endsWith("…")).toBe(true);
+    expect(docParagraphs("Short.")).toEqual(["Short."]);
+  });
+
+  it("is split within a small time budget", () => {
+    const started = performance.now();
+    for (const doc of hostile) firstSentence(doc);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  it("limits what the row and the expanded facts show", () => {
+    const item = group(actionGroups(caps({ abi: abi({ big: method({ doc: "e.g. E.g. ".repeat(10_000) }) }) })), "changes")?.items[0];
+    expect(item?.doc?.length).toBeLessThanOrEqual(MAX_DOC_CHARS + 1);
+    expect(item?.summary?.length).toBeLessThanOrEqual(MAX_DOC_CHARS + 1);
   });
 });
 

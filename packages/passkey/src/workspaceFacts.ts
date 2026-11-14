@@ -13,6 +13,8 @@ const INVITED_ONLY = "Only people invited to it can open it";
 const NOT_READABLE = "Calimero can't read it.";
 const TEST_SERVER_ENFORCES = ", as this test server enforces it";
 const CONTROL = { creator: "Only you control it", member: "Only the workspace's owners control it" };
+export const MAX_DOC_CHARS = 4000; // a publisher's description is cut here before it is parsed or shown
+const WORD_TAIL = 8; // how far back a sentence end looks for an abbreviation
 const ABBREVIATIONS = new Set(["e.g", "i.e", "etc", "vs", "cf"]); // a full stop after these does not end a sentence
 const CALLED_KINDS = new Set(["call", "view", "action"]); // what a caller can start directly
 
@@ -70,9 +72,10 @@ function everyWords(every: string): string {
   return match && unit ? `${match[1]} ${unit}${match[1] === "1" ? "" : "s"}` : every;
 }
 
-/** The paragraphs of a doc: blank lines separate them, a single line break (rustfmt wraps `///` blocks) is a space. */
+/** The paragraphs of a doc, cut at MAX_DOC_CHARS: blank lines separate them, a single line break (rustfmt wraps `///` blocks) is a space. */
 export function docParagraphs(doc: string): string[] {
-  return doc
+  const bounded = doc.length > MAX_DOC_CHARS ? `${doc.slice(0, MAX_DOC_CHARS)}…` : doc;
+  return bounded
     .split(/\n\s*\n/)
     .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
     .filter(Boolean);
@@ -82,7 +85,7 @@ export function docParagraphs(doc: string): string[] {
 export function firstSentence(doc: string): string {
   const first = docParagraphs(doc)[0] ?? "";
   for (const end of first.matchAll(/[.!?](?=\s+[A-Z`"'(])/g)) {
-    const word = /[\w.]*$/.exec(first.slice(0, end.index))?.[0] ?? "";
+    const word = /[\w.]*$/.exec(first.slice(Math.max(0, end.index - WORD_TAIL), end.index))?.[0] ?? "";
     if (!ABBREVIATIONS.has(word.toLowerCase())) return first.slice(0, end.index + 1);
   }
   return first;
