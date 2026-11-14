@@ -63,7 +63,7 @@ describe("describeShield", () => {
       "Running in an Intel TDX enclave (not debug)",
       "Measurements match the signed v2.3.148 release",
       "Your connection is encrypted to this enclave's key",
-      "Node runs the bundle this build names",
+      "Node runs the code bundle this app was built for",
     ]);
     expect(v.verifyUrl).toBe(verifyNodeUrl(URL_, "2.3.148"));
   });
@@ -72,7 +72,7 @@ describe("describeShield", () => {
     for (const code of [null, { status: "unknown", reason: "no" } as AppCodeCheck]) {
       const v = view(verified(), code);
       expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node", "Software"]);
-      expect(v.checks).not.toContain("Node runs the bundle this build names");
+      expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
     }
   });
 
@@ -80,7 +80,7 @@ describe("describeShield", () => {
     const v = view(verified(), { status: "mismatch", appHash: "ab".repeat(32), expected: "cd".repeat(32) });
     const row = v.rows.find((r) => r.label === "App code");
     expect(row).toMatchObject({ tone: "bad", value: "Does not match this app's release (node runs abab…abab)" });
-    expect(v.checks).not.toContain("Node runs the bundle this build names");
+    expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
   });
 
   it("a mock is a grey test server: no enclave claims, no code claims, no verifier link", () => {
@@ -109,7 +109,7 @@ describe("describeShield", () => {
       mono: true,
     });
     expect(v.checks).toContain("Node runs the code listed for com.calimero.kv-store v1.4.0");
-    expect(v.checks).not.toContain("Node runs the bundle this build names");
+    expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
   });
 
   it("a mock never links the verifier, even with a release named", () => {

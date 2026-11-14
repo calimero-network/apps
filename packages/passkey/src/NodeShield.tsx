@@ -109,9 +109,13 @@ function usePlacement(open: boolean, chip: React.RefObject<HTMLElement | null>, 
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // The popover grows when its app code check arrives: re-place it so it stays clear of the chip.
+    const grown = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    if (pop.current) grown?.observe(pop.current);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      grown?.disconnect();
     };
   }, [open, chip, pop]);
   return at;

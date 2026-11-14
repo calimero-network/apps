@@ -167,6 +167,44 @@ describe("the placed shield", () => {
     expect(text).not.toContain("node-3.relay.example.net");
   });
 
+  it("keeps a popover that opens above the chip clear of it when the popover grows", async () => {
+    const observers: Array<{ cb: () => void; target?: Element }> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        entry: { cb: () => void; target?: Element };
+        constructor(cb: () => void) {
+          this.entry = { cb };
+          observers.push(this.entry);
+        }
+        observe(target: Element) {
+          this.entry.target = target;
+        }
+        disconnect() {}
+      },
+    );
+    let height = 200;
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => height);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 900, bottom: 928, left: 20, right: 48, width: 28, height: 28, x: 20, y: 900, toJSON() {} });
+    vi.stubGlobal("innerHeight", 1000);
+    try {
+      const { client } = fakeClient(sealed);
+      bind(client);
+      render(<NodeShield />);
+      await screen.findByText("Verified node");
+      open();
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.style.top).toBe("692px");
+
+      height = 300;
+      act(() => observers.find((o) => o.target === dialog)?.cb());
+      expect(dialog.style.top).toBe("592px");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("does not take the app down when the client cannot be checked", async () => {
     bind({ nodeUrl: NODE } as unknown as CalimeroClient);
     render(<NodeShield />);
@@ -191,7 +229,7 @@ describe("the app code check", () => {
     await screen.findByText("Verified node");
     open();
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("Node runs the bundle this build names"));
+    await waitFor(() => expect(dialog.textContent).toContain("Node runs the code bundle this app was built for"));
     expect(dialog.textContent).toContain("7f3a…c91e");
     expect(attestApp).toHaveBeenCalledWith("app-1");
   });
@@ -204,7 +242,7 @@ describe("the app code check", () => {
     open();
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(dialog.textContent).toContain("Does not match this app's release"));
-    expect(dialog.textContent).not.toContain("Node runs the bundle this build names");
+    expect(dialog.textContent).not.toContain("Node runs the code bundle this app was built for");
   });
 
   it("never shows one client's code check against another client", async () => {
@@ -213,7 +251,7 @@ describe("the app code check", () => {
     render(<App source={BUNDLE} />);
     await screen.findByText("Verified node");
     open();
-    await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names"));
+    await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("Node runs the code bundle this app was built for"));
 
     const b = fakeClient(sealed);
     b.attestApp.mockImplementation(() => new Promise(() => {}));
@@ -231,7 +269,7 @@ describe("the app code check", () => {
     await act(async () => {});
     open();
     await act(async () => {});
-    expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names");
+    expect(screen.getByRole("dialog").textContent).toContain("Node runs the code bundle this app was built for");
 
     let finish!: () => void;
     f.attestApp.mockImplementation(
@@ -245,7 +283,7 @@ describe("the app code check", () => {
     expect(screen.getByRole("dialog").textContent).not.toContain("App code");
 
     await act(async () => finish());
-    expect(screen.getByRole("dialog").textContent).toContain("Node runs the bundle this build names");
+    expect(screen.getByRole("dialog").textContent).toContain("Node runs the code bundle this app was built for");
   });
 
   it("checks only once the popover is opened", async () => {

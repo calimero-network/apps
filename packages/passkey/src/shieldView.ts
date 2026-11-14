@@ -150,7 +150,7 @@ export function describeShield(
   if (real) checks.push("Your connection is encrypted to this enclave's key");
   if (app && code?.status === "match") {
     const named = releaseName(code);
-    checks.push(named ? `Node runs the code listed for ${named}` : "Node runs the bundle this build names");
+    checks.push(named ? `Node runs the code listed for ${named}` : "Node runs the code bundle this app was built for");
   }
 
   const checkedMs = "checkedAt" in state ? state.checkedAt : now;

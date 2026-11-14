@@ -119,7 +119,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByTestId("node-shield").getAttribute("aria-label")).toBe("Verified node"));
     fireEvent.click(screen.getByTestId("node-shield"));
     await waitFor(() => expect(attestApp).toHaveBeenCalledWith("app-1"));
-    await screen.findByText("Node runs the bundle this build names");
+    await screen.findByText("Node runs the code bundle this app was built for");
   });
 
   it("places the node shield in the signed-in footer, with no floating one beside it", async () => {
