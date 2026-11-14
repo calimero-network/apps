@@ -136,7 +136,8 @@ describe("an invite link", () => {
     expect(await screen.findByText("the landing page")).toBeTruthy();
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(onJoined).toHaveBeenCalled();
+    // The landing page shows once the invite is dropped, a render before the session is signed in.
+    await waitFor(() => expect(onJoined).toHaveBeenCalled());
     expect(invites.token()).toBeNull();
     expect(getActive()).toEqual({ appId: "app-1", org: "org-2" });
   });
