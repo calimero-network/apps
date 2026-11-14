@@ -353,8 +353,9 @@ pub struct Crm {
 
 #[app::logic]
 impl Crm {
-    /// The default pipeline: five stages, USD, a 14-day rotting threshold. The
-    /// node runs it once, as the owner, when the app is created.
+    /// Sets up a new CRM with a five-stage pipeline, US dollars as the currency
+    /// and a 14-day rotting threshold. The node runs it once, as the owner,
+    /// when the app is created.
     #[app::init]
     pub fn init() -> app::Result<Self> {
         let mut crm = Self::load();
@@ -374,7 +375,8 @@ impl Crm {
 
     // ── settings ─────────────────────────────────────────────────────────────
 
-    /// The pipeline currency and rotting threshold.
+    /// Shows the currency and the number of idle days after which an open deal
+    /// counts as rotting.
     #[app::view]
     pub fn get_settings(&self) -> app::Result<Settings> {
         Ok(Settings {
@@ -390,9 +392,9 @@ impl Crm {
         })
     }
 
-    /// Sets the pipeline currency: a three-letter ISO 4217 code such as `EUR`
-    /// (any case; stored upper case). `Invalid` otherwise. Emits
-    /// `SettingsChanged`.
+    /// Changes the currency deal values are shown in. Takes a three-letter ISO
+    /// 4217 code such as `EUR` (any case; stored upper case), else `Invalid`.
+    /// Emits `SettingsChanged`.
     pub fn set_currency(&mut self, currency: String) -> app::Result<()> {
         let code = currency.trim().to_ascii_uppercase();
         if code.len() != 3 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -403,8 +405,8 @@ impl Crm {
         Ok(())
     }
 
-    /// Days without activity before an open deal is flagged as rotting
-    /// (1..=365, else `Invalid`). Emits `SettingsChanged`.
+    /// Sets how many days without activity make an open deal count as rotting.
+    /// Takes 1 to 365, else `Invalid`. Emits `SettingsChanged`.
     pub fn set_rotting_days(&mut self, days: u32) -> app::Result<()> {
         if !(1..=365).contains(&days) {
             return Err(invalid("rotting_days must be between 1 and 365"));
@@ -416,15 +418,15 @@ impl Crm {
 
     // ── stages ───────────────────────────────────────────────────────────────
 
-    /// Stages in pipeline order.
+    /// Lists the stages of the pipeline, in order.
     #[app::view]
     pub fn list_stages(&self) -> app::Result<Vec<StageView>> {
         Ok(self.sorted_stages()?.iter().map(stage_view).collect())
     }
 
-    /// Appends a stage at the end of the pipeline and returns its id. A name
-    /// of 1 to 120 characters, a probability of 0 to 100, at most 12 stages.
-    /// Emits `StagesChanged`.
+    /// Adds a stage at the end of the pipeline. Returns its id. Takes a name of
+    /// 1 to 120 characters and a win probability of 0 to 100; a pipeline holds
+    /// at most 12 stages. Emits `StagesChanged`.
     pub fn add_stage(&mut self, name: String, probability: u32) -> app::Result<String> {
         validate_name("stage name", &name)?;
         validate_probability(probability)?;
@@ -446,8 +448,8 @@ impl Crm {
         Ok(id)
     }
 
-    /// Renames a stage and sets its win probability. `NotFound` for an unknown
-    /// stage. Emits `StagesChanged`.
+    /// Renames a stage and changes its chance of winning. `NotFound` for an
+    /// unknown stage. Emits `StagesChanged`.
     pub fn update_stage(
         &mut self,
         stage_id: String,
@@ -467,8 +469,8 @@ impl Crm {
         Ok(())
     }
 
-    /// Reorders the pipeline. `stageIds` must name every stage exactly once
-    /// (else `Invalid`). Emits `StagesChanged`.
+    /// Puts the stages of the pipeline in a new order. `stageIds` must name
+    /// every stage exactly once (else `Invalid`). Emits `StagesChanged`.
     pub fn reorder_stages(&mut self, stage_ids: Vec<String>) -> app::Result<()> {
         let mut current: Vec<String> = self.sorted_stages()?.into_iter().map(|s| s.id).collect();
         let mut given = stage_ids.clone();
@@ -484,11 +486,11 @@ impl Crm {
         Ok(())
     }
 
-    /// Removes a stage with its automations. Refused (`Invalid`) while any
-    /// open deal sits in it, and for the last remaining stage: a pipeline
-    /// always has somewhere to put a deal. A closed deal that closed from it
-    /// and is reopened later is shown in the first stage (see `deal_view`).
-    /// Emits `StagesChanged`.
+    /// Removes a stage and its automations from the pipeline. Refused
+    /// (`Invalid`) while any open deal sits in it, and for the last remaining
+    /// stage: a pipeline always has somewhere to put a deal. A closed deal that
+    /// closed from it and is reopened later is shown in the first stage (see
+    /// `deal_view`). Emits `StagesChanged`.
     pub fn delete_stage(&mut self, stage_id: String) -> app::Result<()> {
         if !self.stages.contains(&stage_id)? {
             return Err(not_found("stage", &stage_id));
@@ -516,10 +518,11 @@ impl Crm {
 
     // ── deals ────────────────────────────────────────────────────────────────
 
-    /// Adds a deal to a stage, created by the caller, and returns its id. Runs
-    /// the stage's automations. `NotFound` for an unknown stage or contact;
-    /// `Invalid` for a blank title or a field over 120 characters. Emits
-    /// `DealCreated`, then `AutomationFired` per rule that ran.
+    /// Adds a new deal to a stage of the pipeline. The caller is recorded as
+    /// its creator, and its id is returned. Runs the stage's automations.
+    /// `NotFound` for an unknown stage or contact; `Invalid` for a blank title
+    /// or a field over 120 characters. Emits `DealCreated`, then
+    /// `AutomationFired` per rule that ran.
     // Each argument is a named field of the ABI; a params struct would change it.
     #[allow(clippy::too_many_arguments)]
     pub fn create_deal(
@@ -576,8 +579,8 @@ impl Crm {
         Ok(id)
     }
 
-    /// Edits a deal's fields (every one is written). `NotFound` for an unknown
-    /// deal or contact. Emits `DealUpdated`.
+    /// Changes a deal's details. Every field is written. `NotFound` for an
+    /// unknown deal or contact. Emits `DealUpdated`.
     #[allow(clippy::too_many_arguments)]
     pub fn update_deal(
         &mut self,
@@ -615,7 +618,7 @@ impl Crm {
         Ok(())
     }
 
-    /// Moves an open deal to another stage and runs that stage's automations.
+    /// Moves an open deal to another stage. Runs that stage's automations.
     /// Moving to the stage it is already in is a no-op; a closed deal is
     /// `Invalid`. Emits `DealMoved`, then `AutomationFired` per rule that ran.
     pub fn move_deal(&mut self, deal_id: String, stage_id: String) -> app::Result<()> {
@@ -650,8 +653,8 @@ impl Crm {
         self.close_deal(deal_id, "won", String::new())
     }
 
-    /// Closes a deal as lost, with the reason (at most 120 characters; it
-    /// feeds the lost-reasons report). Emits `DealStatusChanged`.
+    /// Closes a deal as lost and records why. The reason is at most 120
+    /// characters and feeds the lost-reasons report. Emits `DealStatusChanged`.
     pub fn mark_lost(&mut self, deal_id: String, reason: String) -> app::Result<()> {
         validate_optional_name("reason", &reason)?;
         self.close_deal(deal_id, "lost", reason.trim().to_owned())
@@ -680,10 +683,11 @@ impl Crm {
         Ok(())
     }
 
-    /// Deals, optionally filtered by exact `status`, `stageId` and `owner`
-    /// (`null` for no filter), newest first: at most the newest 1,000 matches.
-    /// The most selective filter given is an index seek; the others filter
-    /// what it returns.
+    /// Lists deals, newest first, optionally narrowed by status, stage or
+    /// owner. The filters are exact matches on `status`, `stageId` and `owner`
+    /// (`null` for no filter), and at most the newest 1,000 matches come back.
+    /// The most selective filter given is an index seek; the others filter what
+    /// it returns.
     #[app::view]
     pub fn list_deals(
         &self,
@@ -727,8 +731,9 @@ impl Crm {
         Ok(out)
     }
 
-    /// One deal with its person, activities (by due date) and notes (newest
-    /// first), at most 1,000 of each. `NotFound` for an unknown deal.
+    /// Shows one deal with its person, activities and notes. Activities come by
+    /// due date and notes newest first, at most 1,000 of each. `NotFound` for
+    /// an unknown deal.
     #[app::view]
     pub fn get_deal(&self, deal_id: String) -> app::Result<DealDetail> {
         let deal = self.load_deal(&deal_id)?;
@@ -777,8 +782,8 @@ impl Crm {
         })
     }
 
-    /// Deletes a deal with its activities and notes. Only its creator may:
-    /// anyone else gets `Forbidden`. Emits `DealDeleted`.
+    /// Deletes a deal together with its activities and notes. Only its creator
+    /// may: anyone else gets `Forbidden`. Emits `DealDeleted`.
     pub fn delete_deal(&mut self, deal_id: String) -> app::Result<()> {
         let deal = self.load_deal(&deal_id)?;
         if deal.created_by != account()? {
@@ -818,9 +823,10 @@ impl Crm {
 
     // ── contacts ─────────────────────────────────────────────────────────────
 
-    /// Adds a person, created by the caller, and returns their id. A name of 1
-    /// to 120 characters, the other fields at most 120, an email that looks
-    /// like one (or empty). Emits `ContactChanged`.
+    /// Adds a person to the address book. The caller is recorded as their
+    /// creator, and their id is returned. A name of 1 to 120 characters, the
+    /// other fields at most 120, an email that looks like one (or empty). Emits
+    /// `ContactChanged`.
     pub fn create_contact(
         &mut self,
         name: String,
@@ -847,8 +853,8 @@ impl Crm {
         Ok(id)
     }
 
-    /// Edits a person (the same rules as `createContact`). `NotFound` for an
-    /// unknown contact. Emits `ContactChanged`.
+    /// Changes a person's details. Follows the same rules as `createContact`.
+    /// `NotFound` for an unknown contact. Emits `ContactChanged`.
     pub fn update_contact(
         &mut self,
         contact_id: String,
@@ -872,8 +878,9 @@ impl Crm {
         Ok(())
     }
 
-    /// Deletes a person. Only their creator may: anyone else gets `Forbidden`.
-    /// Deals keep their history but lose the link. Emits `ContactChanged`.
+    /// Removes a person from the address book. Only their creator may: anyone
+    /// else gets `Forbidden`. Deals keep their history but lose the link. Emits
+    /// `ContactChanged`.
     pub fn delete_contact(&mut self, contact_id: String) -> app::Result<()> {
         let Some(contact) = self.contacts.get(&contact_id)? else {
             return Err(not_found("contact", &contact_id));
@@ -900,8 +907,8 @@ impl Crm {
         Ok(())
     }
 
-    /// Everyone in the address book, by name, with their deal totals: at most
-    /// the first 1,000 by name.
+    /// Lists everyone in the address book with their deal totals. By name, at
+    /// most the first 1,000.
     #[app::view]
     pub fn list_contacts(&self) -> app::Result<Vec<ContactView>> {
         let mut open: BTreeMap<String, u32> = BTreeMap::new();
@@ -932,9 +939,9 @@ impl Crm {
 
     // ── activities ───────────────────────────────────────────────────────────
 
-    /// Schedules an activity, on a deal, a person, both or neither, and returns
-    /// its id. `kind` is one of `call`, `meeting`, `task`, `email`,
-    /// `deadline`. Emits `ActivityChanged`.
+    /// Schedules a call, meeting, task, email or deadline, on a deal, a person,
+    /// both or neither. Returns its id. `kind` is one of `call`, `meeting`,
+    /// `task`, `email`, `deadline`. Emits `ActivityChanged`.
     #[allow(clippy::too_many_arguments)]
     pub fn add_activity(
         &mut self,
@@ -983,7 +990,8 @@ impl Crm {
         Ok(id)
     }
 
-    /// Marks an activity done (or undoes that). Emits `ActivityChanged`.
+    /// Marks an activity as done, or as not done again. Emits
+    /// `ActivityChanged`.
     pub fn set_activity_done(&mut self, activity_id: String, done: bool) -> app::Result<()> {
         let now = env::time_now();
         if !self.activities.update(&activity_id, |a| {
@@ -1019,8 +1027,8 @@ impl Crm {
         Ok(())
     }
 
-    /// Activities, optionally for one deal and/or by done-ness, by due date:
-    /// at most the first 1,000.
+    /// Lists scheduled activities by due date. Can be narrowed to one deal
+    /// and/or by whether they are done. At most the first 1,000.
     #[app::view]
     pub fn list_activities(
         &self,
@@ -1056,8 +1064,9 @@ impl Crm {
 
     // ── notes ────────────────────────────────────────────────────────────────
 
-    /// Adds a note (not blank, at most 10,000 characters) to a deal as the
-    /// caller and returns its id. Emits `NoteChanged`.
+    /// Adds a note to a deal. The caller is recorded as its author, and its id
+    /// is returned. The note must not be blank and is at most 10,000
+    /// characters. Emits `NoteChanged`.
     pub fn add_note(&mut self, deal_id: String, body: String) -> app::Result<String> {
         let author = account()?;
         if body.trim().is_empty() {
@@ -1086,8 +1095,8 @@ impl Crm {
         Ok(id)
     }
 
-    /// Deletes a note. Only its author may: anyone else gets `Forbidden`.
-    /// Emits `NoteChanged`.
+    /// Deletes a note from a deal. Only its author may: anyone else gets
+    /// `Forbidden`. Emits `NoteChanged`.
     pub fn delete_note(&mut self, note_id: String) -> app::Result<()> {
         let Some(note) = self.notes.get(&note_id)? else {
             return Err(not_found("note", &note_id));
@@ -1108,7 +1117,8 @@ impl Crm {
 
     // ── automations ──────────────────────────────────────────────────────────
 
-    /// Every automation rule, oldest first (at most 12 stages × 10 rules).
+    /// Lists the follow-up rules that run when a deal enters a stage. Oldest
+    /// first (at most 12 stages × 10 rules).
     #[app::view]
     pub fn list_automations(&self) -> app::Result<Vec<AutomationView>> {
         let mut out: Vec<AutomationView> = scan_all(&self.automations)?
@@ -1119,9 +1129,10 @@ impl Crm {
         Ok(out)
     }
 
-    /// "When a deal enters `stageId`, schedule a `kind` activity called
-    /// `subject`, due in `dueInDays` days (at most 365)." At most 10 per
-    /// stage. Returns the rule's id. Emits `AutomationsChanged`.
+    /// Adds a rule that schedules a follow-up activity whenever a deal enters a
+    /// stage. In full: "When a deal enters `stageId`, schedule a `kind`
+    /// activity called `subject`, due in `dueInDays` days (at most 365)." At
+    /// most 10 per stage. Returns the rule's id. Emits `AutomationsChanged`.
     pub fn add_automation(
         &mut self,
         stage_id: String,
@@ -1161,7 +1172,7 @@ impl Crm {
         Ok(id)
     }
 
-    /// Turns a rule on or off. Emits `AutomationsChanged`.
+    /// Turns a follow-up rule on or off. Emits `AutomationsChanged`.
     pub fn set_automation_enabled(
         &mut self,
         automation_id: String,
@@ -1177,7 +1188,7 @@ impl Crm {
         Ok(())
     }
 
-    /// Deletes a rule. Any member may. Emits `AutomationsChanged`.
+    /// Deletes a follow-up rule. Any member may. Emits `AutomationsChanged`.
     pub fn delete_automation(&mut self, automation_id: String) -> app::Result<()> {
         if !self.automations.remove(&automation_id)? {
             return Err(not_found("automation", &automation_id));
