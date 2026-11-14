@@ -7,7 +7,9 @@ import {
   actionGroups,
   codeLine,
   dataStatements,
+  docParagraphs,
   exceptions,
+  firstSentence,
   humanize,
   reachable,
   rawFacts,
@@ -84,6 +86,37 @@ describe("humanize", () => {
     ["x", "X"],
     ["", ""],
   ])("%s -> %s", (name, shown) => expect(humanize(name)).toBe(shown));
+});
+
+const ISSUE_DOC =
+  "Moves an issue to another column of the board. `status` is exactly\n`Open`, `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound`\nfor an unknown issue. Emits `IssueStatusChanged`.";
+
+describe("docParagraphs", () => {
+  it("joins the lines of a paragraph and keeps blank-line breaks", () => {
+    expect(docParagraphs("Moves it\nacross.\n\nSecond\n  paragraph.\n \n\nThird.")).toEqual(["Moves it across.", "Second paragraph.", "Third."]);
+  });
+
+  it("is empty for blank text", () => {
+    expect(docParagraphs(" \n\n ")).toEqual([]);
+  });
+});
+
+describe("firstSentence", () => {
+  it("is the first sentence of the real doc, hard line breaks and all", () => {
+    expect(firstSentence(ISSUE_DOC)).toBe("Moves an issue to another column of the board.");
+  });
+
+  it.each([
+    ["Sends a receipt (e.g. by mail) when paid. Emits `Paid`.", "Sends a receipt (e.g. by mail) when paid."],
+    ["Needs v1.2.3 or later, i.e. the new API. Else `Forbidden`.", "Needs v1.2.3 or later, i.e. the new API."],
+    ["Closes the deal! Emits `DealClosed`.", "Closes the deal!"],
+    ["Is it open? `NotFound` for none.", "Is it open?"],
+    ["Lists deals, notes etc. Newest first.", "Lists deals, notes etc. Newest first."],
+    ["Pays 3.5 percent. More.", "Pays 3.5 percent."],
+    ["No full stop here", "No full stop here"],
+    ["Only the first paragraph\n\nSecond one. Third.", "Only the first paragraph"],
+    ["One. Two.", "One."],
+  ])("%j -> %j", (doc, first) => expect(firstSentence(doc)).toBe(first));
 });
 
 describe("summarize", () => {
@@ -251,6 +284,16 @@ describe("actionGroups", () => {
     expect(pub?.value).toBe("10/s");
     const timer = group(groups, "timers")?.items[0]?.facts.find((f) => f.label === "Runs");
     expect(timer?.value).toBe("Every 1 hour");
+  });
+
+  it("keeps the whole description on one line per paragraph and its first sentence apart", () => {
+    const c = caps({ abi: abi({ moveIssue: method({ doc: ISSUE_DOC }) }) });
+    const item = group(actionGroups(c), "changes")?.items[0];
+    expect(item?.doc).toBe(
+      "Moves an issue to another column of the board. `status` is exactly `Open`, `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound` for an unknown issue. Emits `IssueStatusChanged`.",
+    );
+    expect(item?.summary).toBe("Moves an issue to another column of the board.");
+    expect(group(actionGroups(caps({ abi: abi({ plain: method() }) })), "changes")?.items[0]?.summary).toBeUndefined();
   });
 
   it("keeps the publisher's description apart from the facts", () => {

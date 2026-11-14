@@ -63,8 +63,26 @@ function Facts({ facts }: { facts: Array<{ label: string; value: string; mono?: 
   );
 }
 
+/** A doc as plain text: `code` spans become <code>, everything else stays text. */
+function DocText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("`").map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part))}
+    </>
+  );
+}
+
 function ActionRow({ item, mono }: { item: ActionView; mono: boolean }) {
-  const title = <span className={mono ? "cp-review__act-title cp-review__mono" : "cp-review__act-title"}>{item.title}</span>;
+  const title = (
+    <span className="cp-review__act-main">
+      <span className={mono ? "cp-review__act-title cp-review__mono" : "cp-review__act-title"}>{item.title}</span>
+      {item.summary && (
+        <span className="cp-review__act-doc" data-publisher="">
+          <DocText text={item.summary} />
+        </span>
+      )}
+    </span>
+  );
   const tags = (
     <span className="cp-review__tags">
       {item.tags.map((tag) => (
@@ -95,7 +113,11 @@ function ActionRow({ item, mono }: { item: ActionView; mono: boolean }) {
         {item.doc && (
           <div className="cp-review__said" data-publisher="">
             <span>Publisher&apos;s description</span>
-            <p>{item.doc}</p>
+            {item.doc.split("\n\n").map((paragraph) => (
+              <p key={paragraph}>
+                <DocText text={paragraph} />
+              </p>
+            ))}
           </div>
         )}
       </div>

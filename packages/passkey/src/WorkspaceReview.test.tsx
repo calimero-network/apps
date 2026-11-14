@@ -239,9 +239,29 @@ describe("what it can do", () => {
     expect(within(row).getByText("deleteWorkspace")).toBeTruthy();
     expect(within(row).getByText("Passkey prompt every time")).toBeTruthy();
     expect(within(row).getByText("workspaceId: string")).toBeTruthy();
-    const words = within(row).getByText("Removes the workspace for good.");
+    expect(row.querySelector("summary [data-publisher]")?.textContent).toBe("Removes the workspace for good.");
+    const words = within(row.querySelector(".cp-review__facts") as HTMLElement).getByText("Removes the workspace for good.");
     expect(words.closest("[data-publisher]")?.textContent).toContain("Publisher's description");
     expect(row.querySelector("dl")?.textContent).not.toContain("Removes the workspace");
+  });
+
+  it("shows only the first sentence of a description on the row, and the whole text as plain text when expanded", async () => {
+    const doc = "Moves an issue to another column. `status` is exactly\n`Open` or `Done` (else `Invalid`).\n\nEmits <b>IssueMoved</b>.";
+    const c = card();
+    c.abi!.methods.moveIssue = method({ doc });
+    connect(sealed, async () => c);
+    review();
+    await ready();
+    const row = within(section("What it can do")).getAllByText("Move issue")[0]!.closest("details") as HTMLDetailsElement;
+    const said = row.querySelector("summary [data-publisher]");
+    expect(said?.textContent).toBe("Moves an issue to another column.");
+    const full = row.querySelector(".cp-review__facts [data-publisher]") as HTMLElement;
+    expect(full.textContent).toContain("Publisher's description");
+    expect(full.textContent).toContain("`status` is exactly `Open` or `Done` (else `Invalid`).".replace(/`/g, ""));
+    expect(full.querySelectorAll("p")).toHaveLength(2);
+    expect(full.querySelector("code")?.textContent).toBe("status");
+    expect(full.querySelector("b")).toBeNull();
+    expect(full.textContent).toContain("<b>IssueMoved</b>");
   });
 
   it("shows the raw signed facts and downloads the full ABI as JSON", async () => {

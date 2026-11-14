@@ -13,6 +13,7 @@ const INVITED_ONLY = "Only people invited to it can open it";
 const NOT_READABLE = "Calimero can't read it.";
 const TEST_SERVER_ENFORCES = ", as this test server enforces it";
 const CONTROL = { creator: "Only you control it", member: "Only the workspace's owners control it" };
+const ABBREVIATIONS = new Set(["e.g", "i.e", "etc", "vs", "cf"]); // a full stop after these does not end a sentence
 const CALLED_KINDS = new Set(["call", "view", "action"]); // what a caller can start directly
 
 /** What the review reads from a capability card. */
@@ -36,6 +37,8 @@ export interface ActionView {
   title: string;
   /** The publisher's own words: not a fact the node enforces. */
   doc?: string;
+  /** The first sentence of `doc`, for the row. */
+  summary?: string;
   tags: string[];
   facts: ActionFact[];
 }
@@ -65,6 +68,24 @@ function everyWords(every: string): string {
   const match = /^(\d+)([smh])$/.exec(every);
   const unit = match?.[2] ? EVERY_UNITS[match[2]] : undefined;
   return match && unit ? `${match[1]} ${unit}${match[1] === "1" ? "" : "s"}` : every;
+}
+
+/** The paragraphs of a doc: blank lines separate them, a single line break (rustfmt wraps `///` blocks) is a space. */
+export function docParagraphs(doc: string): string[] {
+  return doc
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
+}
+
+/** The first sentence of a doc's first paragraph: it ends at . ! or ? followed by a space and a capital, a backtick or a quote; not after e.g., i.e. or etc., and not inside a number or version. */
+export function firstSentence(doc: string): string {
+  const first = docParagraphs(doc)[0] ?? "";
+  for (const end of first.matchAll(/[.!?](?=\s+[A-Z`"'(])/g)) {
+    const word = /[\w.]*$/.exec(first.slice(0, end.index))?.[0] ?? "";
+    if (!ABBREVIATIONS.has(word.toLowerCase())) return first.slice(0, end.index + 1);
+  }
+  return first;
 }
 
 /** The first few, then how many more. */
@@ -192,7 +213,9 @@ function methodFacts(name: string, m: AppAbiMethod): ActionFact[] {
 }
 
 function methodView(name: string, m: AppAbiMethod): ActionView {
-  return { name, title: humanize(name), ...(m.doc ? { doc: m.doc } : {}), tags: methodTags(m), facts: methodFacts(name, m) };
+  const paragraphs = docParagraphs(m.doc ?? "");
+  const doc = paragraphs.length ? { doc: paragraphs.join("\n\n"), summary: firstSentence(m.doc ?? "") } : {};
+  return { name, title: humanize(name), ...doc, tags: methodTags(m), facts: methodFacts(name, m) };
 }
 
 const MEMBERS: Array<Omit<ActionGroup, "items"> & { has: (m: AppAbiMethod) => boolean }> = [
