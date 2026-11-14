@@ -125,10 +125,11 @@ describe("summarize", () => {
     expect(line(open, "apps")?.detail).toBe("Any app");
   });
 
-  it("counts an app allowed on any reachable method, an action included, and never claims none when one is public", () => {
-    const act = caps({ abi: abi({ approve: method({ kind: "action", allowApps: ["billing"] }) }) });
+  it("counts an app allowed on a call or a view, never on an action the node does not let an app start, and never claims none when one is public", () => {
+    const act = caps({ abi: abi({ approve: method({ kind: "action", allowApps: ["billing"] }), onPayment: method({ kind: "view", allowApps: ["billing"] }) }) });
     expect(line(act, "apps")?.title).toBe("Lets other apps call 1 action");
-    expect(line(act, "apps")?.detail).toBe("billing");
+    const onlyAction = caps({ abi: abi({ approve: method({ kind: "action", allowApps: ["billing"] }) }) });
+    expect(line(onlyAction, "apps")?.title).toBe("No other app can use your data");
     const publicAction = caps({ abi: abi({ approve: method({ kind: "action", public: true }) }) });
     expect(line(publicAction, "apps")).toBeUndefined();
   });

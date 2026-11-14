@@ -143,7 +143,7 @@ export async function connect(deps: ConnectDeps = defaultDeps): Promise<Connecti
   const target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
   const client = await deps.makeClient(target);
   // The page keeps the shield for its life, signed in or out, so nothing unbinds it.
-  bindNodeShield(client, describeTarget(target));
+  bindNodeShield(client, describeTarget(target), target.kind === "local");
   const sessions = new SessionStore(APP, target, deps.storage);
   sessions.restore(client);
   return new Connection(client, target, sessions, deps.passkey, deps.storage);

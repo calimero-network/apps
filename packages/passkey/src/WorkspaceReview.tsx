@@ -36,7 +36,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, copy] = useCopy();
   return (
     <button type="button" className="cp-review__copy" aria-label={label} onClick={() => copy(text)}>
-      {copied === "done" ? "Copied" : "Copy"}
+      {copied === "done" ? "Copied" : copied === "failed" ? "Could not copy" : "Copy"}
     </button>
   );
 }
@@ -234,7 +234,7 @@ function ReviewBody({ review, release, appId }: { review: Review; release: Revie
   const summary = card ? summarize(card, sealed) : [];
   const risks = card ? exceptions(card, sealed) : [];
   const statements = dataStatements(view.kind, appId ? "member" : "creator");
-  const nodes = client ? `${client.nodes.length} ${client.nodes.length === 1 ? "node" : "nodes"}` : "";
+  const nodes = client && !session?.local ? `${client.nodes.length} ${client.nodes.length === 1 ? "node" : "nodes"}` : "";
   const unknown = !card
     ? "What leaves the sealed hardware is not known until the app's details load."
     : !card.abi
@@ -247,7 +247,7 @@ function ReviewBody({ review, release, appId }: { review: Review; release: Revie
         <div className="cp-review__alert" role="alert">
           <p>
             {loaded.message}
-            {appId ? "" : " You can still create the workspace."}
+            {appId || !client ? "" : " You can still create the workspace."}
           </p>
           <button type="button" className="cp-review__btn" onClick={retry}>
             Try again
@@ -322,7 +322,7 @@ function ReviewBody({ review, release, appId }: { review: Review; release: Revie
             <dt>Cluster</dt>
             <dd>{session?.cluster}</dd>
           </div>
-          {nodes && !session?.cluster.includes(nodes) && (
+          {nodes && (
             <div>
               <dt>Nodes</dt>
               <dd>{nodes}</dd>
@@ -459,7 +459,10 @@ export interface WorkspaceTrustProps {
   appId: string;
 }
 
-/** The review again for a workspace that exists, for its settings: members who join later see the same facts, with the node's own check of the instance's code. */
+/**
+ * The review again for a workspace that exists, for its settings: members who join later see the same facts, with the node's own check of the instance's code.
+ * Pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release.
+ */
 export function WorkspaceTrust({ release, appId }: WorkspaceTrustProps) {
   const review = useReview(release, appId);
   return (

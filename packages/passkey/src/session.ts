@@ -341,9 +341,10 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   // The node shield for every app: the floating chip unless the app placed one.
   const shieldClient = session.status === "signed-in" || session.status === "signed-out" ? session.client : null;
   const shieldCluster = boundTarget ? describeTarget(boundTarget) : null;
+  const shieldLocal = boundTarget?.kind === "local";
   useEffect(() => {
-    if (shieldClient && shieldCluster) return bindNodeShield(shieldClient, shieldCluster);
-  }, [shieldClient, shieldCluster]);
+    if (shieldClient && shieldCluster) return bindNodeShield(shieldClient, shieldCluster, shieldLocal);
+  }, [shieldClient, shieldCluster, shieldLocal]);
 
   const access = signUpAccess(policy, inviteToken !== null);
 

@@ -98,7 +98,7 @@ export type CardState =
 export function cardError(e: unknown): string {
   const status = typeof e === "object" && e !== null && "status" in e ? (e as { status: unknown }).status : undefined;
   if (status === 404) return "This node cannot show app reviews yet.";
-  if (status === 401 || status === 403) return "You no longer have access to this app's details.";
+  if (status === 401 || status === 403) return "You don't have access to this app's details.";
   return "The review of this app could not load.";
 }
 

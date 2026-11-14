@@ -92,7 +92,7 @@ export function reachable(m: AppAbiMethod): boolean {
 const plainCall = (m: AppAbiMethod) => reachable(m) && (m.kind === "call" || m.kind === "view");
 const publicView = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "view";
 const publicCall = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "call";
-const sharedWithApps = (m: AppAbiMethod) => reachable(m) && hasApps(m); // any kind: the safe side of the claim about other apps
+const sharedWithApps = (m: AppAbiMethod) => plainCall(m) && hasApps(m); // the node never lets another app start an action
 const openToAnyone = (m: AppAbiMethod) => reachable(m) && m.public;
 
 /** Not listed for people: setup, the node's compute callback and calls for the app's own actions, unless one asks for a passkey. */

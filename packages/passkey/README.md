@@ -56,7 +56,7 @@ account, nothing to install, no permissions to grant.
   `AppSource` the page runs; with it the popover checks the node runs that exact
   code (`checkAppCode`), and without it leaves the app code out.
   `openNodeShield()` opens the popover from an account menu's "Connected to" row.
-  An app that connects without the hook calls `bindNodeShield(client, describeTarget(target))`
+  An app that connects without the hook calls `bindNodeShield(client, describeTarget(target), target.kind === "local")`
   (`@calimero-apps/passkey/nodeShield`, no React in the app) where it connects.
   Every app has a `nodeShield.gate.test.tsx`: one `nodeShieldGate(app, mount)` call
   (`@calimero-apps/passkey/testing`) that mounts its real root (its session layer where the
@@ -72,9 +72,9 @@ account, nothing to install, no permissions to grant.
   The amber lines under it (one per public view, public call and outside host) come from the card; only a method the node's call check can let a caller through counts, so a method for the app's own actions or a compute result is never listed as open.
   "Create workspace" is disabled, with the reason, while the node has refused its check.
   The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
-  A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created.
+  A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created while a node is connected.
   The registry's review state and the SDK version are not in the card, so the review does not show them.
-- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab), and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
+- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab); pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release, and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button

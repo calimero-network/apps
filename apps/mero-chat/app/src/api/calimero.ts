@@ -131,7 +131,7 @@ function showShield(): void {
     hideShield.hide();
     hideShield = null;
   }
-  if (client && target && !hideShield) hideShield = { client, hide: bindNodeShield(client, describeTarget(target)) };
+  if (client && target && !hideShield) hideShield = { client, hide: bindNodeShield(client, describeTarget(target), target.kind === "local") };
 }
 
 /** Takes the "new version" prompt away; set while a session is signed in. */

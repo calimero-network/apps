@@ -75,9 +75,10 @@ function connect(
   attested?: { appHash: string; mock?: boolean },
   verify?: () => Promise<NodeVerificationState>,
   cluster = "Calimero Cloud eu-shared-2",
+  local = false,
 ) {
   const fake = fakeClient(state, loaded, attested, verify);
-  unbind.push(bindShieldSession({ client: fake.client, cluster }));
+  unbind.push(bindShieldSession({ client: fake.client, cluster, local }));
   return fake;
 }
 
@@ -133,6 +134,15 @@ describe("WorkspaceReview", () => {
     await ready();
     fireEvent.click(within(section("The app")).getByRole("button", { name: "Copy publisher" }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(card().signer));
+  });
+
+  it("says when the signer could not be copied", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => Promise.reject(new Error("denied"))) } });
+    connect(sealed);
+    review();
+    await ready();
+    fireEvent.click(within(section("The app")).getByRole("button", { name: "Copy publisher" }));
+    expect(await within(section("The app")).findByText("Could not copy")).toBeTruthy();
   });
 
   it("goes back or creates, and cannot create twice", async () => {
@@ -279,8 +289,15 @@ describe("where it runs", () => {
     expect(within(where).getByRole("link", { name: /Verify/ }).getAttribute("href")).toBe(verifyNodeUrl(NODE, "2.3.148"));
   });
 
-  it("shows the target once when it already says how many nodes there are", async () => {
-    connect(mock, async () => card(), undefined, undefined, "merod local (3 nodes)");
+  it("keeps the nodes line for a cluster whose name happens to mention nodes", async () => {
+    connect(sealed, async () => card(), undefined, undefined, "Cluster of 3 nodes");
+    review();
+    await ready();
+    expect(within(section("Where it runs")).getByText("Nodes")).toBeTruthy();
+  });
+
+  it("shows a local target once, as its label already says how many nodes there are", async () => {
+    connect(mock, async () => card(), undefined, undefined, "merod local (3 nodes)", true);
     review();
     await ready();
     const where = section("Where it runs");
@@ -371,9 +388,16 @@ describe("a card that cannot load", () => {
     expect(packageCapabilities).toHaveBeenCalledTimes(2);
   });
 
+  it("does not offer to create when there is no node to create on", async () => {
+    review();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Not connected to a node.");
+    expect(alert.textContent).not.toContain("You can still create");
+  });
+
   it.each([
-    [401, "You no longer have access to this app's details."],
-    [403, "You no longer have access to this app's details."],
+    [401, "You don't have access to this app's details."],
+    [403, "You don't have access to this app's details."],
     [500, "The review of this app could not load."],
     [undefined, "The review of this app could not load."],
   ])("says a %s plainly, never the raw error", async (status, said) => {

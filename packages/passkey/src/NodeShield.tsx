@@ -204,8 +204,8 @@ function unmountFloating() {
 }
 
 /** Show the shield for `client` in `cluster` until unbound: a floating chip unless an app placed a `<NodeShield />`. */
-export function bindNodeShield(client: CalimeroClient, cluster: string): () => void {
-  const unbind = bindShieldSession({ client, cluster });
+export function bindNodeShield(client: CalimeroClient, cluster: string, local = false): () => void {
+  const unbind = bindShieldSession({ client, cluster, local });
   mountFloating();
   return () => {
     unbind();

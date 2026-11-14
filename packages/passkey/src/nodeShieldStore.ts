@@ -9,10 +9,11 @@ export interface ShieldApp {
   source: AppSource;
 }
 
-/** The client the shield checks, and the cluster the app was configured to use (`describeTarget`). */
+/** The client the shield checks, the cluster the app was configured to use (`describeTarget`), and whether that target is the local development cluster. */
 export interface ShieldSession {
   client: CalimeroClient;
   cluster: string;
+  local?: boolean;
 }
 
 export interface ShieldSnapshot {
