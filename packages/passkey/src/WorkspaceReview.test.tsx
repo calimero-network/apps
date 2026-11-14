@@ -319,8 +319,9 @@ describe("your data", () => {
     review();
     await ready();
     const data = section("Your data");
-    expect(within(data).getByText("Only you control it.")).toBeTruthy();
-    expect(within(data).getByText("Only people invited to it can open it.")).toBeTruthy();
+    expect(within(data).getByText("Only you control it, as this test server enforces it")).toBeTruthy();
+    expect(within(data).getByText("Only people invited to it can open it, as this test server enforces it")).toBeTruthy();
+    expect(data.querySelector(".cp-shield__tick")).toBeNull();
     expect(within(data).queryByText("Calimero can't read it.")).toBeNull();
     expect(within(data).queryByText("How we know")).toBeNull();
     expect(within(data).getByText("Test server: not sealed").closest("[data-kind]")?.getAttribute("data-kind")).toBe("unsealed");

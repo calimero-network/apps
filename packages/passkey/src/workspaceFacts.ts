@@ -9,9 +9,10 @@ const SIGNER_SHORT_AFTER = 16;
 const SIGNER_HEAD = 12;
 const SIGNER_TAIL = 4;
 const EVERY_UNITS: Record<string, string> = { s: "second", m: "minute", h: "hour" };
-const INVITED_ONLY = "Only people invited to it can open it.";
+const INVITED_ONLY = "Only people invited to it can open it";
 const NOT_READABLE = "Calimero can't read it.";
-const CONTROL = { creator: "Only you control it.", member: "Only the workspace's owners control it." };
+const TEST_SERVER_ENFORCES = ", as this test server enforces it";
+const CONTROL = { creator: "Only you control it", member: "Only the workspace's owners control it" };
 const CALLED_KINDS = new Set(["call", "view", "action"]); // what a caller can start directly
 
 /** What the review reads from a capability card. */
@@ -91,7 +92,8 @@ export function reachable(m: AppAbiMethod): boolean {
 const plainCall = (m: AppAbiMethod) => reachable(m) && (m.kind === "call" || m.kind === "view");
 const publicView = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "view";
 const publicCall = (m: AppAbiMethod) => plainCall(m) && m.public && m.kind === "call";
-const sharedWithApps = (m: AppAbiMethod) => plainCall(m) && hasApps(m);
+const sharedWithApps = (m: AppAbiMethod) => reachable(m) && hasApps(m); // any kind: the safe side of the claim about other apps
+const openToAnyone = (m: AppAbiMethod) => reachable(m) && m.public;
 
 /** Not listed for people: setup, the node's compute callback and calls for the app's own actions, unless one asks for a passkey. */
 function internal(m: AppAbiMethod): boolean {
@@ -131,7 +133,7 @@ export function summarize(card: ReviewCard, signed = true): SummaryLine[] {
     if (shared.length > 0) {
       const apps = [...new Set(shared.flatMap((m) => m.allowApps ?? []))];
       lines.push({ id: "apps", title: `Lets other apps call ${plural(shared.length, "action")}`, detail: apps.includes("*") ? "Any app" : list(apps), tone: "warn" });
-    } else if (!methods.some((m) => publicView(m) || publicCall(m))) {
+    } else if (!methods.some(openToAnyone)) {
       lines.push(
         signed
           ? { id: "apps", title: "No other app can use your data", detail: "No action is open to other apps", tone: "ok" }
@@ -301,8 +303,9 @@ export function codeLine(card: Pick<PackageCapabilities, "bundle" | "package" | 
   }
 }
 
-/** The claims about the data: control and who can open it hold for a node that passed its check, "Calimero can't read it" only for a sealed one. `member` is a workspace that exists, seen by someone who may have joined later. */
+/** The claims about the data: control and who can open it hold for a node that passed its check (as that server's own on a test server), "Calimero can't read it" only for a sealed one. `member` is a workspace that exists, seen by someone who may have joined later. */
 export function dataStatements(kind: ShieldKind, viewer: "creator" | "member"): string[] {
-  if (kind !== "verified" && kind !== "unsealed") return [];
-  return [CONTROL[viewer], INVITED_ONLY, ...(kind === "verified" ? [NOT_READABLE] : [])];
+  if (kind === "verified") return [`${CONTROL[viewer]}.`, `${INVITED_ONLY}.`, NOT_READABLE];
+  if (kind === "unsealed") return [`${CONTROL[viewer]}${TEST_SERVER_ENFORCES}`, `${INVITED_ONLY}${TEST_SERVER_ENFORCES}`];
+  return [];
 }

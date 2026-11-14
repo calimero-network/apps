@@ -125,6 +125,14 @@ describe("summarize", () => {
     expect(line(open, "apps")?.detail).toBe("Any app");
   });
 
+  it("counts an app allowed on any reachable method, an action included, and never claims none when one is public", () => {
+    const act = caps({ abi: abi({ approve: method({ kind: "action", allowApps: ["billing"] }) }) });
+    expect(line(act, "apps")?.title).toBe("Lets other apps call 1 action");
+    expect(line(act, "apps")?.detail).toBe("billing");
+    const publicAction = caps({ abi: abi({ approve: method({ kind: "action", public: true }) }) });
+    expect(line(publicAction, "apps")).toBeUndefined();
+  });
+
   it("ignores an app allowed on a method no outside caller can reach", () => {
     const hidden = caps({ abi: abi({ step: method({ allowAction: true, allowApps: ["*"] }), result: method({ computeResult: true, allowApps: ["*"] }) }) });
     expect(line(hidden, "apps")?.title).toBe("No other app can use your data");
@@ -405,13 +413,16 @@ describe("codeLine", () => {
 describe("dataStatements", () => {
   it("makes the org claims for a node that passed its check, and the third only for a sealed one", () => {
     expect(dataStatements("verified", "creator")).toEqual(["Only you control it.", "Only people invited to it can open it.", "Calimero can't read it."]);
-    expect(dataStatements("unsealed", "creator")).toEqual(["Only you control it.", "Only people invited to it can open it."]);
     for (const kind of ["checking", "refused"] as const) expect(dataStatements(kind, "creator")).toEqual([]);
+  });
+
+  it("words the org claims as the test server's own for an unsealed node, so nothing there reads as verified", () => {
+    expect(dataStatements("unsealed", "creator")).toEqual(["Only you control it, as this test server enforces it", "Only people invited to it can open it, as this test server enforces it"]);
+    expect(dataStatements("unsealed", "member")[0]).toBe("Only the workspace's owners control it, as this test server enforces it");
   });
 
   it("says the owners control a workspace that exists, as the viewer may be a later member", () => {
     expect(dataStatements("verified", "member")).toEqual(["Only the workspace's owners control it.", "Only people invited to it can open it.", "Calimero can't read it."]);
-    expect(dataStatements("unsealed", "member")).toEqual(["Only the workspace's owners control it.", "Only people invited to it can open it."]);
   });
 });
 

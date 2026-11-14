@@ -366,7 +366,7 @@ function ReviewBody({ review, release, appId }: { review: Review; release: Revie
               <ul className="cp-review__claims">
                 {statements.map((text) => (
                   <li key={text}>
-                    <Tick />
+                    {sealed && <Tick />}
                     <b>{text}</b>
                   </li>
                 ))}
