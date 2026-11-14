@@ -306,6 +306,10 @@ describe("App", () => {
       expect(client.call).toHaveBeenCalledWith("forum-1", "createPost", { title: "Hello", body: "World" }),
     );
 
+    // The feed is read again once the post is created, replacing every card:
+    // wait for that read, or the click lands on a card about to be unmounted.
+    await waitFor(() => expect(client.view.mock.calls.filter(([, method]) => method === "listPosts")).toHaveLength(2));
+
     // Bob's post carries my upvote already; pressing it again retracts it.
     fireEvent.click((await screen.findAllByRole("button", { name: "Upvote" }))[0]!);
     await waitFor(() =>
