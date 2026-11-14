@@ -24,6 +24,7 @@ import {
   signUpHere,
   type JoinedAtSignUp,
 } from "@calimero-apps/passkey/ceremony";
+import { bindNodeShield } from "@calimero-apps/passkey/nodeShield";
 import { PACKAGE } from "./merraria";
 
 /** The app's name in stored keys. */
@@ -141,6 +142,7 @@ export class Connection {
 export async function connect(deps: ConnectDeps = defaultDeps): Promise<Connection> {
   const target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
   const client = await deps.makeClient(target);
+  bindNodeShield(client, describeTarget(target));
   const sessions = new SessionStore(APP, target, deps.storage);
   sessions.restore(client);
   return new Connection(client, target, sessions, deps.passkey, deps.storage);
