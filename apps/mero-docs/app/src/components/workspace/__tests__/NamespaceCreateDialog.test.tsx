@@ -48,7 +48,7 @@ const sealed: Verification = {
 
 let source: string | { package: string; version?: string };
 let verification: Verification;
-let latest: () => Promise<{ latest: string }>;
+let resolvingSource = false;
 const packageCapabilities = vi.fn(() => new Promise<never>(() => {}));
 
 vi.mock('@/calimero/session', async (importOriginal) => ({
@@ -56,6 +56,7 @@ vi.mock('@/calimero/session', async (importOriginal) => ({
   useSession: () => ({
     session: { status: 'signed-in', client },
     source,
+    resolvingSource,
   }),
 }));
 
@@ -65,7 +66,6 @@ const client = {
   verification: () => verification,
   verify: async () => verification,
   packageCapabilities,
-  packages: { get: () => latest() },
 } as unknown as CalimeroClient;
 
 let unbind: () => void;
@@ -76,7 +76,7 @@ beforeEach(() => {
   localStorage.clear();
   source = { package: PACKAGE, version: '1.2.0' };
   verification = sealed;
-  latest = async () => ({ latest: '1.3.0' });
+  resolvingSource = false;
   unbind = bindNodeShield(client, 'Calimero Cloud test');
 });
 
@@ -172,12 +172,11 @@ describe('NamespaceCreateDialog review step', () => {
     );
   });
 
-  it('reviews the newest release when the source names no version', async () => {
-    source = { package: PACKAGE };
+  it('lets the review sit flush with the scrolling dialog padding', async () => {
     render(<NamespaceCreateDialog onClose={vi.fn()} />);
     await toReview(user());
-    await waitFor(() =>
-      expect(packageCapabilities).toHaveBeenCalledWith(PACKAGE, '1.3.0'),
+    expect(screen.getByRole('dialog').className).toContain(
+      '[--passkey-review-inset:theme(spacing.5)]',
     );
   });
 
@@ -222,19 +221,23 @@ describe('NamespaceCreateDialog review step', () => {
     await waitFor(() => expect(create.hasAttribute('disabled')).toBe(true));
   });
 
-  it('waits at the names, saying why, when the release cannot be read', async () => {
+  it('holds Continue while the newest release is being read', async () => {
     source = { package: PACKAGE };
-    latest = async () => {
-      throw new Error('offline');
-    };
+    resolvingSource = true;
     render(<NamespaceCreateDialog onClose={vi.fn()} />);
     await fillNames(user());
     expect(
-      await screen.findByText(/could not look up the app release/i),
-    ).toBeTruthy();
-    expect(
       screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled'),
     ).toBe(true);
+  });
+
+  it('creates straight from the names when no release could be read', async () => {
+    source = { package: PACKAGE };
+    render(<NamespaceCreateDialog onClose={vi.fn()} />);
+    const u = user();
+    await fillNames(u);
+    await u.click(screen.getByRole('button', { name: 'Create' }));
+    expect(created).toHaveBeenCalledWith('Acme', 'Ada');
   });
 
   it('creates straight from the names for a development bundle, which has no release', async () => {

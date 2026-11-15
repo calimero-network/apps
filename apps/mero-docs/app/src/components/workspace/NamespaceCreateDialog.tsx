@@ -46,7 +46,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     !!trimmedSelf &&
     trimmedSelf.length <= MAX_DISPLAY_NAME_LEN &&
     !submitting;
-  const reviewable = target.status !== 'bundle';
+  const reviewable = target.status !== 'none';
   const canContinue = canSubmit && target.status === 'ready';
 
   const onCreate = async () => {
@@ -108,7 +108,9 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
       <DialogContent
         aria-describedby={undefined}
         className={
-          review ? 'max-h-[90dvh] max-w-2xl overflow-y-auto' : 'max-w-sm'
+          review
+            ? 'max-h-[90dvh] max-w-2xl overflow-y-auto [--passkey-review-inset:theme(spacing.5)]'
+            : 'max-w-sm'
         }
       >
         <DialogHeader>
@@ -164,12 +166,6 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
               Members of this workspace see this name. You can change it later
               in settings.
             </p>
-            {target.status === 'failed' && (
-              <p className="mt-2 text-xs text-destructive">
-                Could not look up the app release, so this workspace cannot be
-                reviewed. Try again later.
-              </p>
-            )}
             {displayError && (
               <p className="mt-2 text-xs text-destructive break-words">
                 {displayError}
