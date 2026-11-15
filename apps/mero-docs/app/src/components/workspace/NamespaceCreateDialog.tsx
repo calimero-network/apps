@@ -19,7 +19,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useReleaseToCreate } from '@/hooks/useReleaseToCreate';
 import { MAX_DISPLAY_NAME_LEN } from '@/hooks/useMemberDisplayName';
 import { lastUsedName } from '@calimero-apps/names';
-import { WorkspaceReview } from '@calimero-apps/passkey';
+import { CHECKING_RELEASE, WorkspaceReview } from '@calimero-apps/passkey';
 
 interface Props {
   onClose: () => void;
@@ -173,6 +173,9 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
               <p className="mt-2 text-xs text-destructive break-words">
                 {displayError}
               </p>
+            )}
+            {target.status === 'loading' && (
+              <p className="mt-2 text-xs text-muted-foreground">{CHECKING_RELEASE}</p>
             )}
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={safeClose} disabled={submitting}>

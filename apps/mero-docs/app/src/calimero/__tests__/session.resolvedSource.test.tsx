@@ -89,4 +89,23 @@ describe('the release a session creates from', () => {
     expect(named.api().source).toEqual({ package: PACKAGE, version: '3.1.0' });
     expect(client.packages.get).not.toHaveBeenCalled();
   });
+
+  it('keeps the same source object across renders, so the admin is rebuilt only when the version resolves', async () => {
+    const read = deferred();
+    const client = {
+      packages: { get: vi.fn(() => read.promise) },
+    } as unknown as CalimeroClient;
+    passkey = signedIn(client, 'account-a');
+    const { api, rerender } = mount({ DEV: true });
+    const pending = api().source;
+    rerender();
+    rerender();
+    expect(api().source).toBe(pending);
+    read.resolve('1.0.0');
+    await waitFor(() => expect(api().resolvingSource).toBe(false));
+    const resolved = api().source;
+    expect(resolved).not.toBe(pending);
+    rerender();
+    expect(api().source).toBe(resolved);
+  });
 });

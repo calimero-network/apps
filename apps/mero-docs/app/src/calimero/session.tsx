@@ -3,18 +3,18 @@
 // CalimeroClient (@calimero-apps/connect). Replaces v1's MeroProvider: there
 // is no node URL to pick and no node login; the account is a passkey.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { browserPasskey, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
   appSource,
   createClient,
-  resolveSource,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
 } from '@calimero-apps/connect';
 import {
+  useResolvedSource,
   usePasskeySession,
   type ListingProps,
   type SessionApi as PasskeySessionApi,
@@ -86,24 +86,7 @@ function useSessionState(deps: SessionDeps): SessionApi {
   }, [store, client]);
   const base = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
   const accountId = session.status === 'signed-in' ? session.accountId : null;
-  const [resolved, setResolved] = useState<{ client: CalimeroClient; accountId: string; source: AppSource } | null>(
-    null,
-  );
-  const unpinned = !!client && typeof base !== 'string' && !base.version;
-  // Read once per account's session on a client: the client outlives a sign-out.
-  useEffect(() => {
-    if (!client || !accountId || !unpinned) return;
-    let live = true;
-    void resolveSource(client, base, window.location.href).then(
-      (source) => live && setResolved({ client, accountId, source }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, accountId, unpinned, base]);
-  const current = resolved?.client === client && resolved?.accountId === accountId ? resolved.source : undefined;
-  const resolving = unpinned && current === undefined;
-  const source = current ?? base;
+  const { source, pending: resolving } = useResolvedSource(client, accountId, base);
   return useMemo(
     () => ({ ...api, source, resolvingSource: resolving, sync }),
     [api, source, resolving, sync],

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CalimeroClient } from '@calimero-network/mero-js';
+import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import { bindNodeShield } from '@calimero-apps/passkey/nodeShield';
 import { NamespaceCreateDialog } from '../NamespaceCreateDialog';
 
@@ -228,6 +229,7 @@ describe('NamespaceCreateDialog review step', () => {
     resolvingSource = true;
     render(<NamespaceCreateDialog onClose={vi.fn()} />);
     await fillNames(user());
+    expect(screen.getByText(CHECKING_RELEASE)).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled'),
     ).toBe(true);
