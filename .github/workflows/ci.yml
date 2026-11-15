@@ -107,6 +107,7 @@ jobs:
             frontend_tooling:
               - 'scripts/check-vercel-output.sh'
               - 'scripts/check-service-workers.py'
+              - 'scripts/check-node-shield-gate.py'
               # The generator every app's `codegen` runs, at its pinned release.
               - 'scripts/install-meroctl.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
@@ -344,6 +345,9 @@ jobs:
       - name: Assert the org-app module check still catches what it claims to
         run: python3 scripts/tests/org-app-module-test.py
 
+      - name: Assert the node shield gate check still catches what it claims to
+        run: python3 scripts/tests/node-shield-gate-test.py
+
       # `battleships.vercel.app` served a create-react-app build for an unknown
       # length of time after the app moved to Vite in this repo. The repo was
       # fine and every existing check passed; the Vercel project simply never
@@ -531,8 +535,15 @@ jobs:
       # each carries the SPA rewrite its client-side router needs.
       - name: Assert vercel.json matches the real build output
         if: env.CHECK_APPS == 'true'
-        # shellcheck disable=SC2086 — word-splitting the list is the point
+        # shellcheck disable=SC2086 - word-splitting the list is the point
         run: scripts/check-vercel-output.sh $VERCEL_APPS
+
+      # Reads vitest's report for each app's node shield gate, so a skipped,
+      # deleted or excluded gate fails by name, and a new app cannot skip it.
+      - name: Assert every app's node shield gate ran and passed
+        if: env.CHECK_APPS == 'true'
+        # shellcheck disable=SC2086 - word-splitting the list is the point
+        run: python3 scripts/check-node-shield-gate.py $VERCEL_APPS
 
       # Every app's HTML is served `no-cache`, but a service worker answers
       # before that header is read. mero-chat's precached index.html, so the
@@ -541,7 +552,7 @@ jobs:
       # a build whose worker could serve a page older than the deploy.
       - name: Assert no service worker serves a stale page
         if: env.CHECK_APPS == 'true'
-        # shellcheck disable=SC2086 — word-splitting the list is the point
+        # shellcheck disable=SC2086 - word-splitting the list is the point
         run: python3 scripts/check-service-workers.py $VERCEL_APPS
 
   # The conformance rig: every admin and RPC call, on a node and on an account,

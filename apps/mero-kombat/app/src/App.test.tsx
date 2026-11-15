@@ -319,6 +319,17 @@ describe("App", () => {
     await waitFor(() => expect(invites.token()).toBeNull());
   });
 
+  it("places the node shield in the top bar, with no floating one beside it", async () => {
+    at("/play");
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(fakeClient())} storage={storage} />);
+    await screen.findByText("Enter the arena");
+    // findBy fails on none and on more than one, so this also proves there is a single shield.
+    const shield = await screen.findByTestId("node-shield");
+    expect(shield.closest("header.topbar")).not.toBeNull();
+  });
+
   it("sends a signed-in visitor from the landing page into the app, and signs out", async () => {
     at("/");
     const client = fakeClient();

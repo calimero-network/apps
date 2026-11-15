@@ -24,6 +24,7 @@ import {
   signUpHere,
   type JoinedAtSignUp,
 } from "@calimero-apps/passkey/ceremony";
+import { bindNodeShield } from "@calimero-apps/passkey/nodeShield";
 import type { SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
 import { PACKAGE } from "./blocks";
 
@@ -71,6 +72,8 @@ export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   }
   try {
     const client = await deps.makeClient(target);
+    // The page keeps the shield for its life, signed in or out, so nothing unbinds it.
+    bindNodeShield(client, describeTarget(target));
     const sessions = new SessionStore(APP, target, deps.storage);
     if (sessions.restore(client) && client.session) {
       return { status: "signed-in", client, target, sessions, accountId: client.session.accountId };

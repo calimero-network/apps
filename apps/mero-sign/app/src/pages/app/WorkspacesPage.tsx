@@ -6,7 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useHref, useLocation, useNavigate } from 'react-router-dom';
 import { appOnlyInviteNote, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { ConnectExistingOrg } from '@calimero-apps/passkey';
 import {
@@ -86,6 +86,7 @@ export default function WorkspacesPage({
   // which is what an accepted invitation that resolved to no single workspace
   // does. See the load effect.
   const { key: navigationKey } = useLocation();
+  const home = useHref('/').replace(/\/$/, '');
   const { app } = useCalimero();
 
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
@@ -139,6 +140,8 @@ export default function WorkspacesPage({
   useEffect(() => {
     if (!resume || resumeDecided.current || loading) return;
     resumeDecided.current = true;
+    // The invitation prompt may have navigated on already; the router state lags the address bar.
+    if (window.location.pathname.replace(/\/$/, '') !== home) return;
     const target = pickResumeWorkspace(
       rows.map((r) => r.namespaceId),
       getActiveWorkspace(),
@@ -146,7 +149,7 @@ export default function WorkspacesPage({
     navigate(target ? `/workspaces/${target}` : '/workspaces', {
       replace: true,
     });
-  }, [resume, loading, rows, navigate]);
+  }, [resume, loading, rows, navigate, home]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

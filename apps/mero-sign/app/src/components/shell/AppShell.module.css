@@ -265,32 +265,6 @@
   color: var(--sign-accent);
 }
 
-/* Which node this session is on: a diagnostic, so quiet. */
-.nodeChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 260px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: var(--sign-sunken);
-  font-family: var(--sign-mono);
-  font-size: 12px;
-  color: var(--sign-ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.nodeDot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--sign-good-ink);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sign-good-ink) 22%, transparent);
-}
-
 .topRight {
   margin-left: auto;
   display: flex;
@@ -392,8 +366,7 @@
   .topBrand {
     display: inline-flex;
   }
-  .crumb,
-  .nodeChip {
+  .crumb {
     display: none;
   }
   .column {

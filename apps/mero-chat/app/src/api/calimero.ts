@@ -36,7 +36,9 @@ import {
   type Target,
 } from "@calimero-apps/connect";
 import {
+  bindNodeShield,
   describeCeremonyFailure,
+  describeTarget,
   knownAccountHere,
   noAccountHereAfter,
   passkeyUnknownAfter,
@@ -115,8 +117,21 @@ const listeners = new Set<() => void>();
 
 function set(next: Partial<State>): void {
   state = { ...state, ...next };
+  showShield();
   offerUpgrades();
   for (const l of listeners) l();
+}
+
+/** Takes the node shield away; set while a client is connected. */
+let hideShield: { client: CalimeroClient; hide: () => void } | null = null;
+
+/** The node shield for the connected client, signed in or not, as the shared session hook shows it in the other apps. */
+function showShield(): void {
+  if (hideShield && hideShield.client !== client) {
+    hideShield.hide();
+    hideShield = null;
+  }
+  if (client && target && !hideShield) hideShield = { client, hide: bindNodeShield(client, describeTarget(target)) };
 }
 
 /** Takes the "new version" prompt away; set while a session is signed in. */

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ManageInHomeLink } from '@calimero-apps/passkey';
+import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { describeTarget } from '../../session';
 import { useSessionApi } from '../../sessionContext';
 import {
@@ -210,7 +210,6 @@ export function AppShell({
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const host = useNodeHost();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Where you are, for the top bar of a screen with no way back.
   const section = bare ? undefined : NAV.find((n) => n.active(pathname));
@@ -272,12 +271,7 @@ export function AppShell({
             </span>
           )}
           <div className={styles.topRight}>
-            {!bare && host && (
-              <span className={styles.nodeChip} title={`Connected to ${host}`}>
-                <span className={styles.nodeDot} aria-hidden="true" />
-                {host}
-              </span>
-            )}
+            {!bare && <NodeShield />}
             {actions}
             <ThemeToggle />
           </div>

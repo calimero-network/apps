@@ -12,7 +12,7 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { instanceIn, listScenes, readSelection, selectionKey, writeSelection } from "./scenes";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, NodeShield, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
@@ -177,7 +177,7 @@ export function StudioPage({
   if (asking) {
     return (
       <div className="page">
-        <TopBar onHome={home} where={describeTarget(session.target)} onLogout={logout} />
+        <TopBar onHome={home} onLogout={logout} />
         <main className="wrap">
           <JoinInvitation
             {...ONBOARDING}
@@ -204,7 +204,7 @@ export function StudioPage({
   if (!scene) {
     return (
       <div className="page">
-        <TopBar onHome={home} where={describeTarget(session.target)} onLogout={logout} />
+        <TopBar onHome={home} onLogout={logout} />
         <main className="wrap">
           <ScenePicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after}>
             {notice && <p className="hint">{notice}</p>}
@@ -246,7 +246,7 @@ function SignIn({ api, where }: { api: SessionApi; where: string }) {
   );
 }
 
-function TopBar({ onHome, where, onLogout }: { onHome: () => void; where?: string; onLogout?: () => void }) {
+function TopBar({ onHome, onLogout }: { onHome: () => void; onLogout?: () => void }) {
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -256,10 +256,7 @@ function TopBar({ onHome, where, onLogout }: { onHome: () => void; where?: strin
         </button>
         {onLogout && (
           <div className="session">
-            <span className="node-pill" title={where ?? ""}>
-              <span className="presence online" aria-hidden="true" />
-              <span className="mono">{where ?? ""}</span>
-            </span>
+            <NodeShield />
             <button className="ghost small" onClick={onLogout}>
               Log out
             </button>
