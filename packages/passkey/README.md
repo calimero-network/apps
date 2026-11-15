@@ -41,6 +41,7 @@ account, nothing to install, no permissions to grant.
   popover that says in plain words what this browser's check of the node
   (`client.verify()`) verified.
   Place it just left of the account avatar.
+  `<NodeShield compactBelow={1100} />` shows the icon alone, a 28px circle named by its label, when the window is 1100px wide or narrower, for a header with no room for the words; it follows the window as it resizes.
   An app that places none still gets a floating one in the page's bottom left
   corner, mounted by `usePasskeySession` (`data-testid="node-shield"`): there is
   no switch to turn it off.

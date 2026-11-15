@@ -394,3 +394,63 @@ describe("openNodeShield", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });
+
+describe("the compact shield", () => {
+  /** A `matchMedia` that matches the queries in `matching`, and tells its listeners when `set` changes them. */
+  function viewport(matching: string[]) {
+    const listeners = new Set<() => void>();
+    window.matchMedia = ((query: string) => ({
+      get matches() {
+        return matching.includes(query);
+      },
+      media: query,
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    })) as unknown as typeof window.matchMedia;
+    return (next: string[]) => {
+      matching = next;
+      listeners.forEach((l) => l());
+    };
+  }
+  const wrapper = () => chip().parentElement!;
+
+  afterEach(() => void (window.matchMedia = undefined as never));
+
+  it("is icon only below the width it is given", async () => {
+    viewport(["(max-width: 1100px)"]);
+    const { client } = fakeClient(sealed);
+    bind(client);
+    render(<NodeShield compactBelow={1100} />);
+    await waitFor(() => expect(chip().getAttribute("aria-label")).toBe("Verified node"));
+    expect(wrapper().classList.contains("cp-shield--compact")).toBe(true);
+  });
+
+  it("keeps its label at and above that width", async () => {
+    viewport([]);
+    const { client } = fakeClient(sealed);
+    bind(client);
+    render(<NodeShield compactBelow={1100} />);
+    await waitFor(() => expect(chip().getAttribute("aria-label")).toBe("Verified node"));
+    expect(wrapper().classList.contains("cp-shield--compact")).toBe(false);
+  });
+
+  it("follows the window as it is resized across that width", async () => {
+    const resize = viewport([]);
+    const { client } = fakeClient(sealed);
+    bind(client);
+    render(<NodeShield compactBelow={1100} />);
+    await waitFor(() => expect(chip().getAttribute("aria-label")).toBe("Verified node"));
+    act(() => resize(["(max-width: 1100px)"]));
+    expect(wrapper().classList.contains("cp-shield--compact")).toBe(true);
+    act(() => resize([]));
+    expect(wrapper().classList.contains("cp-shield--compact")).toBe(false);
+  });
+
+  it("is never compact without a width, and does not need matchMedia", async () => {
+    const { client } = fakeClient(sealed);
+    bind(client);
+    render(<NodeShield />);
+    await waitFor(() => expect(chip().getAttribute("aria-label")).toBe("Verified node"));
+    expect(wrapper().classList.contains("cp-shield--compact")).toBe(false);
+  });
+});
