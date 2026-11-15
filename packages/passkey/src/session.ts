@@ -291,10 +291,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     setPolicy(undefined);
     const read = readSignUpPolicy(signedOutClient);
     // A read that never settles must not hold a sign-up: unread after the timeout.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<undefined>((resolve) => {
-      timer = setTimeout(resolve, POLICY_READ_TIMEOUT_MS);
-    });
+    let expire!: () => void;
+    const timeout = new Promise<undefined>((resolve) => (expire = () => resolve(undefined)));
+    const timer = setTimeout(expire, POLICY_READ_TIMEOUT_MS);
     policyRead.current = Promise.race([read, timeout]);
     void read.then((p) => {
       clearTimeout(timer);
