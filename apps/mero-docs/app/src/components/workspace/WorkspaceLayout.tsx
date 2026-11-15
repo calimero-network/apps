@@ -323,13 +323,13 @@ export function WorkspaceLayout() {
               Offline
             </span>
           )}
-          <span className="max-sm:hidden">
+          <span className={namespaceId ? 'max-sm:hidden' : undefined}>
             <ThemeToggle />
           </span>
           <ManageInHomeLink
             session={session}
             org={namespaceId}
-            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline min-[1280px]:inline"
+            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline min-[1440px]:inline"
           />
           {namespaceId && (
             <Button

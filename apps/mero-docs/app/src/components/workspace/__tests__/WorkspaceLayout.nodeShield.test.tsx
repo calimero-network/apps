@@ -9,12 +9,13 @@ import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const parentOf = (el: HTMLElement) => el.parentElement; // eslint-disable-line testing-library/no-node-access
 const setSelectedFolder = vi.fn();
+let workspace: string | null = 'ns';
 // The real hook reads the selected folder from the URL too.
 vi.mock('@/hooks/useDriveWorkspace', async () => {
   const { useAppRoute } = await import('@/hooks/useAppRoute');
   return {
     useDriveWorkspace: () => ({
-      namespaceId: 'ns',
+      namespaceId: workspace,
       namespaces: [{ namespaceId: 'ns' }],
       namespacesLoading: false,
       isJustJoined: false,
@@ -117,6 +118,7 @@ let narrow = false;
 beforeEach(() => {
   online = true;
   narrow = false;
+  workspace = 'ns';
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: query === '(max-width: 1100px)' ? narrow : true,
     media: query,
@@ -195,7 +197,7 @@ describe('WorkspaceLayout node shield', () => {
     renderLayout();
     const link = screen.getByText('Manage people');
     expect(link.className).toContain('hidden');
-    expect(link.className).toContain('min-[1280px]:inline');
+    expect(link.className).toContain('min-[1440px]:inline');
   });
 
   it('shows the shield as its icon alone where the header is narrow, with its words from 1100px', () => {
@@ -216,5 +218,12 @@ describe('WorkspaceLayout node shield', () => {
     renderLayout();
     const toggle = screen.getByRole('button', { name: 'Toggle theme' });
     expect(parentOf(toggle)?.className).toContain('max-sm:hidden');
+  });
+
+  it('keeps the theme toggle in the narrow header while there is no workspace to open its settings', () => {
+    workspace = null;
+    renderLayout();
+    const toggle = screen.getByRole('button', { name: 'Toggle theme' });
+    expect(parentOf(toggle)?.className ?? '').not.toContain('max-sm:hidden');
   });
 });
