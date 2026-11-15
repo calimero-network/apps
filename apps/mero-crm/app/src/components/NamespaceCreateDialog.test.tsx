@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
 import { bindNodeShield } from '@calimero-apps/passkey/nodeShield';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -102,5 +102,42 @@ describe('NamespaceCreateDialog', () => {
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('Review before creating')).toBeNull();
+  });
+
+  describe.each([
+    ['the review', RELEASE, (el: HTMLElement) => fireEvent.click(within(el).getByRole('button', { name: /^create workspace/i }))],
+    ['the form, with no release to review', null, (el: HTMLElement) => fireEvent.click(within(el).getByTestId('ns-create-submit'))],
+  ])('while creating from %s', (_where, release, create) => {
+    /** A create that finishes when the test says. */
+    function creating() {
+      let finish: (v: { namespaceId: string; warning: null }) => void = () => {};
+      const onCreate = vi.fn(() => new Promise<{ namespaceId: string; warning: null }>((r) => { finish = r; }));
+      const onClose = vi.fn();
+      render(<NamespaceCreateDialog release={release} onCreate={onCreate} onClose={onClose} />);
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'ronit' } });
+      if (release) fireEvent.click(screen.getByTestId('ns-create-submit'));
+      create(screen.getByRole('dialog'));
+      return { onCreate, onClose, finish: () => finish({ namespaceId: 'org-new', warning: null }) };
+    }
+
+    it('cannot be dismissed by the backdrop, Close or Escape', async () => {
+      const { onCreate, onClose, finish } = creating();
+      await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole('dialog').parentElement!);
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onClose).not.toHaveBeenCalled();
+      finish();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+  });
+
+  it('is dismissed by the backdrop, Close and Escape when nothing is being created', () => {
+    const { onClose } = open();
+    fireEvent.click(screen.getByRole('dialog').parentElement!);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(3);
   });
 });
