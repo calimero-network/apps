@@ -153,10 +153,12 @@ function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string
     return () => clearTimeout(timer);
   }, [copied]);
   const copy = () =>
-    navigator.clipboard.writeText(shieldDetails(view)).then(
-      () => setCopied("done"),
-      () => setCopied("failed"),
-    );
+    Promise.resolve()
+      .then(() => navigator.clipboard.writeText(shieldDetails(view)))
+      .then(
+        () => setCopied("done"),
+        () => setCopied("failed"),
+      );
   return createPortal(
     <div
       ref={popRef}

@@ -123,6 +123,17 @@ describe("the placed shield", () => {
     await screen.findByRole("button", { name: "Copied" });
   });
 
+  it("says it could not copy when the browser has no clipboard", async () => {
+    const { client } = fakeClient(sealed);
+    bind(client);
+    render(<NodeShield />);
+    await screen.findByText("Verified node");
+    open();
+    Object.assign(navigator, { clipboard: undefined });
+    fireEvent.click(await screen.findByRole("button", { name: "Copy details" }));
+    await screen.findByRole("button", { name: "Could not copy" });
+  });
+
   it("asks again when it is opened, and keeps retrying an unreachable node", async () => {
     vi.useFakeTimers();
     const { client, verify, answer } = fakeClient(unreachable);
