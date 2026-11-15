@@ -2,7 +2,7 @@ import { act, renderHook, cleanup } from "@testing-library/react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useResolvedSource } from "./useResolvedSource";
+import { CHECKING_RELEASE, useResolvedSource } from "./useResolvedSource";
 
 const PKG = "com.example.app";
 
@@ -85,5 +85,12 @@ describe("useResolvedSource", () => {
     rerender();
     await act(async () => {});
     expect(get).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CHECKING_RELEASE", () => {
+  it("is the one line an app says where a create waits, with a single ellipsis character", () => {
+    expect(CHECKING_RELEASE).toBe("Checking the newest release\u2026");
+    expect(CHECKING_RELEASE).not.toContain("...");
   });
 });

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { resolveSource, type AppSource } from "@calimero-apps/connect";
 
+/** Said where a create waits for `useResolvedSource`. */
+export const CHECKING_RELEASE = "Checking the newest release…";
+
 type SourceClient = Parameters<typeof resolveSource>[0];
 
 /**

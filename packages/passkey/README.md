@@ -79,7 +79,7 @@ account, nothing to install, no permissions to grant.
 - `useResolvedSource(client, accountId, base)` returns `{ source, pending }`: the `AppSource` new instances are created from.
   It reads the package's newest release once per client and account (`resolveSource` in `@calimero-apps/connect`) and gives `base` at that version.
   `pending` is true only while that read runs, and only for a package with no version; a raw bundle or a named version is never pending.
-  Hold the create actions while `pending`, not the whole signed-in screen.
+  Hold the create actions while `pending`, not the whole signed-in screen, and say `CHECKING_RELEASE` ("Checking the newest release…") where one waits.
 - `reviewRelease(source)` is the `ReviewRelease` to give `<WorkspaceReview>` for a resolved source: the package and version it names, or `null` for a raw bundle or an unversioned package, where there is nothing signed to review and the app creates straight from its form.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
