@@ -1,7 +1,8 @@
 import "./nodeShield.css";
 import "./workspaceReview.css";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { PackageCapabilities } from "@calimero-network/mero-js";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { CalimeroClient, PackageCapabilities } from "@calimero-network/mero-js";
+import { instancePackage, type AppSource } from "@calimero-apps/connect";
 
 import { useAppCode, useCard, useNodeVerification, type ReviewRelease } from "./nodeChecks";
 import { useShieldStore } from "./nodeShieldStore";
@@ -474,24 +475,76 @@ export function WorkspaceReview({ release, creating = false, onBack, onCreate }:
   );
 }
 
+/** What was read for `appId` on `client`: the release it runs (`null`: no package runs it, or it is not listed), or that the read failed. */
+type Running = { client: CalimeroClient; appId: string; release: ReviewRelease | null } | { client: CalimeroClient; appId: string; failed: true };
+
+/** The release `appId` runs, read for exactly that instance and client: `null` while reading, so a change of either never shows the last one's answer. */
+function useRunningRelease(client: CalimeroClient | null, appId: string): [Running | null, () => void] {
+  const [read, setRead] = useState<Running | null>(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    instancePackage(client, appId).then(
+      (running) => live && setRead({ client, appId, release: running ? { package: running.package, version: running.version } : null }),
+      () => live && setRead({ client, appId, failed: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, appId, round]);
+  const retry = useCallback(() => {
+    setRead(null);
+    setRound((n) => n + 1);
+  }, []);
+  return [read?.client === client && read.appId === appId ? read : null, retry];
+}
+
 export interface WorkspaceTrustProps {
-  /** The release the workspace's instance runs. */
-  release: ReviewRelease;
-  /** The workspace's app instance, whose code the node attests. */
+  /** The workspace's app instance: its running release is read, and the node attests its code. */
   appId: string;
+  /** Where the app's instances come from: a raw bundle string says "a local bundle" when nothing published runs; a package says "not listed yet". */
+  source: AppSource;
+  /** What the review covers, in words that follow "for", e.g. "the repository web". */
+  subject?: string;
 }
 
 /**
  * The review again for a workspace that exists, for its settings: members who join later see the same facts, with the node's own check of the instance's code.
- * Pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release.
+ * It reads the release the instance runs, and says plainly while reading, when the read failed (with Try again), when the instance is not listed yet, and when it runs a local bundle.
+ * Needs a session bound by `usePasskeySession`.
  */
-export function WorkspaceTrust({ release, appId }: WorkspaceTrustProps) {
-  const review = useReview(release, appId);
+export function WorkspaceTrust({ appId, source, subject }: WorkspaceTrustProps) {
+  const { sessions } = useShieldStore();
+  const client = sessions[sessions.length - 1]?.client ?? null;
+  const [read, retry] = useRunningRelease(client, appId);
+  const tryAgain = (text: string) => (
+    <>
+      <p className="cp-review__muted">{text}</p>
+      <button type="button" className="cp-review__btn" onClick={retry}>
+        Try again
+      </button>
+    </>
+  );
+  let body: React.ReactNode;
+  if (!client) body = <p className="cp-review__muted">Not connected to a node.</p>;
+  else if (!read) body = <p role="status" className="cp-review__muted">Reading the release this app runs…</p>;
+  else if ("failed" in read) body = tryAgain("The release this app runs could not be read.");
+  else if (read.release) body = <TrustReview release={read.release} appId={appId} />;
+  else if (typeof source === "string") body = <p className="cp-review__muted">This app runs a local bundle, not a published release, so there is no signed review to show.</p>;
+  else body = tryAgain("This app is not listed in the node's release report yet.");
   return (
     <div className="cp-review">
       <h2 className="cp-review__title">Trust</h2>
-      <p className="cp-review__lede">What this workspace&apos;s app can do and where it runs. Members who join later can check the same facts.</p>
-      <ReviewBody review={review} release={release} appId={appId} />
+      <p className="cp-review__lede">
+        What this workspace&apos;s app can do and where it runs{subject ? `, for ${subject}` : ""}. Members who join later can check the same facts.
+      </p>
+      {body}
     </div>
   );
+}
+
+function TrustReview({ release, appId }: { release: ReviewRelease; appId: string }) {
+  const review = useReview(release, appId);
+  return <ReviewBody review={review} release={release} appId={appId} />;
 }

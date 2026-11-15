@@ -76,7 +76,12 @@ account, nothing to install, no permissions to grant.
   The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
   A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created while a node is connected.
   The registry's review state and the SDK version are not in the card, so the review does not show them.
-- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab); pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release, and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
+- `<WorkspaceTrust appId={...} source={...} subject="the repository web" />` repeats the review for a workspace that exists (a settings "Trust" tab).
+  It reads the release the instance runs itself (`instancePackage` in `@calimero-apps/connect`) and keys what it read on the `appId` and session, so switching instance never shows the last one's release.
+  While reading it says so; a failed read says "The release this app runs could not be read." with "Try again".
+  When no package is reported for the instance, a package `source` says "not listed in the node's release report yet" with "Try again", and only a raw bundle `source` (a string) says the app "runs a local bundle".
+  `subject` is what the review covers, in words that follow "for", and is optional.
+  The review adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
 - `useResolvedSource(client, accountId, base)` returns `{ source, pending }`: the `AppSource` new instances are created from.
   It reads the package's newest release once per client and account (`resolveSource` in `@calimero-apps/connect`) and gives `base` at that version.
   `pending` is true only while that read runs, and only for a package with no version; a raw bundle or a named version is never pending.
