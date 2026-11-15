@@ -249,7 +249,7 @@ function Diverged({ divergence }: { divergence: "release" | "code" }) {
 /** The four sections. With `appId` the instance exists, its code is checked against the release, and the viewer may have joined later. */
 function ReviewBody({ review, release, appId }: { review: Review; release: ReviewRelease; appId?: string }) {
   const { session, client, state, loaded, retry, app, checked } = review;
-  const view = describeShield(state, { cluster: session?.cluster ?? "", code: checked });
+  const view = describeShield(state, { code: checked });
   const card = loaded.status === "ready" ? loaded.card : null;
   const sealed = view.kind === "verified";
   const nodeRelease = state.status === "verified" && !state.mock ? state.release : undefined;

@@ -630,7 +630,7 @@ describe('the node shield', () => {
     fireEvent.click(screen.getByTestId('node-shield'));
     const popover = await screen.findByTestId('node-shield-popover', {}, SLOW);
     expect(await within(popover).findByText('App code', {}, SLOW)).toBeTruthy();
-    expect(client.attestApp).toHaveBeenCalledWith('app-1');
+    expect(client.attestApp).toHaveBeenCalledWith('app-1', client.nodeUrl);
   });
 
   it('shows the header shield as its icon alone at 1100px and narrower', async () => {
@@ -644,14 +644,14 @@ describe('the node shield', () => {
     window.matchMedia = at(1100);
     openWorkspace();
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
-    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(true);
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('mero-node-shield--compact')).toBe(true);
   });
 
   it('keeps the header shield\'s label above 1100px', async () => {
     window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
     openWorkspace();
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
-    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(false);
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('mero-node-shield--compact')).toBe(false);
   });
 
   /** The open repo `app-1` runs `version`, as its scope's report says. */

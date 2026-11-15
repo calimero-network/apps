@@ -40,6 +40,7 @@ account, nothing to install, no permissions to grant.
 - `<NodeShield />` is the header chip for the node the app talks to, with a
   popover that says in plain words what this browser's check of the node
   (`client.verify()`) verified.
+  It renders `NodeShield` from `@calimero-network/mero-react/node-shield` with the bound client and cluster, coloured from the `--passkey-*` and glass tokens below.
   Place it just left of the account avatar.
   `<NodeShield compactBelow={1100} />` shows the icon alone, a 28px circle named by its label, when the window is 1100px wide or narrower, for a header with no room for the words; it follows the window as it resizes.
   An app that places none still gets a floating one in the page's bottom left
@@ -55,7 +56,7 @@ account, nothing to install, no permissions to grant.
   a real node a signed release judged.
   `useNodeShieldApp(appId, source)` tells the shield which instance and
   `AppSource` the page runs; with it the popover checks the node runs that exact
-  code (`checkAppCode`), and without it leaves the app code out.
+  code (`checkAppCode` against the node the popover verified), and without it leaves the app code out.
   `openNodeShield()` opens the popover from an account menu's "Connected to" row.
   An app that connects without the hook calls `bindNodeShield(client, describeTarget(target), target.kind === "local")`
   (`@calimero-apps/passkey/nodeShield`, no React in the app) where it connects.

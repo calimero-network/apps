@@ -30,7 +30,8 @@
     "react-dom": ">=18"
   },
   "dependencies": {
-    "@calimero-apps/connect": "workspace:*"
+    "@calimero-apps/connect": "workspace:*",
+    "@calimero-network/mero-react": "catalog:component"
   },
   "devDependencies": {
     "@calimero-network/mero-js": "catalog:component",

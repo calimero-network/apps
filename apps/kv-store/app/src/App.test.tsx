@@ -118,7 +118,7 @@ describe("App", () => {
     await screen.findByText("mine");
     await waitFor(() => expect(screen.getByTestId("node-shield").getAttribute("aria-label")).toBe("Verified node"));
     fireEvent.click(screen.getByTestId("node-shield"));
-    await waitFor(() => expect(attestApp).toHaveBeenCalledWith("app-1"));
+    await waitFor(() => expect(attestApp).toHaveBeenCalledWith("app-1", "https://n1.example"));
     await screen.findByText("Node runs the code bundle this app was built for");
   });
 
