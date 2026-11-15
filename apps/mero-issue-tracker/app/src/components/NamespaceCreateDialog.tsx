@@ -5,7 +5,7 @@ import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 import { tokens as t } from '../theme';
 import { useSignedIn } from '../sessionContext';
-import { newWorkspaceRelease } from '../workspaces';
+import { newWorkspaceRelease } from '../newWorkspaceRelease';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;
