@@ -204,14 +204,14 @@ describe('WorkspaceLayout node shield', () => {
     narrow = true;
     const { unmount } = renderLayout();
     expect(parentOf(screen.getByTestId('node-shield'))?.className).toContain(
-      'cp-shield--compact',
+      'mero-node-shield--compact',
     );
     unmount();
     narrow = false;
     renderLayout();
     expect(
       parentOf(screen.getByTestId('node-shield'))?.className,
-    ).not.toContain('cp-shield--compact');
+    ).not.toContain('mero-node-shield--compact');
   });
 
   it('moves the theme toggle out of the header below sm, to the settings', () => {

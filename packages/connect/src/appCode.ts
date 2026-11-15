@@ -38,14 +38,14 @@ async function expectedBundle(
 /**
  * Attests instance `app` and compares the hash the node bound with the bundle
  * hash of `source`: the release the instance runs (its own report, not
- * `source.version`) or a raw bundle hash. A mock quote is never a match. Never throws.
+ * `source.version`) or a raw bundle hash, on node `url` (default: the client's). A mock quote is never a match. Never throws.
  */
-export async function checkAppCode(client: CodeCheckClient, app: string, source: AppSource): Promise<AppCodeCheck> {
+export async function checkAppCode(client: CodeCheckClient, app: string, source: AppSource, url?: string): Promise<AppCodeCheck> {
   try {
     const { bundle, release } = await expectedBundle(client, app, source);
     const expected = normalize(bundle);
     if (!expected) throw new Error("the app's release lists no bundle hash");
-    const verified = await client.attestApp(app);
+    const verified = await client.attestApp(app, url);
     if (verified.mock) throw new Error("test server: the node's quote is a mock");
     if (!verified.appHash) throw new Error("the node bound no code hash for this app");
     const appHash = normalize(verified.appHash);

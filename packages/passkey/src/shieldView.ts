@@ -1,4 +1,4 @@
-/** What the node shield says about a node, from the check mero-js ran: only what that check verified. */
+/** What the review says about a node, from the check mero-js ran: only what that check verified. */
 import { verifyNodeUrl, type NodeVerificationState } from "@calimero-network/mero-js";
 import type { AppCodeCheck } from "@calimero-apps/connect";
 
@@ -14,34 +14,15 @@ const ago = new Intl.RelativeTimeFormat("en");
 
 export type ShieldKind = "checking" | "verified" | "unsealed" | "refused";
 
-export interface ShieldRow {
-  label: string;
-  value: string;
-  /** What `value` abbreviates, for the copied details. */
-  full?: string;
-  mono?: boolean;
-  tone?: "bad";
-}
-
 export interface ShieldView {
   kind: ShieldKind;
-  /** The chip's text. */
-  label: string;
   title: string;
   sub: string;
-  rows: ShieldRow[];
   /** Facts the check verified for this node, and nothing else. */
   checks: string[];
   /** The public verifier's page for this node; `null` unless a signed release judged a real quote. */
   verifyUrl: string | null;
 }
-
-export const SHIELD_LABEL: Record<ShieldKind, string> = {
-  checking: "Checking node…",
-  verified: "Verified node",
-  unsealed: "Test server: not sealed",
-  refused: "Node refused",
-};
 
 /** Sealed means the locked profile on a real quote; `unreachable` is no answer yet, so it reads as checking. */
 export function shieldKind(state: NodeVerificationState): ShieldKind {
@@ -75,27 +56,6 @@ function releaseName(code: Extract<AppCodeCheck, { status: "match" }>): string |
   return code.package && code.version ? `${code.package} v${code.version}` : null;
 }
 
-function codeRow(code: AppCodeCheck | null): ShieldRow | null {
-  if (code?.status === "match") {
-    const named = releaseName(code);
-    return {
-      label: "App code",
-      value: named ? `${named} · ${shortHash(code.appHash)}` : shortHash(code.appHash),
-      full: named ? `${named} · ${code.appHash}` : code.appHash,
-      mono: true,
-    };
-  }
-  if (code?.status === "mismatch") {
-    return {
-      label: "App code",
-      value: `Does not match this app's release (node runs ${shortHash(code.appHash)})`,
-      full: `Does not match this app's release (node runs ${code.appHash}, expected ${code.expected})`,
-      tone: "bad",
-    };
-  }
-  return null;
-}
-
 function copy(state: NodeVerificationState, kind: ShieldKind, ago: string): Pick<ShieldView, "title" | "sub"> {
   switch (kind) {
     case "verified":
@@ -105,17 +65,17 @@ function copy(state: NodeVerificationState, kind: ShieldKind, ago: string): Pick
       };
     case "unsealed":
       return {
-        title: SHIELD_LABEL.unsealed,
+        title: "Test server: not sealed",
         sub:
           state.status === "verified" && state.mock
             ? `A test server with no hardware enclave, so its data is not sealed. Checked by this browser ${ago}.`
             : `This node did not show it runs the sealed, read-only profile, so its data is not sealed. Checked by this browser ${ago}.`,
       };
     case "refused":
-      return { title: SHIELD_LABEL.refused, sub: "This app refused the node and sent nothing." };
+      return { title: "Node refused", sub: "This app refused the node and sent nothing." };
     case "checking":
       return {
-        title: SHIELD_LABEL.checking,
+        title: "Checking node…",
         sub:
           state.status === "unreachable"
             ? "The node could not be reached. Trying again."
@@ -124,31 +84,18 @@ function copy(state: NodeVerificationState, kind: ShieldKind, ago: string): Pick
   }
 }
 
-/** Everything the popover shows, for `state` in the cluster the app is configured for and the app's code check. */
-export function describeShield(
-  state: NodeVerificationState,
-  { cluster, code, now = Date.now() }: { cluster: string; code: AppCodeCheck | null; now?: number },
-): ShieldView {
+/** What the review says about the node for `state`, with the app's code check. */
+export function describeShield(state: NodeVerificationState, { code, now = Date.now() }: { code: AppCodeCheck | null; now?: number }): ShieldView {
   const kind = shieldKind(state);
   // A mock is never a real node: nothing about releases or app code is claimed for one.
   const real = state.status === "verified" && !state.mock ? state : null;
   const release = real?.release;
-  const rows: ShieldRow[] = [
-    { label: "Cluster", value: cluster },
-    { label: "Node", value: hostOf(state.url), mono: true },
-  ];
-  if (real && release) rows.push({ label: "Software", value: `mero-tee v${release}${real.profile ? ` · ${real.profile}` : ""}` });
-  const app = real ? codeRow(code) : null;
-  if (app) rows.push(app);
-  if (state.status === "refused" || state.status === "unreachable") {
-    rows.push({ label: "Reason", value: state.reason, ...(state.status === "refused" ? { tone: "bad" as const } : {}) });
-  }
 
   const checks: string[] = [];
   if (kind === "verified") checks.push("Running in an Intel TDX enclave (not debug)");
   if (real && release) checks.push(`Measurements match the signed v${release} release`);
   if (real) checks.push("Your connection is encrypted to this enclave's key");
-  if (app && code?.status === "match") {
+  if (real && code?.status === "match") {
     const named = releaseName(code);
     checks.push(named ? `Node runs the code listed for ${named}` : "Node runs the code bundle this app was built for");
   }
@@ -156,21 +103,8 @@ export function describeShield(
   const checkedMs = "checkedAt" in state ? state.checkedAt : now;
   return {
     kind,
-    label: SHIELD_LABEL[kind],
     ...copy(state, kind, checkedAgo(checkedMs, now)),
-    rows,
     checks,
     verifyUrl: real && release ? verifyNodeUrl(real.url, release) : null,
   };
-}
-
-/** The popover's facts as plain text, for "Copy details". */
-export function shieldDetails(view: ShieldView): string {
-  return [
-    view.title,
-    view.sub,
-    "",
-    ...view.rows.map((r) => `${r.label}: ${r.full ?? r.value}`),
-    ...(view.checks.length ? ["", ...view.checks.map((c) => `- ${c}`)] : []),
-  ].join("\n");
 }

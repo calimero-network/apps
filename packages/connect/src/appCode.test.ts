@@ -53,8 +53,14 @@ describe("checkAppCode", () => {
       package: PACKAGE,
       version: "1.2.0",
     });
-    expect(c.attestApp).toHaveBeenCalledWith("app-1");
+    expect(c.attestApp).toHaveBeenCalledWith("app-1", undefined);
     expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0");
+  });
+
+  it("attests the node it is given, not whichever one the client uses by then", async () => {
+    const c = client({});
+    await checkAppCode(c, "app-1", { package: PACKAGE, version: "1.2.0" }, "https://node-2.example");
+    expect(c.attestApp).toHaveBeenCalledWith("app-1", "https://node-2.example");
   });
 
   it("expects the hash of the release the instance runs, not the source's version", async () => {

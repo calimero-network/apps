@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { verifyNodeUrl, type NodeVerification, type NodeVerificationState } from "@calimero-network/mero-js";
 import type { AppCodeCheck } from "@calimero-apps/connect";
 
-import { checkedAgo, describeShield, shieldDetails, shieldKind, shortHash } from "./shieldView";
+import { checkedAgo, describeShield, shieldKind, shortHash } from "./shieldView";
 
 const URL_ = "https://node-3.relay.example.net";
 const NOW = 1_700_000_000_000;
@@ -31,7 +31,7 @@ const match: AppCodeCheck = { status: "match", appHash: HASH, checkedAt: NOW };
 const release: AppCodeCheck = { status: "match", appHash: HASH, checkedAt: NOW, package: "com.calimero.kv-store", version: "1.4.0" };
 
 const view = (state: NodeVerificationState, code: AppCodeCheck | null = null) =>
-  describeShield(state, { cluster: "Calimero Cloud eu-shared-2", code, now: NOW });
+  describeShield(state, { code, now: NOW });
 
 describe("shieldKind", () => {
   it.each([
@@ -50,15 +50,8 @@ describe("shieldKind", () => {
 describe("describeShield", () => {
   it("the green node lists every verified fact and a verifier link", () => {
     const v = view(verified(), match);
-    expect(v.label).toBe("Verified node");
     expect(v.title).toBe("You are talking to a genuine Calimero TEE node");
     expect(v.sub).toBe("Checked by this browser 2 minutes ago, before anything was sent.");
-    expect(v.rows).toEqual([
-      { label: "Cluster", value: "Calimero Cloud eu-shared-2" },
-      { label: "Node", value: "node-3.relay.example.net", mono: true },
-      { label: "Software", value: "mero-tee v2.3.148 · locked-read-only" },
-      { label: "App code", value: "7f3a…c91e", full: match.appHash, mono: true },
-    ]);
     expect(v.checks).toEqual([
       "Running in an Intel TDX enclave (not debug)",
       "Measurements match the signed v2.3.148 release",
@@ -68,46 +61,34 @@ describe("describeShield", () => {
     expect(v.verifyUrl).toBe(verifyNodeUrl(URL_, "2.3.148"));
   });
 
-  it("claims only what is backed: no app check, no app code row or check", () => {
+  it("claims only what is backed: no app check, no app code check", () => {
     for (const code of [null, { status: "unknown", reason: "no" } as AppCodeCheck]) {
       const v = view(verified(), code);
-      expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node", "Software"]);
       expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
     }
   });
 
-  it("a mismatch is a red line and never a check", () => {
+  it("a mismatch is never a check", () => {
     const v = view(verified(), { status: "mismatch", appHash: "ab".repeat(32), expected: "cd".repeat(32) });
-    const row = v.rows.find((r) => r.label === "App code");
-    expect(row).toMatchObject({ tone: "bad", value: "Does not match this app's release (node runs abab…abab)" });
     expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
   });
 
   it("a mock is a grey test server: no enclave claims, no code claims, no verifier link", () => {
     const v = view(verified({ mock: true, release: undefined, profile: undefined }), match);
     expect(v.kind).toBe("unsealed");
-    expect(v.label).toBe("Test server: not sealed");
+    expect(v.title).toBe("Test server: not sealed");
     expect(v.sub).toMatch(/test server with no hardware enclave.*not sealed/);
     expect(v.checks).toEqual([]);
-    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node"]);
     expect(v.verifyUrl).toBeNull();
   });
 
   it("enforces that a mock is not a real node, whatever else the record says", () => {
     const v = view(verified({ mock: true }), release);
-    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node"]);
     expect(v.checks).toEqual([]);
   });
 
   it("names the release a code match is for, and says what that proves", () => {
     const v = view(verified(), release);
-    const row = v.rows.find((r) => r.label === "App code");
-    expect(row).toEqual({
-      label: "App code",
-      value: "com.calimero.kv-store v1.4.0 · 7f3a…c91e",
-      full: `com.calimero.kv-store v1.4.0 · ${HASH}`,
-      mono: true,
-    });
     expect(v.checks).toContain("Node runs the code listed for com.calimero.kv-store v1.4.0");
     expect(v.checks).not.toContain("Node runs the code bundle this app was built for");
   });
@@ -116,44 +97,32 @@ describe("describeShield", () => {
     expect(view(verified({ mock: true })).verifyUrl).toBeNull();
   });
 
-  it("a real node outside the sealed profile is grey, shows its profile, and still links the verifier", () => {
+  it("a real node outside the sealed profile is grey and still links the verifier", () => {
     const v = view(verified({ profile: "debug" }));
     expect(v.kind).toBe("unsealed");
-    expect(v.rows.find((r) => r.label === "Software")?.value).toBe("mero-tee v2.3.148 · debug");
     expect(v.checks).not.toContain("Running in an Intel TDX enclave (not debug)");
     expect(v.checks).toContain("Measurements match the signed v2.3.148 release");
     expect(v.verifyUrl).toBe(verifyNodeUrl(URL_, "2.3.148"));
   });
 
-  it("no release means no software row, no measurements check, no link", () => {
+  it("no release means no measurements check and no link", () => {
     const v = view(bare());
-    expect(v.rows.map((r) => r.label)).toEqual(["Cluster", "Node"]);
     expect(v.checks).toEqual(["Your connection is encrypted to this enclave's key"]);
     expect(v.verifyUrl).toBeNull();
   });
 
-  it("a refused node says nothing was sent and why", () => {
+  it("a refused node says nothing was sent", () => {
     const v = view(failed("refused"));
     expect(v.kind).toBe("refused");
     expect(v.sub).toBe("This app refused the node and sent nothing.");
-    expect(v.rows.find((r) => r.label === "Reason")).toMatchObject({ value: "the quote is for another key", tone: "bad" });
     expect(v.checks).toEqual([]);
     expect(v.verifyUrl).toBeNull();
   });
 
-  it("an unreachable node reads as checking, with the reason", () => {
+  it("an unreachable node reads as checking", () => {
     const v = view(failed("unreachable"));
-    expect(v.label).toBe("Checking node…");
+    expect(v.kind).toBe("checking");
     expect(v.sub).toBe("The node could not be reached. Trying again.");
-    expect(v.rows.find((r) => r.label === "Reason")?.value).toBe("the quote is for another key");
-  });
-
-  it("copies the facts shown, with the full hash", () => {
-    const text = shieldDetails(view(verified(), match));
-    expect(text).toContain("Node: node-3.relay.example.net");
-    expect(text).toContain(`App code: ${match.appHash}`);
-    expect(text).toContain("- Measurements match the signed v2.3.148 release");
-    expect(text.startsWith("You are talking to a genuine Calimero TEE node")).toBe(true);
   });
 });
 
