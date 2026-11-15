@@ -120,7 +120,7 @@ beforeEach(() => {
   narrow = false;
   workspace = 'ns';
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query === '(max-width: 1100px)' ? narrow : true,
+    matches: query === '(max-width: 1200px)' ? narrow : true,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -167,7 +167,7 @@ describe('WorkspaceLayout node shield', () => {
     for (const label of ['Settings', 'Log out']) {
       const text = screen.getByText(label);
       expect(text.className).toContain('hidden');
-      expect(text.className).toContain('min-[1100px]:inline');
+      expect(text.className).toContain('min-[1200px]:inline');
     }
   });
 
@@ -200,7 +200,7 @@ describe('WorkspaceLayout node shield', () => {
     expect(link.className).toContain('min-[1440px]:inline');
   });
 
-  it('shows the shield as its icon alone where the header is narrow, with its words from 1100px', () => {
+  it('shows the shield as its icon alone where the header is narrow, with its words from 1200px', () => {
     narrow = true;
     const { unmount } = renderLayout();
     expect(parentOf(screen.getByTestId('node-shield'))?.className).toContain(
@@ -225,5 +225,13 @@ describe('WorkspaceLayout node shield', () => {
     renderLayout();
     const toggle = screen.getByRole('button', { name: 'Toggle theme' });
     expect(parentOf(toggle)?.className ?? '').not.toContain('max-sm:hidden');
+  });
+
+  it('shows the search field only from 960px, an icon below, so it is never a sliver', () => {
+    renderLayout();
+    const field = screen.getByRole('button', {
+      name: 'Search docs, folders and tags',
+    });
+    expect(field.className).toContain('min-[960px]:flex');
   });
 });

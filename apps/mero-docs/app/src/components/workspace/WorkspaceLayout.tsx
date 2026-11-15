@@ -303,11 +303,11 @@ export function WorkspaceLayout() {
         </div>
         {namespaceId && (
           <div className="flex min-w-9 flex-1 justify-center sm:min-w-11 sm:px-1 md:px-6">
-            <TopBarSearch onOpen={() => setSearchOpen(true)} />
+            <TopBarSearch onOpen={() => setSearchOpen(true)} pillFrom="wide" />
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <NodeShield compactBelow={1100} />
+          <NodeShield compactBelow={1200} />
           {isOnline ? (
             <span
               role="img"
@@ -341,7 +341,7 @@ export function WorkspaceLayout() {
               onClick={showSettings ? closeSettings : goSettings}
             >
               <Settings className="h-3.5 w-3.5" />
-              <span className="hidden min-[1100px]:inline">Settings</span>
+              <span className="hidden min-[1200px]:inline">Settings</span>
             </Button>
           )}
           <Button
@@ -352,7 +352,7 @@ export function WorkspaceLayout() {
             aria-label="Log out"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden min-[1100px]:inline">Log out</span>
+            <span className="hidden min-[1200px]:inline">Log out</span>
           </Button>
         </div>
       </header>
