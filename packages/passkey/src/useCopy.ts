@@ -12,8 +12,12 @@ export function useCopy(): [CopyState, (text: string) => void] {
     const timer = setTimeout(() => setState("idle"), COPIED_MS);
     return () => clearTimeout(timer);
   }, [state]);
-  const copy = (text: string) => void Promise.resolve()
+  const copy = (text: string) =>
+    void Promise.resolve()
       .then(() => navigator.clipboard.writeText(text))
-      .then(() => setState("done"), () => setState("failed"));
+      .then(
+        () => setState("done"),
+        () => setState("failed"),
+      );
   return [state, copy];
 }

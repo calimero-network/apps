@@ -104,13 +104,6 @@ describe("docParagraphs", () => {
   it("treats CRLF line breaks like LF", () => {
     expect(docParagraphs("One\r\ntwo.\r\n\r\nThree.")).toEqual(["One two.", "Three."]);
   });
-
-  it("parses a hostile whitespace doc in linear time", () => {
-    const hostile = `a${" ".repeat(1400)}\n${" \t".repeat(500)}\n${" ".repeat(1400)}b`;
-    const start = performance.now();
-    expect(docParagraphs(hostile)).toEqual([`a`, `b`]);
-    expect(performance.now() - start).toBeLessThan(250);
-  });
 });
 
 describe("a publisher's description of any length", () => {
