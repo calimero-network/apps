@@ -80,7 +80,7 @@ describe("checkAppCode", () => {
 
   it("is unknown, never a throw, when the release the instance runs cannot be read", async () => {
     const c = client({});
-    c.appsReportAll.mockRejectedValue(new Error("offline"));
+    vi.mocked(c.appsReportAll).mockRejectedValue(new Error("offline"));
     expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toEqual({ status: "unknown", reason: "offline" });
   });
 
