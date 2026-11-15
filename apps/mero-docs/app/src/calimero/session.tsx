@@ -3,11 +3,12 @@
 // CalimeroClient (@calimero-apps/connect). Replaces v1's MeroProvider: there
 // is no node URL to pick and no node login; the account is a passkey.
 
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { browserPasskey, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
   appSource,
   createClient,
+  resolveSource,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
@@ -19,7 +20,6 @@ import {
   type SessionApi as PasskeySessionApi,
 } from '@calimero-apps/passkey';
 import { PACKAGE_NAME } from '@/constants/config';
-import { useResolvedSource } from './releaseSource';
 import { invites, noteJoinedAtSignUp } from '@/hooks/useNamespaceInvitation';
 
 /** The app's name in stored keys. */
@@ -85,7 +85,18 @@ function useSessionState(deps: SessionDeps): SessionApi {
     if (client) store?.sync(client);
   }, [store, client]);
   const base = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
-  const { source, resolving } = useResolvedSource(base, client);
+  const [resolved, setResolved] = useState<{ client: CalimeroClient; source: AppSource } | null>(null);
+  const unpinned = !!client && typeof base !== 'string' && !base.version;
+  useEffect(() => {
+    if (!client || !unpinned) return;
+    let live = true;
+    void resolveSource(client, base, window.location.href).then((source) => live && setResolved({ client, source }));
+    return () => {
+      live = false;
+    };
+  }, [client, unpinned, base]);
+  const resolving = unpinned && resolved?.client !== client;
+  const source = unpinned && !resolving && resolved ? resolved.source : base;
   return useMemo(
     () => ({ ...api, source, resolvingSource: resolving, sync }),
     [api, source, resolving, sync],
