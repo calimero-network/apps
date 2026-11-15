@@ -146,11 +146,11 @@ const MenuBtn = styled.button`
   &:hover { background: ${t.color.hover}; }
 `;
 const Heading = styled.div`
-  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto;
 `;
 const ViewTitle = styled.div`
   margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.025em;
-  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none;
   .sep { color: ${t.color.text3}; font-weight: 400; }
   .crumb-link { color: ${t.color.text2}; text-decoration: none; &:hover { color: ${t.color.accentText}; } }
   .crumb { color: ${t.color.text}; }
@@ -163,8 +163,8 @@ const PipelineName = styled.div`
   @media (max-width: 720px) { display: none; }
 `;
 const Tools = styled.div`
-  margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0;
-  .owner-ctl { width: 168px; }
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  .owner-ctl { width: 168px; flex: none; }
   .owner-ctl > button {
     background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusPill};
     min-height: 38px; padding: 0 14px; font-size: 13px; color: ${t.color.text};
@@ -176,7 +176,7 @@ const Tools = styled.div`
   }
 `;
 const Search = styled.div`
-  display: flex; align-items: center; gap: 8px; min-height: 38px; flex: 0 1 260px; min-width: 0;
+  display: flex; align-items: center; gap: 8px; min-height: 38px; flex: 0 1 260px; min-width: 96px; overflow: hidden;
   background: ${t.color.raised}; border: 1px solid ${t.color.border};
   border-radius: ${t.radiusPill}; padding: 0 14px; color: ${t.color.text3};
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
@@ -191,7 +191,7 @@ const Search = styled.div`
     border: 1px solid ${t.color.border}; border-radius: 6px; padding: 1px 6px;
     background: ${t.color.raised2}; line-height: 1.4;
   }
-  @media (max-width: 1100px) { flex-basis: 200px; }
+  @media (max-width: 1100px) { flex-basis: 200px; .kbd { display: none; } }
   @media (max-width: 720px) { flex: 1 1 auto; .kbd { display: none; } }
 `;
 const End = styled.div`
