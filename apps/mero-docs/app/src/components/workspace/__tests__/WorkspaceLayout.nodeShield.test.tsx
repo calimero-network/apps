@@ -110,10 +110,12 @@ const client = {
 
 let unbind: () => void;
 
+let narrow = false;
 beforeEach(() => {
   online = true;
+  narrow = false;
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: true,
+    matches: query === '(max-width: 1100px)' ? narrow : true,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -192,5 +194,21 @@ describe('WorkspaceLayout node shield', () => {
     const link = screen.getByText('Manage people');
     expect(link.className).toContain('hidden');
     expect(link.className).toContain('min-[1280px]:inline');
+  });
+
+  it('shows the shield as its icon alone where the header is narrow, with its words from 1100px', () => {
+    narrow = true;
+    const { unmount } = renderLayout();
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(
+      screen.getByTestId('node-shield').parentElement?.className,
+    ).toContain('cp-shield--compact');
+    unmount();
+    narrow = false;
+    renderLayout();
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(
+      screen.getByTestId('node-shield').parentElement?.className,
+    ).not.toContain('cp-shield--compact');
   });
 });

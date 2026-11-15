@@ -307,7 +307,7 @@ export function WorkspaceLayout() {
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <NodeShield />
+          <NodeShield compactBelow={1100} />
           {isOnline ? (
             <span
               role="img"
