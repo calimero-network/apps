@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { lastUsedName } from '@calimero-apps/names';
 import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
+import { CHECKING_RELEASE } from '../config';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;
@@ -14,6 +15,8 @@ const REVIEW_BOTTOM_PADDING = 26; // the review's sticky action row sits flush w
 interface Props {
   /** What the new workspace's pipelines are created from, reviewed before creating; `null` creates from the form. */
   release: ReviewRelease | null;
+  /** The release is still being read: nothing is created or reviewed yet. */
+  releasePending?: boolean;
   onCreate: (name: string, selfName: string) => Promise<CreateWorkspaceResult>;
   onClose: () => void;
 }
@@ -30,7 +33,7 @@ interface Props {
  *  (the passkey prompt was cancelled), the dialog stays open to say so: the
  *  alternative is invitees who can open it and do nothing, with nothing
  *  pointing back at the cause. */
-export default function NamespaceCreateDialog({ release, onCreate, onClose }: Props) {
+export default function NamespaceCreateDialog({ release, releasePending = false, onCreate, onClose }: Props) {
   const [name, setName] = useState('');
   const [selfName, setSelfName] = useState(() => lastUsedName());
   const [reviewing, setReviewing] = useState(false);
@@ -65,7 +68,7 @@ export default function NamespaceCreateDialog({ release, onCreate, onClose }: Pr
   };
 
   const submit = () => {
-    if (!named || busy) return;
+    if (!named || busy || releasePending) return;
     if (release) setReviewing(true);
     else void create();
   };
@@ -133,9 +136,10 @@ export default function NamespaceCreateDialog({ release, onCreate, onClose }: Pr
           />
         </Field>
         {error && <ErrorLine>{error}</ErrorLine>}
+        {releasePending && <p className="sub" data-testid="release-checking">{CHECKING_RELEASE}</p>}
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
-          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!named || busy}>
+          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!named || busy || releasePending}>
             {busy ? <Spin /> : release ? 'Continue' : 'Create workspace'}
           </PrimaryBtn>
         </Actions>

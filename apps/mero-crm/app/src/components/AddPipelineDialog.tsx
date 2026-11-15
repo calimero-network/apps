@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
+import { CHECKING_RELEASE } from '../config';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
 interface Props {
   onAdd: (name: string, currency: string) => Promise<string | null>;
+  /** The release is still being read: nothing is created yet. */
+  releasePending?: boolean;
   onClose: () => void;
 }
 
 /** Add-pipeline dialog: a name plus the currency its deals are valued in.
  *  Creates a context in the active namespace, names it, and saves the currency
  *  into shared state. */
-export default function AddPipelineDialog({ onAdd, onClose }: Props) {
+export default function AddPipelineDialog({ onAdd, releasePending = false, onClose }: Props) {
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [busy, setBusy] = useState(false);
@@ -23,7 +26,7 @@ export default function AddPipelineDialog({ onAdd, onClose }: Props) {
 
   const code = currency.trim().toUpperCase();
   const codeValid = /^[A-Z]{3}$/.test(code);
-  const canSubmit = !!name.trim() && codeValid && !busy;
+  const canSubmit = !!name.trim() && codeValid && !busy && !releasePending;
 
   const submit = async () => {
     if (!canSubmit) {
@@ -79,6 +82,7 @@ export default function AddPipelineDialog({ onAdd, onClose }: Props) {
           />
         </Field>
         {error && <ErrorLine>{error}</ErrorLine>}
+        {releasePending && <p className="sub" data-testid="release-checking">{CHECKING_RELEASE}</p>}
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
           <PrimaryBtn data-testid="pipeline-add-submit" onClick={submit} disabled={!canSubmit}>

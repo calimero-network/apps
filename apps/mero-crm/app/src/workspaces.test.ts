@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { APP_NAME } from './config';
-import { inviteLink, inviteRoute, invites, migrateLegacyInvite, reviewRelease, resolveSource } from './workspaces';
+import { inviteLink, inviteRoute, invites, migrateLegacyInvite, reviewRelease } from './workspaces';
 
 /** A host a Calimero node serves an installed app on: `{label}.{domain}`, routes under `/{version}/`. */
 const SERVED = `https://${'a'.repeat(52)}.apps.calimero.network`;
@@ -60,47 +60,15 @@ describe('invitation links', () => {
   });
 });
 
-describe('the release a new workspace is created from', () => {
+describe('the release a new workspace is reviewed for', () => {
   const PKG = 'com.calimero.mero-crm';
-  /** A client whose `packages.get` answers `get`; only `latest` of the answer is read. */
-  const clientWith = (get: () => Promise<unknown>) => ({ packages: { get: vi.fn(get) } }) as unknown as Parameters<typeof resolveSource>[0] & { packages: { get: Mock } };
-  const latest = (version: string) => clientWith(async () => ({ latest: version }));
-  const failing = () => clientWith(async () => { throw new Error('offline'); });
 
-  it('is the newest release of the package the account may see', async () => {
-    const client = latest('2.0.0');
-    const source = await resolveSource(client, { package: PKG }, `${SERVED}/1.2.0/crm`);
-    expect(client.packages.get).toHaveBeenCalledWith({ package: PKG });
-    expect(source).toEqual({ package: PKG, version: '2.0.0' });
-    expect(reviewRelease(source)).toEqual({ package: PKG, version: '2.0.0' });
+  it('is the package and version the source names', () => {
+    expect(reviewRelease({ package: PKG, version: '1.4.0' })).toEqual({ package: PKG, version: '1.4.0' });
   });
 
-  it('is the version the source names, without asking', async () => {
-    const client = latest('2.0.0');
-    const source = await resolveSource(client, { package: PKG, version: '1.4.0' }, `${SERVED}/1.2.0/crm`);
-    expect(source).toEqual({ package: PKG, version: '1.4.0' });
-    expect(client.packages.get).not.toHaveBeenCalled();
-  });
-
-  it('is the release this page is served from when the read fails', async () => {
-    expect(await resolveSource(failing(), { package: PKG }, `${SERVED}/1.2.0/crm`)).toEqual({ package: PKG, version: '1.2.0' });
-  });
-
-  it('is the release this page is served from when the answer names no release', async () => {
-    expect(await resolveSource(latest(''), { package: PKG }, `${SERVED}/1.2.0/crm`)).toEqual({ package: PKG, version: '1.2.0' });
-  });
-
-  it('is none when the read fails and the page names none, so there is nothing to review', async () => {
-    const source = await resolveSource(failing(), { package: PKG }, 'http://localhost:5173/crm');
-    expect(source).toEqual({ package: PKG });
-    expect(reviewRelease(source)).toBeNull();
-  });
-
-  it('is none for a raw bundle, which is never asked about', async () => {
-    const client = latest('2.0.0');
-    const source = await resolveSource(client, 'bundle-hash', `${SERVED}/1.2.0/crm`);
-    expect(source).toBe('bundle-hash');
-    expect(reviewRelease(source)).toBeNull();
-    expect(client.packages.get).not.toHaveBeenCalled();
+  it('is none for an unversioned source or a raw bundle, which have nothing signed to review', () => {
+    expect(reviewRelease({ package: PKG })).toBeNull();
+    expect(reviewRelease('bundle-hash')).toBeNull();
   });
 });

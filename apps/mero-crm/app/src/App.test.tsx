@@ -516,20 +516,89 @@ describe('App', () => {
       );
     });
 
-    it('holds the workspace screens back until the newest release is read', async () => {
-      const client = fakeClient({ signedIn: true });
+    /** A client whose newest-release read answers when the test says. */
+    function slowRelease(client: ReturnType<typeof fakeClient>) {
       let answer: (v: { latest: string }) => void = () => {};
       client.package.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+      return (latest: string) => answer({ latest });
+    }
+
+    it('shows the workspace screens while the newest release is read, and holds the create back until it is', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
+      await startCreating(client, UNVERSIONED_ENV);
+      await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
+      const submit = screen.getByTestId('ns-create-submit') as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+      answer('2.0.0');
+      await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+      expect(dialog.queryByTestId('release-checking')).toBeNull();
+      fireEvent.click(submit);
+      expect(await screen.findByText('com.calimero.mero-crm v2.0.0', {}, SLOW)).toBeTruthy();
+    });
+
+    it('holds adding a pipeline back until the newest release is read', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      writeActiveNs('org-1');
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+      expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+      fireEvent.click(screen.getByTestId('pipeline-add-btn'));
+      fireEvent.change(await screen.findByTestId('pipeline-add-name', {}, SLOW), { target: { value: 'Renewals' } });
+      const submit = screen.getByTestId('pipeline-add-submit') as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+      expect(screen.getByTestId('release-checking')).toBeTruthy();
+      answer('2.0.0');
+      await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+      expect(screen.queryByTestId('release-checking')).toBeNull();
+    });
+
+    it('holds connecting an existing organization back until the newest release is read', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
       client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
       new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
       window.history.replaceState(null, '', '/crm');
       render(<App deps={deps(client, UNVERSIONED_ENV)} />);
 
-      await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
-      await new Promise((r) => setTimeout(r, 200));
-      expect(screen.queryByTestId('ns-create-btn')).toBeNull();
-      answer({ latest: '2.0.0' });
       expect(await screen.findByTestId('ns-create-btn', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('connect-existing-org')).toBeNull();
+      expect(screen.getByTestId('release-checking')).toBeTruthy();
+      answer('2.0.0');
+      expect(await screen.findByTestId('connect-existing-org', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('release-checking')).toBeNull();
+    });
+
+    it("does not carry one account's release over to another on the same client", async () => {
+      const client = fakeClient({ signedIn: true });
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+      fireEvent.click(await screen.findByTestId('logout-btn', {}, SLOW));
+      await screen.findAllByRole('button', { name: 'Sign in' }, SLOW);
+
+      const answer = slowRelease(client);
+      client.signIn.mockImplementation((async () => {
+        const bob = { ...SESSION, accountId: 'acct-bob' };
+        client.useSession(bob);
+        return bob;
+      }) as never);
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+      fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Bob' } });
+      expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+      answer('3.0.0');
+      await waitFor(() => expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(false), SLOW);
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('com.calimero.mero-crm v3.0.0', {}, SLOW)).toBeTruthy();
     });
 
     it('creates straight from the form when the newest release cannot be read', async () => {

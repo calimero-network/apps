@@ -68,6 +68,8 @@ export interface UseWorkspaceReturn {
   createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
   /** The release a new workspace's pipelines are created from, to review before creating; `null` for a raw bundle. */
   createRelease: ReviewRelease | null;
+  /** The newest release is still being read: creates (workspace, pipeline, connect) wait for it. */
+  sourcePending: boolean;
   createNamespaceError: Error | null;
   /**
    * Mints an invitation (a passkey step-up) naming this app's team, and
@@ -109,7 +111,7 @@ function asError(e: unknown): Error {
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
-  const { client, accountId, source, passkey, after } = useSignedIn();
+  const { client, accountId, source, sourcePending, passkey, after } = useSignedIn();
 
   // ── workspaces ────────────────────────────────────────────────────────────
   const [namespaces, setNamespaces] = useState<Workspace[]>([]);
@@ -383,6 +385,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     selectNamespace,
     createNamespace,
     createRelease,
+    sourcePending,
     createNamespaceError,
     invite,
     leaveWorkspace: leave,

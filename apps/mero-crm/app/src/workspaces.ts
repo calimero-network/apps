@@ -12,7 +12,6 @@ import {
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
-  servedRelease,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
@@ -106,27 +105,6 @@ export interface CreatedWorkspace {
   namespaceId: string;
   /** Set when the org exists but its member defaults could not be set (a cancelled passkey). */
   warning: string | null;
-}
-
-/**
- * `source` with the release new instances are created from: the newest the
- * account may see, else the one this page is served from. As given when
- * neither is known, or for a raw bundle or a named version.
- */
-export async function resolveSource(
-  client: ClientRoutes<{ packages: 'get' }>,
-  source: AppSource,
-  href: string,
-): Promise<AppSource> {
-  if (typeof source === 'string' || source.version) return source;
-  try {
-    const { latest } = await client.packages.get({ package: source.package });
-    if (latest) return { ...source, version: latest };
-  } catch {
-    // The page's own release is the next best.
-  }
-  const served = servedRelease(href);
-  return served ? { ...source, version: served } : source;
 }
 
 /** The package release `source` creates, or `null` for a raw bundle or a source with no known version (nothing signed to review). */

@@ -96,6 +96,18 @@ describe('NamespaceCreateDialog', () => {
     expect((await screen.findByTestId('ns-create-ha-notice')).textContent).toContain('Defaults need an admin.');
   });
 
+  it('waits while the release is being read: nothing to continue to, Enter included', () => {
+    const onCreate = vi.fn();
+    render(<NamespaceCreateDialog release={null} releasePending onCreate={onCreate} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+    fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'ronit' } });
+    expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+    fireEvent.keyDown(screen.getByTestId('ns-create-name'), { key: 'Enter' });
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Review before creating')).toBeNull();
+  });
+
   it('creates straight from the form when there is no release to review', async () => {
     const { onCreate } = open({ release: null });
     expect(screen.getByTestId('ns-create-submit').textContent).toBe('Create workspace');

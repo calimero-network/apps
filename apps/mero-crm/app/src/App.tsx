@@ -30,8 +30,8 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
  * bounces a signed-in person to the landing page.
  */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { api, sourcePending } = useSessionApi();
-  if (api.session.status === "connecting" || sourcePending) return null;
+  const { api } = useSessionApi();
+  if (api.session.status === "connecting") return null;
   if (api.session.status !== "signed-in") return <Navigate to="/" replace />;
   return <>{children}</>;
 }
