@@ -71,6 +71,7 @@ account, nothing to install, no permissions to grant.
   "Your data" says "Only you control it." and "Only people invited to it can open it." for a node that passed its check, and "Calimero can't read it." only for a sealed one; a test server says "Test server: not sealed" in grey in its place.
   The amber lines under it (one per public view, public call and outside host) come from the card; only a method the node's call check can let a caller through counts, so a method for the app's own actions or a compute result is never listed as open.
   "Create workspace" is disabled, with the reason, while the node has refused its check.
+  Back and Create stick to the bottom of whatever scrolls; a scrolling dialog with bottom padding sets `--passkey-review-inset` to that padding so the row sits flush with the edge.
   The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
   A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created while a node is connected.
   The registry's review state and the SDK version are not in the card, so the review does not show them.

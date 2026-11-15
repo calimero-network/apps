@@ -158,6 +158,15 @@ describe("WorkspaceReview", () => {
     expect((screen.getByRole("button", { name: "Creating…" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("renders Back and Create last, in the row the stylesheet sticks to the bottom of the scroll container", async () => {
+    connect(sealed);
+    const { container } = render(<WorkspaceReview release={RELEASE} onBack={vi.fn()} onCreate={vi.fn()} />);
+    await ready();
+    const row = container.querySelector(".cp-review")?.lastElementChild as HTMLElement;
+    expect(row.className).toBe("cp-review__buttons");
+    expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["Back", "Create workspace"]);
+  });
+
   it("moves focus to the heading so a keyboard user starts at the review", async () => {
     connect(sealed);
     review();
