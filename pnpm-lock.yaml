@@ -10,8 +10,8 @@ catalogs:
       specifier: ^35.3.0
       version: 35.3.0
     '@calimero-network/mero-react':
-      specifier: ^11.2.0
-      version: 11.2.0
+      specifier: ^11.3.0
+      version: 11.3.0
   default:
     '@calimero-network/mero-icons':
       specifier: ^0.0.5
@@ -2900,7 +2900,7 @@ importers:
         version: link:../connect
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 11.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
@@ -3759,8 +3759,8 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@calimero-network/mero-react@11.2.0':
-    resolution: {integrity: sha512-EXfqLHP5vXgp2biY9gM5Or5FepE7PwkasgKLYqST3Ntayfh1A3czuNWsZgJREvCjfejvJclsWypjjhJ2JppH4w==}
+  '@calimero-network/mero-react@11.3.0':
+    resolution: {integrity: sha512-Lzex9seUlt+S/N7Y8t2gCwShkGbtj/dtIEGqOMOeovHJkzEgJL6CppmHL5TwzKsAERaMxcvB1j1ZoxGn8uF1WQ==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -11623,7 +11623,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@calimero-network/mero-react@11.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@calimero-network/mero-react@11.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@calimero-network/mero-js': 35.3.0
       react: 19.2.8
