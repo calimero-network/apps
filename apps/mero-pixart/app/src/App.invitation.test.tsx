@@ -23,6 +23,7 @@ function hold(token: string, org: string | null = null) {
   invites.put({ token, org, team: null, doc: null, route: null, extra: {} });
 }
 const SLOW = { timeout: 10_000 };
+const TEST_TIMEOUT = 15_000; // above SLOW, so a cold first render fails on the finder, not the test
 
 function fakeClient(opts: { signedIn?: boolean } = {}) {
   let session: CalimeroSession | undefined = opts.signedIn ? SESSION : undefined;
@@ -84,7 +85,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("an invite link", () => {
+describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
   it("labels the landing page action \"Sign in\" and offers no desktop app on a web-only app", async () => {
     renderApp(fakeClient());
     expect((await screen.findAllByRole("button", { name: "Sign in" }, SLOW)).length).toBeGreaterThan(0);
