@@ -59,7 +59,8 @@ vi.mock('@/calimero/react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),
 }));
-vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
+let online = true;
+vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => online }));
 vi.mock('@/hooks/useWorkspacePresence', () => ({
   usePublishWorkspacePresence: () => {},
 }));
@@ -102,6 +103,7 @@ const client = {
 let unbind: () => void;
 
 beforeEach(() => {
+  online = true;
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: true,
     media: query,
@@ -152,5 +154,17 @@ describe('WorkspaceLayout node shield', () => {
       expect(text.className).toContain('hidden');
       expect(text.className).toContain('min-[1100px]:inline');
     }
+  });
+
+  it('says Offline in words, not only in colour, and not while online', () => {
+    const { unmount } = renderLayout();
+    const header = screen.getByRole('banner');
+    expect(within(header).queryByText('Offline')).toBeNull();
+    unmount();
+    online = false;
+    renderLayout();
+    expect(
+      within(screen.getByRole('banner')).getByText('Offline'),
+    ).toBeTruthy();
   });
 });

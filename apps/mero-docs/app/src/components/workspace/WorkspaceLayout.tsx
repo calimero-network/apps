@@ -308,20 +308,21 @@ export function WorkspaceLayout() {
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <NodeShield />
-          <span
-            role="img"
-            aria-label={isOnline ? 'Online' : 'Offline'}
-            title={isOnline ? 'Online' : 'Offline'}
-            className="px-1"
-          >
-            <Circle
-              className={`h-2 w-2 ${
-                isOnline
-                  ? 'fill-sync-synced text-sync-synced'
-                  : 'fill-destructive text-destructive'
-              }`}
-            />
-          </span>
+          {isOnline ? (
+            <span
+              role="img"
+              aria-label="Online"
+              title="Online"
+              className="hidden px-1 sm:inline-flex"
+            >
+              <Circle className="h-2 w-2 fill-sync-synced text-sync-synced" />
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-1 text-xs font-medium text-destructive">
+              <Circle className="h-2 w-2 fill-destructive" aria-hidden />
+              Offline
+            </span>
+          )}
           <ThemeToggle />
           <ManageInHomeLink
             session={session}
