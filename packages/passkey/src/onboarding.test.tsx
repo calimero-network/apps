@@ -19,6 +19,7 @@ import { SIGN_UP_INVITE_ONLY, resolveTarget, type KeyValueStorage } from "@calim
 import { InvitationSignIn, JoinInvitation, SignInPanel } from "./Onboarding";
 import { SIGN_UP_READY, SIGN_UP_TWO_PROMPTS, noAccountCopy } from "./PasskeySignIn";
 import {
+  POLICY_READ_TIMEOUT_MS,
   accountHintKey,
   usePasskeySession,
   type JoinedAtSignUp,
@@ -150,12 +151,45 @@ describe("an invite link, no account here", () => {
   });
 
   it("on an invite-only cluster the invite goes with the sign-up even without a join handler", async () => {
-    const client = fakeClient({}, INVITE);
+    let readPolicy!: () => void;
+    const policyRead = new Promise<void>((resolve) => (readPolicy = resolve));
+    const client = fakeClient({ signUpPolicy: vi.fn(async () => (await policyRead, INVITE)) });
     render(<Screen d={deps(client)} invite="tok-1" />);
-    await waitFor(() => expect(client.signUpPolicy).toHaveBeenCalled());
+    // Pressed while the cluster's policy is still being read.
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    readPolicy();
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
+  });
+
+  it("a policy read that never settles does not hold the sign-up for ever", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const client = fakeClient({ signUpPolicy: vi.fn(() => new Promise<never>(() => {})) });
+      render(<Screen d={deps(client)} invite="tok-1" onJoined={() => {}} />);
+      fireEvent.click(await screen.findByTestId("signup-passkey"));
+      await act(() => vi.advanceTimersByTimeAsync(POLICY_READ_TIMEOUT_MS));
+      await screen.findByTestId("status");
+      expect(client.signUp).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the invite goes by the policy of the cluster signed up on, not the one before it", async () => {
+    const first = fakeClient({}, OPEN);
+    let readPolicy!: () => void;
+    const policyRead = new Promise<void>((resolve) => (readPolicy = resolve));
+    const second = fakeClient({ signUpPolicy: vi.fn(async () => (await policyRead, INVITE)) });
+    const view = render(<Screen d={deps(first)} invite="tok-1" />);
+    await waitFor(() => expect(first.signUpPolicy).toHaveBeenCalled());
+    await act(async () => {});
+    view.rerender(<Screen d={deps(second)} invite="tok-1" />);
+    await waitFor(() => expect(second.signUpPolicy).toHaveBeenCalled());
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    readPolicy();
+    await screen.findByTestId("status");
+    expect(second.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
   });
 
   it("an expired invite is said plainly, with what to do", async () => {

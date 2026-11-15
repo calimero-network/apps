@@ -39,6 +39,10 @@ import {
 
 import { describeInviteRefused, type InviteRefused } from "./inviteRefused";
 
+
+/** How long a sign-up pressed before the policy lands waits for the read. */
+export const POLICY_READ_TIMEOUT_MS = 3000;
+
 export { accountHintKey, knownPasskeysKey, type JoinedAtSignUp } from "./ceremony";
 export { describeInviteRefused, type InviteRefused } from "./inviteRefused";
 
@@ -240,6 +244,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
   /** The `/auth/logout` still in flight, which the next ceremony waits for. */
   const loggingOut = useRef<Promise<void> | null>(null);
+  /** The policy read in flight, which a sign-up pressed before it lands waits for. */
+  const policyRead = useRef<Promise<SignUpPolicy | null | undefined> | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -282,7 +288,15 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   useEffect(() => {
     if (!signedOutClient) return;
     let live = true;
-    void readSignUpPolicy(signedOutClient).then((p) => {
+    setPolicy(undefined);
+    const read = readSignUpPolicy(signedOutClient);
+    // A read that never settles must not hold a sign-up: unread after the timeout.
+    let expire!: () => void;
+    const timeout = new Promise<undefined>((resolve) => (expire = () => resolve(undefined)));
+    const timer = setTimeout(expire, POLICY_READ_TIMEOUT_MS);
+    policyRead.current = Promise.race([read, timeout]);
+    void read.then((p) => {
+      clearTimeout(timer);
       if (live) setPolicy(p);
     });
     return () => {
@@ -387,7 +401,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
             made = await signUpHere(c, target, passkey, {
               name,
               invite: inviteToken,
-              policy,
+              policy: policy ?? (await policyRead.current),
               join,
               nameInOrg: nameJoinedOrg,
               storage: hintStorage,
