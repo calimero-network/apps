@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -14,10 +14,15 @@ import { withRoutes } from '@calimero-apps/connect/testing';
 // release's `/{version}/`), going nowhere but `release.navigate`. With no
 // `href` it reads this test's own location: development, where it never moves.
 const release = vi.hoisted(() => ({ href: null as string | null, navigate: vi.fn() }));
+const shieldApp = vi.hoisted(() => vi.fn());
 vi.mock('@calimero-apps/passkey', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@calimero-apps/passkey')>();
   return {
     ...actual,
+    useNodeShieldApp: (...args: Parameters<typeof actual.useNodeShieldApp>) => {
+      shieldApp(...args);
+      return actual.useNodeShieldApp(...args);
+    },
     useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
@@ -31,6 +36,8 @@ function holdInvite(token: string, target: { org?: string; route?: string } = {}
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
+const UNVERSIONED_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-crm' };
+const PACKAGE_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-crm', VITE_CALIMERO_VERSION: '1.4.0' };
 
 const STAGES = [
   { id: 'stage-lead', name: 'Lead in', probability: 10, position: 0 },
@@ -72,6 +79,8 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     getSettings: { currency: 'USD', rotting_days: 14 },
   };
   const client = withRoutes({
+    nodes: [],
+    package: vi.fn(async () => ({ latest: '2.0.0' })),
     get session() {
       return session;
     },
@@ -114,9 +123,9 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
   return client;
 }
 
-function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
+function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps['env'] = DEV_ENV): SessionDeps {
   return {
-    env: DEV_ENV,
+    env,
     makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
@@ -127,6 +136,7 @@ beforeEach(() => {
   sessionStorage.clear();
   release.href = null;
   release.navigate.mockClear();
+  shieldApp.mockClear();
   window.history.replaceState(null, '', '/');
   window.matchMedia ??= ((query: string) => ({
     matches: false,
@@ -169,6 +179,27 @@ describe('App', () => {
     fireEvent.click(choice);
     await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Pipeline', 'bundle-hash', { org: 'ow' }), SLOW);
     expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
+  it('tells the node shield which instance is open and where its code comes from', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/crm');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+    expect(shieldApp).toHaveBeenCalledWith('app-1', 'bundle-hash');
+  });
+
+  it('shows the open pipeline\'s trust view in settings', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/crm/settings');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByTestId('trust-settings', {}, SLOW)).toBeTruthy();
   });
 
   it('signs in with a passkey from the landing page', async () => {
@@ -435,6 +466,161 @@ describe('App', () => {
       await new Promise((r) => setTimeout(r, 200));
       expect(screen.queryByTestId('alias-gate')).toBeNull();
       expect(localStorage.getItem('calimero-names:last')).toBe('Alice');
+    });
+
+    it('reviews the release a package app creates from before it creates the workspace', async () => {
+      const client = fakeClient({ signedIn: true });
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(PACKAGE_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, PACKAGE_ENV)} />);
+
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('Review before creating', {}, SLOW)).toBeTruthy();
+      expect(client.createOrg).not.toHaveBeenCalled();
+
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create workspace' }));
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(client.package).not.toHaveBeenCalled();
+    });
+
+    /** Signed in with no workspace, to the end of the create dialog's first step. */
+    async function startCreating(client: ReturnType<typeof fakeClient>, env: SessionDeps['env']) {
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(env), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, env)} />);
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
+    }
+
+    it('reviews and creates from the newest release, in the workspace and in its first pipeline', async () => {
+      const client = fakeClient({ signedIn: true });
+      await startCreating(client, UNVERSIONED_ENV);
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('com.calimero.mero-crm v2.0.0', {}, SLOW)).toBeTruthy();
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }] }));
+      client.listApps.mockImplementation((async () => []) as never);
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create workspace' }));
+
+      fireEvent.click(await screen.findByTestId('pipeline-add-cta', {}, SLOW));
+      fireEvent.change(await screen.findByTestId('pipeline-add-name', {}, SLOW), { target: { value: 'New business' } });
+      fireEvent.click(screen.getByTestId('pipeline-add-submit'));
+      await waitFor(
+        () => expect(client.createApp).toHaveBeenCalledWith('New business', { package: 'com.calimero.mero-crm', version: '2.0.0' }, expect.anything()),
+        SLOW,
+      );
+    });
+
+    /** A client whose newest-release read answers when the test says. */
+    function slowRelease(client: ReturnType<typeof fakeClient>) {
+      let answer: (v: { latest: string }) => void = () => {};
+      client.package.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+      return (latest: string) => answer({ latest });
+    }
+
+    it('shows the workspace screens while the newest release is read, and holds the create back until it is', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
+      await startCreating(client, UNVERSIONED_ENV);
+      await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
+      const submit = screen.getByTestId('ns-create-submit') as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+      answer('2.0.0');
+      await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+      expect(dialog.queryByTestId('release-checking')).toBeNull();
+      fireEvent.click(submit);
+      expect(await screen.findByText('com.calimero.mero-crm v2.0.0', {}, SLOW)).toBeTruthy();
+    });
+
+    it('holds adding a pipeline back until the newest release is read', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      writeActiveNs('org-1');
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+      expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+      fireEvent.click(screen.getByTestId('pipeline-add-btn'));
+      fireEvent.change(await screen.findByTestId('pipeline-add-name', {}, SLOW), { target: { value: 'Renewals' } });
+      const submit = screen.getByTestId('pipeline-add-submit') as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+      expect(screen.getByTestId('release-checking')).toBeTruthy();
+      answer('2.0.0');
+      await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+      expect(screen.queryByTestId('release-checking')).toBeNull();
+    });
+
+    it('holds connecting an existing organization back until the newest release is read', async () => {
+      const client = fakeClient({ signedIn: true });
+      const answer = slowRelease(client);
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+      expect(await screen.findByTestId('ns-create-btn', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('connect-existing-org')).toBeNull();
+      expect(screen.getByTestId('release-checking')).toBeTruthy();
+      answer('2.0.0');
+      expect(await screen.findByTestId('connect-existing-org', {}, SLOW)).toBeTruthy();
+      expect(screen.queryByTestId('release-checking')).toBeNull();
+    });
+
+    it("does not carry one account's release over to another on the same client", async () => {
+      const client = fakeClient({ signedIn: true });
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+      fireEvent.click(await screen.findByTestId('logout-btn', {}, SLOW));
+      await screen.findAllByRole('button', { name: 'Sign in' }, SLOW);
+
+      const answer = slowRelease(client);
+      client.signIn.mockImplementation((async () => {
+        const bob = { ...SESSION, accountId: 'acct-bob' };
+        client.useSession(bob);
+        return bob;
+      }) as never);
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+      fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Bob' } });
+      expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+      answer('3.0.0');
+      await waitFor(() => expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(false), SLOW);
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('com.calimero.mero-crm v3.0.0', {}, SLOW)).toBeTruthy();
+    });
+
+    it('creates straight from the form when the newest release cannot be read', async () => {
+      const client = fakeClient({ signedIn: true });
+      client.package.mockRejectedValue(new Error('offline'));
+      await startCreating(client, UNVERSIONED_ENV);
+      const submit = screen.getByTestId('ns-create-submit');
+      expect(submit.textContent).toBe('Create workspace');
+      fireEvent.click(submit);
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(screen.queryByText('Review before creating')).toBeNull();
+    });
+
+    it('creates straight from the form for a raw dev bundle, and never asks for a release', async () => {
+      const client = fakeClient({ signedIn: true });
+      await startCreating(client, DEV_ENV);
+      const submit = screen.getByTestId('ns-create-submit');
+      expect(submit.textContent).toBe('Create workspace');
+      fireEvent.click(submit);
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(screen.queryByText('Review before creating')).toBeNull();
+      expect(client.package).not.toHaveBeenCalled();
     });
 
     it('asks once right after joining a workspace that has no name for you', async () => {

@@ -78,6 +78,12 @@ describe("checkAppCode", () => {
     expect((await checkAppCode(client({ mock: true }), "app-1", HASH)).status).toBe("unknown");
   });
 
+  it("is unknown, never a throw, when the release the instance runs cannot be read", async () => {
+    const c = client({});
+    vi.mocked(c.appsReportAll).mockRejectedValue(new Error("offline"));
+    expect(await checkAppCode(c, "app-1", { package: PACKAGE })).toEqual({ status: "unknown", reason: "offline" });
+  });
+
   it("is unknown when the instance's service is not the capabilities' service", async () => {
     const other = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "web" });
     expect(await checkAppCode(other, "app-1", { package: PACKAGE })).toMatchObject({ status: "unknown" });

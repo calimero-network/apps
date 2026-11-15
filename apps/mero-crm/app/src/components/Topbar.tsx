@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
+import { NodeShield } from '@calimero-apps/passkey';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { IconMenu, IconPlus, IconSearch } from './icons';
@@ -18,8 +19,8 @@ const TITLES: Record<string, string> = {
 };
 
 /** Floating top bar: view title, the active pipeline's name, the owner filter
- *  (Everyone / Mine / a teammate), client-side search, the light/dark switch,
- *  and New deal. On a phone it gains the menu button that opens the nav
+ *  (Everyone / Mine / a teammate), client-side search, the node shield,
+ *  the light/dark switch, and New deal. On a phone it gains the menu button that opens the nav
  *  drawer, and the filter + search drop to a second row. */
 export default function Topbar({
   onOpenNav,
@@ -112,6 +113,7 @@ export default function Topbar({
         </Search>
       </Tools>
       <End>
+        <NodeShield />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-deal-btn" onClick={onNewDeal} title="New deal (N)">
           <IconPlus size={13} /> Deal
@@ -125,7 +127,7 @@ export default function Topbar({
    containing block for fixed descendants; the only things that open from it
    are absolute-positioned dropdowns, which is fine. */
 const Bar = styled.header`
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 12px;
   padding: 10px 10px 10px 20px; min-height: 64px; flex: 0 0 auto;
   margin: 12px 16px 0; border: 1px solid ${t.color.edge}; border-radius: 22px;
   position: sticky; top: 12px; z-index: 5;
@@ -134,7 +136,7 @@ const Bar = styled.header`
   box-shadow: ${t.shadow};
   @media (max-width: 940px) { padding-left: 8px; }
   @media (max-width: 720px) {
-    margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
+    flex-wrap: wrap; margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
   }
 `;
 const MenuBtn = styled.button`
@@ -148,7 +150,7 @@ const Heading = styled.div`
 `;
 const ViewTitle = styled.div`
   margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.025em;
-  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none;
   .sep { color: ${t.color.text3}; font-weight: 400; }
   .crumb-link { color: ${t.color.text2}; text-decoration: none; &:hover { color: ${t.color.accentText}; } }
   .crumb { color: ${t.color.text}; }
@@ -161,8 +163,8 @@ const PipelineName = styled.div`
   @media (max-width: 720px) { display: none; }
 `;
 const Tools = styled.div`
-  margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0;
-  .owner-ctl { width: 168px; }
+  margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 3 auto;
+  .owner-ctl { flex: 0 1 168px; min-width: 112px; }
   .owner-ctl > button {
     background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusPill};
     min-height: 38px; padding: 0 14px; font-size: 13px; color: ${t.color.text};
@@ -174,7 +176,7 @@ const Tools = styled.div`
   }
 `;
 const Search = styled.div`
-  display: flex; align-items: center; gap: 8px; min-height: 38px; flex: 0 1 260px; min-width: 0;
+  display: flex; align-items: center; gap: 8px; min-height: 38px; flex: 0 1 260px; min-width: 96px; overflow: hidden;
   background: ${t.color.raised}; border: 1px solid ${t.color.border};
   border-radius: ${t.radiusPill}; padding: 0 14px; color: ${t.color.text3};
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
@@ -189,11 +191,16 @@ const Search = styled.div`
     border: 1px solid ${t.color.border}; border-radius: 6px; padding: 1px 6px;
     background: ${t.color.raised2}; line-height: 1.4;
   }
-  @media (max-width: 1100px) { flex-basis: 200px; }
+  @media (max-width: 1100px) { flex-basis: 200px; .kbd { display: none; } }
   @media (max-width: 720px) { flex: 1 1 auto; .kbd { display: none; } }
 `;
 const End = styled.div`
   display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  /* The shield is icon only where the bar has no room for its label. */
+  @media (max-width: 1240px) {
+    .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .cp-shield__chip { width: 28px; padding: 0; justify-content: center; }
+  }
   @media (max-width: 720px) { margin-left: auto; }
 `;
 const NewBtn = styled.button`

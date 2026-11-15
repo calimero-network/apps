@@ -70,6 +70,7 @@ export {
   instancePackage,
   instanceRelease,
   instanceReleaseUrl,
+  resolveSource,
   servedRelease,
   type FollowInstanceReleaseOptions,
   type FollowReleaseOptions,

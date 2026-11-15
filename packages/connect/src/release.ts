@@ -23,11 +23,14 @@ import type { CalimeroClient, ReportedApp } from "@calimero-network/mero-js";
 
 import type { KeyValueStorage } from "./client";
 import type { ClientRoutes } from "./routes";
+import type { AppSource } from "./target";
 
 /** The tab's note of a release it moved to, read on the page it lands on. */
 export const RELEASE_FOLLOW_KEY = "cp-release:follow";
 /** How long that note stops another move to the same release. */
 const FOLLOW_TTL_MS = 10 * 60 * 1000;
+/** How long {@link resolveSource} waits for the package's newest release before it falls back. */
+const RESOLVE_TIMEOUT_MS = 4000;
 
 /** A node's app host: `{label}.{apps domain}` (also a cluster's or a deployment's label), 52 base32 characters. */
 const APP_HOST = /^[a-z2-7]{52}\./;
@@ -56,6 +59,32 @@ export function servedRelease(href: string): string | null {
     return null;
   }
   return RELEASE_SEGMENT.test(version) ? version : null;
+}
+
+/**
+ * `source` with the release new instances are created from: the newest the
+ * account may see (`GET /packages/{package}`, the one a create without a
+ * version takes), else the release `href`'s page is served from. As given when
+ * neither is known, for a raw bundle, and for a source that names a version.
+ * A read that fails or takes longer than {@link RESOLVE_TIMEOUT_MS} falls
+ * through; this never throws.
+ */
+export async function resolveSource(client: ClientRoutes<{ packages: "get" }>, source: AppSource, href: string): Promise<AppSource> {
+  if (typeof source === "string" || source.version) return source;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timed out")), RESOLVE_TIMEOUT_MS);
+    });
+    const { latest } = await Promise.race([client.packages.get({ package: source.package }), timeout]);
+    if (latest) return { ...source, version: latest };
+  } catch {
+    // The page's own release is the next best.
+  } finally {
+    clearTimeout(timer);
+  }
+  const served = servedRelease(href);
+  return served ? { ...source, version: served } : source;
 }
 
 /**
@@ -155,23 +184,20 @@ export type InstancePackage = NonNullable<ReportedApp["package"]> & { compute?: 
 
 /**
  * The package release `app` runs, as its scope's report says (the account's
- * own report, or its organization's). `null` when it cannot be read.
+ * own report, or its organization's). `null` when no package runs it (a raw
+ * bundle); a read that fails throws.
  */
 export async function instancePackage(client: ReleaseClient, app: string): Promise<InstancePackage | null> {
-  try {
-    const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
-    const org = typeof record.org === "string" ? record.org : null;
-    const report = await client.appsReportAll(org);
-    const running = report.apps.find((a) => a.app === app)?.package;
-    return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
-  } catch {
-    return null;
-  }
+  const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
+  const org = typeof record.org === "string" ? record.org : null;
+  const report = await client.appsReportAll(org);
+  const running = report.apps.find((a) => a.app === app)?.package;
+  return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
 }
 
-/** The release version `app` runs ({@link instancePackage}'s `version`). */
+/** The release version `app` runs ({@link instancePackage}'s `version`); `null` when unknown or unreadable. */
 export async function instanceRelease(client: ReleaseClient, app: string): Promise<string | null> {
-  const version = (await instancePackage(client, app))?.version;
+  const version = (await instancePackage(client, app).catch(() => null))?.version;
   return typeof version === "string" && version ? version : null;
 }
 
