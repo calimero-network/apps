@@ -75,10 +75,4 @@ describe('WorkspaceTrustPanel', () => {
       .click(screen.getByRole('button', { name: 'Try again' }));
     expect((await screen.findByTestId('trust')).textContent).toContain('1.1.0');
   });
-
-  it('treats an instance missing from its own report as unreadable', async () => {
-    appsReportAll.mockResolvedValue({ apps: [] });
-    render(<WorkspaceTrustPanel />);
-    expect(await screen.findByText(/could not read the release/i)).toBeTruthy();
-  });
 });

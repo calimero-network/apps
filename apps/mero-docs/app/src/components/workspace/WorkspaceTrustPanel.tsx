@@ -4,6 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
+import { instancePackage } from '@calimero-apps/connect';
 import { WorkspaceTrust, type ReviewRelease } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -13,24 +14,12 @@ type Running =
   | { status: 'none' }
   | { status: 'error' };
 
-/** The release `app` runs, as its scope's report says: none for an instance of a raw bundle, an error when it cannot be read. */
-async function readRunning(
-  client: CalimeroClient,
-  app: string,
-): Promise<Running> {
+/** The release `app` runs: none for an instance of a raw bundle, an error when it cannot be read. */
+async function readRunning(client: CalimeroClient, app: string): Promise<Running> {
   try {
-    const record = (await client.apps.get({ app })) as { org?: unknown };
-    const org = typeof record.org === 'string' ? record.org : null;
-    const entry = (await client.appsReportAll(org)).apps.find(
-      (a) => a.app === app,
-    );
-    if (!entry) return { status: 'error' };
-    const running = entry.package;
+    const running = await instancePackage(client, app);
     return running?.package && running.version
-      ? {
-          status: 'release',
-          release: { package: running.package, version: running.version },
-        }
+      ? { status: 'release', release: { package: running.package, version: running.version } }
       : { status: 'none' };
   } catch {
     return { status: 'error' };
