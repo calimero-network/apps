@@ -9,6 +9,7 @@ const MAX_NAME = 128;
 const MAX_SELF_NAME = 64;
 
 const REVIEW_WIDTH = 680;
+const REVIEW_BOTTOM_PADDING = 26; // the review's sticky action row sits flush with this inset
 
 interface Props {
   /** What the new workspace's pipelines are created from, reviewed before creating; `null` creates from the form. */
@@ -145,4 +146,6 @@ export default function NamespaceCreateDialog({ release, onCreate, onClose }: Pr
 
 const ReviewDialog = styled(Dialog)`
   max-width: ${REVIEW_WIDTH}px;
+  padding-bottom: ${REVIEW_BOTTOM_PADDING}px;
+  --passkey-review-inset: ${REVIEW_BOTTOM_PADDING}px;
 `;
