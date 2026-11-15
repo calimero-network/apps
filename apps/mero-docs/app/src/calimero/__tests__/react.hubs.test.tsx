@@ -39,7 +39,7 @@ function mount() {
 afterEach(cleanup);
 
 describe('CalimeroProvider', () => {
-  it('keeps the event and presence hubs when only the release the app creates from changes', () => {
+  it('keeps the whole live object when only the release the app creates from changes', () => {
     source = { package: 'network.calimero.docs' };
     const { live, rerender } = mount();
     const before = live();
@@ -48,6 +48,7 @@ describe('CalimeroProvider', () => {
     const after = live();
     expect(after.events).toBe(before.events);
     expect(after.presence).toBe(before.presence);
-    expect(after.admin).not.toBe(before.admin);
+    expect(after.admin).toBe(before.admin);
+    expect(after).toBe(before);
   });
 });

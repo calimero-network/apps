@@ -52,15 +52,17 @@ export function CalimeroProvider({ children }: { children: ReactNode }) {
   const { session, passkey, source, sync } = useSession();
   const client = session.status === 'signed-in' ? session.client : null;
   const accountId = session.status === 'signed-in' ? session.accountId : null;
-  // The hubs follow the account; only the admin follows the release new instances are created from.
+  // Hubs and admin follow the account; the admin reads the release new instances are created from when it creates.
   const hubs = useMemo(
     () => (client && accountId ? { events: new EventHub(client), presence: new PresenceHub(client, accountId) } : null),
     [client, accountId],
   );
   useEffect(() => () => hubs?.events.close(), [hubs]);
+  const currentSource = useRef(source);
+  currentSource.current = source;
   const admin = useMemo(
-    () => (client && accountId ? new OrgAdmin(client, accountId, passkey, source, sync) : null),
-    [client, accountId, passkey, source, sync],
+    () => (client && accountId ? new OrgAdmin(client, accountId, passkey, () => currentSource.current, sync) : null),
+    [client, accountId, passkey, sync],
   );
   const live = useMemo<Live | null>(
     () => (client && accountId && hubs && admin ? { client, accountId, admin, ...hubs } : null),
