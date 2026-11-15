@@ -338,7 +338,7 @@ export function WorkspaceLayout() {
               onClick={showSettings ? closeSettings : goSettings}
             >
               <Settings className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden min-[1100px]:inline">Settings</span>
             </Button>
           )}
           <Button
@@ -349,7 +349,7 @@ export function WorkspaceLayout() {
             aria-label="Log out"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Log out</span>
+            <span className="hidden min-[1100px]:inline">Log out</span>
           </Button>
         </div>
       </header>

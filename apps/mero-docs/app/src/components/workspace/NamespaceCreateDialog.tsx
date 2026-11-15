@@ -114,7 +114,9 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
         }
       >
         <DialogHeader>
-          <DialogTitle>New workspace</DialogTitle>
+          <DialogTitle className={review ? 'sr-only' : undefined}>
+            New workspace
+          </DialogTitle>
         </DialogHeader>
         {review ? (
           <>
