@@ -1,16 +1,18 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
 import { appSource, type AppSource, type Target } from '@calimero-apps/connect';
 
 import { APP_PACKAGE } from './config';
 import { defaultDeps, useSession, type SessionApi, type SessionDeps } from './session';
-import { pinnedSource } from './workspaces';
+import { resolveSource } from './workspaces';
 
 interface SessionValue {
   api: SessionApi;
   deps: SessionDeps;
   /** Where instances come from: the dev bundle, or the package release in production. */
   source: AppSource;
+  /** Signed in, with the package's newest release still being read: `source` is not final. */
+  sourcePending: boolean;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -21,8 +23,22 @@ const SessionContext = createContext<SessionValue | null>(null);
  */
 export function SessionProvider({ deps = defaultDeps, children }: { deps?: SessionDeps; children: ReactNode }) {
   const api = useSession(deps);
-  const source = useMemo(() => pinnedSource(appSource(deps.env, APP_PACKAGE), window.location.href), [deps.env]);
-  const value = useMemo(() => ({ api, deps, source }), [api, deps, source]);
+  const base = useMemo(() => appSource(deps.env, APP_PACKAGE), [deps.env]);
+  const client = api.session.status === 'signed-in' ? api.session.client : null;
+  const [resolved, setResolved] = useState<{ client: CalimeroClient; source: AppSource } | null>(null);
+  // Read once per session: every create after it, here or in a pipeline, is on that release.
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    void resolveSource(client, base, window.location.href).then((source) => live && setResolved({ client, source }));
+    return () => {
+      live = false;
+    };
+  }, [client, base]);
+  const current = resolved?.client === client ? resolved?.source : undefined;
+  const source = current ?? base;
+  const sourcePending = client !== null && current === undefined;
+  const value = useMemo(() => ({ api, deps, source, sourcePending }), [api, deps, source, sourcePending]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

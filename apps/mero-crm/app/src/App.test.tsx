@@ -36,6 +36,7 @@ function holdInvite(token: string, target: { org?: string; route?: string } = {}
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
+const UNVERSIONED_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-crm' };
 const PACKAGE_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-crm', VITE_CALIMERO_VERSION: '1.4.0' };
 
 const STAGES = [
@@ -79,6 +80,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
   };
   const client = withRoutes({
     nodes: [],
+    package: vi.fn(async () => ({ latest: '2.0.0' })),
     get session() {
       return session;
     },
@@ -482,6 +484,74 @@ describe('App', () => {
 
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create workspace' }));
       await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(client.package).not.toHaveBeenCalled();
+    });
+
+    /** Signed in with no workspace, to the end of the create dialog's first step. */
+    async function startCreating(client: ReturnType<typeof fakeClient>, env: SessionDeps['env']) {
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(env), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, env)} />);
+      fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+      fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
+    }
+
+    it('reviews and creates from the newest release, in the workspace and in its first pipeline', async () => {
+      const client = fakeClient({ signedIn: true });
+      await startCreating(client, UNVERSIONED_ENV);
+      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      expect(await screen.findByText('com.calimero.mero-crm v2.0.0', {}, SLOW)).toBeTruthy();
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }] }));
+      client.listApps.mockImplementation((async () => []) as never);
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create workspace' }));
+
+      fireEvent.click(await screen.findByTestId('pipeline-add-cta', {}, SLOW));
+      fireEvent.change(await screen.findByTestId('pipeline-add-name', {}, SLOW), { target: { value: 'New business' } });
+      fireEvent.click(screen.getByTestId('pipeline-add-submit'));
+      await waitFor(
+        () => expect(client.createApp).toHaveBeenCalledWith('New business', { package: 'com.calimero.mero-crm', version: '2.0.0' }, expect.anything()),
+        SLOW,
+      );
+    });
+
+    it('holds the workspace screens back until the newest release is read', async () => {
+      const client = fakeClient({ signedIn: true });
+      let answer: (v: { latest: string }) => void = () => {};
+      client.package.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+      client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+      new SessionStore(APP, resolveTarget(UNVERSIONED_ENV), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/crm');
+      render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+      await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(screen.queryByTestId('ns-create-btn')).toBeNull();
+      answer({ latest: '2.0.0' });
+      expect(await screen.findByTestId('ns-create-btn', {}, SLOW)).toBeTruthy();
+    });
+
+    it('creates straight from the form when the newest release cannot be read', async () => {
+      const client = fakeClient({ signedIn: true });
+      client.package.mockRejectedValue(new Error('offline'));
+      await startCreating(client, UNVERSIONED_ENV);
+      const submit = screen.getByTestId('ns-create-submit');
+      expect(submit.textContent).toBe('Create workspace');
+      fireEvent.click(submit);
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(screen.queryByText('Review before creating')).toBeNull();
+    });
+
+    it('creates straight from the form for a raw dev bundle, and never asks for a release', async () => {
+      const client = fakeClient({ signedIn: true });
+      await startCreating(client, DEV_ENV);
+      const submit = screen.getByTestId('ns-create-submit');
+      expect(submit.textContent).toBe('Create workspace');
+      fireEvent.click(submit);
+      await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+      expect(screen.queryByText('Review before creating')).toBeNull();
+      expect(client.package).not.toHaveBeenCalled();
     });
 
     it('asks once right after joining a workspace that has no name for you', async () => {

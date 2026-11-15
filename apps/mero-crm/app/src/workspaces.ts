@@ -109,17 +109,27 @@ export interface CreatedWorkspace {
 }
 
 /**
- * `source`, pinned to the release this page is served from when it names no
- * version, so the review of a new workspace shows the release its instance is
- * created from.
+ * `source` with the release new instances are created from: the newest the
+ * account may see, else the one this page is served from. As given when
+ * neither is known, or for a raw bundle or a named version.
  */
-export function pinnedSource(source: AppSource, href: string): AppSource {
+export async function resolveSource(
+  client: ClientRoutes<{ packages: 'get' }>,
+  source: AppSource,
+  href: string,
+): Promise<AppSource> {
   if (typeof source === 'string' || source.version) return source;
+  try {
+    const { latest } = await client.packages.get({ package: source.package });
+    if (latest) return { ...source, version: latest };
+  } catch {
+    // The page's own release is the next best.
+  }
   const served = servedRelease(href);
   return served ? { ...source, version: served } : source;
 }
 
-/** The package release `source` creates, or `null` for a raw bundle or an unversioned source (nothing signed to review). */
+/** The package release `source` creates, or `null` for a raw bundle or a source with no known version (nothing signed to review). */
 export function reviewRelease(source: AppSource): ReviewRelease | null {
   return typeof source === 'string' || !source.version ? null : { package: source.package, version: source.version };
 }
