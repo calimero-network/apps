@@ -115,7 +115,7 @@ export default function Topbar({
    containing block for fixed descendants; nothing opens from it but the
    drawer, which Shell portals to <body>. */
 const Bar = styled.header`
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 12px;
   padding: 10px 10px 10px 20px; min-height: 64px; flex: 0 0 auto;
   margin: 12px 16px 0; border: 1px solid ${t.color.edge}; border-radius: 22px;
   position: sticky; top: 12px; z-index: 5;
@@ -124,7 +124,7 @@ const Bar = styled.header`
   box-shadow: ${t.shadow};
   @media (max-width: 940px) { padding-left: 8px; }
   @media (max-width: 720px) {
-    margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
+    flex-wrap: wrap; margin: 10px 10px 0; padding: 8px; gap: 8px; border-radius: 20px; top: 10px;
   }
 `;
 const MenuBtn = styled.button`
@@ -138,7 +138,7 @@ const Heading = styled.div`
 `;
 const ViewTitle = styled.div`
   margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.025em;
-  display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0;
+  display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none;
   .sep { color: ${t.color.text3}; font-weight: 400; }
   .crumb-link { color: ${t.color.text2}; text-decoration: none; &:hover { color: ${t.color.accentText}; } }
   .crumb { color: ${t.color.text}; }
@@ -149,9 +149,9 @@ const RepoChip = styled.div`
   display: flex; align-items: center; gap: 7px; min-width: 0;
   padding: 4px 4px 4px 10px; border-radius: ${t.radiusPill}; background: ${t.color.raised2};
   .ico { display: inline-flex; color: ${t.color.text3}; }
-  .repo-name { font-size: 12.5px; font-weight: 650; color: ${t.color.text}; white-space: nowrap; }
+  .repo-name { font-size: 12.5px; font-weight: 650; color: ${t.color.text}; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .repo-gh {
-    display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+    display: inline-flex; align-items: center; gap: 5px; flex: none;
     font-size: 11.5px; color: ${t.color.text2}; font-family: ${t.font.mono};
     padding: 3px 9px; border-radius: ${t.radiusPill}; background: ${t.color.raised};
     box-shadow: 0 0 0 1px ${t.color.border};
