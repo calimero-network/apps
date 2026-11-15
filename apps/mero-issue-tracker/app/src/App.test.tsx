@@ -633,11 +633,41 @@ describe('the node shield', () => {
     expect(client.attestApp).toHaveBeenCalledWith('app-1');
   });
 
-  it('opens the trust page from the sidebar, titled in the header', async () => {
+  /** The open repo `app-1` runs `version`, as its scope's report says. */
+  function running(client: ReturnType<typeof openWorkspace>, version: string) {
+    return Object.assign(client, {
+      getApp: vi.fn(async () => ({ appId: 'app-1', org: 'org-1' })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: 'app-1', package: { package: 'com.calimero.mero-issue-tracker', version } }] })),
+      packageCapabilities: vi.fn(async () => {
+        throw new Error('no card in this test');
+      }),
+    });
+  }
+
+  it('opens the trust page from the sidebar for the release the open repo runs, with the sidebar item current', async () => {
+    const client = running(openWorkspace(), '1.3.0');
+    const link = await screen.findByTestId('nav-trust', {}, SLOW);
+    expect(link.getAttribute('aria-current')).toBeNull();
+    fireEvent.click(link);
+    expect(await screen.findByText('com.calimero.mero-issue-tracker v1.3.0', {}, SLOW)).toBeTruthy();
+    expect(window.location.pathname).toBe('/issue-tracker/trust');
+    expect(screen.getByTestId('nav-trust').getAttribute('aria-current')).toBe('page');
+    await waitFor(() => expect(client.packageCapabilities).toHaveBeenCalledWith('com.calimero.mero-issue-tracker', '1.3.0'), SLOW);
+  });
+
+  it('has one Trust title on the trust page, and says which repository it covers', async () => {
+    running(openWorkspace(), '1.3.0');
+    fireEvent.click(await screen.findByTestId('nav-trust', {}, SLOW));
+    await screen.findByText('com.calimero.mero-issue-tracker v1.3.0', {}, SLOW);
+    expect(screen.getAllByRole('heading', { name: 'Trust' })).toHaveLength(1);
+    expect(within(document.querySelector('header')!).queryByText('Trust')).toBeNull();
+    expect(screen.getByText(/for the repository web/)).toBeTruthy();
+  });
+
+  it('says the release could not be read when the node cannot report it', async () => {
     openWorkspace();
     fireEvent.click(await screen.findByTestId('nav-trust', {}, SLOW));
-    expect(await screen.findByText(/could not be read/, {}, SLOW)).toBeTruthy();
-    expect(window.location.pathname).toBe('/issue-tracker/trust');
-    expect(within(document.querySelector('header')!).getByText('Trust')).toBeTruthy();
+    expect(await screen.findByText('The release this app runs could not be read.', {}, SLOW)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

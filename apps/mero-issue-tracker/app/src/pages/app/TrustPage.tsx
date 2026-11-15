@@ -9,10 +9,11 @@ import { useAppCtx } from './appContext';
 export default function TrustPage(): React.ReactElement {
   const { source } = useSignedIn();
   const { ws } = useAppCtx();
+  const repo = ws.repos.find((r) => r.contextId === ws.activeRepo);
   return (
     <Wrap>
       <Card data-testid="trust-page">
-        {ws.activeRepo && <WorkspaceTrust appId={ws.activeRepo} source={source} />}
+        {ws.activeRepo && <WorkspaceTrust appId={ws.activeRepo} source={source} subject={repo && `the repository ${repo.name}`} />}
       </Card>
     </Wrap>
   );

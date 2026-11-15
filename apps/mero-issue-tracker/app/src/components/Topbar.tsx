@@ -47,7 +47,7 @@ export default function Topbar({
   } else if (loc.pathname === `${APP_ROUTE}/members`) {
     title = 'Members';
   } else if (loc.pathname === `${APP_ROUTE}/trust`) {
-    title = 'Trust';
+    title = null; // the page's own card is titled Trust
   } else if (loc.search.includes('assignee=me')) {
     title = 'My Issues';
   }
@@ -60,7 +60,7 @@ export default function Topbar({
         </MenuBtn>
       )}
       <Heading>
-        <ViewTitle>{title}</ViewTitle>
+        {title && <ViewTitle>{title}</ViewTitle>}
         {repoName && (
           <RepoChip title="Active repository">
             <span className="ico"><IconRepo /></span>
