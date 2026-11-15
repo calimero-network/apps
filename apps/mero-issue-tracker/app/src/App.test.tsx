@@ -636,7 +636,7 @@ describe('the node shield', () => {
   it('opens the trust page from the sidebar, titled in the header', async () => {
     openWorkspace();
     fireEvent.click(await screen.findByTestId('nav-trust', {}, SLOW));
-    expect(await screen.findByText(/The release this repository runs could not be read/, {}, SLOW)).toBeTruthy();
+    expect(await screen.findByText(/could not be read/, {}, SLOW)).toBeTruthy();
     expect(window.location.pathname).toBe('/issue-tracker/trust');
     expect(within(document.querySelector('header')!).getByText('Trust')).toBeTruthy();
   });

@@ -1,64 +1,29 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import TrustPage from './TrustPage';
 
-const session = vi.hoisted(() => ({ client: null as unknown, appId: 'app-1' as string | null }));
-vi.mock('../../sessionContext', () => ({ useSignedIn: () => ({ client: session.client }) }));
-vi.mock('./appContext', () => ({ useAppCtx: () => ({ ws: { activeRepo: session.appId } }) }));
+const open = vi.hoisted(() => ({ appId: 'app-1' as string | null, source: { package: 'com.calimero.mero-issue-tracker' } as unknown }));
+vi.mock('../../sessionContext', () => ({ useSignedIn: () => ({ source: open.source }) }));
+vi.mock('./appContext', () => ({ useAppCtx: () => ({ ws: { activeRepo: open.appId } }) }));
 vi.mock('@calimero-apps/passkey', () => ({
-  WorkspaceTrust: ({ release, appId }: { release: { package: string; version: string }; appId: string }) => (
-    <div data-testid="workspace-trust" data-package={release.package} data-version={release.version} data-app={appId} />
+  WorkspaceTrust: ({ appId, source }: { appId: string; source: { package: string } }) => (
+    <div data-testid="workspace-trust" data-app={appId} data-package={source.package} />
   ),
 }));
-
-/** A client whose report says `app-1` runs `running` (`null`: a raw bundle, no release). */
-function reporting(running: { package: string; version: string } | null) {
-  session.client = {
-    apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
-    appsReportAll: vi.fn(async () => ({ apps: [{ app: 'app-1', package: running }] })),
-  };
-}
 
 afterEach(cleanup);
 
 describe('TrustPage', () => {
-  it('shows the trust panel for the release the open repo runs', async () => {
-    reporting({ package: 'com.calimero.mero-issue-tracker', version: '1.3.0' });
+  it('hands the shared view the open repo and the app source', () => {
     render(<TrustPage />);
-    const panel = await screen.findByTestId('workspace-trust');
-    expect(panel.dataset).toMatchObject({ package: 'com.calimero.mero-issue-tracker', version: '1.3.0', app: 'app-1' });
+    expect(screen.getByTestId('workspace-trust').dataset).toMatchObject({ app: 'app-1', package: 'com.calimero.mero-issue-tracker' });
   });
 
-  it('says the repo runs no published release when it runs a raw bundle', async () => {
-    reporting(null);
+  it('shows no trust view without an open repo', () => {
+    open.appId = null;
     render(<TrustPage />);
-    expect(await screen.findByText(/runs no published release/)).toBeTruthy();
-    expect(screen.queryByText(/could not be read/)).toBeNull();
     expect(screen.queryByTestId('workspace-trust')).toBeNull();
-  });
-
-  it('says the release could not be read, apart from having none, and reads again on Try again', async () => {
-    session.client = {
-      apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
-      appsReportAll: vi
-        .fn()
-        .mockRejectedValueOnce(new Error('boom'))
-        .mockResolvedValue({ apps: [{ app: 'app-1', package: { package: 'p', version: '1.3.0' } }] }),
-    };
-    render(<TrustPage />);
-    expect(await screen.findByText(/could not be read/)).toBeTruthy();
-    expect(screen.queryByText(/runs no published release/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect((await screen.findByTestId('workspace-trust')).dataset.version).toBe('1.3.0');
-  });
-
-  it('says the repo runs no published release when the report does not list it', async () => {
-    session.client = {
-      apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
-      appsReportAll: vi.fn(async () => ({ apps: [] })),
-    };
-    render(<TrustPage />);
-    expect(await screen.findByText(/runs no published release/)).toBeTruthy();
+    open.appId = 'app-1';
   });
 });

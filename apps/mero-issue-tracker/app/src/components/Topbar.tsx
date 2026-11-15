@@ -101,7 +101,7 @@ export default function Topbar({
         {!searchQuery && <span className="kbd">/</span>}
       </Search>
       <End>
-        <NodeShield />
+        <NodeShield compactBelow={1100} />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue} title="New issue (C)">
           <IconPlus size={13} /> New issue
@@ -184,10 +184,6 @@ const Search = styled.div`
 `;
 const End = styled.div`
   display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
-  /* The shield's words do not fit beside the title and search once the rail takes its width: the icon stays, named by its label. */
-  @media (max-width: 1100px) {
-    .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  }
   @media (max-width: 720px) { margin-left: auto; }
 `;
 const NewBtn = styled.button`

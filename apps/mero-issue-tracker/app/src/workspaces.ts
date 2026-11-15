@@ -22,7 +22,6 @@ import {
   type LeftApp,
   type PendingInvite,
 } from '@calimero-apps/connect';
-import type { ReviewRelease } from '@calimero-apps/passkey';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
@@ -100,11 +99,6 @@ export async function listRepos(
  */
 export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
-
-/** The package release `source` creates, or `null` for a raw bundle or a source with no known version (nothing signed to review). */
-export function reviewRelease(source: AppSource): ReviewRelease | null {
-  return typeof source === 'string' || !source.version ? null : { package: source.package, version: source.version };
-}
 
 export interface CreatedWorkspace {
   namespaceId: string;

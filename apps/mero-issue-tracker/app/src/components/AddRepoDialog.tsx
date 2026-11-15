@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CHECKING_RELEASE } from '../config';
+import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
 const GITHUB_PREFIX = 'https://github.com/';

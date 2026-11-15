@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { lastUsedName } from '@calimero-apps/names';
-import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
+import { CHECKING_RELEASE, WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
-import { CHECKING_RELEASE } from '../config';
 import { tokens as t } from '../theme';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
