@@ -21,14 +21,17 @@ function client(options: {
   bundles?: Record<string, string>;
   capabilitiesService?: string | null;
   ref?: Ref | null;
+  /** The release lists several services, so a lookup must name one. */
+  multiService?: boolean;
 }): CodeCheckClient & { attestApp: ReturnType<typeof vi.fn>; packageCapabilities: ReturnType<typeof vi.fn> } {
-  const { attested = HASH, mock = false, bundle = HASH, bundles = {}, capabilitiesService = null, ref = { package: PACKAGE, version: "1.2.0" } } = options;
+  const { attested = HASH, mock = false, bundle = HASH, bundles = {}, capabilitiesService = null, ref = { package: PACKAGE, version: "1.2.0" }, multiService = false } = options;
   return {
     attestApp: vi.fn(async () => {
       if (attested instanceof Error) throw attested;
       return verification(attested, mock);
     }),
-    packageCapabilities: vi.fn(async (_pkg: string, version: string) => {
+    packageCapabilities: vi.fn(async (_pkg: string, version: string, options?: { service?: string }) => {
+      if (multiService && !options?.service) throw new Error("400 NO_SUCH_SERVICE");
       if (bundle instanceof Error) throw bundle;
       return { bundle: bundles[version] ?? bundle, service: capabilitiesService } as PackageCapabilities;
     }),
@@ -51,7 +54,7 @@ describe("checkAppCode", () => {
       version: "1.2.0",
     });
     expect(c.attestApp).toHaveBeenCalledWith("app-1");
-    expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0");
+    expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0", undefined);
   });
 
   it("expects the hash of the release the instance runs, not the source's version", async () => {
@@ -63,7 +66,7 @@ describe("checkAppCode", () => {
     });
     expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
     expect(c.packageCapabilities).toHaveBeenCalledTimes(2);
-    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0");
+    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0", undefined);
   });
 
   it("is never a match for a mock quote", async () => {
@@ -82,6 +85,12 @@ describe("checkAppCode", () => {
     expect((await checkAppCode(none, "app-1", { package: PACKAGE })).status).toBe("unknown");
     const same = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "worker" });
     expect((await checkAppCode(same, "app-1", { package: PACKAGE })).status).toBe("match");
+  });
+
+  it("asks for the running service, so a multi-service release is checked", async () => {
+    const c = client({ ref: { package: PACKAGE, version: "1.2.0", service: "worker" }, capabilitiesService: "worker", multiService: true });
+    expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
+    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.2.0", { service: "worker" });
   });
 
   it("is unknown when the listing names a service the instance's default does not", async () => {

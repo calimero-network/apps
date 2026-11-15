@@ -62,7 +62,7 @@ export {
   type OrgTeamView,
   type PendingInvite,
 } from "./invite";
-export { checkAppCode, type AppCodeCheck, type CodeCheckClient } from "./appCode";
+export { checkAppCode, type AppCodeCheck } from "./appCode";
 export {
   RELEASE_FOLLOW_KEY,
   followInstanceRelease,

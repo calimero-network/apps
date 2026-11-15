@@ -1,11 +1,4 @@
-/**
- * Does the attested node report this app's code as the release it lists? Both
- * sides come from the same node over its attested channel: the bundle hash it
- * bound from its own record of the instance ({@link CalimeroClient.attestApp}),
- * and the bundle hash its registry lists for the release the instance runs
- * (or, in development, the raw bundle hash). A match is a consistency check
- * inside an attested node, not a registry or signature check made here.
- */
+/** Does the attested node run the release's code? Both hashes come from the same node: a consistency check, not a registry or signature check. */
 import type { CalimeroClient } from "@calimero-network/mero-js";
 
 import { instancePackage, type ReleaseClient } from "./release";
@@ -33,7 +26,11 @@ async function expectedBundle(
   if (!running) throw new Error(`the release of ${source.package} that ${app} runs is not known`);
   if (running.package !== source.package) throw new Error(`${app} runs ${running.package}, not ${source.package}`);
   if (running.compute) throw new Error("compute-only instance");
-  const listed = await client.packageCapabilities(running.package, running.version);
+  const listed = await client.packageCapabilities(
+    running.package,
+    running.version,
+    running.service ? { service: running.service } : undefined,
+  );
   if ((running.service ?? null) !== (listed.service ?? null)) {
     throw new Error(`${app} runs service ${running.service ?? "default"}, not the ${listed.service ?? "default"} one ${running.version} lists`);
   }
