@@ -394,6 +394,19 @@ describe("your data", () => {
   });
 });
 
+describe("a multi-service release", () => {
+  it("asks for the card of its service", async () => {
+    const { packageCapabilities } = connect(sealed);
+    (packageCapabilities as ReturnType<typeof vi.fn>).mockImplementation(async (_pkg: string, _version: string, options?: { service?: string }) => {
+      if (!options?.service) throw Object.assign(new Error("NO_SUCH_SERVICE"), { status: 400 });
+      return card();
+    });
+    render(<WorkspaceReview release={{ ...RELEASE, service: "web" }} onBack={vi.fn()} onCreate={vi.fn()} />);
+    await ready();
+    expect(packageCapabilities).toHaveBeenCalledWith(RELEASE.package, RELEASE.version, { service: "web" });
+  });
+});
+
 describe("a card that cannot load", () => {
   it("says so plainly, still allows creating, and loads again on retry", async () => {
     const failure = Object.assign(new Error("404 ERROR: "), { status: 404 });

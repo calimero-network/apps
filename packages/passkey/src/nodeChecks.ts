@@ -85,6 +85,8 @@ export function useAppCode(client: CalimeroClient | null, app: ShieldApp | null,
 export interface ReviewRelease {
   package: string;
   version: string;
+  /** The service of a multi-service release; the card is per service. */
+  service?: string;
 }
 
 export type CardState =
@@ -118,13 +120,13 @@ export function useCard(client: CalimeroClient | null, release: ReviewRelease, n
     }
     let live = true;
     setState({ status: "loading" });
-    client.packageCapabilities(release.package, release.version).then(
+    client.packageCapabilities(release.package, release.version, release.service ? { service: release.service } : undefined).then(
       (card) => live && setState({ status: "ready", card }),
       (e: unknown) => live && setState({ status: "error", message: cardError(e) }),
     );
     return () => {
       live = false;
     };
-  }, [client, release.package, release.version, round, gate]);
+  }, [client, release.package, release.version, release.service, round, gate]);
   return [state, useCallback(() => setRound((n) => n + 1), [])];
 }
