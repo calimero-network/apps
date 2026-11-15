@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { lastUsedName } from '@calimero-apps/names';
 import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
-import { CHECKING_RELEASE } from '../config';
+import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;

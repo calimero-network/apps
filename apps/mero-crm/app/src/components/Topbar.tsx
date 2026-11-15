@@ -113,7 +113,7 @@ export default function Topbar({
         </Search>
       </Tools>
       <End>
-        <NodeShield />
+        <NodeShield compactBelow={1240} />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-deal-btn" onClick={onNewDeal} title="New deal (N)">
           <IconPlus size={13} /> Deal
@@ -196,11 +196,6 @@ const Search = styled.div`
 `;
 const End = styled.div`
   display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
-  /* The shield is icon only where the bar has no room for its label. */
-  @media (max-width: 1240px) {
-    .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    .cp-shield__chip { width: 28px; padding: 0; justify-content: center; }
-  }
   @media (max-width: 720px) { margin-left: auto; }
 `;
 const NewBtn = styled.button`

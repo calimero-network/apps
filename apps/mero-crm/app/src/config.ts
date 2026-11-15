@@ -20,6 +20,3 @@ export const THEME = {
   accentColor: '#F97316',
   style: 'clean-modern',
 } as const;
-
-/** Said where a create waits for the package's newest release to be read. */
-export const CHECKING_RELEASE = 'Checking the newest release…';
