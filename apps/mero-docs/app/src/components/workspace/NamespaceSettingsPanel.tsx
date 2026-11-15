@@ -6,6 +6,8 @@
 // loading states, so this composition is intentionally thin.
 
 import React from 'react';
+import { ManageInHomeLink } from '@calimero-apps/passkey';
+import { useMero } from '@/calimero/react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { namespaceLabel } from '@/lib/namespaceLabel';
@@ -19,6 +21,7 @@ import { WorkspaceTrustPanel } from './WorkspaceTrustPanel';
 
 export function NamespaceSettingsPanel() {
   const { namespaceId, namespaces, namespaceMembers } = useDriveWorkspace();
+  const { session } = useMero();
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
   const count = ns
     ? peopleCount(ns.memberCount ?? 0, namespaceMembers.teeMembers.length)
@@ -45,6 +48,11 @@ export function NamespaceSettingsPanel() {
         <span className="text-sm font-medium text-foreground">Theme</span>
         <ThemeToggle />
       </div>
+      <ManageInHomeLink
+        session={session}
+        org={namespaceId}
+        className="text-sm font-medium text-primary no-underline hover:underline min-[1440px]:hidden"
+      />
       <MyDisplayNamePanel />
       <MemberDefaultsPanel />
       <NamespaceMembersPanel />

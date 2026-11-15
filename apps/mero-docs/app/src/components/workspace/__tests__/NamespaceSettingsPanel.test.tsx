@@ -11,6 +11,24 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMembers: { teeMembers: [] },
   }),
 }));
+vi.mock('@/calimero/react', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useMero: () => ({ session: { status: 'signed-in' } }),
+}));
+vi.mock('@calimero-apps/passkey', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ManageInHomeLink: ({
+    org,
+    className,
+  }: {
+    org: string | null;
+    className?: string;
+  }) => (
+    <a className={className} href="#home">
+      Manage people for {org}
+    </a>
+  ),
+}));
 vi.mock('../NamespaceMembersPanel', () => ({
   NamespaceMembersPanel: () => null,
 }));
@@ -42,5 +60,11 @@ describe('NamespaceSettingsPanel', () => {
     const toggle = screen.getByRole('button', { name: 'Toggle theme' });
     expect(parentOf(toggle)?.className).toContain('sm:hidden');
     expect(screen.getByText('Theme')).toBeTruthy();
+  });
+
+  it('offers the Calimero Home link below the width where the header shows it', () => {
+    render(<NamespaceSettingsPanel />);
+    const link = screen.getByText('Manage people for ns');
+    expect(link.className).toContain('min-[1440px]:hidden');
   });
 });
