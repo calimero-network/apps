@@ -240,6 +240,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
   /** The `/auth/logout` still in flight, which the next ceremony waits for. */
   const loggingOut = useRef<Promise<void> | null>(null);
+  /** The policy read in flight, which a sign-up pressed before it lands waits for. */
+  const policyRead = useRef<Promise<SignUpPolicy | null> | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -282,7 +284,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   useEffect(() => {
     if (!signedOutClient) return;
     let live = true;
-    void readSignUpPolicy(signedOutClient).then((p) => {
+    const read = readSignUpPolicy(signedOutClient);
+    policyRead.current = read;
+    void read.then((p) => {
       if (live) setPolicy(p);
     });
     return () => {
@@ -387,7 +391,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
             made = await signUpHere(c, target, passkey, {
               name,
               invite: inviteToken,
-              policy,
+              policy: policy ?? (await policyRead.current),
               join,
               nameInOrg: nameJoinedOrg,
               storage: hintStorage,

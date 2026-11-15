@@ -150,10 +150,13 @@ describe("an invite link, no account here", () => {
   });
 
   it("on an invite-only cluster the invite goes with the sign-up even without a join handler", async () => {
-    const client = fakeClient({}, INVITE);
+    let readPolicy!: () => void;
+    const policyRead = new Promise<void>((resolve) => (readPolicy = resolve));
+    const client = fakeClient({ signUpPolicy: vi.fn(async () => (await policyRead, INVITE)) });
     render(<Screen d={deps(client)} invite="tok-1" />);
-    await waitFor(() => expect(client.signUpPolicy).toHaveBeenCalled());
+    // Pressed while the cluster's policy is still being read.
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    readPolicy();
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
   });
