@@ -127,8 +127,9 @@ describe("App", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(fakeClient())} storage={storage} />);
     await screen.findByText("Your stores");
-    expect(screen.getAllByTestId("node-shield")).toHaveLength(1);
-    expect(screen.getByTestId("node-shield").closest("footer")).not.toBeNull();
+    const shields = await screen.findAllByTestId("node-shield");
+    expect(shields).toHaveLength(1);
+    expect(shields[0].closest("footer")).not.toBeNull();
   });
 
   it("sends a listing page no cluster serves to the copy Calimero Cloud serves instead of failing", async () => {
