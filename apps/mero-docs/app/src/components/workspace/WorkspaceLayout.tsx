@@ -277,12 +277,12 @@ export function WorkspaceLayout() {
   return (
     <div className="glass-fields flex h-dvh flex-col">
       {/* Top bar: the floating glass header every app shares. */}
-      <header className="glass-header flex h-14 shrink-0 items-center justify-between gap-2 px-3 md:px-4">
-        <div className="flex min-w-0 items-center gap-2 md:gap-4">
+      <header className="glass-header flex h-14 shrink-0 items-center justify-between gap-1 px-2 sm:gap-2 sm:px-3 md:px-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2 md:gap-4">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0"
+            className="h-9 w-9 shrink-0 max-sm:w-8"
             aria-label={sidebarShown ? 'Hide sidebar' : 'Show sidebar'}
             aria-pressed={sidebarShown}
             onClick={() =>
@@ -302,7 +302,7 @@ export function WorkspaceLayout() {
           <NamespaceSwitcher />
         </div>
         {namespaceId && (
-          <div className="flex min-w-11 flex-1 justify-center px-1 md:px-6">
+          <div className="flex min-w-9 flex-1 justify-center sm:min-w-11 sm:px-1 md:px-6">
             <TopBarSearch onOpen={() => setSearchOpen(true)} />
           </div>
         )}
@@ -323,7 +323,9 @@ export function WorkspaceLayout() {
               Offline
             </span>
           )}
-          <ThemeToggle />
+          <span className="max-sm:hidden">
+            <ThemeToggle />
+          </span>
           <ManageInHomeLink
             session={session}
             org={namespaceId}
@@ -333,7 +335,7 @@ export function WorkspaceLayout() {
             <Button
               variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
-              className="gap-1.5 max-sm:w-9 max-sm:px-0"
+              className="gap-1.5 max-sm:w-8 max-sm:px-0"
               aria-label="Settings"
               aria-pressed={showSettings}
               onClick={showSettings ? closeSettings : goSettings}
@@ -345,7 +347,7 @@ export function WorkspaceLayout() {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5 max-sm:w-9 max-sm:px-0"
+            className="gap-1.5 max-sm:w-8 max-sm:px-0"
             onClick={logout}
             aria-label="Log out"
           >

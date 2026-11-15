@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
+const parentOf = (el: HTMLElement) => el.parentElement; // eslint-disable-line testing-library/no-node-access
 const setSelectedFolder = vi.fn();
 // The real hook reads the selected folder from the URL too.
 vi.mock('@/hooks/useDriveWorkspace', async () => {
@@ -84,7 +85,9 @@ vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
   WorkspaceIndexProvider: ({ children }: { children: React.ReactNode }) =>
     children,
 }));
-vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
+vi.mock('@/components/theme/ThemeToggle', () => ({
+  ThemeToggle: () => <button type="button">Toggle theme</button>,
+}));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
 vi.mock('@/components/home/HomePage', () => ({ HomePage: () => null }));
 vi.mock('../DisplayNameGate', () => ({ DisplayNameGate: () => null }));
@@ -181,8 +184,7 @@ describe('WorkspaceLayout node shield', () => {
   it('gives the workspace name the room below sm: no logo mark, no online dot', () => {
     renderLayout();
     const header = screen.getByRole('banner');
-    // eslint-disable-next-line testing-library/no-node-access
-    const logo = within(header).getByText('Mero Docs').parentElement;
+    const logo = parentOf(within(header).getByText('Mero Docs'));
     expect(logo?.className).toContain('max-sm:hidden');
     expect(
       within(header).getByRole('img', { name: 'Online' }).className,
@@ -199,16 +201,20 @@ describe('WorkspaceLayout node shield', () => {
   it('shows the shield as its icon alone where the header is narrow, with its words from 1100px', () => {
     narrow = true;
     const { unmount } = renderLayout();
-    // eslint-disable-next-line testing-library/no-node-access
-    expect(
-      screen.getByTestId('node-shield').parentElement?.className,
-    ).toContain('cp-shield--compact');
+    expect(parentOf(screen.getByTestId('node-shield'))?.className).toContain(
+      'cp-shield--compact',
+    );
     unmount();
     narrow = false;
     renderLayout();
-    // eslint-disable-next-line testing-library/no-node-access
     expect(
-      screen.getByTestId('node-shield').parentElement?.className,
+      parentOf(screen.getByTestId('node-shield'))?.className,
     ).not.toContain('cp-shield--compact');
+  });
+
+  it('moves the theme toggle out of the header below sm, to the settings', () => {
+    renderLayout();
+    const toggle = screen.getByRole('button', { name: 'Toggle theme' });
+    expect(parentOf(toggle)?.className).toContain('max-sm:hidden');
   });
 });

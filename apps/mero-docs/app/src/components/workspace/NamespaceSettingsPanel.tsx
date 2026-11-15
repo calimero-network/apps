@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { peopleCount } from '@/lib/roles';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
@@ -40,6 +41,10 @@ export function NamespaceSettingsPanel() {
         </p>
       </div>
 
+      <div className="flex items-center justify-between sm:hidden">
+        <span className="text-sm font-medium text-foreground">Theme</span>
+        <ThemeToggle />
+      </div>
       <MyDisplayNamePanel />
       <MemberDefaultsPanel />
       <NamespaceMembersPanel />
