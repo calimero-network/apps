@@ -56,12 +56,26 @@ account, nothing to install, no permissions to grant.
   `AppSource` the page runs; with it the popover checks the node runs that exact
   code (`checkAppCode`), and without it leaves the app code out.
   `openNodeShield()` opens the popover from an account menu's "Connected to" row.
-  An app that connects without the hook calls `bindNodeShield(client, describeTarget(target))`
+  An app that connects without the hook calls `bindNodeShield(client, describeTarget(target), target.kind === "local")`
   (`@calimero-apps/passkey/nodeShield`, no React in the app) where it connects.
   Every app has a `nodeShield.gate.test.tsx`: one `nodeShieldGate(app, mount)` call
   (`@calimero-apps/passkey/testing`) that mounts its real root (its session layer where the
   test project cannot hold the root) signed in and fails unless exactly one shield is on the page;
   `scripts/check-node-shield-gate.py` fails an app whose gate did not run and pass.
+- `<WorkspaceReview release={{ package, version }} onBack={...} onCreate={...} />` is step 2 of creating a workspace, after the app's own "Name" step.
+  It shows what the app is (name, version, publisher, code hash), what it can do, where it runs and what that means for the person's data.
+  Everything comes from the release's signed capability card (`client.packageCapabilities`) and the node's own check, so it needs a session bound by `usePasskeySession`.
+  Before the workspace exists the node cannot attest the app's code, so the code line says "from the signed release", never "attested by this node".
+  "What it can do" has three levels: a summary (passkey-protected actions, public views, public calls, outside services, timers, other apps), "See all actions" in plain-word groups with filter chips and each action's technical facts, and the signed raw facts with a JSON download of the full ABI.
+  The publisher's own description of an action is shown apart from the facts.
+  "Your data" says "Only you control it." and "Only people invited to it can open it." for a node that passed its check, and "Calimero can't read it." only for a sealed one; a test server says "Test server: not sealed" in grey in its place.
+  The amber lines under it (one per public view, public call and outside host) come from the card; only a method the node's call check can let a caller through counts, so a method for the app's own actions or a compute result is never listed as open.
+  "Create workspace" is disabled, with the reason, while the node has refused its check.
+  Back and Create stick to the bottom of whatever scrolls; a scrolling dialog with bottom padding sets `--passkey-review-inset` to that padding so the row sits flush with the edge.
+  The card is asked for only after the node's own check verified the node; for a test server or an unsealed node its facts are labelled as that server's own listing, not the signed release.
+  A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created while a node is connected.
+  The registry's review state and the SDK version are not in the card, so the review does not show them.
+- `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab); pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release, and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button

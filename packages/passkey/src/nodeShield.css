@@ -1,7 +1,8 @@
 /* Themed with passkey.css's `--passkey-*` tokens, then the glass tokens, then literals that follow
    the page's `color-scheme`. */
 .cp-shield,
-.cp-shield__pop {
+.cp-shield__pop,
+.cp-review {
   --_ink: var(--passkey-ink, var(--glass-ink, light-dark(#0e1222, #eceef5)));
   --_muted: var(--passkey-muted, var(--glass-muted, light-dark(#6f7589, #9097ab)));
   --_line: var(--passkey-line, var(--glass-line-strong, light-dark(rgba(14, 18, 34, 0.14), rgba(255, 255, 255, 0.16))));
@@ -19,10 +20,10 @@
   font-family: var(--passkey-font, inherit);
 }
 
-.cp-shield__chip[data-kind="verified"], .cp-shield__pop[data-kind="verified"] { --_tone: var(--_good-ink); --_tone-bg: var(--_good-bg); }
-.cp-shield__chip[data-kind="refused"], .cp-shield__pop[data-kind="refused"] { --_tone: var(--_bad-ink); --_tone-bg: var(--_bad-bg); }
-.cp-shield__chip[data-kind="checking"], .cp-shield__pop[data-kind="checking"] { --_tone: var(--_busy-ink); --_tone-bg: var(--_busy-bg); }
-.cp-shield__chip[data-kind="unsealed"], .cp-shield__pop[data-kind="unsealed"] { --_tone: var(--_muted); --_tone-bg: color-mix(in srgb, var(--_muted) 14%, var(--_surface)); }
+.cp-shield__chip[data-kind="verified"], .cp-shield__pop[data-kind="verified"], .cp-review [data-kind="verified"] { --_tone: var(--_good-ink); --_tone-bg: var(--_good-bg); }
+.cp-shield__chip[data-kind="refused"], .cp-shield__pop[data-kind="refused"], .cp-review [data-kind="refused"] { --_tone: var(--_bad-ink); --_tone-bg: var(--_bad-bg); }
+.cp-shield__chip[data-kind="checking"], .cp-shield__pop[data-kind="checking"], .cp-review [data-kind="checking"] { --_tone: var(--_busy-ink); --_tone-bg: var(--_busy-bg); }
+.cp-shield__chip[data-kind="unsealed"], .cp-shield__pop[data-kind="unsealed"], .cp-review [data-kind="unsealed"] { --_tone: var(--_muted); --_tone-bg: color-mix(in srgb, var(--_muted) 14%, var(--_surface)); }
 
 .cp-shield { display: inline-flex; flex: none; }
 .cp-shield--floating {

@@ -1,92 +1,17 @@
 import "./nodeShield.css";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
-import type { CalimeroClient, NodeVerificationState } from "@calimero-network/mero-js";
-import { checkAppCode, type AppCodeCheck } from "@calimero-apps/connect";
+import type { CalimeroClient } from "@calimero-network/mero-js";
 
-import { describeShield, shieldDetails, type ShieldKind, type ShieldView } from "./shieldView";
-import { bindShieldSession, placeShield, readShield, useShieldStore, type ShieldApp } from "./nodeShieldStore";
+import { useAppCode, useNodeVerification } from "./nodeChecks";
+import { useCopy } from "./useCopy";
+import { ExternalIcon, ShieldIcon, Tick } from "./shieldIcons";
+import { describeShield, shieldDetails, type ShieldView } from "./shieldView";
+import { bindShieldSession, placeShield, readShield, useShieldStore } from "./nodeShieldStore";
 
-const RETRY_BASE_MS = 2_000;
-const RETRY_MAX_MS = 30_000;
-const COPIED_MS = 2_000;
-const NODE_POLL_MS = 1_000; // how often to notice that the client failed over
 const EDGE_PX = 12; // the popover's distance from the viewport's edge
 const GAP_PX = 8; // and from the chip
-
-/** An unreachable node is asked again after 2 s, 4 s, 8 s, up to 30 s. */
-const retryDelay = (attempt: number) => Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
-
-/** The check's outcome, or `null` for a client that cannot be checked: it stays "checking" instead of taking the app down or retrying. */
-async function check(client: CalimeroClient): Promise<NodeVerificationState | null> {
-  try {
-    return await client.verify();
-  } catch {
-    return null;
-  }
-}
-
-function peek(client: CalimeroClient | null): NodeVerificationState {
-  let known: NodeVerificationState | undefined;
-  try {
-    known = client?.verification();
-  } catch {
-    // A client that cannot say is still being checked.
-  }
-  return known ?? { status: "checking", url: client?.nodeUrl ?? "" };
-}
-
-/** The check of the node in use, asked again after a failure to reach it, a failover, and whenever `refresh` is called. */
-function useNodeVerification(client: CalimeroClient | null): [NodeVerificationState, () => void] {
-  const [state, setState] = useState(() => peek(client));
-  const [round, setRound] = useState(0);
-  const [url, setUrl] = useState(client?.nodeUrl);
-  useEffect(() => {
-    setUrl(client?.nodeUrl);
-    if (!client) return;
-    const poll = setInterval(() => setUrl(client.nodeUrl), NODE_POLL_MS);
-    return () => clearInterval(poll);
-  }, [client]);
-  useEffect(() => {
-    if (!client) return;
-    let live = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const run = async (attempt: number) => {
-      const next = await check(client);
-      if (!live || !next) return;
-      setState(next);
-      if (next.status === "unreachable") timer = setTimeout(() => void run(attempt + 1), retryDelay(attempt));
-    };
-    setState(peek(client));
-    void run(0);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [client, round, url]);
-  // Never describe a node the client has moved on from: compared with the node in use now, not the last poll.
-  const inUse = client?.nodeUrl;
-  const shown: NodeVerificationState = inUse && state.url !== inUse ? { status: "checking", url: inUse } : state;
-  return [shown, useCallback(() => setRound((n) => n + 1), [])];
-}
-
-/** The app's code check of verified node `url`, run when the popover opens and shown only while that node is still the one in use. */
-function useAppCode(client: CalimeroClient | null, app: ShieldApp | null, url: string | null): AppCodeCheck | null {
-  const [result, setResult] = useState<{ client: CalimeroClient; app: ShieldApp; url: string; code: AppCodeCheck } | null>(null);
-  useEffect(() => {
-    if (!client || !app || !url) return;
-    let live = true;
-    void checkAppCode(client, app.id, app.source).then((code) => {
-      if (live && client.nodeUrl === url) setResult({ client, app, url, code });
-    });
-    return () => {
-      live = false;
-    };
-  }, [client, app, url]);
-  const current = result?.client === client && result?.app === app && result?.url === url && client?.nodeUrl === url;
-  return current ? result.code : null;
-}
 
 /** Where the popover sits: right edges aligned with the chip, below it or above when that is where the room is, inside the viewport. */
 function usePlacement(open: boolean, chip: React.RefObject<HTMLElement | null>, pop: React.RefObject<HTMLElement | null>) {
@@ -121,44 +46,8 @@ function usePlacement(open: boolean, chip: React.RefObject<HTMLElement | null>, 
   return at;
 }
 
-function ShieldIcon({ kind }: { kind: ShieldKind }) {
-  return (
-    <svg className="cp-shield__icon" viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-      <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" fill="currentColor" opacity=".18" />
-      <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      {kind === "verified" && <path d="m8.5 12 2.4 2.4L15.5 9.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-      {kind === "refused" && <path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
-      {kind === "unsealed" && <path d="M12 8v4.5M12 15.6v.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
-    </svg>
-  );
-}
-
-const Tick = () => (
-  <svg className="cp-shield__tick" viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-    <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const ExternalIcon = () => (
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-    <path d="M14 4h6v6m0-6-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string; placement: ReturnType<typeof usePlacement>; popRef: React.RefObject<HTMLDivElement | null> }) {
-  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
-  useEffect(() => {
-    if (copied === "idle") return;
-    const timer = setTimeout(() => setCopied("idle"), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  const copy = () =>
-    Promise.resolve()
-      .then(() => navigator.clipboard.writeText(shieldDetails(view)))
-      .then(
-        () => setCopied("done"),
-        () => setCopied("failed"),
-      );
+  const [copied, copy] = useCopy();
   return createPortal(
     <div
       ref={popRef}
@@ -203,7 +92,7 @@ function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string
             <ExternalIcon />
           </a>
         )}
-        <button type="button" className="cp-shield__btn" onClick={() => void copy()}>
+        <button type="button" className="cp-shield__btn" onClick={() => copy(shieldDetails(view))}>
           {copied === "done" ? "Copied" : copied === "failed" ? "Could not copy" : "Copy details"}
         </button>
       </div>
@@ -315,8 +204,8 @@ function unmountFloating() {
 }
 
 /** Show the shield for `client` in `cluster` until unbound: a floating chip unless an app placed a `<NodeShield />`. */
-export function bindNodeShield(client: CalimeroClient, cluster: string): () => void {
-  const unbind = bindShieldSession({ client, cluster });
+export function bindNodeShield(client: CalimeroClient, cluster: string, local = false): () => void {
+  const unbind = bindShieldSession({ client, cluster, local });
   mountFloating();
   return () => {
     unbind();
