@@ -18,11 +18,9 @@ import {
   type AppSource,
   type ClientRoutes,
   type InviteStore,
-  type InstancePackage,
   type KeyValueStorage,
   type LeftApp,
   type PendingInvite,
-  type ReleaseClient,
 } from '@calimero-apps/connect';
 import type { ReviewRelease } from '@calimero-apps/passkey';
 import { nodeBasename } from '@calimero-apps/node-served';
@@ -134,19 +132,6 @@ export async function createWorkspace(
       ? 'The workspace was created, but people you invite will not be able to add repositories or invite others until an admin fixes the defaults on the Members page.'
       : null,
   };
-}
-
-/**
- * The release repository `app` runs, as its scope's report says; `null` for one
- * that runs none (a raw bundle). Throws when the report cannot be read or does
- * not list it, which is not the same as running none.
- */
-export async function runningRelease(client: ReleaseClient, app: string): Promise<InstancePackage | null> {
-  const record = (await client.apps.get({ app })) as { org?: unknown };
-  const report = await client.appsReportAll(typeof record.org === 'string' ? record.org : null);
-  const found = report.apps.find((a) => a.app === app);
-  if (!found) throw new Error(`${app} is not in its scope's report`);
-  return found.package ?? null;
 }
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */

@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import type { InstancePackage } from '@calimero-apps/connect';
+import { instancePackage, type InstancePackage } from '@calimero-apps/connect';
 import { WorkspaceTrust } from '@calimero-apps/passkey';
 import { tokens as t } from '../../theme';
 import { useSignedIn } from '../../sessionContext';
-import { runningRelease } from '../../workspaces';
 import { useAppCtx } from './appContext';
 
 type Running =
@@ -22,7 +21,7 @@ function useRunningRelease(): [Running, () => void] {
     setRunning({ status: 'loading' });
     if (!ws.activeRepo) return;
     let live = true;
-    runningRelease(client, ws.activeRepo).then(
+    instancePackage(client, ws.activeRepo).then(
       (release) => live && setRunning({ status: 'ready', release }),
       () => live && setRunning({ status: 'error' }),
     );

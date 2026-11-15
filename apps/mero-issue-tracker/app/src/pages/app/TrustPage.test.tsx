@@ -53,12 +53,12 @@ describe('TrustPage', () => {
     expect((await screen.findByTestId('workspace-trust')).dataset.version).toBe('1.3.0');
   });
 
-  it('says it could not be read when the report does not list the repo', async () => {
+  it('says the repo runs no published release when the report does not list it', async () => {
     session.client = {
       apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
       appsReportAll: vi.fn(async () => ({ apps: [] })),
     };
     render(<TrustPage />);
-    expect(await screen.findByText(/could not be read/)).toBeTruthy();
+    expect(await screen.findByText(/runs no published release/)).toBeTruthy();
   });
 });
