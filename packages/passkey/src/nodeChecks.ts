@@ -120,7 +120,10 @@ export function useCard(client: CalimeroClient | null, release: ReviewRelease, n
     }
     let live = true;
     setState({ status: "loading" });
-    client.packageCapabilities(release.package, release.version, release.service ? { service: release.service } : undefined).then(
+    const request = release.service
+      ? client.packageCapabilities(release.package, release.version, { service: release.service })
+      : client.packageCapabilities(release.package, release.version);
+    request.then(
       (card) => live && setState({ status: "ready", card }),
       (e: unknown) => live && setState({ status: "error", message: cardError(e) }),
     );
