@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import TrustPage from './TrustPage';
@@ -30,10 +30,35 @@ describe('TrustPage', () => {
     expect(panel.dataset).toMatchObject({ package: 'com.calimero.mero-issue-tracker', version: '1.3.0', app: 'app-1' });
   });
 
-  it('says there is no signed release to review when the repo has none', async () => {
+  it('says the repo runs no published release when it runs a raw bundle', async () => {
     reporting(null);
     render(<TrustPage />);
-    expect(await screen.findByText(/No signed release to review/)).toBeTruthy();
+    expect(await screen.findByText(/runs no published release/)).toBeTruthy();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
     expect(screen.queryByTestId('workspace-trust')).toBeNull();
+  });
+
+  it('says the release could not be read, apart from having none, and reads again on Try again', async () => {
+    session.client = {
+      apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
+      appsReportAll: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValue({ apps: [{ app: 'app-1', package: { package: 'p', version: '1.3.0' } }] }),
+    };
+    render(<TrustPage />);
+    expect(await screen.findByText(/could not be read/)).toBeTruthy();
+    expect(screen.queryByText(/runs no published release/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect((await screen.findByTestId('workspace-trust')).dataset.version).toBe('1.3.0');
+  });
+
+  it('says it could not be read when the report does not list the repo', async () => {
+    session.client = {
+      apps: { get: vi.fn(async () => ({ org: 'org-1' })) },
+      appsReportAll: vi.fn(async () => ({ apps: [] })),
+    };
+    render(<TrustPage />);
+    expect(await screen.findByText(/could not be read/)).toBeTruthy();
   });
 });
