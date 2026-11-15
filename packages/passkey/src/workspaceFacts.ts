@@ -75,10 +75,19 @@ function everyWords(every: string): string {
 /** The paragraphs of a doc, cut at MAX_DOC_CHARS: blank lines separate them, a single line break (rustfmt wraps `///` blocks) is a space. */
 export function docParagraphs(doc: string): string[] {
   const bounded = doc.length > MAX_DOC_CHARS ? `${doc.slice(0, MAX_DOC_CHARS)}…` : doc;
-  return bounded
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
-    .filter(Boolean);
+  const paragraphs: string[] = [];
+  let lines: string[] = [];
+  const flush = () => {
+    if (lines.length) paragraphs.push(lines.join(" "));
+    lines = [];
+  };
+  for (const line of bounded.split("\n")) {
+    const text = line.trim();
+    if (text) lines.push(text);
+    else flush();
+  }
+  flush();
+  return paragraphs;
 }
 
 /** The first sentence of a doc's first paragraph: it ends at . ! or ? followed by a space and a capital, a backtick or a quote; not after e.g., i.e. or etc., and not inside a number or version. */
