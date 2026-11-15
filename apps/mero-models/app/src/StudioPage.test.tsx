@@ -153,8 +153,9 @@ describe("the studio's front door", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     renderPage(fakeClient([scene("app-a", "alpha")]), storage);
     await screen.findByText("alpha");
-    expect(screen.getAllByTestId("node-shield")).toHaveLength(1);
-    expect(screen.getByTestId("node-shield").closest("header.topbar")).not.toBeNull();
+    const shields = await screen.findAllByTestId("node-shield");
+    expect(shields).toHaveLength(1);
+    expect(shields[0].closest("header.topbar")).not.toBeNull();
   });
 
   it("makes a new scene in a studio of its own", async () => {
