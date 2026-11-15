@@ -6,6 +6,7 @@ import {
   RELEASE_FOLLOW_KEY,
   followInstanceRelease,
   followRelease,
+  instancePackage,
   instanceRelease,
   instanceReleaseUrl,
   servedRelease,
@@ -145,6 +146,26 @@ describe("instanceRelease", () => {
     expect(await instanceRelease(client(null), "app-1")).toBeNull();
     expect(await instanceRelease(client("1.0.0"), "app-9")).toBeNull();
     expect(await instanceRelease({ apps: { get: async () => Promise.reject(new Error("x")) }, appsReportAll: vi.fn() }, "app-1")).toBeNull();
+  });
+});
+
+describe("instancePackage", () => {
+  it("is the whole package reference the report gives, service included", async () => {
+    const c = client("1.0.0");
+    const ref = { package: "p", version: "1.0.0", service: "web" };
+    c.appsReportAll.mockResolvedValue({ apps: [{ app: "app-1", package: ref }] } as unknown as AppsReport);
+    expect(await instancePackage(c, "app-1")).toEqual(ref);
+  });
+
+  it("marks a compute-only instance, which only the app record's release says", async () => {
+    const c = client("1.0.0");
+    c.apps.get.mockResolvedValue({ org: "org-1", release: { package: "p", version: "1.0.0", compute: true } } as never);
+    expect(await instancePackage(c, "app-1")).toEqual({ package: "p", version: "1.0.0", compute: true });
+  });
+
+  it("is null when the instance is not in the report or the report cannot be read", async () => {
+    expect(await instancePackage(client("1.0.0"), "app-9")).toBeNull();
+    expect(await instancePackage(client(null), "app-1")).toBeNull();
   });
 });
 

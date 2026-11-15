@@ -136,6 +136,30 @@ React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`
   release of the same WASM); arriving clears the note. With no storage for
   the note it never moves.
 
+## Checking the node runs the app's code
+
+`checkAppCode(client, app, source)` (`appCode.ts`) asks whether the attested
+node reports this instance's code as the release it lists. It attests the
+instance (`client.attestApp(app)`), so the hash it gets is the bundle hash the
+node bound from its own record of the instance, and compares it with the
+bundle hash the node lists for the release the instance runs
+(`packageCapabilities(package, version).bundle`, the release from the
+instance's own report, never `VITE_CALIMERO_VERSION`) or, in development,
+the raw `VITE_CALIMERO_BUNDLE` hash. It never throws.
+Both sides come from the same attested node: `match` is a consistency check
+inside the TEE, not an independent registry check and not a signature check
+made by this client.
+
+| status | meaning |
+|---|---|
+| `match` | both hashes present and equal (`appHash`, `checkedAt`, and the `package` and `version` the instance runs, none for a dev bundle) |
+| `mismatch` | the node reports different code for this app than its release lists (`appHash`, `expected`) |
+| `unknown` | not checked: attestation refused or failed, a mock quote (test server), no hash bound, the instance's release, package or service not known or not the source's, a compute-only instance (`reason`) |
+
+`policyFor` stays the node-level policy: a client connects before any
+instance exists, and an `appHash` it pinned would only be echoed back by the
+node, so the app check is made per instance, after `createApp`.
+
 ## Organizations
 
 An account is in organizations made for other apps (a Mero Blocks world, a

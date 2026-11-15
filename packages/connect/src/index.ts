@@ -62,15 +62,18 @@ export {
   type OrgTeamView,
   type PendingInvite,
 } from "./invite";
+export { checkAppCode, type AppCodeCheck } from "./appCode";
 export {
   RELEASE_FOLLOW_KEY,
   followInstanceRelease,
   followRelease,
+  instancePackage,
   instanceRelease,
   instanceReleaseUrl,
   servedRelease,
   type FollowInstanceReleaseOptions,
   type FollowReleaseOptions,
+  type InstancePackage,
   type ReleaseClient,
 } from "./release";
 export {

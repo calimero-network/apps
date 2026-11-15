@@ -264,9 +264,10 @@ catalog:
 # `auth.accountOutboundApproval` and `auth.accountReleaseApproval` (an account's
 # own apps are approved through `orgs.outboundApproval` and `orgs.releaseApproval`
 # on its personal org). Nothing here uses either; core 1.0.0-rc.23 carries both syncs.
+# 35.3.0 adds the `{ service }` option to packageCapabilities and transient node checks.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^35.2.1
+    "@calimero-network/mero-js": ^35.3.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

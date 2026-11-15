@@ -19,7 +19,7 @@
  * another release of the same WASM) finds that note and stays. With no
  * storage to write the note to, it stays too.
  */
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import type { CalimeroClient, ReportedApp } from "@calimero-network/mero-js";
 
 import type { KeyValueStorage } from "./client";
 import type { ClientRoutes } from "./routes";
@@ -150,20 +150,29 @@ export function followRelease(options: FollowReleaseOptions): boolean {
 /** The part of the client {@link instanceRelease} reads. */
 export type ReleaseClient = Pick<CalimeroClient, "appsReportAll"> & ClientRoutes<{ apps: "get" }>;
 
+/** The package release an instance runs (`service` for a multi-service bundle, `compute` for its compute component). */
+export type InstancePackage = NonNullable<ReportedApp["package"]> & { compute?: true };
+
 /**
- * The release `app` runs, as its scope's report says (`package.version`: the
- * account's own report, or its organization's). `null` when it cannot be read.
+ * The package release `app` runs, as its scope's report says (the account's
+ * own report, or its organization's). `null` when it cannot be read.
  */
-export async function instanceRelease(client: ReleaseClient, app: string): Promise<string | null> {
+export async function instancePackage(client: ReleaseClient, app: string): Promise<InstancePackage | null> {
   try {
-    const record = (await client.apps.get({ app })) as { org?: unknown };
+    const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
     const org = typeof record.org === "string" ? record.org : null;
     const report = await client.appsReportAll(org);
-    const version = report.apps.find((a) => a.app === app)?.package?.version;
-    return typeof version === "string" && version ? version : null;
+    const running = report.apps.find((a) => a.app === app)?.package;
+    return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
   } catch {
     return null;
   }
+}
+
+/** The release version `app` runs ({@link instancePackage}'s `version`). */
+export async function instanceRelease(client: ReleaseClient, app: string): Promise<string | null> {
+  const version = (await instancePackage(client, app))?.version;
+  return typeof version === "string" && version ? version : null;
 }
 
 export interface FollowInstanceReleaseOptions extends Omit<FollowReleaseOptions, "release"> {
