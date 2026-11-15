@@ -255,9 +255,14 @@ export class OrgAdmin {
     readonly client: CalimeroClient,
     readonly self: string,
     private readonly passkey: () => PasskeyProvider,
-    private readonly source: AppSource,
+    private readonly currentSource: AppSource | (() => AppSource),
     private readonly sync: () => void = () => {},
   ) {}
+
+  /** Read when used: the release new instances are created from may resolve after the admin is built. */
+  private get source(): AppSource {
+    return typeof this.currentSource === 'function' ? this.currentSource() : this.currentSource;
+  }
 
   // ---------------------------------------------------------------- reads
 

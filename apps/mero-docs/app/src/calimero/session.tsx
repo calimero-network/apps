@@ -14,6 +14,7 @@ import {
   type Target,
 } from '@calimero-apps/connect';
 import {
+  useResolvedSource,
   usePasskeySession,
   type ListingProps,
   type SessionApi as PasskeySessionApi,
@@ -57,8 +58,10 @@ export const defaultDeps: SessionDeps = {
  * sign-up), plus what this app's screens read from it.
  */
 export interface SessionApi extends PasskeySessionApi {
-  /** Where app instances are created from: the dev bundle, or the package. */
+  /** Where app instances are created from: the dev bundle, or the package pinned to one release. */
   source: AppSource;
+  /** The release `source` is pinned to is still being read. */
+  resolvingSource: boolean;
   /** Keeps the stored session current after a request (refresh tokens are single-use). */
   sync: () => void;
 }
@@ -81,8 +84,13 @@ function useSessionState(deps: SessionDeps): SessionApi {
   const sync = useCallback(() => {
     if (client) store?.sync(client);
   }, [store, client]);
-  const source = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
-  return useMemo(() => ({ ...api, source, sync }), [api, source, sync]);
+  const base = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
+  const accountId = session.status === 'signed-in' ? session.accountId : null;
+  const { source, pending: resolving } = useResolvedSource(client, accountId, base);
+  return useMemo(
+    () => ({ ...api, source, resolvingSource: resolving, sync }),
+    [api, source, resolving, sync],
+  );
 }
 
 /** Connects once and shares the session with every screen. */

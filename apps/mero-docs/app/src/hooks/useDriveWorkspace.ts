@@ -39,7 +39,7 @@ import {
 import { useLive, type GroupMember, type Namespace } from '@/calimero/react';
 import { targetKey } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { useInstanceRelease } from '@calimero-apps/passkey';
+import { useInstanceRelease, useNodeShieldApp } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { REGISTRY_APP_KEY, type OrgView } from '@/calimero/orgs';
 import { MeroDocsClient } from '@/lib/docsApi';
@@ -387,6 +387,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const allFolderNodes = useMemo(() => regFolders.map((f) => ({ id: f.id, parent_id: f.parent_id })), [regFolders]);
 
   const selectedFolderId = route?.folder ?? null;
+  // The shield checks the code that runs the open folder's documents, else the workspace's registry.
+  const openFolderApp = registryFolders?.find((f) => f.id === selectedFolderId)?.context_id;
+  useNodeShieldApp(openFolderApp || registryContextId, source);
   const setSelectedFolder = useCallback(
     (id: string | null, opts?: { replace?: boolean }) => (id ? goFolder(id, opts) : goHome(undefined, opts)),
     [goFolder, goHome],

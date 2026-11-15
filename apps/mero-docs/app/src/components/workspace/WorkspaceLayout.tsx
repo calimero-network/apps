@@ -22,7 +22,7 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
-import { ManageInHomeLink } from '@calimero-apps/passkey';
+import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { useMero } from '@/calimero/react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
@@ -83,7 +83,7 @@ export function WorkspaceLayout() {
     stage,
     refetch,
   } = useDriveWorkspace();
-  const { nodeUrl, nodeLabel, logout, session } = useMero();
+  const { logout, session } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
@@ -96,11 +96,6 @@ export function WorkspaceLayout() {
     namespaceId ?? '',
     selectedFolder?.id ?? '',
   );
-
-  // Which cluster this session is on: merod local in development, the
-  // Calimero Cloud cluster in production.
-  const displayNode =
-    nodeLabel ?? 'disconnected';
 
   const { route, goWorkspace, goHome, goFolder, goDoc, goSettings } =
     useAppRoute();
@@ -282,12 +277,12 @@ export function WorkspaceLayout() {
   return (
     <div className="glass-fields flex h-dvh flex-col">
       {/* Top bar: the floating glass header every app shares. */}
-      <header className="glass-header flex h-14 shrink-0 items-center justify-between gap-2 px-3 md:px-4">
-        <div className="flex min-w-0 items-center gap-2 md:gap-4">
+      <header className="glass-header flex h-14 shrink-0 items-center justify-between gap-1 px-2 sm:gap-2 sm:px-3 md:px-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2 md:gap-4">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0"
+            className="h-9 w-9 shrink-0 max-sm:w-8"
             aria-label={sidebarShown ? 'Hide sidebar' : 'Show sidebar'}
             aria-pressed={sidebarShown}
             onClick={() =>
@@ -300,65 +295,64 @@ export function WorkspaceLayout() {
           </Button>
           <LogoWithText
             size={22}
-            className="shrink-0"
+            className="shrink-0 max-sm:hidden"
             textClassName="hidden whitespace-nowrap sm:inline"
           />
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
         {namespaceId && (
-          <div className="flex min-w-0 flex-1 justify-center md:px-6">
-            <TopBarSearch onOpen={() => setSearchOpen(true)} />
+          <div className="flex min-w-9 flex-1 justify-center sm:min-w-11 sm:px-1 md:px-6">
+            <TopBarSearch onOpen={() => setSearchOpen(true)} pillFrom="wide" />
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {/* Connection indicator - shows the cluster and online
-              state. Hidden on narrow viewports; title carries the
-              full URL for copy-paste. */}
-          {nodeUrl && (
-            <div
-              className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground px-2"
-              title={nodeUrl}
-              aria-label={`Connected to ${nodeUrl}${isOnline ? '' : ' (offline)'}`}
+          <NodeShield compactBelow={1200} />
+          {isOnline ? (
+            <span
+              role="img"
+              aria-label="Online"
+              title="Online"
+              className="hidden px-1 sm:inline-flex"
             >
-              <Circle
-                className={`h-2 w-2 ${
-                  isOnline
-                    ? 'fill-sync-synced text-sync-synced'
-                    : 'fill-destructive text-destructive'
-                }`}
-              />
-              <span className="max-w-[16ch] truncate">{displayNode}</span>
-            </div>
+              <Circle className="h-2 w-2 fill-sync-synced text-sync-synced" />
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-1 text-xs font-medium text-destructive">
+              <Circle className="h-2 w-2 fill-destructive" aria-hidden />
+              Offline
+            </span>
           )}
-          <ThemeToggle />
+          <span className={namespaceId ? 'max-sm:hidden' : undefined}>
+            <ThemeToggle />
+          </span>
           <ManageInHomeLink
             session={session}
             org={namespaceId}
-            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline sm:inline"
+            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline min-[1440px]:inline"
           />
           {namespaceId && (
             <Button
               variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 max-sm:w-8 max-sm:px-0"
               aria-label="Settings"
               aria-pressed={showSettings}
               onClick={showSettings ? closeSettings : goSettings}
             >
               <Settings className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden min-[1200px]:inline">Settings</span>
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 max-sm:w-8 max-sm:px-0"
             onClick={logout}
             aria-label="Log out"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Log out</span>
+            <span className="hidden min-[1200px]:inline">Log out</span>
           </Button>
         </div>
       </header>

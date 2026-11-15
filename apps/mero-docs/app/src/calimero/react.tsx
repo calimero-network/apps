@@ -24,7 +24,7 @@ import {
 import type { CalimeroClient } from '@calimero-network/mero-js';
 import { targetKey } from '@calimero-apps/connect';
 import type { Session } from '@calimero-apps/passkey';
-import { describeTarget, useSession } from './session';
+import { useSession } from './session';
 import { OrgAdmin, type GroupMember } from './orgs';
 import {
   EventHub,
@@ -52,17 +52,22 @@ export function CalimeroProvider({ children }: { children: ReactNode }) {
   const { session, passkey, source, sync } = useSession();
   const client = session.status === 'signed-in' ? session.client : null;
   const accountId = session.status === 'signed-in' ? session.accountId : null;
-  const live = useMemo<Live | null>(() => {
-    if (!client || !accountId) return null;
-    return {
-      client,
-      accountId,
-      admin: new OrgAdmin(client, accountId, passkey, source, sync),
-      events: new EventHub(client),
-      presence: new PresenceHub(client, accountId),
-    };
-  }, [client, accountId, passkey, source, sync]);
-  useEffect(() => () => live?.events.close(), [live]);
+  // Hubs and admin follow the account; the admin reads the release new instances are created from when it creates.
+  const hubs = useMemo(
+    () => (client && accountId ? { events: new EventHub(client), presence: new PresenceHub(client, accountId) } : null),
+    [client, accountId],
+  );
+  useEffect(() => () => hubs?.events.close(), [hubs]);
+  const currentSource = useRef(source);
+  currentSource.current = source;
+  const admin = useMemo(
+    () => (client && accountId ? new OrgAdmin(client, accountId, passkey, () => currentSource.current, sync) : null),
+    [client, accountId, passkey, sync],
+  );
+  const live = useMemo<Live | null>(
+    () => (client && accountId && hubs && admin ? { client, accountId, admin, ...hubs } : null),
+    [client, accountId, hubs, admin],
+  );
   return <LiveContext.Provider value={live}>{children}</LiveContext.Provider>;
 }
 
@@ -82,8 +87,6 @@ export interface MeroValue {
   isOnline: boolean;
   /** Which cluster this session is on (v1: the node URL), for remembered state. */
   nodeUrl: string | null;
-  /** "merod local (3 nodes)" / "Calimero Cloud <cluster>", for the top bar. */
-  nodeLabel: string | null;
   logout: () => Promise<void>;
   /** The passkey session itself (`ManageInHomeLink`). */
   session: Session;
@@ -109,7 +112,6 @@ export function useMero(): MeroValue {
       isLoading: session.status === 'connecting',
       isOnline,
       nodeUrl,
-      nodeLabel: session.status === 'signed-in' ? describeTarget(session.target) : null,
       logout: api.signOut,
       session,
     }),
