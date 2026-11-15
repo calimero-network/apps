@@ -266,12 +266,12 @@ catalog:
 # own apps are approved through `orgs.outboundApproval` and `orgs.releaseApproval`
 # on its personal org). Nothing here uses either; core 1.0.0-rc.23 carries both syncs.
 # 35.3.0 adds the `{ service }` option to packageCapabilities and transient node checks.
-# mero-react 11.2.0 ships the node shield (`/node-shield`) that @calimero-apps/passkey renders;
+# mero-react 11.3.0 ships the node shield (`/node-shield`, with `open` and `compact`) that @calimero-apps/passkey renders;
 # it depends on mero-js ^35.3.0, so the components resolve one mero-js.
 catalogs:
   component:
     "@calimero-network/mero-js": ^35.3.0
-    "@calimero-network/mero-react": ^11.2.0
+    "@calimero-network/mero-react": ^11.3.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

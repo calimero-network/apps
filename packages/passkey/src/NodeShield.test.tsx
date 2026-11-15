@@ -249,7 +249,6 @@ describe("the compact shield", () => {
   });
 
   it("is always icon only when floating", async () => {
-    viewport((q) => /^\(max-width: \d+px\)$/.test(q));
     const { client } = fakeClient(sealed);
     bind(client);
     await waitFor(() => expect(chip().getAttribute("aria-label")).toBe("Verified node"));

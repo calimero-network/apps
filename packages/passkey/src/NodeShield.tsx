@@ -1,5 +1,5 @@
 import "./nodeShield.css";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { NodeShield as MeroNodeShield, type AppCodeChecker } from "@calimero-network/mero-react/node-shield";
@@ -7,31 +7,35 @@ import { checkAppCode } from "@calimero-apps/connect";
 
 import { bindShieldSession, placeShield, readShield, useShieldStore } from "./nodeShieldStore";
 
-const ALWAYS_COMPACT = Number.MAX_SAFE_INTEGER; // the floating chip is the icon alone at every width
-
 /** The published shield for the last bound session, checking the registered app's code and opening on `openNodeShield()` when it `answersOpen`. */
-function ShieldChip({ answersOpen, compactBelow }: { answersOpen: boolean; compactBelow?: number }) {
+function ShieldChip({ answersOpen, compactBelow, compact }: { answersOpen: boolean; compactBelow?: number; compact?: boolean }) {
   const { sessions, app, opens } = useShieldStore();
   const session = sessions[sessions.length - 1] ?? null;
-  const root = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
   const seenOpens = useRef(opens);
   const appCode = useMemo<AppCodeChecker | undefined>(
     () => (app ? (client, url) => checkAppCode(client, app.id, app.source, url) : undefined),
     [app],
   );
 
-  // The published shield has no open prop, so an open request clicks its closed chip.
   useEffect(() => {
     if (opens === seenOpens.current) return;
     seenOpens.current = opens;
-    const chip = root.current?.querySelector<HTMLButtonElement>(".mero-node-shield__chip");
-    if (answersOpen && chip?.getAttribute("aria-expanded") === "false") chip.click();
+    if (answersOpen) setOpen(true);
   }, [opens, answersOpen]);
 
   if (!session) return null;
   return (
-    <span ref={root} className="cp-shield">
-      <MeroNodeShield client={session.client} cluster={session.cluster} compactBelow={compactBelow} appCode={appCode} />
+    <span className="cp-shield">
+      <MeroNodeShield
+        client={session.client}
+        cluster={session.cluster}
+        compactBelow={compactBelow}
+        compact={compact}
+        appCode={appCode}
+        open={open}
+        onOpenChange={setOpen}
+      />
     </span>
   );
 }
@@ -49,7 +53,7 @@ export function NodeShield({ compactBelow }: { compactBelow?: number } = {}) {
 
 function FloatingShield() {
   const { placed } = useShieldStore();
-  return placed.length === 0 ? <ShieldChip answersOpen compactBelow={ALWAYS_COMPACT} /> : null;
+  return placed.length === 0 ? <ShieldChip answersOpen compact /> : null;
 }
 
 let floating: { root: Root; host: HTMLElement } | null = null;
