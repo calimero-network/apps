@@ -24,7 +24,7 @@ import {
 import type { CalimeroClient } from '@calimero-network/mero-js';
 import { targetKey } from '@calimero-apps/connect';
 import type { Session } from '@calimero-apps/passkey';
-import { describeTarget, useSession } from './session';
+import { useSession } from './session';
 import { OrgAdmin, type GroupMember } from './orgs';
 import {
   EventHub,
@@ -85,8 +85,6 @@ export interface MeroValue {
   isOnline: boolean;
   /** Which cluster this session is on (v1: the node URL), for remembered state. */
   nodeUrl: string | null;
-  /** "merod local (3 nodes)" / "Calimero Cloud <cluster>", for the top bar. */
-  nodeLabel: string | null;
   logout: () => Promise<void>;
   /** The passkey session itself (`ManageInHomeLink`). */
   session: Session;
@@ -112,7 +110,6 @@ export function useMero(): MeroValue {
       isLoading: session.status === 'connecting',
       isOnline,
       nodeUrl,
-      nodeLabel: session.status === 'signed-in' ? describeTarget(session.target) : null,
       logout: api.signOut,
       session,
     }),
