@@ -633,6 +633,27 @@ describe('the node shield', () => {
     expect(client.attestApp).toHaveBeenCalledWith('app-1');
   });
 
+  it('shows the header shield as its icon alone at 1100px and narrower', async () => {
+    const at = (width: number) =>
+      ((query: string) => ({
+        matches: query === `(max-width: ${width}px)`,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+    window.matchMedia = at(1100);
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(true);
+  });
+
+  it('keeps the header shield\'s label above 1100px', async () => {
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(false);
+  });
+
   /** The open repo `app-1` runs `version`, as its scope's report says. */
   function running(client: ReturnType<typeof openWorkspace>, version: string) {
     return Object.assign(client, {
