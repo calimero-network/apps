@@ -2,11 +2,40 @@
 // the release the workspace's registry instance runs now, not the one the
 // page was built for.
 
-import React, { useEffect, useState } from 'react';
-import { instancePackage } from '@calimero-apps/connect';
+import React, { useCallback, useEffect, useState } from 'react';
+import type { CalimeroClient } from '@calimero-network/mero-js';
 import { WorkspaceTrust, type ReviewRelease } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+
+type Running =
+  | { status: 'release'; release: ReviewRelease }
+  | { status: 'none' }
+  | { status: 'error' };
+
+/** The release `app` runs, as its scope's report says: none for an instance of a raw bundle, an error when it cannot be read. */
+async function readRunning(
+  client: CalimeroClient,
+  app: string,
+): Promise<Running> {
+  try {
+    const record = (await client.apps.get({ app })) as { org?: unknown };
+    const org = typeof record.org === 'string' ? record.org : null;
+    const entry = (await client.appsReportAll(org)).apps.find(
+      (a) => a.app === app,
+    );
+    if (!entry) return { status: 'error' };
+    const running = entry.package;
+    return running?.package && running.version
+      ? {
+          status: 'release',
+          release: { package: running.package, version: running.version },
+        }
+      : { status: 'none' };
+  } catch {
+    return { status: 'error' };
+  }
+}
 
 export function WorkspaceTrustPanel() {
   const { registryContextId } = useDriveWorkspace();
@@ -14,37 +43,54 @@ export function WorkspaceTrustPanel() {
   const client = session.status === 'signed-in' ? session.client : null;
   const [running, setRunning] = useState<{
     app: string;
-    release: ReviewRelease | null;
+    found: Running;
   } | null>(null);
+  const [round, setRound] = useState(0);
+  const retry = useCallback(() => {
+    setRunning(null);
+    setRound((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!client || !registryContextId) return;
     let live = true;
-    void instancePackage(client, registryContextId).then((found) => {
-      if (!live) return;
-      const release =
-        found && typeof found.version === 'string'
-          ? { package: found.package, version: found.version }
-          : null;
-      setRunning({ app: registryContextId, release });
+    void readRunning(client, registryContextId).then((found) => {
+      if (live) setRunning({ app: registryContextId, found });
     });
     return () => {
       live = false;
     };
-  }, [client, registryContextId]);
+  }, [client, registryContextId, round]);
 
   if (!registryContextId || running?.app !== registryContextId) return null;
+  const { found } = running;
   return (
     <section
       aria-label="Trust"
       className="rounded-lg border border-border bg-card px-4 py-3"
     >
-      {running.release ? (
-        <WorkspaceTrust release={running.release} appId={registryContextId} />
+      {found.status === 'release' ? (
+        <WorkspaceTrust release={found.release} appId={registryContextId} />
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Could not read the release this workspace runs.
-        </p>
+        <div className="text-sm text-muted-foreground">
+          {found.status === 'none' ? (
+            <p>
+              This workspace runs no published release, so there is nothing to
+              review.
+            </p>
+          ) : (
+            <>
+              <p>Could not read the release this workspace runs.</p>
+              <button
+                type="button"
+                className="mt-2 font-medium text-primary hover:underline"
+                onClick={retry}
+              >
+                Try again
+              </button>
+            </>
+          )}
+        </div>
       )}
     </section>
   );
