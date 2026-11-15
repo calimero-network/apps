@@ -144,4 +144,13 @@ describe('WorkspaceLayout node shield', () => {
       within(screen.getByRole('banner')).getByRole('img', { name: 'Online' }),
     ).toBeTruthy();
   });
+
+  it('shows the Settings and Log out labels only where the header has room beside the shield', () => {
+    renderLayout();
+    for (const label of ['Settings', 'Log out']) {
+      const text = screen.getByText(label);
+      expect(text.className).toContain('hidden');
+      expect(text.className).toContain('min-[1100px]:inline');
+    }
+  });
 });

@@ -10,7 +10,7 @@ import {
   resolveTarget,
   type ConnectEnv,
 } from '@calimero-apps/connect';
-import { SessionProvider, APP, type SessionDeps } from '../session';
+import { SessionProvider, APP, useSession, type SessionDeps } from '../session';
 import { CalimeroProvider, useLive } from '../react';
 
 const ENV: ConnectEnv = { DEV: true };
@@ -42,6 +42,10 @@ describe('creating the registry instance', () => {
     new SessionStore(APP, resolveTarget(ENV), localStorage).save(SESSION);
     const create = vi.fn(async (_input: unknown) => ({ appId: 'app-1' }));
     let session: CalimeroSession | undefined;
+    let release: (version: string) => void = () => {};
+    const newest = new Promise<{ latest: string }>((resolve) => {
+      release = (latest) => resolve({ latest });
+    });
     const client = {
       nodeUrl: 'http://127.0.0.1:2501',
       get session() {
@@ -55,7 +59,7 @@ describe('creating the registry instance', () => {
       },
       verification: () => undefined,
       verify: () => new Promise(() => {}),
-      packages: { get: async () => ({ latest: '2.0.0' }) },
+      packages: { get: () => newest },
       orgs: { get: async () => ORG, metadata: async () => ({}) },
       apps: { create },
     } as unknown as CalimeroClient;
@@ -66,8 +70,10 @@ describe('creating the registry instance', () => {
       storage: localStorage,
     };
     let admin: ReturnType<typeof useLive> = null;
+    let held: ReturnType<typeof useSession> | null = null;
     function Probe() {
       admin = useLive();
+      held = useSession();
       return null;
     }
     render(
@@ -78,6 +84,13 @@ describe('creating the registry instance', () => {
       </SessionProvider>,
     );
     await waitFor(() => expect(admin).not.toBeNull());
+    expect(held!.resolvingSource).toBe(true);
+    release('2.0.0');
+    await waitFor(() => expect(held!.resolvingSource).toBe(false));
+    expect(held!.source).toEqual({
+      package: 'com.calimero.mero-drive-docs',
+      version: '2.0.0',
+    });
     await waitFor(async () => {
       await admin!.admin.org('org-1');
       await admin!.admin.createContext({ groupId: 'org-1', name: 'Registry' });
