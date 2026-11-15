@@ -295,14 +295,14 @@ export function WorkspaceLayout() {
           </Button>
           <LogoWithText
             size={22}
-            className="shrink-0"
+            className="shrink-0 max-sm:hidden"
             textClassName="hidden whitespace-nowrap sm:inline"
           />
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
         {namespaceId && (
-          <div className="flex min-w-0 flex-1 justify-center md:px-6">
+          <div className="flex min-w-11 flex-1 justify-center px-1 md:px-6">
             <TopBarSearch onOpen={() => setSearchOpen(true)} />
           </div>
         )}
@@ -327,13 +327,13 @@ export function WorkspaceLayout() {
           <ManageInHomeLink
             session={session}
             org={namespaceId}
-            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline sm:inline"
+            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline min-[1280px]:inline"
           />
           {namespaceId && (
             <Button
               variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 max-sm:w-9 max-sm:px-0"
               aria-label="Settings"
               aria-pressed={showSettings}
               onClick={showSettings ? closeSettings : goSettings}
@@ -345,7 +345,7 @@ export function WorkspaceLayout() {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 max-sm:w-9 max-sm:px-0"
             onClick={logout}
             aria-label="Log out"
           >

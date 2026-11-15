@@ -60,6 +60,14 @@ vi.mock('@/calimero/react', async (importOriginal) => ({
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),
 }));
 let online = true;
+vi.mock('@calimero-apps/passkey', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ManageInHomeLink: ({ className }: { className?: string }) => (
+    <a className={className} href="#home">
+      Manage people
+    </a>
+  ),
+}));
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => online }));
 vi.mock('@/hooks/useWorkspacePresence', () => ({
   usePublishWorkspacePresence: () => {},
@@ -166,5 +174,23 @@ describe('WorkspaceLayout node shield', () => {
     expect(
       within(screen.getByRole('banner')).getByText('Offline'),
     ).toBeTruthy();
+  });
+
+  it('gives the workspace name the room below sm: no logo mark, no online dot', () => {
+    renderLayout();
+    const header = screen.getByRole('banner');
+    // eslint-disable-next-line testing-library/no-node-access
+    const logo = within(header).getByText('Mero Docs').parentElement;
+    expect(logo?.className).toContain('max-sm:hidden');
+    expect(
+      within(header).getByRole('img', { name: 'Online' }).className,
+    ).toContain('hidden');
+  });
+
+  it('shows the Calimero Home link only where the header has room beside the shield', () => {
+    renderLayout();
+    const link = screen.getByText('Manage people');
+    expect(link.className).toContain('hidden');
+    expect(link.className).toContain('min-[1280px]:inline');
   });
 });
