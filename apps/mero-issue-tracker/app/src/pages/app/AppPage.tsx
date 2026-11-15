@@ -227,6 +227,8 @@ export default function AppPage(): React.ReactElement | null {
     <>
       {showCreateNs && (
         <NamespaceCreateDialog
+          release={ws.createRelease}
+          releasePending={ws.sourcePending}
           onCreate={ws.createNamespace}
           onClose={() => setShowCreateNs(false)}
         />
@@ -234,6 +236,7 @@ export default function AppPage(): React.ReactElement | null {
       {showAddRepo && (
         <AddRepoDialog
           onAdd={ws.addRepo}
+          releasePending={ws.sourcePending}
           onClose={() => setShowAddRepo(false)}
         />
       )}
@@ -262,6 +265,7 @@ export default function AppPage(): React.ReactElement | null {
           onRetry={ws.retryNamespaces}
           loadOtherOrgs={ws.loadOtherOrgs}
           onConnect={ws.connectOrg}
+          releasePending={ws.sourcePending}
         />
         {dialogs}
       </>

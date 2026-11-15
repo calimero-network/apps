@@ -24,11 +24,11 @@ import {
   type PendingInvite,
   type ReleaseClient,
 } from '@calimero-apps/connect';
+import type { ReviewRelease } from '@calimero-apps/passkey';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
 import { MeroIssueTrackerClient } from './generated/client';
-import { newWorkspaceRelease } from './newWorkspaceRelease';
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -103,6 +103,11 @@ export async function listRepos(
 export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
 
+/** The package release `source` creates, or `null` for a raw bundle or a source with no known version (nothing signed to review). */
+export function reviewRelease(source: AppSource): ReviewRelease | null {
+  return typeof source === 'string' || !source.version ? null : { package: source.package, version: source.version };
+}
+
 export interface CreatedWorkspace {
   namespaceId: string;
   /** Set when the org exists but its member defaults could not be set (a cancelled passkey). */
@@ -147,7 +152,7 @@ export async function runningRelease(client: ReleaseClient, app: string): Promis
 /** A new repository in `org`, its URL set when given. Answers the instance id. */
 export async function addRepo(
   client: Pick<CalimeroClient, 'session' | 'events'> &
-    ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope'; packages: 'get' }>,
+    ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
   source: AppSource,
   org: string,
   name: string,
@@ -157,11 +162,10 @@ export async function addRepo(
 ): Promise<string> {
   // On this app's team (`orgWideAccess`): made first, by an owner or admin,
   // in an org whose other apps have teams; organization access in a legacy org.
-  const release = await newWorkspaceRelease(client, source);
   const appId = (
     await client.apps.create({
       name,
-      ...appTarget(release ?? source),
+      ...appTarget(source),
       ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
     })
   ).appId;

@@ -3,74 +3,44 @@ import styled from 'styled-components';
 import { lastUsedName } from '@calimero-apps/names';
 import { WorkspaceReview, type ReviewRelease } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
+import { CHECKING_RELEASE } from '../config';
 import { tokens as t } from '../theme';
-import { useSignedIn } from '../sessionContext';
-import { newWorkspaceRelease } from '../newWorkspaceRelease';
 import type { CreateWorkspaceResult } from '../hooks/useWorkspace';
 
 const MAX_NAME = 128;
 const MAX_SELF_NAME = 64;
 
+const REVIEW_WIDTH = 680;
+const REVIEW_BOTTOM_PADDING = 26; // the review's sticky action row sits flush with this inset
+
 interface Props {
+  /** What the new workspace's repositories are created from, reviewed before creating; `null` creates from the form. */
+  release: ReviewRelease | null;
+  /** The release is still being read: nothing is created or reviewed yet. */
+  releasePending?: boolean;
   onCreate: (name: string, selfName: string) => Promise<CreateWorkspaceResult>;
   onClose: () => void;
 }
 
-/** The release the new workspace's repositories will run, read when the dialog opens: `undefined` while asked, `null` when none is known. */
-function useNewWorkspaceRelease(): ReviewRelease | null | undefined {
-  const { client, source } = useSignedIn();
-  const [release, setRelease] = useState<ReviewRelease | null | undefined>(undefined);
-  useEffect(() => {
-    let live = true;
-    void newWorkspaceRelease(client, source).then((found) => live && setRelease(found));
-    return () => { live = false; };
-  }, [client, source]);
-  return release;
-}
-
-/** Step 2: the shared review of the release, or why there is none to review. */
-function ReviewStep({ release, busy, onBack, onCreate }: {
-  release: ReviewRelease | null | undefined;
-  busy: boolean;
-  onBack: () => void;
-  onCreate: () => void;
-}) {
-  if (release) return <WorkspaceReview release={release} creating={busy} onBack={onBack} onCreate={onCreate} />;
-  const loading = release === undefined;
-  return (
-    <>
-      <h3>Review before creating</h3>
-      <p className="sub">
-        {loading
-          ? 'Reading the app\'s release from this node...'
-          : 'No signed release to review: this app runs a local bundle, or its release could not be read from this node.'}
-      </p>
-      <Actions>
-        <SecondaryBtn onClick={onBack} disabled={busy}>Back</SecondaryBtn>
-        {!loading && <PrimaryBtn onClick={onCreate} disabled={busy}>{busy ? <Spin /> : 'Create workspace'}</PrimaryBtn>}
-      </Actions>
-    </>
-  );
-}
-
-/** New-workspace (namespace) dialog in two steps. Step 1: name is required, and
- *  so is your name in the workspace (asked here, once, for every pipeline in it;
- *  it starts on the name used for the last workspace). Step 2: the review of the
- *  app release, which is where it is created, through useWorkspace.createNamespace
- *  (creates + selects the namespace and writes your name to it).
+/** New-workspace (namespace) dialog, in two steps: the names, then a review of
+ *  the app the workspace will run (`WorkspaceReview`), from which it is created.
+ *  Name is required, and so is your name in the workspace (asked here, once, for
+ *  every repository in it; it starts on the name used for the last workspace);
+ *  delegates to useWorkspace.createNamespace, which creates + selects the
+ *  namespace and writes your name to it. With no release to review it creates
+ *  from the names.
  *
  *  When the workspace was created but its member defaults could not be set
  *  (the passkey prompt was cancelled), the dialog stays open to say so: the
  *  alternative is invitees who can open it and do nothing, with nothing
  *  pointing back at the cause. */
-export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
+export default function NamespaceCreateDialog({ release, releasePending = false, onCreate, onClose }: Props) {
   const [name, setName] = useState('');
   const [selfName, setSelfName] = useState(() => lastUsedName());
+  const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hostingNotice, setHostingNotice] = useState<string | null>(null);
-  const [step, setStep] = useState<'name' | 'review'>('name');
-  const release = useNewWorkspaceRelease();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
@@ -78,9 +48,7 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const valid = !!name.trim() && !!selfName.trim();
-  const next = () => { if (valid && !busy) setStep('review'); };
-  const back = () => { setError(null); setStep('name'); };
+  const named = !!name.trim() && !!selfName.trim();
 
   const create = async () => {
     const trimmed = name.trim();
@@ -100,6 +68,12 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
     }
   };
 
+  const submit = () => {
+    if (!named || busy || releasePending) return;
+    if (release) setReviewing(true);
+    else void create();
+  };
+
   if (hostingNotice) {
     return (
       <Overlay onClick={onClose}>
@@ -117,71 +91,80 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
     );
   }
 
-  const reviewing = step === 'review';
+  if (reviewing && release) {
+    return (
+      <Overlay onClick={() => !busy && onClose()}>
+        <ReviewDialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Review before creating">
+          <Close onClick={() => !busy && onClose()} aria-label="Close">×</Close>
+          <Steps step="review" />
+          <WorkspaceReview release={release} creating={busy} onBack={() => { setReviewing(false); setError(null); }} onCreate={create} />
+          {error && <ErrorLine>{error}</ErrorLine>}
+        </ReviewDialog>
+      </Overlay>
+    );
+  }
+
   return (
     <Overlay onClick={() => !busy && onClose()}>
-      <Wide
-        $wide={reviewing}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={reviewing ? undefined : 'ns-create-title'}
-        aria-label={reviewing ? 'Review the new workspace' : undefined}
-      >
+      <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ns-create-title">
         <Close onClick={() => !busy && onClose()} aria-label="Close">×</Close>
-        <Stepper aria-label="Steps">
-          <span aria-current={reviewing ? undefined : 'step'}>1 Name</span>
-          <span aria-hidden="true">›</span>
-          <span aria-current={reviewing ? 'step' : undefined}>2 Review</span>
-        </Stepper>
-        {reviewing ? (
-          <>
-            <ReviewStep release={release} busy={busy} onBack={back} onCreate={create} />
-            {error && <ErrorLine>{error}</ErrorLine>}
-          </>
-        ) : (
-          <>
-            <h3 id="ns-create-title">New workspace</h3>
-            <p className="sub">Name your team workspace. You will add repositories to it next.</p>
-            <Field>
-              <label htmlFor="ns-create-name">Workspace name</label>
-              <input
-                id="ns-create-name"
-                data-testid="ns-create-name"
-                autoFocus
-                maxLength={MAX_NAME}
-                value={name}
-                onChange={(e) => { setName(e.target.value); setError(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
-                placeholder="e.g. Platform team"
-              />
-            </Field>
-            <Field>
-              <label htmlFor="ns-create-self-name">Your name in this workspace</label>
-              <input
-                id="ns-create-self-name"
-                data-testid="ns-create-self-name"
-                maxLength={MAX_SELF_NAME}
-                value={selfName}
-                onChange={(e) => { setSelfName(e.target.value); setError(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
-                placeholder="e.g. ronit"
-              />
-            </Field>
-            <Actions>
-              <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
-              <PrimaryBtn data-testid="ns-create-submit" onClick={next} disabled={!valid}>Continue</PrimaryBtn>
-            </Actions>
-          </>
-        )}
-      </Wide>
+        {release && <Steps step="name" />}
+        <h3 id="ns-create-title">New workspace</h3>
+        <p className="sub">Name your team workspace. You will add repositories to it next.</p>
+        <Field>
+          <label htmlFor="ns-create-name">Workspace name</label>
+          <input
+            id="ns-create-name"
+            data-testid="ns-create-name"
+            autoFocus
+            maxLength={MAX_NAME}
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder="e.g. Platform team"
+            disabled={busy}
+          />
+        </Field>
+        <Field>
+          <label htmlFor="ns-create-self-name">Your name in this workspace</label>
+          <input
+            id="ns-create-self-name"
+            data-testid="ns-create-self-name"
+            maxLength={MAX_SELF_NAME}
+            value={selfName}
+            onChange={(e) => { setSelfName(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder="e.g. ronit"
+            disabled={busy}
+          />
+        </Field>
+        {error && <ErrorLine>{error}</ErrorLine>}
+        {releasePending && <p className="sub" data-testid="release-checking">{CHECKING_RELEASE}</p>}
+        <Actions>
+          <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
+          <PrimaryBtn data-testid="ns-create-submit" onClick={submit} disabled={!named || busy || releasePending}>
+            {busy ? <Spin /> : release ? 'Continue' : 'Create workspace'}
+          </PrimaryBtn>
+        </Actions>
+      </Dialog>
     </Overlay>
   );
 }
 
-const Wide = styled(Dialog)<{ $wide: boolean }>`
-  max-width: ${({ $wide }) => ($wide ? '600px' : '420px')};
-  --passkey-review-inset: 26px; /* the dialog's bottom padding, so the review's sticky row sits flush */
+function Steps({ step }: { step: 'name' | 'review' }) {
+  return (
+    <Stepper aria-label="Steps">
+      <span aria-current={step === 'name' ? 'step' : undefined}>1 Name</span>
+      <span aria-hidden="true">›</span>
+      <span aria-current={step === 'review' ? 'step' : undefined}>2 Review</span>
+    </Stepper>
+  );
+}
+
+const ReviewDialog = styled(Dialog)`
+  max-width: ${REVIEW_WIDTH}px;
+  padding-bottom: ${REVIEW_BOTTOM_PADDING}px;
+  --passkey-review-inset: ${REVIEW_BOTTOM_PADDING}px;
 `;
 const Stepper = styled.div`
   display: flex; gap: 6px; margin: 0 0 14px; font-size: 11.5px; color: ${t.color.text3};

@@ -1,9 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PasskeyProvider } from '@calimero-network/mero-js';
-import { orgCluster } from '@calimero-apps/connect/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { APP_NAME } from './config';
-import { addRepo, createWorkspace, inviteLink, inviteRoute, invites, migrateLegacyInvite } from './workspaces';
+import { inviteLink, inviteRoute, invites, migrateLegacyInvite, reviewRelease } from './workspaces';
 
 /** A host a Calimero node serves an installed app on: `{label}.{domain}`, routes under `/{version}/`. */
 const SERVED = `https://${'a'.repeat(52)}.apps.calimero.network`;
@@ -62,20 +60,15 @@ describe('invitation links', () => {
   });
 });
 
-describe('repositories are created from the release the review showed', () => {
+describe('the release a new workspace is reviewed for', () => {
   const PKG = 'com.calimero.mero-issue-tracker';
-  it('is the version the first repository is created from, and every later one', async () => {
-    const passkey = () => ({}) as PasskeyProvider;
-    const cluster = orgCluster();
-    const get = vi.fn(async () => ({ latest: '1.4.0' }));
-    const client = Object.assign(cluster.client, { packages: { get } });
-    const { namespaceId: org } = await createWorkspace(client, 'Acme', passkey, { package: PKG });
-    await addRepo(client, { package: PKG }, org, 'Main', '', passkey);
-    get.mockImplementation(async () => ({ latest: '1.5.0' }));
-    await addRepo(client, { package: PKG }, org, 'Second', '', passkey);
-    expect(cluster.callsOf('createApp').map((c) => c[1])).toEqual([
-      { package: PKG, version: '1.4.0' },
-      { package: PKG, version: '1.4.0' },
-    ]);
+
+  it('is the package and version the source names', () => {
+    expect(reviewRelease({ package: PKG, version: '1.4.0' })).toEqual({ package: PKG, version: '1.4.0' });
+  });
+
+  it('is none for an unversioned source or a raw bundle, which have nothing signed to review', () => {
+    expect(reviewRelease({ package: PKG })).toBeNull();
+    expect(reviewRelease('bundle-hash')).toBeNull();
   });
 });

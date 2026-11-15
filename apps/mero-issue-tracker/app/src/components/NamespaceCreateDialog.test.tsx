@@ -1,37 +1,40 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { CalimeroClient, NodeVerificationState } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
 import { bindNodeShield } from '@calimero-apps/passkey/nodeShield';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NamespaceCreateDialog from './NamespaceCreateDialog';
 import { APP_PACKAGE } from '../config';
 
-const signedIn = vi.hoisted(() => ({ current: null as unknown }));
-vi.mock('../sessionContext', () => ({ useSignedIn: () => signedIn.current }));
-
 const NODE = 'https://node-1.example.net';
 const verified: NodeVerificationState = { status: 'verified', url: NODE, mock: false, release: '2.3.148', profile: 'locked-read-only', checkedAt: 1 };
 const refused: NodeVerificationState = { status: 'refused', url: NODE, reason: 'wrong enclave key', checkedAt: 1 };
+const RELEASE = { package: APP_PACKAGE, version: '1.4.0' };
 
 let unbind: (() => void) | null = null;
 
-/** The dialog in a session on a node whose own check answered `state`, creating from `source`. */
-function open(source: AppSource, state: NodeVerificationState = verified, lookup: () => Promise<unknown> = async () => ({ package: APP_PACKAGE, latest: '1.4.0', versions: [] })) {
+/** The dialog over a node whose own check answered `state`. */
+function open(props: { release?: typeof RELEASE | null; releasePending?: boolean; state?: NodeVerificationState } = {}) {
+  const state = props.state ?? verified;
   const client = {
     nodeUrl: NODE,
     verification: () => state,
     verify: async () => state,
-    packages: { get: vi.fn(lookup) },
     packageCapabilities: vi.fn(async () => {
       throw new Error('no card in this test');
     }),
   };
-  signedIn.current = { client, source };
   unbind = bindNodeShield(client as unknown as CalimeroClient, 'Test cluster', true);
-  const onCreate = vi.fn(async () => ({ namespaceId: 'org-new', warning: null }));
+  const onCreate = vi.fn(async () => ({ namespaceId: 'org-new', warning: null as string | null }));
   const onClose = vi.fn();
-  render(<NamespaceCreateDialog onCreate={onCreate} onClose={onClose} />);
+  render(
+    <NamespaceCreateDialog
+      release={props.release === undefined ? RELEASE : props.release}
+      releasePending={props.releasePending}
+      onCreate={onCreate}
+      onClose={onClose}
+    />,
+  );
   return { client, onCreate, onClose };
 }
 
@@ -51,30 +54,23 @@ afterEach(() => {
 
 describe('NamespaceCreateDialog', () => {
   it('asks for the names first and creates nothing on Continue', async () => {
-    const { onCreate } = open({ package: APP_PACKAGE });
+    const { onCreate } = open();
+    expect(screen.getByTestId('ns-create-submit').textContent).toBe('Continue');
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     expect(await screen.findByText('Review before creating')).toBeTruthy();
     expect(onCreate).not.toHaveBeenCalled();
   });
 
-  it('reviews the newest release of the package when the source names no version', async () => {
-    const { client } = open({ package: APP_PACKAGE });
+  it('reviews the release it is given', async () => {
+    const { client } = open();
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     await waitFor(() => expect(client.packageCapabilities).toHaveBeenCalledWith(APP_PACKAGE, '1.4.0'));
   });
 
-  it('reviews the release the source names, without looking one up', async () => {
-    const { client } = open({ package: APP_PACKAGE, version: '2.0.0' });
-    fillName();
-    fireEvent.click(screen.getByTestId('ns-create-submit'));
-    await waitFor(() => expect(client.packageCapabilities).toHaveBeenCalledWith(APP_PACKAGE, '2.0.0'));
-    expect(client.packages.get).not.toHaveBeenCalled();
-  });
-
   it('goes back to the names, kept as typed', async () => {
-    open({ package: APP_PACKAGE });
+    open();
     fillName('Platform', 'Alice');
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     await screen.findByText(/Check what this app can do/);
@@ -84,7 +80,7 @@ describe('NamespaceCreateDialog', () => {
   });
 
   it('creates once from the review with the names, then closes', async () => {
-    const { onCreate, onClose } = open({ package: APP_PACKAGE });
+    const { onCreate, onClose } = open();
     fillName('  Platform ', ' Alice ');
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     const create = await createButton();
@@ -96,7 +92,7 @@ describe('NamespaceCreateDialog', () => {
   });
 
   it('keeps the review open and says why when the workspace was not created', async () => {
-    const { onCreate, onClose } = open({ package: APP_PACKAGE });
+    const { onCreate, onClose } = open();
     onCreate.mockResolvedValueOnce({ namespaceId: null as never, warning: null });
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
@@ -105,8 +101,18 @@ describe('NamespaceCreateDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('says the member defaults need an admin, and stays open, when the workspace was created without them', async () => {
+    const { onCreate, onClose } = open();
+    onCreate.mockResolvedValueOnce({ namespaceId: 'org-new', warning: 'Defaults need an admin.' });
+    fillName();
+    fireEvent.click(screen.getByTestId('ns-create-submit'));
+    fireEvent.click(await createButton());
+    expect((await screen.findByTestId('ns-create-ha-notice')).textContent).toContain('Defaults need an admin.');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('cannot create on a node that refused its check', async () => {
-    const { onCreate } = open({ package: APP_PACKAGE }, refused);
+    const { onCreate } = open({ state: refused });
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
     const create = await createButton();
@@ -115,23 +121,22 @@ describe('NamespaceCreateDialog', () => {
     expect(onCreate).not.toHaveBeenCalled();
   });
 
-  it('skips the review and says so when the node cannot name a release', async () => {
-    const failing = vi.fn().mockRejectedValue(new Error('boom'));
-    const { onCreate } = open({ package: APP_PACKAGE }, verified, failing);
+  it('waits while the release is being read: nothing to continue to, Enter included', () => {
+    const { onCreate } = open({ release: null, releasePending: true });
     fillName();
-    fireEvent.click(screen.getByTestId('ns-create-submit'));
-    expect(await screen.findByText(/No signed release to review/)).toBeTruthy();
-    fireEvent.click(await createButton());
-    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+    fireEvent.keyDown(screen.getByTestId('ns-create-name'), { key: 'Enter' });
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Review before creating')).toBeNull();
   });
 
-  it('has no signed release to review on a development bundle, and creates from the same step', async () => {
-    const { client, onCreate } = open('bundle-hash');
+  it('creates straight from the form when there is no release to review', async () => {
+    const { onCreate } = open({ release: null });
+    expect(screen.getByTestId('ns-create-submit').textContent).toBe('Create workspace');
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
-    expect(await screen.findByText(/No signed release to review/)).toBeTruthy();
-    fireEvent.click(await createButton());
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Platform', 'Alice'));
-    expect(client.packages.get).not.toHaveBeenCalled();
+    expect(screen.queryByText('Review before creating')).toBeNull();
   });
 });
