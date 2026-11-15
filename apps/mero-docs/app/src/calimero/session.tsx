@@ -85,18 +85,25 @@ function useSessionState(deps: SessionDeps): SessionApi {
     if (client) store?.sync(client);
   }, [store, client]);
   const base = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
-  const [resolved, setResolved] = useState<{ client: CalimeroClient; source: AppSource } | null>(null);
+  const accountId = session.status === 'signed-in' ? session.accountId : null;
+  const [resolved, setResolved] = useState<{ client: CalimeroClient; accountId: string; source: AppSource } | null>(
+    null,
+  );
   const unpinned = !!client && typeof base !== 'string' && !base.version;
+  // Read once per account's session on a client: the client outlives a sign-out.
   useEffect(() => {
-    if (!client || !unpinned) return;
+    if (!client || !accountId || !unpinned) return;
     let live = true;
-    void resolveSource(client, base, window.location.href).then((source) => live && setResolved({ client, source }));
+    void resolveSource(client, base, window.location.href).then(
+      (source) => live && setResolved({ client, accountId, source }),
+    );
     return () => {
       live = false;
     };
-  }, [client, unpinned, base]);
-  const resolving = unpinned && resolved?.client !== client;
-  const source = unpinned && !resolving && resolved ? resolved.source : base;
+  }, [client, accountId, unpinned, base]);
+  const current = resolved?.client === client && resolved?.accountId === accountId ? resolved.source : undefined;
+  const resolving = unpinned && current === undefined;
+  const source = current ?? base;
   return useMemo(
     () => ({ ...api, source, resolvingSource: resolving, sync }),
     [api, source, resolving, sync],
