@@ -153,9 +153,9 @@ describe("the studio's front door", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     renderPage(fakeClient([scene("app-a", "alpha")]), storage);
     await screen.findByText("alpha");
-    const shields = await screen.findAllByTestId("node-shield");
-    expect(shields).toHaveLength(1);
-    expect(shields[0].closest("header.topbar")).not.toBeNull();
+    // findBy fails on none and on more than one, so this also proves there is a single shield.
+    const shield = await screen.findByTestId("node-shield");
+    expect(shield.closest("header.topbar")).not.toBeNull();
   });
 
   it("makes a new scene in a studio of its own", async () => {

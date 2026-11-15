@@ -325,9 +325,9 @@ describe("App", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(fakeClient())} storage={storage} />);
     await screen.findByText("Enter the arena");
-    const shields = await screen.findAllByTestId("node-shield");
-    expect(shields).toHaveLength(1);
-    expect(shields[0].closest("header.topbar")).not.toBeNull();
+    // findBy fails on none and on more than one, so this also proves there is a single shield.
+    const shield = await screen.findByTestId("node-shield");
+    expect(shield.closest("header.topbar")).not.toBeNull();
   });
 
   it("sends a signed-in visitor from the landing page into the app, and signs out", async () => {
