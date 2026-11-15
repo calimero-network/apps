@@ -120,11 +120,22 @@ if (await followInstanceRelease({ client, app: appId })) return;
 
 React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`.
 
+New instances: `appSource` names the package, usually without a version, and a
+create without one takes the newest release the account sees. A signed-in app
+that reviews or pins what it creates calls
+`resolveSource(client, source, location.href)` once: the `source` with that
+release (`GET /packages/{package}`), else the one the page is served from, else
+unchanged; a raw bundle and a named version are never asked about, and a read
+slower than a few seconds falls through. It never throws.
+
 - **When it moves**: on a page a node serves (`{label}.{apps domain}/{version}/`,
   `servedRelease(href)`) whose release is not the one the instance runs, as its
   scope's version report says (`instanceRelease(client, app)`:
   `package.version`, exact once core records each instance's release). Never in
   development or on a static host.
+- **Reading it**: `instancePackage(client, app)` is the whole reference, `null`
+  only when no package runs the instance (a raw bundle); a failed read throws,
+  and `instanceRelease` answers `null` for it.
 - **Where to**: `/app/{app}/{route}?{query}#{fragment}` (`instanceReleaseUrl`),
   which core redirects to `/{version}/{route}` of the instance's release, so
   the person lands in the same place. Apps that keep the open instance in

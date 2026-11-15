@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppsReport } from "@calimero-network/mero-js";
 
 import type { KeyValueStorage } from "./client";
@@ -9,6 +9,7 @@ import {
   instancePackage,
   instanceRelease,
   instanceReleaseUrl,
+  resolveSource,
   servedRelease,
   type ReleaseClient,
 } from "./release";
@@ -204,5 +205,65 @@ describe("followInstanceRelease", () => {
     });
     expect(moved).toBe(true);
     expect(navigate).toHaveBeenCalledWith(`${HOST}/app/app-1/w?x=1`);
+  });
+});
+
+describe("resolveSource", () => {
+  const PKG = "com.example.app";
+  type Packages = Parameters<typeof resolveSource>[0];
+  const clientWith = (get: () => Promise<unknown>) => ({ packages: { get: vi.fn(get) } }) as unknown as Packages & { packages: { get: ReturnType<typeof vi.fn> } };
+  const latest = (version: string) => clientWith(async () => ({ latest: version }));
+  const failing = () =>
+    clientWith(async () => {
+      throw new Error("offline");
+    });
+  afterEach(() => vi.useRealTimers());
+
+  it("is the newest release of the package the account may see", async () => {
+    const c = latest("2.0.0");
+    expect(await resolveSource(c, { package: PKG }, `${HOST}/1.2.0/`)).toEqual({ package: PKG, version: "2.0.0" });
+    expect(c.packages.get).toHaveBeenCalledWith({ package: PKG });
+  });
+
+  it("keeps the other fields of the source", async () => {
+    expect(await resolveSource(latest("2.0.0"), { package: PKG, extra: 1 } as never, "http://localhost/")).toEqual({ package: PKG, extra: 1, version: "2.0.0" });
+  });
+
+  it("is the version the source names, without asking", async () => {
+    const c = latest("2.0.0");
+    expect(await resolveSource(c, { package: PKG, version: "1.4.0" }, `${HOST}/1.2.0/`)).toEqual({ package: PKG, version: "1.4.0" });
+    expect(c.packages.get).not.toHaveBeenCalled();
+  });
+
+  it("is a raw bundle as it is, without asking", async () => {
+    const c = latest("2.0.0");
+    expect(await resolveSource(c, "bundle-hash", `${HOST}/1.2.0/`)).toBe("bundle-hash");
+    expect(c.packages.get).not.toHaveBeenCalled();
+  });
+
+  it("is the release the page is served from when the read fails or names no release", async () => {
+    expect(await resolveSource(failing(), { package: PKG }, `${HOST}/1.2.0/`)).toEqual({ package: PKG, version: "1.2.0" });
+    expect(await resolveSource(latest(""), { package: PKG }, `${HOST}/1.2.0/`)).toEqual({ package: PKG, version: "1.2.0" });
+  });
+
+  it("is the source as given when the read fails and the page names no release", async () => {
+    expect(await resolveSource(failing(), { package: PKG }, "http://localhost:5173/")).toEqual({ package: PKG });
+  });
+
+  it("falls through like a failure when the read never settles", async () => {
+    vi.useFakeTimers();
+    const c = clientWith(() => new Promise(() => {}));
+    const resolved = resolveSource(c, { package: PKG }, `${HOST}/1.2.0/`);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await resolved).toEqual({ package: PKG, version: "1.2.0" });
+  });
+
+  it("waits for a read that answers before the timeout", async () => {
+    vi.useFakeTimers();
+    const c = clientWith(() => new Promise((resolve) => setTimeout(() => resolve({ latest: "2.0.0" }), 1000)));
+    const resolved = resolveSource(c, { package: PKG }, `${HOST}/1.2.0/`);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await resolved).toEqual({ package: PKG, version: "2.0.0" });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
