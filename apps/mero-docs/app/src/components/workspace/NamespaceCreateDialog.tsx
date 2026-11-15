@@ -56,9 +56,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
       return;
     }
     if (alias.length > MAX_ALIAS_LENGTH) {
-      setSubmitError(
-        `Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`,
-      );
+      setSubmitError(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
       return;
     }
     const me = selfName.trim();
@@ -123,7 +121,10 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
             <WorkspaceReview
               release={review}
               creating={submitting}
-              onBack={() => setReviewing(false)}
+              onBack={() => {
+                setReviewing(false);
+                setSubmitError(null);
+              }}
               onCreate={onCreate}
             />
             {displayError && (
@@ -174,12 +175,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
               </p>
             )}
             <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={safeClose}
-                disabled={submitting}
-              >
+              <Button variant="ghost" size="sm" onClick={safeClose} disabled={submitting}>
                 Cancel
               </Button>
               <Button size="sm" onClick={onPrimary} disabled={!primaryReady}>

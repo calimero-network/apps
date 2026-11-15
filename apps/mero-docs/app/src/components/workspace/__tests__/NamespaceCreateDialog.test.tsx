@@ -9,6 +9,7 @@ import { NamespaceCreateDialog } from '../NamespaceCreateDialog';
 // createWorkspace flips its own `loading` via real useState, so the dialog's
 // submitting-gated close can be exercised without a real create round-trip.
 const created = vi.fn();
+let createError: Error | null = null;
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => {
     const [loading, setLoading] = React.useState(false);
@@ -20,7 +21,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     return {
       createWorkspace,
       createWorkspaceLoading: loading,
-      createWorkspaceError: null,
+      createWorkspaceError: createError,
     };
   },
 }));
@@ -72,6 +73,7 @@ let unbind: () => void;
 
 beforeEach(() => {
   created.mockReset();
+  createError = null;
   packageCapabilities.mockClear();
   localStorage.clear();
   source = { package: PACKAGE, version: '1.2.0' };
@@ -247,5 +249,25 @@ describe('NamespaceCreateDialog review step', () => {
     await fillNames(u);
     await u.click(screen.getByRole('button', { name: 'Create' }));
     expect(created).toHaveBeenCalledWith('Acme', 'Ada');
+  });
+
+  it('goes to the review on Enter in either name field, and never creates from it', async () => {
+    render(<NamespaceCreateDialog onClose={vi.fn()} />);
+    const u = user();
+    await fillNames(u);
+    await u.keyboard('{Enter}');
+    expect(
+      await screen.findByRole('heading', { name: 'Review before creating' }),
+    ).toBeTruthy();
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('shows a create error in the review step', async () => {
+    createError = new Error('The node refused to create the workspace');
+    render(<NamespaceCreateDialog onClose={vi.fn()} />);
+    await toReview(user());
+    expect(
+      screen.getByText('The node refused to create the workspace'),
+    ).toBeTruthy();
   });
 });
