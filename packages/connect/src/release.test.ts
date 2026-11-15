@@ -163,9 +163,17 @@ describe("instancePackage", () => {
     expect(await instancePackage(c, "app-1")).toEqual({ package: "p", version: "1.0.0", compute: true });
   });
 
-  it("is null when the instance is not in the report or the report cannot be read", async () => {
+  it("is null when the instance is not in the report or the report names no package", async () => {
     expect(await instancePackage(client("1.0.0"), "app-9")).toBeNull();
     expect(await instancePackage(client(null), "app-1")).toBeNull();
+  });
+
+  it("fails when the app or its report cannot be read, so a failed read is not \"no release\"", async () => {
+    const down = new Error("offline");
+    await expect(instancePackage({ apps: { get: async () => Promise.reject(down) }, appsReportAll: vi.fn() }, "app-1")).rejects.toBe(down);
+    const noReport = client("1.0.0");
+    noReport.appsReportAll.mockRejectedValue(down);
+    await expect(instancePackage(noReport, "app-1")).rejects.toBe(down);
   });
 });
 
@@ -174,6 +182,15 @@ describe("followInstanceRelease", () => {
     const c = client("1.0.0");
     expect(await followInstanceRelease({ client: c, app: "app-1", href: "http://localhost:5173/", navigate: vi.fn() })).toBe(false);
     expect(c.apps.get).not.toHaveBeenCalled();
+  });
+
+  it("stays put when the instance's release cannot be read", async () => {
+    const navigate = vi.fn();
+    const c = client("1.0.0");
+    c.appsReportAll.mockRejectedValue(new Error("offline"));
+    const moved = await followInstanceRelease({ client: c, app: "app-1", href: `${HOST}/1.2.0/w`, storage: memoryStorage(), navigate });
+    expect(moved).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("moves a served page to the instance's release", async () => {

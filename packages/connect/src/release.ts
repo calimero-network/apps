@@ -155,23 +155,20 @@ export type InstancePackage = NonNullable<ReportedApp["package"]> & { compute?: 
 
 /**
  * The package release `app` runs, as its scope's report says (the account's
- * own report, or its organization's). `null` when it cannot be read.
+ * own report, or its organization's). `null` when no package runs it (a raw
+ * bundle); a read that fails throws.
  */
 export async function instancePackage(client: ReleaseClient, app: string): Promise<InstancePackage | null> {
-  try {
-    const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
-    const org = typeof record.org === "string" ? record.org : null;
-    const report = await client.appsReportAll(org);
-    const running = report.apps.find((a) => a.app === app)?.package;
-    return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
-  } catch {
-    return null;
-  }
+  const record = (await client.apps.get({ app })) as { org?: unknown; release?: { compute?: unknown } };
+  const org = typeof record.org === "string" ? record.org : null;
+  const report = await client.appsReportAll(org);
+  const running = report.apps.find((a) => a.app === app)?.package;
+  return running ? { ...running, ...(record.release?.compute === true ? { compute: true as const } : {}) } : null;
 }
 
-/** The release version `app` runs ({@link instancePackage}'s `version`). */
+/** The release version `app` runs ({@link instancePackage}'s `version`); `null` when unknown or unreadable. */
 export async function instanceRelease(client: ReleaseClient, app: string): Promise<string | null> {
-  const version = (await instancePackage(client, app))?.version;
+  const version = (await instancePackage(client, app).catch(() => null))?.version;
   return typeof version === "string" && version ? version : null;
 }
 
