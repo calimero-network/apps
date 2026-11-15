@@ -7,7 +7,7 @@ settings:
 catalogs:
   component:
     '@calimero-network/mero-js':
-      specifier: github:calimero-network/mero-js#ce21f9d
+      specifier: github:calimero-network/mero-js#8fb7b1cac771ed4e73d3af5f3a62234558e66847
       version: 35.2.1
   default:
     '@calimero-network/mero-icons':
@@ -135,7 +135,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -211,7 +211,7 @@ importers:
         version: link:../../../packages/connect
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -324,7 +324,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@fontsource/ibm-plex-mono':
         specifier: ^5
         version: 5.3.0
@@ -400,7 +400,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -479,7 +479,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -558,7 +558,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -667,7 +667,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -830,7 +830,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -918,7 +918,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1009,7 +1009,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1115,7 +1115,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: ^0.3.6
         version: 0.3.7(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1299,7 +1299,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1378,7 +1378,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1457,7 +1457,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1542,7 +1542,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1630,7 +1630,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1712,7 +1712,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       fflate:
         specifier: 'catalog:'
         version: 0.8.3
@@ -1803,7 +1803,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-pass':
         specifier: workspace:*
         version: link:../../../packages/mero-pass
@@ -1897,7 +1897,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1994,7 +1994,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2085,7 +2085,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2257,7 +2257,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2336,7 +2336,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2430,7 +2430,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2509,7 +2509,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
@@ -2594,7 +2594,7 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2646,7 +2646,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       bootstrap:
         specifier: ^5.3.7
         version: 5.3.8(@popperjs/core@2.11.8)
@@ -2710,7 +2710,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -2735,7 +2735,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -2753,7 +2753,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)
@@ -2823,7 +2823,7 @@ importers:
     dependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -2898,7 +2898,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d
+        version: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3740,8 +3740,8 @@ packages:
     resolution: {integrity: sha512-LMc1xxszexp78gpdmzfb8lyDvIWQlL9eQhN/I6rDq/GXDgNcpBT4YU96YMVqZQecbRLZRHv5lSK+xEoaryUyQg==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d':
-    resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d}
+  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847':
+    resolution: {tarball: https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847}
     version: 35.2.1
     engines: {node: '>=18.0.0'}
 
@@ -11593,7 +11593,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/ce21f9d':
+  '@calimero-network/mero-js@https://codeload.github.com/calimero-network/mero-js/tar.gz/8fb7b1cac771ed4e73d3af5f3a62234558e66847':
     dependencies:
       '@noble/hashes': 2.4.0
       '@phala/dcap-qvl': 0.5.3
