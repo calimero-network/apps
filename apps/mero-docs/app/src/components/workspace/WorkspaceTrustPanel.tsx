@@ -1,6 +1,4 @@
-// The workspace's Trust section: what its app can do and where it runs, for
-// the release the workspace's registry instance runs now, not the one the
-// page was built for.
+// The workspace's Trust section, for the release its registry instance runs now.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
@@ -15,11 +13,17 @@ type Running =
   | { status: 'error' };
 
 /** The release `app` runs: none for an instance of a raw bundle, an error when it cannot be read. */
-async function readRunning(client: CalimeroClient, app: string): Promise<Running> {
+async function readRunning(
+  client: CalimeroClient,
+  app: string,
+): Promise<Running> {
   try {
     const running = await instancePackage(client, app);
     return running?.package && running.version
-      ? { status: 'release', release: { package: running.package, version: running.version } }
+      ? {
+          status: 'release',
+          release: { package: running.package, version: running.version },
+        }
       : { status: 'none' };
   } catch {
     return { status: 'error' };
@@ -59,17 +63,26 @@ export function WorkspaceTrustPanel() {
       className="rounded-lg border border-border bg-card px-4 py-3"
     >
       {found.status === 'release' ? (
-        <WorkspaceTrust release={found.release} appId={registryContextId} />
+        <>
+          <WorkspaceTrust release={found.release} appId={registryContextId} />
+          <p className="mt-3 text-xs text-muted-foreground">
+            This covers the workspace&apos;s shared settings. Open a folder to
+            check the code its documents run on, from the node shield.
+          </p>
+        </>
       ) : (
         <div className="text-sm text-muted-foreground">
+          <h2 className="text-lg font-bold text-foreground">Trust</h2>
           {found.status === 'none' ? (
-            <p>
+            <p className="mt-1">
               This workspace runs no published release, so there is nothing to
               review.
             </p>
           ) : (
             <>
-              <p>Could not read the release this workspace runs.</p>
+              <p className="mt-1">
+                Could not read the release this workspace runs.
+              </p>
               <button
                 type="button"
                 className="mt-2 font-medium text-primary hover:underline"

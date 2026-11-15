@@ -279,7 +279,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Registry instance ---
   const pinned = view?.metadata[REGISTRY_APP_KEY];
   const registryContextId = typeof pinned === 'string' && pinned ? pinned : null;
-  useNodeShieldApp(registryContextId, source);
   const [regError, setRegError] = useState<Error | null>(null);
   // A workspace whose registry was never created (its creation was cut
   // short): its owner or an admin creates it; anyone else waits for them.
@@ -388,6 +387,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const allFolderNodes = useMemo(() => regFolders.map((f) => ({ id: f.id, parent_id: f.parent_id })), [regFolders]);
 
   const selectedFolderId = route?.folder ?? null;
+  // The shield checks the code that runs the open folder's documents, else the workspace's registry.
+  const openFolderApp = registryFolders?.find((f) => f.id === selectedFolderId)?.context_id;
+  useNodeShieldApp(openFolderApp || registryContextId, source);
   const setSelectedFolder = useCallback(
     (id: string | null, opts?: { replace?: boolean }) => (id ? goFolder(id, opts) : goHome(undefined, opts)),
     [goFolder, goHome],
