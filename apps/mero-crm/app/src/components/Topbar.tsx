@@ -146,7 +146,7 @@ const MenuBtn = styled.button`
   &:hover { background: ${t.color.hover}; }
 `;
 const Heading = styled.div`
-  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 0.3 auto;
+  display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto;
 `;
 const ViewTitle = styled.div`
   margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.025em;
@@ -163,7 +163,7 @@ const PipelineName = styled.div`
   @media (max-width: 720px) { display: none; }
 `;
 const Tools = styled.div`
-  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 3 auto;
   .owner-ctl { flex: 0 1 168px; min-width: 112px; }
   .owner-ctl > button {
     background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusPill};
