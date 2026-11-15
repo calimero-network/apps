@@ -26,11 +26,9 @@ async function expectedBundle(
   if (!running) throw new Error(`the release of ${source.package} that ${app} runs is not known`);
   if (running.package !== source.package) throw new Error(`${app} runs ${running.package}, not ${source.package}`);
   if (running.compute) throw new Error("compute-only instance");
-  const listed = await client.packageCapabilities(
-    running.package,
-    running.version,
-    running.service ? { service: running.service } : undefined,
-  );
+  const listed = running.service
+    ? await client.packageCapabilities(running.package, running.version, { service: running.service })
+    : await client.packageCapabilities(running.package, running.version);
   if ((running.service ?? null) !== (listed.service ?? null)) {
     throw new Error(`${app} runs service ${running.service ?? "default"}, not the ${listed.service ?? "default"} one ${running.version} lists`);
   }

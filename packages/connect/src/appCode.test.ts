@@ -54,7 +54,7 @@ describe("checkAppCode", () => {
       version: "1.2.0",
     });
     expect(c.attestApp).toHaveBeenCalledWith("app-1");
-    expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0", undefined);
+    expect(c.packageCapabilities).toHaveBeenCalledWith("com.example.app", "1.2.0");
   });
 
   it("expects the hash of the release the instance runs, not the source's version", async () => {
@@ -66,7 +66,7 @@ describe("checkAppCode", () => {
     });
     expect((await checkAppCode(c, "app-1", { package: PACKAGE })).status).toBe("match");
     expect(c.packageCapabilities).toHaveBeenCalledTimes(2);
-    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0", undefined);
+    expect(c.packageCapabilities).toHaveBeenCalledWith(PACKAGE, "1.3.0");
   });
 
   it("is never a match for a mock quote", async () => {
