@@ -76,6 +76,10 @@ account, nothing to install, no permissions to grant.
   A card that cannot load is said in a plain sentence (never the node's raw error), with "Try again", and the workspace can still be created while a node is connected.
   The registry's review state and the SDK version are not in the card, so the review does not show them.
 - `<WorkspaceTrust release={...} appId={...} />` repeats the review for a workspace that exists (a settings "Trust" tab); pass the release the instance actually runs (`useInstanceRelease`), or the panel reports another release, and adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
+- `useResolvedSource(client, accountId, base)` returns `{ source, pending }`: the `AppSource` new instances are created from.
+  It reads the package's newest release once per client and account (`resolveSource` in `@calimero-apps/connect`) and gives `base` at that version.
+  `pending` is true only while that read runs, and only for a package with no version; a raw bundle or a named version is never pending.
+  Hold the create actions while `pending`, not the whole signed-in screen.
 - `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button

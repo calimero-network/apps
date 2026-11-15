@@ -93,6 +93,7 @@ export {
   type WatchUpgradesOptions,
 } from "./upgrade";
 export { useInstanceRelease } from "./release";
+export { useResolvedSource } from "./useResolvedSource";
 export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";
 export { ManageInHomeLink, useHomeLink, type ManageInHomeLinkProps } from "./HomeLink";
 export { NativeApproval, type NativeApprovalProps } from "./NativeApproval";
