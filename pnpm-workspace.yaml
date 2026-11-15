@@ -259,9 +259,14 @@ catalog:
 # `apps.transfer` with `null` (conformance only awaits it), `orgs.publisher`
 # with `{ generation }`, `ops.restore`'s `status` as an object, and drops the
 # `Written` schema; nothing else here calls those.
+# 34.0.0 (mero-js#375) adds the organization consent kinds to the `kind` enum of
+# `GET /consent/{request}/result`; 35.0.0 (mero-js#386, core 3da5b6edb) removes
+# `auth.accountOutboundApproval` and `auth.accountReleaseApproval` (an account's
+# own apps are approved through `orgs.outboundApproval` and `orgs.releaseApproval`
+# on its personal org). Nothing here uses either; core 1.0.0-rc.23 carries both syncs.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^33.3.2
+    "@calimero-network/mero-js": ^35.2.1
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
