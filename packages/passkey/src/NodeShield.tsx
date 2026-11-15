@@ -102,7 +102,22 @@ function Popover({ view, id, placement, popRef }: { view: ShieldView; id: string
   );
 }
 
-function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen: boolean }) {
+/** Whether the window is `width` px wide or narrower; never without a width or a `matchMedia`. */
+function useNarrowerThan(width: number | undefined): boolean {
+  const query = width === undefined || typeof window.matchMedia !== "function" ? null : `(max-width: ${width}px)`;
+  const [narrow, setNarrow] = useState(() => (query ? window.matchMedia(query).matches : false));
+  useEffect(() => {
+    if (!query) return setNarrow(false);
+    const media = window.matchMedia(query);
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return narrow;
+}
+
+function ShieldChip({ floating, answersOpen, compactBelow }: { floating: boolean; answersOpen: boolean; compactBelow?: number }) {
   const { sessions, app, opens } = useShieldStore();
   const session = sessions[sessions.length - 1] ?? null;
   const client = session?.client ?? null;
@@ -113,6 +128,7 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   const popId = useId();
   const seenOpens = useRef(opens);
   const placement = usePlacement(open, chip, pop);
+  const compact = useNarrowerThan(compactBelow);
   const code = useAppCode(client, app, open && state.status === "verified" ? state.url : null);
 
   useEffect(() => {
@@ -150,7 +166,7 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   if (!session) return null;
   const view = describeShield(state, { cluster: session.cluster, code });
   return (
-    <span className={`cp-shield${floating ? " cp-shield--floating" : ""}`}>
+    <span className={`cp-shield${floating ? " cp-shield--floating" : ""}${compact ? " cp-shield--compact" : ""}`}>
       <button
         ref={chip}
         type="button"
@@ -171,12 +187,15 @@ function ShieldChip({ floating, answersOpen }: { floating: boolean; answersOpen:
   );
 }
 
-/** A header chip for the node this app talks to, with a popover of what the browser's check verified. */
-export function NodeShield() {
+/**
+ * A header chip for the node this app talks to, with a popover of what the browser's check verified.
+ * With `compactBelow` it is the icon alone, a 28px circle named by its label, when the window is that many px wide or narrower.
+ */
+export function NodeShield({ compactBelow }: { compactBelow?: number } = {}) {
   const id = useId();
   useLayoutEffect(() => placeShield(id), [id]);
   const { placed } = useShieldStore();
-  return <ShieldChip floating={false} answersOpen={placed[0] === id} />;
+  return <ShieldChip floating={false} answersOpen={placed[0] === id} compactBelow={compactBelow} />;
 }
 
 function FloatingShield() {

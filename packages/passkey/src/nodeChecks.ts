@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CalimeroClient, NodeVerificationState, PackageCapabilities } from "@calimero-network/mero-js";
-import { checkAppCode, type AppCodeCheck } from "@calimero-apps/connect";
+import { checkAppCode, type AppCodeCheck, type AppSource } from "@calimero-apps/connect";
 
 import type { ShieldApp } from "./nodeShieldStore";
 
@@ -87,6 +87,11 @@ export interface ReviewRelease {
   version: string;
   /** The service of a multi-service release; the card is per service. */
   service?: string;
+}
+
+/** The release `source` creates, or `null` for a raw bundle or a package with no version (nothing signed to review). */
+export function reviewRelease(source: AppSource): ReviewRelease | null {
+  return typeof source === "string" || !source.version ? null : { package: source.package, version: source.version };
 }
 
 export type CardState =

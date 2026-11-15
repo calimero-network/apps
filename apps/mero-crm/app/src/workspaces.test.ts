@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { APP_NAME } from './config';
-import { inviteLink, inviteRoute, invites, migrateLegacyInvite, reviewRelease } from './workspaces';
+import { inviteLink, inviteRoute, invites, migrateLegacyInvite } from './workspaces';
 
 /** A host a Calimero node serves an installed app on: `{label}.{domain}`, routes under `/{version}/`. */
 const SERVED = `https://${'a'.repeat(52)}.apps.calimero.network`;
@@ -57,18 +57,5 @@ describe('invitation links', () => {
     expect(inviteRoute(invites.pending())).toBe('/crm/deals');
     expect(localStorage.getItem(`${APP_NAME}:pending-invite`)).toBeNull();
     expect(localStorage.getItem(`${APP_NAME}:pending-invite-org`)).toBeNull();
-  });
-});
-
-describe('the release a new workspace is reviewed for', () => {
-  const PKG = 'com.calimero.mero-crm';
-
-  it('is the package and version the source names', () => {
-    expect(reviewRelease({ package: PKG, version: '1.4.0' })).toEqual({ package: PKG, version: '1.4.0' });
-  });
-
-  it('is none for an unversioned source or a raw bundle, which have nothing signed to review', () => {
-    expect(reviewRelease({ package: PKG })).toBeNull();
-    expect(reviewRelease('bundle-hash')).toBeNull();
   });
 });

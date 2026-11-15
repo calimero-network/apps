@@ -9,6 +9,7 @@ const NODE = "https://node-3.relay.example.net";
 const BUNDLE = "7f3a".padEnd(60, "0") + "c91e";
 const OTHER_HASH = "aa11".padEnd(60, "0") + "bb22";
 const RELEASE = { package: "network.calimero.crm", version: "1.4.0" };
+const SOURCE = { package: RELEASE.package };
 
 const sealed: NodeVerificationState = { status: "verified", url: NODE, mock: false, release: "2.3.148", profile: "locked-read-only", checkedAt: Date.now() };
 const mock: NodeVerificationState = { status: "verified", url: "http://127.0.0.1:2528", mock: true, release: "2.3.148", profile: "locked-read-only", checkedAt: Date.now() };
@@ -65,7 +66,7 @@ function fakeClient(
     apps: { get: vi.fn(async () => ({ org: null, release: instance })) },
     appsReportAll: vi.fn(async () => ({ apps: [{ app: "app-1", package: instance }] })),
   };
-  return { client: client as unknown as CalimeroClient, packageCapabilities, attestApp };
+  return { client: client as unknown as CalimeroClient, packageCapabilities, attestApp, appsGet: client.apps.get, appsReportAll: client.appsReportAll };
 }
 
 let unbind: Array<() => void> = [];
@@ -454,7 +455,8 @@ describe("a card that cannot load", () => {
 });
 
 describe("WorkspaceTrust", () => {
-  const trust = () => render(<WorkspaceTrust release={RELEASE} appId="app-1" />);
+  const theApp = () => screen.findByRole("region", { name: "The app" });
+  const trust = () => render(<WorkspaceTrust source={SOURCE} appId="app-1" />);
 
   it("repeats the review for an existing workspace, with no create or back", async () => {
     connect(sealed);
@@ -469,6 +471,7 @@ describe("WorkspaceTrust", () => {
   it("says attested by this node only when the node's code matches the release", async () => {
     connect(sealed);
     trust();
+    await theApp();
     expect(await within(section("The app")).findByText("bundle 7f3a…c91e, attested by this node")).toBeTruthy();
     expect(within(section("The app")).getByText("Node runs the code listed for network.calimero.crm v1.4.0")).toBeTruthy();
   });
@@ -476,6 +479,7 @@ describe("WorkspaceTrust", () => {
   it("flags a node that runs other code", async () => {
     connect(sealed, async () => card(), { appHash: OTHER_HASH });
     trust();
+    await theApp();
     expect(await within(section("The app")).findByText("Does not match the signed release: the node runs bundle aa11…bb22")).toBeTruthy();
     expect(screen.queryByText(/attested/i)).toBeNull();
   });
@@ -493,6 +497,7 @@ describe("WorkspaceTrust", () => {
   it("makes no statement about the data when the node runs other code than the release", async () => {
     connect(sealed, async () => card(), { appHash: OTHER_HASH });
     trust();
+    await theApp();
     const data = section("Your data");
     await within(section("The app")).findByText(/Does not match/);
     expect(within(data).queryByText("Calimero can't read it.")).toBeNull();
@@ -507,6 +512,7 @@ describe("WorkspaceTrust", () => {
   it("falls back to the signed release when the node's quote is a mock", async () => {
     connect(mock, async () => card(), { appHash: BUNDLE, mock: true });
     trust();
+    await theApp();
     const app = section("The app");
     expect(await within(app).findByText(/This node could not confirm it/)).toBeTruthy();
     expect(within(app).getByText("bundle 7f3a…c91e, from the release as this test server lists it")).toBeTruthy();
@@ -518,6 +524,7 @@ describe("WorkspaceTrust", () => {
     let answer: (v: unknown) => void = () => undefined;
     attestApp.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)) as never);
     trust();
+    await theApp();
     expect(await within(section("The app")).findByText("Checking that this node runs it")).toBeTruthy();
     expect(screen.queryByText(/attested/i)).toBeNull();
     await act(async () => answer({ url: NODE, mock: false, checkedAt: 1, appHash: BUNDLE }));
@@ -581,12 +588,13 @@ describe("a node that is not trusted", () => {
   });
 });
 
-describe("WorkspaceTrust on a release the instance does not run", () => {
+describe("WorkspaceTrust on a release the instance stops running while it is open", () => {
   it("does not attest the card, and says the node reports different code", async () => {
-    instance = { package: RELEASE.package, version: "1.3.0" };
-    connect(sealed);
-    render(<WorkspaceTrust release={RELEASE} appId="app-1" />);
-    const app = section("The app");
+    const { appsReportAll } = connect(sealed);
+    appsReportAll.mockResolvedValueOnce({ apps: [{ app: "app-1", package: RELEASE }] });
+    appsReportAll.mockResolvedValue({ apps: [{ app: "app-1", package: { package: RELEASE.package, version: "1.3.0" } }] });
+    render(<WorkspaceTrust source={SOURCE} appId="app-1" />);
+    const app = await screen.findByRole("region", { name: "The app" });
     expect(await within(app).findByText(/The node reports different code: it runs network.calimero.crm v1.3.0/)).toBeTruthy();
     expect(screen.queryByText(/attested/i)).toBeNull();
     const data = section("Your data");
@@ -594,5 +602,80 @@ describe("WorkspaceTrust on a release the instance does not run", () => {
     expect(within(data).getByText("The node runs another release than this one")).toBeTruthy();
     expect(data.textContent).not.toMatch(/other code than the signed release/);
     expect(data.querySelector("h3")?.getAttribute("data-kind")).toBe("refused");
+  });
+});
+
+describe("WorkspaceTrust reads the release the instance runs", () => {
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  };
+
+  it("says it is reading, then reviews the release the instance runs, not the one the page was built for", async () => {
+    instance = { package: RELEASE.package, version: "1.3.0" };
+    const { packageCapabilities } = connect(sealed);
+    render(<WorkspaceTrust source={{ package: RELEASE.package, version: "9.9.9" }} appId="app-1" />);
+    expect(screen.getByRole("status").textContent).toContain("Reading the release this app runs");
+    await ready();
+    expect(packageCapabilities).toHaveBeenCalledWith(RELEASE.package, "1.3.0");
+    expect(packageCapabilities).not.toHaveBeenCalledWith(RELEASE.package, "9.9.9");
+    expect(screen.queryByText(/Reading the release this app runs/)).toBeNull();
+  });
+
+  it("says the read failed, apart from not being listed, and reads again on Try again", async () => {
+    const { appsReportAll } = connect(sealed);
+    appsReportAll.mockRejectedValueOnce(new Error("boom"));
+    render(<WorkspaceTrust source={SOURCE} appId="app-1" />);
+    expect(await screen.findByText("The release this app runs could not be read.")).toBeTruthy();
+    expect(screen.queryByText(/not listed/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "The app" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await ready();
+    expect(appsReportAll.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("says a package app is not listed yet when the report does not list the instance, with Try again", async () => {
+    const { appsReportAll } = connect(sealed);
+    appsReportAll.mockResolvedValueOnce({ apps: [] });
+    render(<WorkspaceTrust source={SOURCE} appId="app-1" />);
+    expect(await screen.findByText("This app is not listed in the node's release report yet.")).toBeTruthy();
+    expect(screen.queryByText(/local bundle/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await ready();
+  });
+
+  it("says a raw bundle runs a local bundle, with nothing to try again", async () => {
+    const { appsReportAll } = connect(sealed);
+    appsReportAll.mockResolvedValue({ apps: [{ app: "app-1", package: null }] } as never);
+    render(<WorkspaceTrust source="bundle-hash" appId="app-1" />);
+    expect(await screen.findByText("This app runs a local bundle, not a published release, so there is no signed review to show.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("names the thing the review covers", async () => {
+    connect(sealed);
+    render(<WorkspaceTrust source={SOURCE} appId="app-1" subject="the repository web" />);
+    await ready();
+    expect(screen.getByText(/for the repository web/)).toBeTruthy();
+  });
+
+  it("never pairs one instance's release with another's when the instance changes", async () => {
+    const { appsReportAll, packageCapabilities } = connect(sealed);
+    const slow = deferred<{ apps: unknown[] }>();
+    const other = { package: RELEASE.package, version: "2.0.0" };
+    appsReportAll.mockImplementation((async () => ({ apps: [{ app: "app-1", package: RELEASE }] })) as never);
+    const view = render(<WorkspaceTrust source={SOURCE} appId="app-1" />);
+    await ready();
+    expect(packageCapabilities).toHaveBeenLastCalledWith(RELEASE.package, "1.4.0");
+    appsReportAll.mockImplementation((() => slow.promise) as never);
+    view.rerender(<WorkspaceTrust source={SOURCE} appId="app-2" />);
+    expect(screen.getByRole("status").textContent).toContain("Reading the release this app runs");
+    expect(screen.queryByRole("heading", { name: "The app" })).toBeNull();
+    packageCapabilities.mockClear();
+    await act(async () => slow.resolve({ apps: [{ app: "app-2", package: other }] }));
+    await ready();
+    expect(packageCapabilities).toHaveBeenCalledWith(RELEASE.package, "2.0.0");
+    expect(packageCapabilities).not.toHaveBeenCalledWith(RELEASE.package, "1.4.0");
   });
 });

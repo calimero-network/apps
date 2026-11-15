@@ -1,7 +1,7 @@
 import React from "react";
 import styled from "styled-components";
 import type { OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CHECKING_RELEASE, ConnectExistingOrg } from "@calimero-apps/passkey";
 import type { Workspace as Namespace } from "../workspaces";
 import { tokens as t } from "../theme";
 import { PRODUCT_NAME } from "../config";
@@ -21,6 +21,8 @@ interface Props {
   /** "Connect to an existing organization": the account's other orgs, and adding this app to one. */
   loadOtherOrgs?: () => Promise<OtherOrg[]>;
   onConnect?: (org: OtherOrg) => Promise<void>;
+  /** The release is still being read: connecting an existing organization waits for it. */
+  releasePending?: boolean;
 }
 
 /** Full-pane onboarding shown whenever no namespace is active: the app mark,
@@ -36,6 +38,7 @@ export default function NsEmptyState({
   onRetry,
   loadOtherOrgs,
   onConnect,
+  releasePending = false,
 }: Props): React.ReactElement {
   const hasNamespaces = namespaces.length > 0;
   const signOut = useSignOut();
@@ -115,7 +118,11 @@ export default function NsEmptyState({
         </div>
         {loadOtherOrgs && onConnect && !failed && (
           <div className="connect">
-            <ConnectExistingOrg appName={PRODUCT_NAME} load={loadOtherOrgs} onConnect={onConnect} />
+            {releasePending ? (
+              <p data-testid="release-checking">{CHECKING_RELEASE}</p>
+            ) : (
+              <ConnectExistingOrg appName={PRODUCT_NAME} load={loadOtherOrgs} onConnect={onConnect} />
+            )}
           </div>
         )}
       </Panel>

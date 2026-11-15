@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -31,6 +31,7 @@ function holdInvite(token: string, target: { org?: string; route?: string } = {}
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
+const UNVERSIONED_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-issue-tracker' };
 
 const ISSUE = {
   id: 'issue-1700000000000-aabbccdd',
@@ -93,6 +94,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     setOrgMetadata: vi.fn(async () => {}),
     setCapabilities: vi.fn(async () => {}),
     createApp: vi.fn(async () => 'app-new'),
+    package: vi.fn(async () => ({ latest: '2.0.0' })),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
     view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: views[method] ?? null })),
     events: vi.fn(async function* () {}),
@@ -103,9 +105,9 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
   return client;
 }
 
-function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
+function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps['env'] = DEV_ENV): SessionDeps {
   return {
-    env: DEV_ENV,
+    env,
     makeClient: async () => withRoutes(client),
     passkey: () => ({}) as never,
   };
@@ -135,8 +137,8 @@ afterEach(cleanup);
 // testing-library's 1 s default.
 const SLOW = { timeout: 10_000 };
 
-function storeSession() {
-  new SessionStore(APP, resolveTarget(DEV_ENV), localStorage).save(SESSION);
+function storeSession(env: SessionDeps['env'] = DEV_ENV) {
+  new SessionStore(APP, resolveTarget(env), localStorage).save(SESSION);
 }
 
 describe('App', () => {
@@ -453,5 +455,240 @@ describe('the release the open repo runs (useInstanceRelease)', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(client.getApp).not.toHaveBeenCalled();
     expect(release.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('the release new repositories are created from', () => {
+  /** A client whose newest-release read answers when the test says. */
+  function slowRelease(client: ReturnType<typeof fakeClient>) {
+    let answer: (v: { latest: string }) => void = () => {};
+    client.package.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    return (latest: string) => answer({ latest });
+  }
+
+  async function startCreating(client: ReturnType<typeof fakeClient>, env: SessionDeps['env']) {
+    client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+    storeSession(env);
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client, env)} />);
+    fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+    fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+    fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
+  }
+
+  it('shows the screens while the newest release is read, and holds the create back until it is', async () => {
+    const client = fakeClient({ signedIn: true });
+    const answer = slowRelease(client);
+    await startCreating(client, UNVERSIONED_ENV);
+    await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
+    const submit = screen.getByTestId('ns-create-submit') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+    answer('2.0.0');
+    await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+    expect(dialog.queryByTestId('release-checking')).toBeNull();
+    fireEvent.click(submit);
+    expect(await screen.findByText('com.calimero.mero-issue-tracker v2.0.0', {}, SLOW)).toBeTruthy();
+  });
+
+  it('creates a repository from the release that was read', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession(UNVERSIONED_ENV);
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('repo-add-btn'));
+    fireEvent.change(await screen.findByTestId('repo-add-name', {}, SLOW), { target: { value: 'Renewals' } });
+    fireEvent.change(screen.getByTestId('repo-add-url'), { target: { value: 'https://github.com/acme/renewals' } });
+    await waitFor(() => expect((screen.getByTestId('repo-add-submit') as HTMLButtonElement).disabled).toBe(false), SLOW);
+    fireEvent.click(screen.getByTestId('repo-add-submit'));
+    await waitFor(
+      () => expect(client.createApp).toHaveBeenCalledWith('Renewals', { package: 'com.calimero.mero-issue-tracker', version: '2.0.0' }, expect.anything()),
+      SLOW,
+    );
+  });
+
+  it('holds adding a repository back until the newest release is read', async () => {
+    const client = fakeClient({ signedIn: true });
+    const answer = slowRelease(client);
+    storeSession(UNVERSIONED_ENV);
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('repo-add-btn'));
+    fireEvent.change(await screen.findByTestId('repo-add-name', {}, SLOW), { target: { value: 'Renewals' } });
+    fireEvent.change(screen.getByTestId('repo-add-url'), { target: { value: 'https://github.com/acme/renewals' } });
+    const submit = screen.getByTestId('repo-add-submit') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(screen.getByTestId('release-checking')).toBeTruthy();
+    answer('2.0.0');
+    await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
+    expect(screen.queryByTestId('release-checking')).toBeNull();
+  });
+
+  it('holds connecting an existing organization back until the newest release is read', async () => {
+    const client = fakeClient({ signedIn: true });
+    const answer = slowRelease(client);
+    client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+    storeSession(UNVERSIONED_ENV);
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+
+    expect(await screen.findByTestId('ns-create-btn', {}, SLOW)).toBeTruthy();
+    expect(screen.queryByTestId('connect-existing-org')).toBeNull();
+    expect(screen.getByTestId('release-checking')).toBeTruthy();
+    answer('2.0.0');
+    expect(await screen.findByTestId('connect-existing-org', {}, SLOW)).toBeTruthy();
+    expect(screen.queryByTestId('release-checking')).toBeNull();
+  });
+
+  it("does not carry one account's release over to another on the same client", async () => {
+    const client = fakeClient({ signedIn: true });
+    client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
+    storeSession(UNVERSIONED_ENV);
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client, UNVERSIONED_ENV)} />);
+    fireEvent.click(await screen.findByTestId('logout-btn', {}, SLOW));
+    await screen.findAllByRole('button', { name: 'Sign in' }, SLOW);
+
+    const answer = slowRelease(client);
+    client.signIn.mockImplementation((async () => {
+      const bob = { ...SESSION, accountId: 'acct-bob' };
+      client.useSession(bob);
+      return bob;
+    }) as never);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
+    fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
+    fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Bob' } });
+    expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+    answer('3.0.0');
+    await waitFor(() => expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(false), SLOW);
+    fireEvent.click(screen.getByTestId('ns-create-submit'));
+    expect(await screen.findByText('com.calimero.mero-issue-tracker v3.0.0', {}, SLOW)).toBeTruthy();
+  });
+
+  it('creates straight from the form when the newest release cannot be read', async () => {
+    const client = fakeClient({ signedIn: true });
+    client.package.mockRejectedValue(new Error('offline'));
+    await startCreating(client, UNVERSIONED_ENV);
+    const submit = screen.getByTestId('ns-create-submit');
+    await waitFor(() => expect(submit.textContent).toBe('Create workspace'), SLOW);
+    fireEvent.click(submit);
+    await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+    expect(screen.queryByText('Review before creating')).toBeNull();
+  });
+
+  it('creates straight from the form for a raw dev bundle, and never asks for a release', async () => {
+    const client = fakeClient({ signedIn: true });
+    await startCreating(client, DEV_ENV);
+    const submit = screen.getByTestId('ns-create-submit');
+    expect(submit.textContent).toBe('Create workspace');
+    fireEvent.click(submit);
+    await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
+    expect(client.package).not.toHaveBeenCalled();
+  });
+});
+
+describe('the node shield', () => {
+  const NODE = 'https://node-1.example.net';
+  const state = () => ({ status: 'verified', url: NODE, mock: false, release: '2.3.148', profile: 'locked-read-only', checkedAt: Date.now() });
+
+  /** Signed in, in the remembered workspace, on a node whose own check passes. */
+  function openWorkspace() {
+    const client = Object.assign(fakeClient({ signedIn: true }), {
+      nodeUrl: NODE,
+      verification: state,
+      verify: async () => state(),
+      attestApp: vi.fn(async () => ({ url: NODE, mock: false, checkedAt: 1, appHash: 'bundle-hash' })),
+    });
+    storeSession();
+    writeActiveNs('org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+    return client;
+  }
+
+  it('sits in the header just left of the theme switch, and is the only shield on the page', async () => {
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    const header = document.querySelector('header')!;
+    const shield = within(header).getByTestId('node-shield');
+    expect(screen.getAllByTestId('node-shield')).toHaveLength(1);
+    expect(shield.compareDocumentPosition(screen.getByTestId('theme-toggle')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('tells the shield which repo is open, so its popover checks that app code', async () => {
+    const client = openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('node-shield'));
+    const popover = await screen.findByTestId('node-shield-popover', {}, SLOW);
+    expect(await within(popover).findByText('App code', {}, SLOW)).toBeTruthy();
+    expect(client.attestApp).toHaveBeenCalledWith('app-1');
+  });
+
+  it('shows the header shield as its icon alone at 1100px and narrower', async () => {
+    const at = (width: number) =>
+      ((query: string) => ({
+        matches: query === `(max-width: ${width}px)`,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+    window.matchMedia = at(1100);
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(true);
+  });
+
+  it('keeps the header shield\'s label above 1100px', async () => {
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    openWorkspace();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+    expect(within(document.querySelector('header')!).getByTestId('node-shield').parentElement!.classList.contains('cp-shield--compact')).toBe(false);
+  });
+
+  /** The open repo `app-1` runs `version`, as its scope's report says. */
+  function running(client: ReturnType<typeof openWorkspace>, version: string) {
+    return Object.assign(client, {
+      getApp: vi.fn(async () => ({ appId: 'app-1', org: 'org-1' })),
+      appsReportAll: vi.fn(async () => ({ apps: [{ app: 'app-1', package: { package: 'com.calimero.mero-issue-tracker', version } }] })),
+      packageCapabilities: vi.fn(async () => {
+        throw new Error('no card in this test');
+      }),
+    });
+  }
+
+  it('opens the trust page from the sidebar for the release the open repo runs, with the sidebar item current', async () => {
+    const client = running(openWorkspace(), '1.3.0');
+    const link = await screen.findByTestId('nav-trust', {}, SLOW);
+    expect(link.getAttribute('aria-current')).toBeNull();
+    fireEvent.click(link);
+    expect(await screen.findByText('com.calimero.mero-issue-tracker v1.3.0', {}, SLOW)).toBeTruthy();
+    expect(window.location.pathname).toBe('/issue-tracker/trust');
+    expect(screen.getByTestId('nav-trust').getAttribute('aria-current')).toBe('page');
+    await waitFor(() => expect(client.packageCapabilities).toHaveBeenCalledWith('com.calimero.mero-issue-tracker', '1.3.0'), SLOW);
+  });
+
+  it('has one Trust title on the trust page, and says which repository it covers', async () => {
+    running(openWorkspace(), '1.3.0');
+    fireEvent.click(await screen.findByTestId('nav-trust', {}, SLOW));
+    await screen.findByText('com.calimero.mero-issue-tracker v1.3.0', {}, SLOW);
+    expect(screen.getAllByRole('heading', { name: 'Trust' })).toHaveLength(1);
+    expect(within(document.querySelector('header')!).queryByText('Trust')).toBeNull();
+    expect(screen.getByText(/for the repository web/)).toBeTruthy();
+  });
+
+  it('says the release could not be read when the node cannot report it', async () => {
+    openWorkspace();
+    fireEvent.click(await screen.findByTestId('nav-trust', {}, SLOW));
+    expect(await screen.findByText('The release this app runs could not be read.', {}, SLOW)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

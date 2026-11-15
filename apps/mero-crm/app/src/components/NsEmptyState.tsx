@@ -1,10 +1,10 @@
 import React from "react";
 import styled from "styled-components";
 import type { OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CHECKING_RELEASE, ConnectExistingOrg } from "@calimero-apps/passkey";
 import type { Workspace as Namespace } from "../workspaces";
 import { tokens as t } from "../theme";
-import { CHECKING_RELEASE, PRODUCT_NAME } from "../config";
+import { PRODUCT_NAME } from "../config";
 import { SelectMenu } from "./Dropdown";
 import { LogoMark } from "./icons";
 import ThemeToggle from "./ThemeToggle";

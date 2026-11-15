@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { useInstanceRelease, type ReviewRelease } from '@calimero-apps/passkey';
+import { reviewRelease, useInstanceRelease, type ReviewRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import {
@@ -27,7 +27,6 @@ import {
   listPipelines,
   listWorkspaces,
   readMembers,
-  reviewRelease,
   type OrgMembers,
   type PipelineEntry,
   type Workspace,

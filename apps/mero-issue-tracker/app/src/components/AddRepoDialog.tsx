@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
+import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
 const GITHUB_PREFIX = 'https://github.com/';
 
 interface Props {
   onAdd: (name: string, repoUrl: string) => Promise<string | null>;
+  /** The release is still being read: nothing is created yet. */
+  releasePending?: boolean;
   onClose: () => void;
 }
 
 /** Add-repo dialog: a repo name plus its GitHub URL (required). Creates a
  *  context in the active namespace, names it, and saves the URL to shared state. */
-export default function AddRepoDialog({ onAdd, onClose }: Props) {
+export default function AddRepoDialog({ onAdd, releasePending = false, onClose }: Props) {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -24,7 +27,7 @@ export default function AddRepoDialog({ onAdd, onClose }: Props) {
 
   const trimmedUrl = url.trim();
   const urlValid = trimmedUrl.startsWith(GITHUB_PREFIX) && trimmedUrl.length > GITHUB_PREFIX.length;
-  const canSubmit = !!name.trim() && urlValid && !busy;
+  const canSubmit = !!name.trim() && urlValid && !busy && !releasePending;
 
   const submit = async () => {
     if (!canSubmit) {
@@ -76,6 +79,7 @@ export default function AddRepoDialog({ onAdd, onClose }: Props) {
           />
         </Field>
         {error && <ErrorLine>{error}</ErrorLine>}
+        {releasePending && <p className="sub" data-testid="release-checking">{CHECKING_RELEASE}</p>}
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={busy}>Cancel</SecondaryBtn>
           <PrimaryBtn data-testid="repo-add-submit" onClick={submit} disabled={!canSubmit}>

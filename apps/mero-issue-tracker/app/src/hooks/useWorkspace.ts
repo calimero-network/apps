@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { useInstanceRelease } from '@calimero-apps/passkey';
+import { reviewRelease, useInstanceRelease, type ReviewRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import { MeroIssueTrackerClient } from '../generated/client';
@@ -67,6 +67,10 @@ export interface UseWorkspaceReturn {
   selectNamespace: (id: string) => void;
   /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
   createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
+  /** The release a new workspace's repositories are created from, to review before creating; `null` for a raw bundle. */
+  createRelease: ReviewRelease | null;
+  /** The newest release is still being read: creates (workspace, repository, connect) wait for it. */
+  sourcePending: boolean;
   createNamespaceError: Error | null;
   /**
    * Mints an invitation (a passkey step-up) naming this app's team, and
@@ -113,7 +117,7 @@ function asError(e: unknown): Error {
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
-  const { client, accountId, source, passkey, after } = useSignedIn();
+  const { client, accountId, source, sourcePending, passkey, after } = useSignedIn();
 
   // ── workspaces ────────────────────────────────────────────────────────────
   const [namespaces, setNamespaces] = useState<Workspace[]>([]);
@@ -161,6 +165,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     window.addEventListener(JOINED_EVENT, onJoined);
     return () => window.removeEventListener(JOINED_EVENT, onJoined);
   }, [loadNamespaces, selectNamespace]);
+
+  const createRelease = useMemo(() => reviewRelease(source), [source]);
 
   const createNamespace = useCallback(
     async (name: string, selfName?: string): Promise<CreateWorkspaceResult> => {
@@ -414,6 +420,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     activeNs,
     selectNamespace,
     createNamespace,
+    createRelease,
+    sourcePending,
     createNamespaceError,
     invite,
     leaveWorkspace: leave,

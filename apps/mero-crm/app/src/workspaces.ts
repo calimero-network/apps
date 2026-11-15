@@ -23,7 +23,6 @@ import {
   type PendingInvite,
 } from '@calimero-apps/connect';
 import { nodeBasename } from '@calimero-apps/node-served';
-import type { ReviewRelease } from '@calimero-apps/passkey';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
 import { MeroCrmClient } from './generated/client';
@@ -105,11 +104,6 @@ export interface CreatedWorkspace {
   namespaceId: string;
   /** Set when the org exists but its member defaults could not be set (a cancelled passkey). */
   warning: string | null;
-}
-
-/** The package release `source` creates, or `null` for a raw bundle or a source with no known version (nothing signed to review). */
-export function reviewRelease(source: AppSource): ReviewRelease | null {
-  return typeof source === 'string' || !source.version ? null : { package: source.package, version: source.version };
 }
 
 /**

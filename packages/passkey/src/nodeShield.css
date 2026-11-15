@@ -62,9 +62,12 @@ button.cp-shield__chip:active:not(:disabled) { border-color: var(--_tone); }
 .cp-shield__btn:focus-visible { outline: 2px solid var(--_focus); outline-offset: 2px; }
 .cp-shield__icon { flex: none; color: var(--_tone); }
 
-/* Icon only: a floating chip always, a placed one on phone widths. */
-.cp-shield--floating .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.cp-shield--floating .cp-shield__chip { width: 28px; padding: 0; justify-content: center; --_bg: color-mix(in srgb, var(--_surface) 82%, var(--_tone-bg)); backdrop-filter: blur(8px); }
+/* Icon only: a floating chip always, a placed one when compact (`compactBelow`) or on phone widths. */
+.cp-shield--floating .cp-shield__label,
+.cp-shield--compact .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cp-shield--floating .cp-shield__chip,
+.cp-shield--compact .cp-shield__chip { width: 28px; padding: 0; justify-content: center; }
+.cp-shield--floating .cp-shield__chip { --_bg: color-mix(in srgb, var(--_surface) 82%, var(--_tone-bg)); backdrop-filter: blur(8px); }
 @media (max-width: 560px) {
   .cp-shield__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .cp-shield__chip { width: 28px; padding: 0; justify-content: center; }

@@ -18,7 +18,7 @@ import { useAppCtx } from './appContext';
  *  and the way out. */
 export default function SettingsPage(): React.ReactElement {
   const { data, ws } = useAppCtx();
-  const { client } = useSignedIn();
+  const { source } = useSignedIn();
   const toast = useToast();
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     try {
@@ -104,7 +104,9 @@ export default function SettingsPage(): React.ReactElement {
         />
       </Panel>
 
-      {ws.activePipeline && <TrustPanel client={client} appId={ws.activePipeline} />}
+      {ws.activePipeline && (
+        <TrustPanel appId={ws.activePipeline} source={source} pipeline={ws.pipelines.find((p) => p.contextId === ws.activePipeline)?.name} />
+      )}
 
       <Account />
     </Page>
