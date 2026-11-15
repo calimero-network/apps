@@ -12,6 +12,7 @@ import {
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
+  servedRelease,
   sourcePackage,
   type AppInviteToken,
   type AppOrgView,
@@ -129,24 +130,42 @@ export async function createWorkspace(
   };
 }
 
+/** The newest release each client's node had when first asked, so the review and every create use one version. */
+const newest = new WeakMap<object, Map<string, string>>();
+
 /**
- * The release a new workspace's first repository is created from: the one the
- * source names, else the newest the node has (what creating without a version
- * takes). `null` for a development bundle, which is no release.
+ * The release new repositories are created from: the version the build names,
+ * else the newest the node lists, read once per session; when the node cannot
+ * say, the release this page is served from. `null` for a development bundle or
+ * when nothing says, which creates without a version and skips the review.
  */
 export async function newWorkspaceRelease(
   client: ClientRoutes<{ packages: 'get' }>,
   source: AppSource,
+  href: string = window.location.href,
 ): Promise<ReviewRelease | null> {
   if (typeof source === 'string') return null;
-  const version = source.version ?? (await client.packages.get({ package: source.package })).latest;
-  return { package: source.package, version };
+  const { package: pkg } = source;
+  if (source.version) return { package: pkg, version: source.version };
+  const known = newest.get(client)?.get(pkg);
+  if (known) return { package: pkg, version: known };
+  try {
+    const { latest } = await client.packages.get({ package: pkg });
+    if (latest) {
+      newest.set(client, (newest.get(client) ?? new Map()).set(pkg, latest));
+      return { package: pkg, version: latest };
+    }
+  } catch {
+    /* falls back to the release this page is served from */
+  }
+  const served = servedRelease(href);
+  return served ? { package: pkg, version: served } : null;
 }
 
 /** A new repository in `org`, its URL set when given. Answers the instance id. */
 export async function addRepo(
   client: Pick<CalimeroClient, 'session' | 'events'> &
-    ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope' }>,
+    ClientRoutes<{ apps: 'create' | 'call' | 'view'; orgs: 'get' | 'appTeamsScope'; packages: 'get' }>,
   source: AppSource,
   org: string,
   name: string,
@@ -156,10 +175,11 @@ export async function addRepo(
 ): Promise<string> {
   // On this app's team (`orgWideAccess`): made first, by an owner or admin,
   // in an org whose other apps have teams; organization access in a legacy org.
+  const release = await newWorkspaceRelease(client, source);
   const appId = (
     await client.apps.create({
       name,
-      ...appTarget(source),
+      ...appTarget(release ?? source),
       ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
     })
   ).appId;

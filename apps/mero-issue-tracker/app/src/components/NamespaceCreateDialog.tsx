@@ -16,52 +16,38 @@ interface Props {
   onClose: () => void;
 }
 
-type Release =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; release: ReviewRelease | null };
-
-/** The release the new workspace's repositories will run, read when the dialog opens; `retry` asks again. */
-function useNewWorkspaceRelease(): [Release, () => void] {
+/** The release the new workspace's repositories will run, read when the dialog opens: `undefined` while asked, `null` when none is known. */
+function useNewWorkspaceRelease(): ReviewRelease | null | undefined {
   const { client, source } = useSignedIn();
-  const [release, setRelease] = useState<Release>({ status: 'loading' });
-  const [round, setRound] = useState(0);
+  const [release, setRelease] = useState<ReviewRelease | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
-    setRelease({ status: 'loading' });
-    newWorkspaceRelease(client, source).then(
-      (found) => live && setRelease({ status: 'ready', release: found }),
-      () => live && setRelease({ status: 'error' }),
-    );
+    void newWorkspaceRelease(client, source).then((found) => live && setRelease(found));
     return () => { live = false; };
-  }, [client, source, round]);
-  return [release, () => setRound((n) => n + 1)];
+  }, [client, source]);
+  return release;
 }
 
 /** Step 2: the shared review of the release, or why there is none to review. */
-function ReviewStep({ release, retry, busy, onBack, onCreate }: {
-  release: Release;
-  retry: () => void;
+function ReviewStep({ release, busy, onBack, onCreate }: {
+  release: ReviewRelease | null | undefined;
   busy: boolean;
   onBack: () => void;
   onCreate: () => void;
 }) {
-  if (release.status === 'ready' && release.release) {
-    return <WorkspaceReview release={release.release} creating={busy} onBack={onBack} onCreate={onCreate} />;
-  }
-  const none = release.status === 'ready';
+  if (release) return <WorkspaceReview release={release} creating={busy} onBack={onBack} onCreate={onCreate} />;
+  const loading = release === undefined;
   return (
     <>
       <h3>Review before creating</h3>
       <p className="sub">
-        {release.status === 'loading' && 'Reading the app\'s release from this node...'}
-        {release.status === 'error' && 'The app\'s release could not be read from this node.'}
-        {none && 'This is a development build: it runs a local bundle, not a signed release, so there is nothing to review.'}
+        {loading
+          ? 'Reading the app\'s release from this node...'
+          : 'No signed release to review: this app runs a local bundle, or its release could not be read from this node.'}
       </p>
       <Actions>
         <SecondaryBtn onClick={onBack} disabled={busy}>Back</SecondaryBtn>
-        {release.status === 'error' && <PrimaryBtn onClick={retry}>Try again</PrimaryBtn>}
-        {none && <PrimaryBtn onClick={onCreate} disabled={busy}>{busy ? <Spin /> : 'Create workspace'}</PrimaryBtn>}
+        {!loading && <PrimaryBtn onClick={onCreate} disabled={busy}>{busy ? <Spin /> : 'Create workspace'}</PrimaryBtn>}
       </Actions>
     </>
   );
@@ -84,7 +70,7 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [hostingNotice, setHostingNotice] = useState<string | null>(null);
   const [step, setStep] = useState<'name' | 'review'>('name');
-  const [release, retry] = useNewWorkspaceRelease();
+  const release = useNewWorkspaceRelease();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
@@ -150,7 +136,7 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
         </Stepper>
         {reviewing ? (
           <>
-            <ReviewStep release={release} retry={retry} busy={busy} onBack={back} onCreate={create} />
+            <ReviewStep release={release} busy={busy} onBack={back} onCreate={create} />
             {error && <ErrorLine>{error}</ErrorLine>}
           </>
         ) : (
@@ -195,6 +181,7 @@ export default function NamespaceCreateDialog({ onCreate, onClose }: Props) {
 
 const Wide = styled(Dialog)<{ $wide: boolean }>`
   max-width: ${({ $wide }) => ($wide ? '600px' : '420px')};
+  --passkey-review-inset: 26px; /* the dialog's bottom padding, so the review's sticky row sits flush */
 `;
 const Stepper = styled.div`
   display: flex; gap: 6px; margin: 0 0 14px; font-size: 11.5px; color: ${t.color.text3};

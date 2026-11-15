@@ -115,23 +115,21 @@ describe('NamespaceCreateDialog', () => {
     expect(onCreate).not.toHaveBeenCalled();
   });
 
-  it('says so and cannot create when the release cannot be read, until it is asked again', async () => {
-    const failing = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ latest: '1.4.0' });
+  it('skips the review and says so when the node cannot name a release', async () => {
+    const failing = vi.fn().mockRejectedValue(new Error('boom'));
     const { onCreate } = open({ package: APP_PACKAGE }, verified, failing);
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
-    expect(await screen.findByText("The app's release could not be read from this node.")).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Create workspace' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await createButton()).toBeTruthy();
-    expect(onCreate).not.toHaveBeenCalled();
+    expect(await screen.findByText(/No signed release to review/)).toBeTruthy();
+    fireEvent.click(await createButton());
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
   });
 
   it('has no signed release to review on a development bundle, and creates from the same step', async () => {
     const { client, onCreate } = open('bundle-hash');
     fillName();
     fireEvent.click(screen.getByTestId('ns-create-submit'));
-    expect(await screen.findByText(/runs a local bundle, not a signed release/)).toBeTruthy();
+    expect(await screen.findByText(/No signed release to review/)).toBeTruthy();
     fireEvent.click(await createButton());
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Platform', 'Alice'));
     expect(client.packages.get).not.toHaveBeenCalled();
