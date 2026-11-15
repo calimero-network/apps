@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, PasskeySignIn, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useNodeShieldApp, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -165,6 +165,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   // A table is an app instance, served the frontend of the release it runs.
   useInstanceRelease(client, opened?.appId);
+  useNodeShieldApp(opened?.appId, source);
   const after = useCallback(() => {
     if (client) store?.sync(client);
   }, [client, store]);
@@ -383,12 +384,7 @@ function AppShell({ children }: { children: ReactNode }) {
           </button>
           {session.status === "signed-in" && (
             <div className="session">
-              <span className="node-pill" title={`${describeTarget(session.target)} · ${session.accountId}`}>
-                <span className="presence online" aria-hidden="true" />
-                <span className="mono">
-                  {describeTarget(session.target)} · {shortAccount(session.accountId)}
-                </span>
-              </span>
+              <NodeShield />
               <button className="ghost small" onClick={() => void signOut()}>
                 Log out
               </button>

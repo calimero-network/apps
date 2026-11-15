@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { ManageInHomeLink, openNodeShield } from "@calimero-apps/passkey";
 import { useMyName } from "../../api/names";
 import { useSessionApi } from "../../sessionContext";
 import { describeTarget } from "../../session";
@@ -57,7 +57,18 @@ export default function UserMenu({ account, onLogout }: { account: string; onLog
         <div className={`${styles.menu} ${styles.menuRight}`} role="menu">
           <div className={styles.userHead}>
             <span className={styles.userName}>{name}</span>
-            {node && <span className={styles.userNode} title={node}>{node}</span>}
+            {node && (
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.userNode}
+                title={node}
+                onClick={() => { setOpen(false); openNodeShield(); }}
+                data-testid="user-menu-node"
+              >
+                Connected to {node}
+              </button>
+            )}
           </div>
           <div className={styles.menuSep} />
           {teamId && (

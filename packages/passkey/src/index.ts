@@ -96,3 +96,5 @@ export { useInstanceRelease } from "./release";
 export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";
 export { ManageInHomeLink, useHomeLink, type ManageInHomeLinkProps } from "./HomeLink";
 export { NativeApproval, type NativeApprovalProps } from "./NativeApproval";
+export { NodeShield, bindNodeShield } from "./NodeShield";
+export { openNodeShield, useNodeShieldApp } from "./nodeShieldStore";

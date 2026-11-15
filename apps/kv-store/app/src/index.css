@@ -80,6 +80,7 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--bor
 th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
 td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .empty { color: var(--text-dim); font-size: 0.88rem; }
+footer code { min-width: 0; overflow-wrap: anywhere; }
 
 /* ── the invite link ──────────────────────────────────────────────────────
    An invitation payload is a few hundred base58 characters. Rendered as a

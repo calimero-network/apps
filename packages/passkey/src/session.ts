@@ -24,6 +24,7 @@ import {
 } from "@calimero-apps/connect";
 import { isPasskeyCancel, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 import { watchUpgrades } from "./upgrade";
+import { bindNodeShield } from "./NodeShield";
 import {
   describeCeremonyFailure,
   knownAccountHere,
@@ -336,6 +337,13 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       ...(hintStorage ? { storage: hintStorage } : {}),
     });
   }, [signedInClient, signedInAccount, pkg, upgradePrompt, appName, hintStorage]);
+
+  // The node shield for every app: the floating chip unless the app placed one.
+  const shieldClient = session.status === "signed-in" || session.status === "signed-out" ? session.client : null;
+  const shieldCluster = boundTarget ? describeTarget(boundTarget) : null;
+  useEffect(() => {
+    if (shieldClient && shieldCluster) return bindNodeShield(shieldClient, shieldCluster);
+  }, [shieldClient, shieldCluster]);
 
   const access = signUpAccess(policy, inviteToken !== null);
 

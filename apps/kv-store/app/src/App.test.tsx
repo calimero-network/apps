@@ -99,6 +99,39 @@ describe("App", () => {
     await screen.findByText(/VITE_CALIMERO_MIN_RELEASE is not set/);
   });
 
+  it("tells the node shield which store is open, so its popover checks the node's code", async () => {
+    const client = fakeClient([
+      { appId: "app-1", name: "mine", owner: "acct-alice", org: null, bundle: "bundle-hash", package: null, version: null },
+    ]);
+    // A node that passes its check and binds the dev bundle's hash to the open instance.
+    const attestApp = vi.fn(async () => ({ url: "https://n1.example", mock: false, appHash: "bundle-hash", checkedAt: Date.now() }));
+    Object.assign(client, {
+      nodeUrl: "https://n1.example",
+      verification: () => undefined,
+      verify: vi.fn(async () => ({ status: "verified", url: "https://n1.example", mock: false, release: "2.3.148", profile: "locked-read-only", checkedAt: Date.now() })),
+      attestApp,
+    });
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "mine", org: null }));
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByText("mine");
+    await waitFor(() => expect(screen.getByTestId("node-shield").getAttribute("aria-label")).toBe("Verified node"));
+    fireEvent.click(screen.getByTestId("node-shield"));
+    await waitFor(() => expect(attestApp).toHaveBeenCalledWith("app-1"));
+    await screen.findByText("Node runs the code bundle this app was built for");
+  });
+
+  it("places the node shield in the signed-in footer, with no floating one beside it", async () => {
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(fakeClient())} storage={storage} />);
+    await screen.findByText("Your stores");
+    // findBy fails on none and on more than one, so this also proves there is a single shield.
+    const shield = await screen.findByTestId("node-shield");
+    expect(shield.closest("footer")).not.toBeNull();
+  });
+
   it("sends a listing page no cluster serves to the copy Calimero Cloud serves instead of failing", async () => {
     // A static listing build: no cluster and no floor, so it asks no directory either.
     const d = { ...deps(fakeClient(), { DEV: false }), servedNodes: async () => null };
