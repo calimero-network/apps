@@ -11,7 +11,7 @@ import type { PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { appInviteToken, createRoom, finishStream, listStreams, streamInfo } from "./streams";
+import { createRoom, finishStream, listStreams, streamInfo } from "./streams";
 
 /** An org as the node's consent page makes it, then what the app does after. */
 async function createStream(client: ReturnType<typeof orgCluster>["client"], name: string, passkey: () => PasskeyProvider, source?: AppSource) {
@@ -56,8 +56,6 @@ describe("invites and people", () => {
   it("standalone: the invite names the team; every member but a guest, and the count", async () => {
     const { cluster, org } = await stream(people);
     await createRoom(cluster.client, SOURCE, org, "Standup", passkey);
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
     const info = await streamInfo(cluster.client, org, SOURCE);
     expect(info.members).toEqual(["acct-me", "acct-bob", "acct-cy"]);
     expect(info.appOnly).toBeUndefined();
@@ -67,7 +65,6 @@ describe("invites and people", () => {
   it("apps kept apart: Mero Stream only, and only its people", async () => {
     const { cluster, org } = await stream(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
     const info = await streamInfo(cluster.client, org, SOURCE);
     expect(info.members).toEqual(["acct-me", "acct-bob"]);
     expect(info.appOnly).toBe(true);
@@ -76,8 +73,6 @@ describe("invites and people", () => {
   it("a legacy org: the org-wide invite, every member", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "legacy", members: people });
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toBeUndefined();
     expect((await streamInfo(cluster.client, org, SOURCE)).members).toHaveLength(4);
   });
 });

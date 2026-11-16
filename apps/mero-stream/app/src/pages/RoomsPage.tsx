@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { InviteDialog } from "@calimero-network/mero-react";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
 import {
+  PRODUCT_NAME,
   createRoom,
-  inviteLink,
-  appInviteToken,
+  inviteBase,
   listRooms,
   membersCreateRooms,
   setMembersCreateRooms,
@@ -17,7 +18,6 @@ import {
 import { MeroStreamClient } from "../generated/client";
 import { toMembers } from "../lib/meroStream";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
-import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import {
   labelMembers,
@@ -71,13 +71,9 @@ export default function RoomsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{
-    key: string;
-    link: string;
-    scope: string;
-    hint: React.ReactNode;
-    appOnly?: boolean;
-  } | null>(null);
+  // Kept after the dialog closes: it stays mounted to finish an invite approved on a full-page trip to the node.
+  const [invite, setInvite] = useState<{ room?: RoomRow; teams: string[]; appOnly: boolean } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const run = useCallback(
     async (
@@ -194,70 +190,19 @@ export default function RoomsPage() {
     [navigate, orgId],
   );
 
-  const mint = useCallback(
-    async (onStatus: (m: string) => void, room?: RoomRow) => {
-      if (!conn) throw new Error("not signed in");
-      onStatus("Approve the invitation with your passkey…");
-      const { token, appOnly } = await appInviteToken(conn.client, orgId, conn.passkey(), conn.source);
-      conn.after();
-      return {
-        link: inviteLink(token, {
-          stream: orgId,
-          room: room?.appId,
-          name: room?.name ?? nsName,
-        }),
-        appOnly,
-      };
-    },
-    [conn, orgId, nsName],
-  );
-
-  const inviteToRoom = useCallback(
-    (room: RoomRow) => {
-      void run(`invite:${room.appId}`, async (onStatus) => {
-        const { link, appOnly } = await mint(onStatus, room);
-        setInvite({
-          key: `room:${room.appId}`,
-          link,
-          appOnly,
-          scope: `Opens ${room.name}`,
-          hint: (
-            <>
-              Opening the link puts them straight into{" "}
-              <strong>{room.name}</strong>. Note what it grants: joining{" "}
-              <strong>{nsName}</strong>, which is what makes any room in it
-              reachable — room access is inherited from the stream, so this is{" "}
-              <em>not</em> narrower than the stream link. It just lands them in
-              this call instead of the room list.
-            </>
-          ),
-        });
-        showToast(`Invite ready for “${room.name}”.`);
+  /** Opens the invite dialog for the whole stream, or for one room's link. */
+  const openInvite = useCallback(
+    (room?: RoomRow) => {
+      if (!conn) return;
+      void run(`invite:${room?.appId ?? "namespace"}`, async () => {
+        const { teams, appOnly } = await appInviteTeams(conn.client, orgId, conn.source);
+        conn.after();
+        setInvite({ room, teams, appOnly });
+        setInviteOpen(true);
       });
     },
-    [mint, nsName, run, showToast],
+    [conn, orgId, run],
   );
-
-  const inviteToNamespace = useCallback(() => {
-    void run("invite:namespace", async (onStatus) => {
-      const { link, appOnly } = await mint(onStatus);
-      setInvite({
-        key: "namespace",
-        link,
-        appOnly,
-        scope: `Whole stream · ${nsName}`,
-        hint: (
-          <>
-            This link joins <strong>{nsName}</strong> and every room in it,
-            including rooms made later. It lands them on the room list — to drop
-            someone directly into one call, use <strong>Invite</strong> on that
-            room.
-          </>
-        ),
-      });
-      showToast(`Invite ready for “${nsName}”.`);
-    });
-  }, [mint, nsName, run, showToast]);
 
   const me = conn?.accountId ?? "";
   const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined => {
@@ -321,12 +266,12 @@ export default function RoomsPage() {
             </p>
           </div>
           <ActionButton
-            onClick={inviteToNamespace}
+            onClick={() => openInvite()}
             pending={pending === "invite:namespace"}
-            pendingLabel="Minting…"
+            pendingLabel="Opening…"
             variant="secondary"
             testId="invite-namespace"
-            title="Invite someone to this whole stream (a passkey approval)"
+            title="Invite someone to this whole stream"
           >
             <UserPlusIcon size={16} />
             Invite to stream
@@ -390,14 +335,23 @@ export default function RoomsPage() {
           </StatusNote>
         )}
 
-        <InviteModal
-          open={!!invite}
-          link={invite?.link ?? ""}
-          scope={invite?.scope ?? ""}
-          hint={invite?.hint}
-          appOnly={invite?.appOnly === true}
-          onClose={() => setInvite(null)}
-        />
+        {conn && orgId && (
+          <InviteDialog
+            client={conn.client}
+            passkey={conn.passkey()}
+            open={inviteOpen}
+            onClose={() => setInviteOpen(false)}
+            org={orgId}
+            teams={invite?.teams}
+            appName={PRODUCT_NAME}
+            labels={{
+              noun: "stream",
+              title: `Invite to ${invite?.room?.name ?? (nsName || "this stream")}`,
+              ...(invite?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+            }}
+            linkBase={inviteBase({ stream: orgId, room: invite?.room?.appId, name: invite?.room?.name ?? nsName })}
+          />
+        )}
 
         <div className={styles.sectionHead}>
           <h3 className={styles.sectionTitle}>
@@ -490,9 +444,9 @@ export default function RoomsPage() {
                       {isIn ? "Open call" : "Join call"}
                     </button>
                     <ActionButton
-                      onClick={() => inviteToRoom(room)}
+                      onClick={() => openInvite(room)}
                       pending={pending === `invite:${room.appId}`}
-                      pendingLabel="Minting…"
+                      pendingLabel="Opening…"
                       variant="secondary"
                       size="small"
                       testId="invite-room"

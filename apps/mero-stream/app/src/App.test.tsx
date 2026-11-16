@@ -35,13 +35,36 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
+    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; linkBase?: string; labels?: { noun?: string; title?: string; note?: string }; onClose: () => void }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog" },
+            createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "invite-labels" }, JSON.stringify({ noun: p.labels?.noun, note: p.labels?.note })),
+            createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName, linkBase: p.linkBase })),
+            createElement("button", { "data-testid": "invite-close", onClick: p.onClose }, "close"),
+          )
+        : null,
+    AcceptInviteDialog: (p: { open: boolean; token: string; org?: string; appName?: string; labels?: { noun?: string; title?: string; body?: string }; onClose: () => void; onError?: (e: unknown) => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("pre", { "data-testid": "accept-props" }, JSON.stringify({ token: p.token, org: p.org, appName: p.appName, labels: p.labels })),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "join"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
+            createElement("button", { "data-testid": "accept-spent", onClick: () => p.onError?.(new CalimeroError(400, "REJECTED", "unknown invite")) }, "spent"),
+            createElement("button", { "data-testid": "accept-offline", onClick: () => p.onError?.(new CalimeroError(503, "UNAVAILABLE", "node unreachable")) }, "offline"),
+          )
+        : null,
   };
 });
 
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
-import { MEMBER_DEFAULTS, dropInvite, inviteLink, migrateLegacyInvite, pendingInvite } from "./lib/streams";
+import { MEMBER_DEFAULTS, dropInvite, migrateLegacyInvite, pendingInvite } from "./lib/streams";
 
 /** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
 function hold(legacy: string) {
@@ -170,7 +193,13 @@ function fakeClient() {
     events: vi.fn(async function* () {}),
     publishPresence: vi.fn(async () => {}),
     presenceStream: vi.fn(async function* () {}),
-    invite: vi.fn(async () => "tok-123"),
+    listAppTeams: vi.fn(async (org: string) => {
+      if (org !== "org-1") throw new CalimeroError(404, "NOT_FOUND", "no such org");
+      return {
+        mode: "standalone",
+        appTeams: [{ package: "com.calimero.mero-stream", teamId: "team-stream", name: "Mero Stream", join: "everyone", memberCount: 1, defaultCapabilities: 0, member: true }],
+      };
+    }),
     redeemInvite: vi.fn(async () => ({})),
     setMemberMetadata: vi.fn(async (org: string, account: string, m: Record<string, unknown>) => {
       meta[org] = { ...meta[org], [account]: m };
@@ -180,11 +209,13 @@ function fakeClient() {
 
 const ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "b" };
 
-function renderApp(client: ReturnType<typeof fakeClient>, path: string, signedIn = false) {
+const PACKAGE_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: "com.calimero.mero-stream" };
+
+function renderApp(client: ReturnType<typeof fakeClient>, path: string, signedIn = false, env: SessionDeps["env"] = ENV) {
   const storage = new Memory();
-  if (signedIn) new SessionStore(APP, resolveTarget(ENV), storage).save(SESSION);
+  if (signedIn) new SessionStore(APP, resolveTarget(env), storage).save(SESSION);
   const deps: SessionDeps = {
-    env: ENV,
+    env,
     makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }) as never,
     storage,
@@ -252,23 +283,17 @@ describe("App", () => {
     expect((screen.getByTestId("people-dialog") as HTMLDialogElement).open).toBe(false);
   });
 
-  it("asks once, for the stream, when a room opens in a stream with no name for you", async () => {
+  it("asks once, for the stream, when a member continues a room link in a stream with no name for them", async () => {
     const client = fakeClient();
     client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
     client.apps.push(client.room("app-1"));
     localStorage.setItem("calimero-names:last", "Alice from Globex");
-    // An already-member's room link: opened, not redeemed.
     hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/streams", true);
-    fireEvent.click(await screen.findByTestId("invitation-open"));
-    await waitFor(() =>
-      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "guest" })),
-    );
-    await waitFor(() => expect((screen.getByTestId("people-dialog") as HTMLDialogElement).open).toBe(true));
-    // The dialog opens (useDialogOpen's effect) before PeopleDialog's own effect
-    // re-seeds the draft from the suggestion, so the value lands a render later.
-    await waitFor(() => expect((screen.getByTestId("username-input") as HTMLInputElement).value).toBe("Alice from Globex"));
-    fireEvent.click(screen.getByTestId("username-submit"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    await waitFor(() => expect((screen.getByTestId("invitation-name-input") as HTMLInputElement).value).toBe("Alice from Globex"));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("invitation-name-save"));
     await waitFor(() =>
       expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice from Globex" }),
     );
@@ -279,6 +304,8 @@ describe("App", () => {
         expect.objectContaining({ username: "Alice from Globex" }),
       ),
     );
+    expect(client.call).not.toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "guest" }));
+    expect(pendingInvite()).toBeNull();
   });
 
   it("does not list an org made for another app; connects it on request by creating a room there", async () => {
@@ -298,18 +325,63 @@ describe("App", () => {
     expect(client.createOrg).not.toHaveBeenCalled();
   });
 
-  it("invites to a stream with a passkey approval and shows the link", async () => {
-    const client = fakeClient();
-    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
-    client.apps.push(client.room("app-1"));
-    renderApp(client, "/streams/org-1", true);
+  describe("inviting", () => {
+    const props = async () => JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "null");
 
-    await screen.findByText("1 room");
-    fireEvent.click(screen.getByTestId("invite-namespace"));
-    const link = await screen.findByTestId("invite-link");
-    expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
-    expect(link.textContent).toContain("invite=tok-123");
-    expect(link.textContent).toContain("org=org-1");
+    async function openRooms(env: SessionDeps["env"], client = fakeClient()) {
+      client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+      client.apps.push(client.room("app-1"));
+      renderApp(client, "/streams/org-1", true, env);
+      await screen.findByText("1 room");
+      return client;
+    }
+
+    it("opens the shared dialog for the whole stream, with the app team of a package app", async () => {
+      await openRooms(PACKAGE_ENV);
+      fireEvent.click(screen.getByTestId("invite-namespace"));
+      expect(await props()).toEqual({ org: "org-1", teams: ["team-stream"], appName: "Mero Stream", linkBase: `${window.location.origin}/?org=org-1&name=Team` });
+      expect(screen.getByTestId("invite-title").textContent).toBe("Invite to Team");
+      fireEvent.click(screen.getByTestId("invite-close"));
+      await waitFor(() => expect(screen.queryByTestId("invite-dialog")).toBeNull());
+    });
+
+    it("opens it for one room, whose link names the room", async () => {
+      await openRooms(ENV);
+      fireEvent.click(screen.getByTestId("invite-room"));
+      const shown = await props();
+      expect(shown.teams).toEqual([]);
+      expect(shown.linkBase).toContain("room=app-1");
+      expect(screen.getByTestId("invite-title").textContent).toBe("Invite to app-1");
+    });
+
+    it("opens it from the stream list too", async () => {
+      const client = fakeClient();
+      client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+      client.apps.push(client.room("app-1"));
+      renderApp(client, "/streams", true, PACKAGE_ENV);
+      fireEvent.click(await screen.findByTestId("invite-btn"));
+      expect(await props()).toMatchObject({ org: "org-1", teams: ["team-stream"] });
+      expect(screen.getByTestId("invite-title").textContent).toBe("Invite to \u201cTeam\u201d");
+    });
+
+    it("labels the dialog, with the app-only note when the stream keeps its apps apart", async () => {
+      const client = fakeClient();
+      client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: "com.calimero.mero-stream", teamId: "team-stream", name: "S", join: "everyone", memberCount: 1, defaultCapabilities: 0, member: true }] });
+      await openRooms(PACKAGE_ENV, client);
+      fireEvent.click(screen.getByTestId("invite-namespace"));
+      const labels = JSON.parse((await screen.findByTestId("invite-labels")).textContent ?? "null");
+      expect(labels.noun).toBe("stream");
+      expect(labels.note).toMatch(/^Invites to Mero Stream only/);
+    });
+
+    it("says so, and opens nothing, when the stream has no team for the app", async () => {
+      const client = fakeClient();
+      client.listAppTeams.mockResolvedValue({ mode: "standalone", appTeams: [{ package: "com.calimero.other", teamId: "t", name: "O", join: "everyone", memberCount: 1, defaultCapabilities: 0, member: true }] });
+      await openRooms(PACKAGE_ENV, client);
+      fireEvent.click(screen.getByTestId("invite-namespace"));
+      expect((await screen.findByTestId("rooms-error")).textContent).toMatch(/has not set up com.calimero.mero-stream/);
+      expect(screen.queryByTestId("invite-dialog")).toBeNull();
+    });
   });
 
   it("signed out with a pending invite, shows the invitation page instead of the landing page", async () => {
@@ -329,58 +401,52 @@ describe("App", () => {
     expect(pendingInvite()).not.toBeNull();
   });
 
-  it("does not redeem an invite into a stream the account is already in", async () => {
+  it("hands the dialog the invite's stream, so a member is told so and nothing is redeemed", async () => {
     const client = fakeClient();
     client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
     hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
     renderApp(client, "/streams", true);
-    await screen.findByTestId("invitation-member");
-    expect(screen.getByText("You're already in this stream")).toBeTruthy();
+    expect(JSON.parse((await screen.findByTestId("accept-props")).textContent ?? "null").org).toBe("org-1");
+    expect(screen.queryByTestId("invitation-member")).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(pendingInvite()).toBeNull();
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+  it("drops a stored token the node says is spent, and keeps it for a network failure", async () => {
     hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
-    renderApp(client, "/streams", true);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toBe(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
-    expect(pendingInvite()).toBeNull();
-  });
-
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
-    renderApp(client, "/streams", true);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    renderApp(fakeClient(), "/streams", true);
+    fireEvent.click(await screen.findByTestId("accept-offline"));
     expect(pendingInvite()?.token).toBe("tok-9");
-    expect(screen.getByTestId("invitation-join")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("accept-spent"));
+    expect(pendingInvite()).toBeNull();
   });
 
-  it("redeems an opened room invitation after sign-in and opens that room", async () => {
+  it("hands the shared dialog the token, and drops it when the person closes the dialog", async () => {
+    const client = fakeClient();
+    hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }));
+    renderApp(client, "/streams", true);
+    expect(JSON.parse((await screen.findByTestId("accept-props")).textContent ?? "null")).toEqual({
+      token: "tok-9",
+      org: "org-1",
+      appName: "Mero Stream",
+      labels: { noun: "stream", title: "Join \u201cTeam\u201d?", body: "Joining gives you access to the stream and every room in it." },
+    });
+    expect(pendingInvite()?.token).toBe("tok-9");
+    fireEvent.click(screen.getByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull());
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it("joins through the shared dialog after sign-in, asks for your name, and opens that room", async () => {
     const client = fakeClient();
     client.apps.push(client.room("app-1"));
-    // Not a member until the invitation is redeemed.
-    client.redeemInvite.mockImplementation(async () => {
-      client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
-      return {};
-    });
     hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/");
 
     await screen.findByText("You're invited");
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-9"));
+    const join = await screen.findByTestId("accept-done");
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+    fireEvent.click(join);
     // Joined a stream with no name for you: asked once, then into the room
     // with it.
     fireEvent.change(await screen.findByTestId("invitation-name-input"), { target: { value: "Alice" } });
@@ -398,13 +464,12 @@ describe("App", () => {
     const client = fakeClient();
     client.apps.push(client.room("app-1"));
     client.meta["org-1"] = { "acct-alice": { name: "Alice" } };
-    client.redeemInvite.mockImplementation(async () => {
-      client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
-      return {};
-    });
     hold(JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }));
     renderApp(client, "/streams", true);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
+    // Not a member until the dialog redeems the invitation.
+    const join = await screen.findByTestId("accept-done");
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+    fireEvent.click(join);
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.objectContaining({ username: "Alice" })),
     );
@@ -507,11 +572,5 @@ describe("App", () => {
     renderApp(client, "/streams/org-1", true);
     expect(await screen.findByTestId("create-room")).toBeTruthy();
     expect(screen.queryByTestId("create-room-ask")).toBeNull();
-  });
-
-  it("builds invitation links on this frontend's own origin", () => {
-    expect(
-      inviteLink("t", { stream: "o" }, { href: "https://x.apps.calimero.network/streams" }),
-    ).toBe("https://x.apps.calimero.network/?invite=t&org=o");
   });
 });

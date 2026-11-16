@@ -9,7 +9,7 @@ import {
   finishStream,
   setMembersCreateRooms,
   dropInvite,
-  inviteLink,
+  inviteBase,
   listRooms,
   listStreams,
   migrateLegacyInvite,
@@ -141,15 +141,31 @@ describe("members of a new stream may create rooms (core's CREATE_APP)", () => {
 });
 
 describe("invitation links", () => {
+  it("open at this frontend's root, naming the stream, and the room and name when there are any", () => {
+    const loc = { href: "http://localhost:5173/streams/o1" };
+    expect(inviteBase({ stream: "o1" }, loc)).toBe("http://localhost:5173/?org=o1");
+    expect(inviteBase({ stream: "o1", room: "app-1", name: "Standup" }, loc)).toBe("http://localhost:5173/?org=o1&room=app-1&name=Standup");
+    const served = `https://${"a".repeat(52)}.apps.calimero.network`;
+    expect(inviteBase({ stream: "o1" }, { href: `${served}/1.0.0/streams/o1` })).toBe(`${served}/1.0.0/?org=o1`);
+  });
+
   it("survive the sign-up: captured off the URL into the store, then dropped", () => {
-    const link = inviteLink("tok", { stream: "o1", room: "app-1", name: "Standup" }, { href: "http://localhost:5173/streams/o1" });
+    const link = `${inviteBase({ stream: "o1", room: "app-1", name: "Standup" }, { href: "http://localhost:5173/streams/o1" })}#invite=tok`;
     expect(new URL(link).pathname).toBe("/");
     window.history.replaceState(null, "", link.replace("http://localhost:5173", ""));
     captureInvite(window.location);
     expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
     expect(pendingInvite()).toEqual({ token: "tok", stream: "o1", room: "app-1", name: "Standup" });
     dropInvite();
     expect(pendingInvite()).toBeNull();
+  });
+
+  it("still read a token in the query", () => {
+    window.history.replaceState(null, "", "/?invite=tok&org=o1");
+    captureInvite(window.location);
+    expect(pendingInvite()).toEqual({ token: "tok", stream: "o1", room: null, name: null });
+    dropInvite();
   });
 
   it("reads a link minted before the shared store, which named the stream as `stream`", () => {
