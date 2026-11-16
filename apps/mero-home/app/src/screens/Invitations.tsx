@@ -4,7 +4,7 @@ import { InviteDialog } from "@calimero-network/mero-react";
 import { describeError, inviteLinkBase } from "@calimero-apps/connect";
 
 import { inviteRoot } from "../invites";
-import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
+import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, inviteApps, inviteExpiry, inviteTerms, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
 
 type Pending = { kind: "loading" } | { kind: "ready"; invites: Array<OrgInvite & { allApps?: boolean }> } | { kind: "failed"; error: string };
 
@@ -31,6 +31,7 @@ export function Invitations({ client, view, account, passkey, after, root = invi
   const admin = isAdmin(view.role);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(apps.length === 1 ? [apps[0]!.package] : []));
   const [role, setRole] = useState<"member" | "guest" | "admin">("member");
+  const [later, setLater] = useState(false);
   const [uses, setUses] = useState(1);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function Invitations({ client, view, account, passkey, after, root = invi
 
   const allChosen = apps.length > 0 && apps.every((a) => chosen.has(a.package));
   // Core refuses "every app, and those added later" to anyone below admin.
-  const allApps = admin && allChosen;
+  const terms = inviteTerms(apps, chosen, admin && later);
 
   const toggle = (pkg: string) =>
     setChosen((s) => {
@@ -123,13 +124,17 @@ export function Invitations({ client, view, account, passkey, after, root = invi
                 {a.name}
               </label>
             ))}
-            {allChosen && view.mode === "shared" && (
-              <p className="home-muted" data-testid="invite-all-later">
-                {allApps
-                  ? "Apps added to the organization later are part of this invitation."
-                  : "Apps added to the organization later are not part of this invitation."}
-              </p>
-            )}
+            {allChosen && view.mode === "shared" &&
+              (admin ? (
+                <label className="home-check" data-testid="invite-all-later">
+                  <input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} data-testid="invite-later" />
+                  Also the apps added to the organization later
+                </label>
+              ) : (
+                <p className="home-muted" data-testid="invite-all-later">
+                  Apps added to the organization later are not part of this invitation.
+                </p>
+              ))}
           </fieldset>
           <div className="home-row">
             <label className="home-field">
@@ -175,8 +180,8 @@ export function Invitations({ client, view, account, passkey, after, root = invi
         passkey={passkey()}
         org={view.org}
         role={role}
-        teams={allApps ? undefined : apps.filter((a) => chosen.has(a.package)).flatMap((a) => (a.team ? [a.team.teamId] : []))}
-        allApps={allApps}
+        teams={terms.teams}
+        allApps={terms.allApps}
         uses={uses}
         ttlSecs={DEFAULT_EXPIRY}
         expiryOptions={EXPIRY_OPTIONS}

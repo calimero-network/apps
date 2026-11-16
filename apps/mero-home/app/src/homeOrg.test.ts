@@ -6,6 +6,7 @@ import {
   audience,
   installable,
   inviteApps,
+  inviteTerms,
   inviteExpiry,
   invitableApps,
   loadOrg,
@@ -140,12 +141,23 @@ describe("words and links", () => {
     expect(audience(v.apps.find((a) => a.package === CRM)!)).toBe("Everyone in the organization");
   });
 
+  it("an invite always names the picked apps' teams; only an explicit choice adds the apps of later", async () => {
+    const { v } = await view({ as: "admin" });
+    const apps = invitableApps(v);
+    const chosen = new Set([CHAT, BLOCKS]);
+    expect(inviteTerms(apps, chosen, false)).toEqual({ teams: ["t-blocks", "t-chat"], allApps: false });
+    expect(inviteTerms(apps, chosen, true)).toEqual({ teams: ["t-blocks", "t-chat"], allApps: true });
+    expect(inviteTerms(apps, new Set([CHAT]), true)).toEqual({ teams: ["t-chat"], allApps: false });
+    expect(inviteTerms(apps, new Set(), false)).toEqual({ teams: [], allApps: false });
+  });
+
   it("names an invite's apps and its expiry", async () => {
     const { v } = await view();
     expect(inviteApps({ teams: ["t-chat", "t-blocks"] }, v)).toBe("Chat, Blocks");
     expect(inviteApps({ teams: [] }, v)).toBe("Organization only");
     expect(inviteApps({ teams: ["t-x"] }, v)).toBe("a team you do not see");
     expect(inviteApps({ teams: [], allApps: true }, v)).toBe("Every app, and those added later");
+    expect(inviteApps({ teams: ["t-chat", "t-blocks"], allApps: true }, v)).toBe("Chat, Blocks, and apps added later");
     const now = 1_700_000_000_000;
     expect(inviteExpiry({ expiresAt: now / 1000 + 3 * 86_400, expired: false }, now)).toBe("Expires in 3 days");
     expect(inviteExpiry({ expiresAt: now / 1000 + 7200, expired: false }, now)).toBe("Expires in 2 h");

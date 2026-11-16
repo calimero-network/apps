@@ -186,7 +186,7 @@ describe("Invitations", () => {
     await waitFor(() => expect(fake.client.listInvites).toHaveBeenCalledTimes(2));
   });
 
-  it("All apps checks every app the caller may name, and an admin's invite covers later apps too", async () => {
+  it("All apps checks every app; the invite names their teams, and covers later apps only when the admin also says so", async () => {
     open({ as: "admin" });
     fireEvent.click(await screen.findByTestId("tab-invitations"));
     const all = (await screen.findByTestId("invite-all-apps")) as HTMLInputElement;
@@ -196,10 +196,12 @@ describe("Invitations", () => {
     expect(all.indeterminate).toBe(true);
     fireEvent.click(all);
     expect([box(CHAT).checked, box(BLOCKS).checked, all.checked]).toEqual([true, true, true]);
-    expect(screen.getByTestId("invite-all-later").textContent).toContain("later are part of this invitation");
     fireEvent.click(screen.getByTestId("invite-create"));
     await screen.findByTestId("invite-dialog");
-    expect(invited.last).toMatchObject({ allApps: true, teams: undefined });
+    expect(invited.last).toMatchObject({ allApps: false, teams: ["t-blocks", "t-chat"] });
+    fireEvent.click(screen.getByTestId("invite-dialog"));
+    fireEvent.click(screen.getByTestId("invite-later"));
+    expect(invited.last).toMatchObject({ allApps: true, teams: ["t-blocks", "t-chat"] });
     fireEvent.click(all);
     expect([box(CHAT).checked, box(BLOCKS).checked]).toEqual([false, false]);
   });
