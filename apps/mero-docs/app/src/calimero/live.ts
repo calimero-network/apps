@@ -16,24 +16,101 @@ export interface SseEventData {
   contextId: string;
   type: 'StateMutation';
   data: { events: Array<{ kind: string; data: unknown }> };
+  /**
+   * Set when a call this tab made through {@link EventHub.track} committed the
+   * event: what it changed is already in the call's answer, so an editor that
+   * read it from there need not read it again.
+   */
+  own?: true;
 }
 export type SubscriptionEventData = SseEventData;
 export type EventHandler = (event: SubscriptionEventData) => void;
 
 const RETRY_MS = 2_000;
+const OWN_KEPT = 256; // the latest own log indexes remembered per instance
+
+/** The log index an event id names: the node sends `index:seq`. */
+export function eventIndex(id: string): number | null {
+  const index = Number.parseInt(id, 10);
+  return Number.isFinite(index) ? index : null;
+}
 
 interface Stream {
   handlers: Set<EventHandler>;
   abort: AbortController;
 }
 
+interface Own {
+  /** This tab's calls still waiting for their answer. */
+  inFlight: number;
+  /** The log indexes those calls committed at. */
+  indexes: Set<number>;
+  /** Events that arrived while a call was in flight, held until it answers. */
+  held: Array<{ index: number | null; event: SseEventData }>;
+}
+
 export class EventHub {
   private readonly streams = new Map<string, Stream>();
   private readonly connectListeners = new Set<() => void>();
   private readonly onlineListeners = new Set<(online: boolean) => void>();
+  private readonly own = new Map<string, Own>();
   private failing = new Set<string>();
 
   constructor(private readonly client: CalimeroClient) {}
+
+  private ownOf(app: string): Own {
+    let o = this.own.get(app);
+    if (!o) {
+      o = { inFlight: 0, indexes: new Set(), held: [] };
+      this.own.set(app, o);
+    }
+    return o;
+  }
+
+  /**
+   * Marks the events `call` commits as this tab's own (`own`). An event that
+   * arrives before the call answers is held until it does, so it is known
+   * for whose it is.
+   */
+  async track<T extends { index?: number }>(app: string, call: Promise<T>): Promise<T> {
+    const o = this.ownOf(app);
+    o.inFlight += 1;
+    try {
+      const answer = await call;
+      if (typeof answer?.index === 'number') {
+        o.indexes.add(answer.index);
+        if (o.indexes.size > OWN_KEPT) o.indexes.delete(o.indexes.values().next().value as number);
+      }
+      return answer;
+    } finally {
+      o.inFlight -= 1;
+      if (o.inFlight === 0) {
+        const held = o.held;
+        o.held = [];
+        for (const { index, event } of held) this.dispatch(app, index, event);
+      }
+    }
+  }
+
+  private deliver(app: string, index: number | null, event: SseEventData): void {
+    const o = this.own.get(app);
+    if (o && o.inFlight > 0) o.held.push({ index, event });
+    else this.dispatch(app, index, event);
+  }
+
+  private dispatch(app: string, index: number | null, event: SseEventData): void {
+    const stream = this.streams.get(app);
+    if (!stream) return;
+    const own = index !== null && this.own.get(app)?.indexes.has(index);
+    const delivered: SseEventData = own ? { ...event, own: true } : event;
+    for (const h of [...stream.handlers]) {
+      try {
+        h(delivered);
+      } catch (e) {
+        console.warn('[events] handler failed', e);
+      }
+    }
+  }
 
   /** Calls `handler` for every event `app` commits from now on. */
   subscribe(app: string, handler: EventHandler): () => void {
@@ -50,6 +127,8 @@ export class EventHub {
       if (s.handlers.size === 0) {
         s.abort.abort();
         this.streams.delete(app);
+        const o = this.own.get(app);
+        if (o && o.inFlight === 0) this.own.delete(app);
         this.setFailing(app, false);
       }
     };
@@ -96,20 +175,15 @@ export class EventHub {
         this.setFailing(app, false);
         for (const l of this.connectListeners) l();
         for await (const event of events as AsyncGenerator<NodeEvent>) {
-          const at = Number(event.id);
-          if (Number.isFinite(at)) from = at + 1;
-          const delivered: SseEventData = {
+          // `index:seq`: a reopened stream starts after the last index seen,
+          // not again from where this one started.
+          const at = eventIndex(event.id);
+          if (at !== null) from = at + 1;
+          this.deliver(app, at, {
             contextId: app,
             type: 'StateMutation',
             data: { events: [{ kind: event.kind, data: event.data }] },
-          };
-          for (const h of [...stream.handlers]) {
-            try {
-              h(delivered);
-            } catch (e) {
-              console.warn('[events] handler failed', e);
-            }
-          }
+          });
         }
       } catch (e) {
         if (signal.aborted) return;

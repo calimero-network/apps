@@ -16,6 +16,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { Pencil, Check, X, Trash2 } from 'lucide-react';
+import { stayedInDocs } from '@/calimero/consent';
 import { useGroupCapabilities } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -210,6 +211,7 @@ export function NamespaceMemberRow({
       await capsRefetch();
       onAfterRoleChange?.();
     } catch (e: unknown) {
+      if (stayedInDocs(e)) return;
       const err = e instanceof Error ? e : new Error(String(e));
       setUpdateError(err.message);
     } finally {

@@ -31,6 +31,7 @@ import { appPath, readReturnTo } from '@/lib/routes';
 import { nodeBasename } from '@/lib/servedByNode';
 
 import { InvitationPage } from '@/components/workspace/InvitationPage';
+import { ConsentReturn } from '@/components/workspace/ConsentReturn';
 import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
 import { SignInDialog } from '@/components/workspace/SignInDialog';
 import { deferInvite, inviteDeferred, joinedAtSignUpPending, pendingInvite } from '@/hooks/useNamespaceInvitation';
@@ -188,6 +189,7 @@ function AppRoutes() {
             <DriveWorkspaceProvider key={joins}>
               {/* Inside the workspace: a confirmation's body may name members. */}
               <ConfirmProvider>
+                <ConsentReturn />
                 <WorkspacePage />
               </ConfirmProvider>
             </DriveWorkspaceProvider>

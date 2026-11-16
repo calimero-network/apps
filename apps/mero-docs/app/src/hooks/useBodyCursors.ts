@@ -47,7 +47,8 @@ export interface UseBodyCursorsOptions {
   isConfirmed?: (editorId: string) => boolean;
 }
 
-const SETTLE_MS = 150; // publish once a caret stops moving, not per keystroke
+const SETTLE_MS = 400; // publish once a caret stops moving, not per keystroke
+const SETTLE_MAX_MS = 1200; // a caret that keeps moving (steady typing) still publishes this often
 const RETRY_MS = 400; // the node may not hold the text the caret counts yet
 const MAX_SENDS = 10; // ~4s of retries; a selection change starts over
 
@@ -162,9 +163,19 @@ export function useBodyCursors({
         .catch(retry);
     };
     send(0);
+    // Each publish mints two anchors on the node: one per settled move.
+    let movingSince: number | null = null;
     const unsubscribe = editor.onSelectionChange(() => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => send(0), SETTLE_MS);
+      const now = Date.now();
+      movingSince ??= now;
+      timer = setTimeout(
+        () => {
+          movingSince = null;
+          send(0);
+        },
+        Math.max(0, Math.min(SETTLE_MS, movingSince + SETTLE_MAX_MS - now)),
+      );
     });
     return () => {
       if (timer) clearTimeout(timer);

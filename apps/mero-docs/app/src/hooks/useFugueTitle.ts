@@ -21,10 +21,11 @@ import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
 import { useStreamReconnect } from './useStreamReconnect';
+import { visibleInterval } from '@/utils/visibleInterval';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
-const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+export const RECONCILE_MS = 30_000; // an event lost while the node restarted still lands
 const UNDO_GROUP_MS = 500; // writes closer than this undo as one step, as in the body
 
 export interface UseFugueTitleOptions {
@@ -318,7 +319,8 @@ export function useFugueTitle({
 
   const handleEvent = useCallback(
     (event: SubscriptionEventData) => {
-      if (!isContextEvent(event) || !docId) return;
+      // This tab's own write: its answer already rebased the title.
+      if (!isContextEvent(event) || !docId || event.own) return;
       const mine = parseRichEvents(event.data).some(
         (parsed) => parsed.kind === 'TitleChanged' && parsed.doc === docId,
       );
@@ -343,14 +345,14 @@ export function useFugueTitle({
 
   // A node restart drops the event stream, so a peer's title edit arrives on
   // no event; an idle re-read is what closes that window.
+  // Skipped while the tab is hidden: the stream's reconnect re-reads anyway.
   useEffect(() => {
     if (!client || !docId) return;
-    const timer = setInterval(() => {
+    return visibleInterval(() => {
       if (dirtyRef.current || inFlightRef.current) return;
       staleRef.current = true;
       void drain();
     }, RECONCILE_MS);
-    return () => clearInterval(timer);
   }, [client, docId, drain]);
 
   const step = useCallback(

@@ -25,6 +25,7 @@ import {
   useMero,
   useSetDefaultCapabilities,
 } from '@/calimero/react';
+import { stayedInDocs } from '@/calimero/consent';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
@@ -36,6 +37,7 @@ import {
 } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
+import { useFrontendBound } from '@/hooks/useFrontendBound';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { planDefaultsSweep } from '@/lib/roles';
 
@@ -96,6 +98,9 @@ export function MemberDefaultsPanel() {
   const { admin } = useMero();
   const membership = useFolderMembership(rootGroupId);
   const confirm = useConfirm();
+  // On Docs' own frontend each member's permissions are a separate approval
+  // on the node's page, so the sweep across every member is not offered.
+  const bound = useFrontendBound();
   const [applying, setApplying] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -187,6 +192,7 @@ export function MemberDefaultsPanel() {
       });
       await refetch();
     } catch (e: unknown) {
+      if (stayedInDocs(e)) return;
       const err = e instanceof Error ? e : new Error(String(e));
       setSaveError(err.message);
     }
@@ -315,6 +321,7 @@ export function MemberDefaultsPanel() {
         </p>
       )}
 
+      {bound !== true && (
       <div className="border-t border-border/60 px-4 py-3">
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
           <p className="text-xs text-muted-foreground">
@@ -359,6 +366,7 @@ export function MemberDefaultsPanel() {
           </p>
         )}
       </div>
+      )}
 
       <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
         <button

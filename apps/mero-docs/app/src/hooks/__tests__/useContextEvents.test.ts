@@ -116,7 +116,7 @@ describe('useContextEvents', () => {
       useContextEvents(['ctx-a', 'ctx-b'], onChange, { strict: true }),
     );
     fire('ctx-b');
-    expect(onChange).toHaveBeenLastCalledWith('ctx-b');
+    expect(onChange).toHaveBeenLastCalledWith('ctx-b', expect.objectContaining({ contextId: 'ctx-b' }));
   });
 
   it('names no context after a reconnect, since anything may have changed', () => {

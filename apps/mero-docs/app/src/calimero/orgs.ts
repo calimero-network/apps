@@ -23,6 +23,11 @@
 // an invite, deleting or leaving a workspace) is a passkey step-up on 1.0, so
 // those calls prompt for the caller's passkey.
 //
+// On Docs' own frontend the session is bound to Docs, and the node refuses it
+// every organization-wide change (a role, org-wide capabilities, removing
+// someone from the org, leaving or deleting it): those go to the node's
+// consent page first (`askOrgConsent`, `./consent.ts`).
+//
 // Docs has its own **app team** in the org (core#4890), through
 // `@calimero-apps/connect`'s org-app module: a new workspace's team is open,
 // the registry instance uses team access on it, invites name it, and the
@@ -47,13 +52,16 @@ import {
   appInviteTeams,
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
+  isAppOnly,
   leaveApp,
   leaveOrg,
   listAppInfos,
   orgModeOf,
   orgWideAccess,
   removeFromApp,
+  removeFromAppTeam,
   removeFromPrivateTeam,
   sourcePackage,
   type AppOrgView,
@@ -61,6 +69,7 @@ import {
   type LeftApp,
 } from '@calimero-apps/connect';
 import { CAPABILITIES } from './capabilities';
+import { askOrgConsent } from './consent';
 
 export type GroupRoleName = 'Admin' | 'Member' | 'ReadOnly';
 
@@ -458,28 +467,55 @@ export class OrgAdmin {
   }
 
   async deleteNamespace(orgId: string): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'deleteOrg', org: orgId });
     await this.client.orgs.delete({ org: orgId }, { confirm: passkeyConfirm(this.passkey()) });
     this.changed(orgId);
   }
 
   /**
-   * Leaves Docs in `orgId` (`leaveApp`): in an org that keeps its apps apart,
-   * Docs' team only (`lastApp` when it was the account's last app there, for
-   * the caller to offer {@link leaveOrganization}); elsewhere the organization.
+   * How `account` is taken out of Docs in `orgId`: `shared`, an org that keeps
+   * its apps apart (connect's app path); `team`, off Docs' own team, which a
+   * session bound to Docs may do itself; `org`, an org without Docs' team
+   * (made before app teams), out of the organization.
+   */
+  private async exitPath(orgId: string): Promise<'shared' | 'team' | 'org'> {
+    const pkg = sourcePackage(this.source);
+    if (!pkg) return 'org';
+    const view = (await this.org(orgId, true)) as unknown as AppOrgView;
+    if (isAppOnly(view, pkg)) return 'shared';
+    return appTeamIdIn(view, pkg) ? 'team' : 'org';
+  }
+
+  /**
+   * Leaves Docs in `orgId`: in an org that keeps its apps apart, Docs' team
+   * only (`lastApp` when it was the account's last app there, for the caller
+   * to offer {@link leaveOrganization}); where Docs has its own team, off that
+   * team, with the organization offered too; elsewhere the organization.
    */
   async leaveNamespace(orgId: string): Promise<LeftApp> {
-    const left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    const path = await this.exitPath(orgId);
+    let left: LeftApp;
+    if (path === 'shared') left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    else if (path === 'team') {
+      await removeFromAppTeam(this.client, orgId, this.source, this.self, this.passkey);
+      left = { left: 'app', lastApp: true };
+    } else {
+      await askOrgConsent(this.client, { kind: 'leaveOrg', org: orgId });
+      left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    }
     this.changed(orgId);
     return left;
   }
 
   /** Leaves the organization altogether: every app in it. */
   async leaveOrganization(orgId: string): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'leaveOrg', org: orgId });
     await leaveOrg(this.client, orgId, this.passkey);
     this.changed(orgId);
   }
 
   async setDefaultCapabilities(orgId: string, input: { defaultCapabilities: number }): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'setCapabilities', org: orgId, capabilities: input.defaultCapabilities });
     await this.client.orgs.capabilities(
       { org: orgId, capabilities: input.defaultCapabilities },
       { confirm: passkeyConfirm(this.passkey()) },
@@ -601,9 +637,11 @@ export class OrgAdmin {
     if (!team) {
       if (role) {
         const orgRole = role === 'Admin' ? 'admin' : role === 'ReadOnly' ? 'guest' : 'member';
+        await askOrgConsent(this.client, { kind: 'setMemberRole', org, account, role: orgRole });
         await this.client.orgs.setMember({ org, account, role: orgRole }, { confirm: passkeyConfirm(this.passkey()) });
       }
       if (capabilities !== undefined) {
+        await askOrgConsent(this.client, { kind: 'setCapabilities', org, account, capabilities });
         await this.client.orgs.capabilities({ org, capabilities, account }, { confirm: passkeyConfirm(this.passkey()) });
       }
     } else {
@@ -634,15 +672,26 @@ export class OrgAdmin {
   }
 
   /**
-   * Off a folder's team; or, for the workspace, out of Docs (`removeFromApp`):
-   * in an org that keeps its apps apart Docs' team only, never the org (the
-   * caller clears folder rows, `removeFromFolders`); elsewhere the org.
+   * Off a folder's team; or, for the workspace, out of Docs: in an org that
+   * keeps its apps apart Docs' team only (`removeFromApp`), never the org (the
+   * caller clears folder rows, `removeFromFolders`); where Docs has its own
+   * team, off that team; elsewhere the org.
    */
   async removeGroupMembers(groupId: string, input: { members: string[] }): Promise<void> {
     const { org, team } = await this.locate(groupId);
+    const path = team ? null : await this.exitPath(org);
     for (const account of input.members) {
       if (team) await removeFromPrivateTeam(this.client, org, team, account, this.passkey);
-      else await removeFromApp(this.client, org, this.source, account, this.passkey);
+      else if (path === 'team') await removeFromAppTeam(this.client, org, this.source, account, this.passkey);
+      else {
+        if (path === 'org') {
+          await askOrgConsent(
+            this.client,
+            account === this.self ? { kind: 'leaveOrg', org } : { kind: 'removeMember', org, account },
+          );
+        }
+        await removeFromApp(this.client, org, this.source, account, this.passkey);
+      }
     }
     this.changed(org);
   }

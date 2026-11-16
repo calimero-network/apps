@@ -12,6 +12,7 @@
 
 import React, { useState } from 'react';
 import { LogOut, Trash2 } from 'lucide-react';
+import { stayedInDocs } from '@/calimero/consent';
 import { useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -78,11 +79,13 @@ export function WorkspaceExitPanel() {
         }
       }
     } catch (e: unknown) {
+      setBusy(false);
+      // Chose to stay rather than approve on the node's page: nothing changed.
+      if (stayedInDocs(e)) return;
       const err = e instanceof Error ? e : new Error(String(e));
       setError(
         `Couldn't ${action === 'delete' ? 'delete' : 'leave'} the workspace: ${err.message}`,
       );
-      setBusy(false);
       return;
     }
     // Only once the node accepted it: the workspace is gone from this session.

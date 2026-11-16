@@ -77,6 +77,21 @@ function parseVariant(kind: string, value: unknown): RichEvent | null {
     : null;
 }
 
+const BODY_KINDS = new Set(RICH_KINDS.filter((kind) => kind !== 'TitleChanged'));
+
+/**
+ * Whether a delivered payload only edits documents' bodies: a docs list shows
+ * none of it but the edit time, so it need not be re-read per keystroke.
+ */
+export function isBodyEdit(data: unknown): boolean {
+  const events = asRecord(data)?.events;
+  return (
+    Array.isArray(events) &&
+    events.length > 0 &&
+    events.every((e) => BODY_KINDS.has(asRecord(e)?.kind as Exclude<RichKind, 'TitleChanged'>))
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)

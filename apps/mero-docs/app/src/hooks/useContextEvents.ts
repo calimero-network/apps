@@ -99,7 +99,8 @@ export function useContextEvents(
     | null
     | undefined,
   // Names the context that fired; none after a reconnect or a debounced burst.
-  onChange: (contextId?: string) => void,
+  // and, undebounced, the event itself.
+  onChange: (contextId?: string, event?: SubscriptionEventData) => void,
   options?: UseContextEventsOptions,
 ): void {
   // Computing on every render is cheap (≤ a handful of strings) and lets
@@ -139,7 +140,7 @@ export function useContextEvents(
         if (!allowed.includes(event.contextId)) return;
       }
       if (debounceMs <= 0) {
-        onChange(event.contextId);
+        onChange(event.contextId, event);
         return;
       }
       if (timerRef.current) clearTimeout(timerRef.current);

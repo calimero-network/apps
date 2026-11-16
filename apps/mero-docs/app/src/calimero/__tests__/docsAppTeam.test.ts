@@ -121,10 +121,16 @@ describe('Remove and Leave', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone and legacy: Remove is out of the organization, as before', async () => {
+  it('standalone: Remove takes the person off Docs\' team, and leaves them in the org', async () => {
     const { cluster, admin, org } = await workspace({ 'acct-bob': 'member' });
     await admin.removeGroupMembers(org, { members: ['acct-bob'] });
-    expect(cluster.org(org).members['acct-bob']).toBeUndefined();
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
+    expect(cluster.org(org).members['acct-bob']).toBe('member');
+    expect(ids(await admin.listGroupMembers(org))).not.toContain('acct-bob');
+  });
+
+  it('legacy: Remove is out of the organization, as before', async () => {
+    const { cluster, admin } = docs();
     const legacy = cluster.addOrg({ mode: 'legacy', members: { 'acct-bob': 'member' } });
     await admin.removeGroupMembers(legacy, { members: ['acct-bob'] });
     expect(cluster.org(legacy).members['acct-bob']).toBeUndefined();
@@ -149,10 +155,19 @@ describe('Remove and Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBeUndefined();
   });
 
-  it('standalone: Leave is leaving the organization', async () => {
+  it('standalone: Leave is Docs\' team, with the organization offered too', async () => {
     const { cluster, admin, org } = await workspace({ 'acct-ana': 'owner' });
-    expect(await admin.leaveNamespace(org)).toEqual({ left: 'org', lastApp: false });
-    expect(cluster.org(org).members['acct-me']).toBeUndefined();
+    cluster.org(org).members['acct-me'] = 'member';
+    expect(await admin.leaveNamespace(org)).toEqual({ left: 'app', lastApp: true });
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('legacy: Leave is leaving the organization', async () => {
+    const { cluster, admin } = docs();
+    const legacy = cluster.addOrg({ mode: 'legacy', members: { 'acct-ana': 'owner' } });
+    cluster.org(legacy).members[cluster.state.me] = 'member';
+    expect(await admin.leaveNamespace(legacy)).toEqual({ left: 'org', lastApp: false });
+    expect(cluster.org(legacy).members[cluster.state.me]).toBeUndefined();
   });
 });
 
