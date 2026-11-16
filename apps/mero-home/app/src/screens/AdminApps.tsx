@@ -24,7 +24,7 @@ import {
   typedMatches,
   type OrgApp,
   type OrgView,
-} from "../home";
+} from "../homeOrg";
 import { moveApp, moveTargets } from "../move";
 
 export interface AdminAppsProps {

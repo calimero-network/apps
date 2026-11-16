@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loadOrg } from "../home";
+import { loadOrg } from "../homeOrg";
 import { BLOCKS, CHAT, CRM, ORG, fakeOrg, passkey, type FakeOrgOptions } from "../test/fakeOrg";
 import { AdminApps } from "./AdminApps";
 

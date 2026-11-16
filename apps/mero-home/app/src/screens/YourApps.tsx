@@ -1,4 +1,4 @@
-import { audience, isAdmin, openLink, otherApps, yourApps, type OrgApp, type OrgView } from "../home";
+import { audience, isAdmin, openLink, otherApps, yourApps, type OrgApp, type OrgView } from "../homeOrg";
 
 function AppRow({ app, org, mine }: { app: OrgApp; org: string; mine: boolean }) {
   return (

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isLogo, loadOrg, orgProfile, setOrgProfile, transferCandidates, typedMatches } from "../home";
+import { isLogo, loadOrg, orgProfile, setOrgProfile, transferCandidates, typedMatches } from "../homeOrg";
 import { ORG, fakeOrg, passkey, type FakeOrgOptions } from "../test/fakeOrg";
 import { OrgSettings } from "./OrgSettings";
 import { withRoutes } from "@calimero-apps/connect/testing";

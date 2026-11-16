@@ -24,7 +24,7 @@ import {
   type Person,
   type Rosters,
   type Seat,
-} from "../home";
+} from "../homeOrg";
 
 const CELL_TEXT: Record<Cell, string> = {
   all: "Yes (everyone)",

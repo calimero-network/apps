@@ -12,7 +12,7 @@ import {
   typedMatches,
   type OrgView,
   type Person,
-} from "../home";
+} from "../homeOrg";
 import { readLogo as defaultReadLogo } from "../logo";
 
 export interface OrgSettingsProps {

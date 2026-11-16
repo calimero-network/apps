@@ -340,6 +340,8 @@ jobs:
       # live in one module (`packages/connect/src/orgApp.ts`); this fails when
       # an org app calls `createOrg`, `scopeApps`, `invite` or `removeMember`
       # itself. Unconverted apps sit on an exemption list that only shrinks.
+      - name: Assert no two source modules differ only by case
+        run: python3 scripts/check-case-collisions.py
       - name: Assert org apps reach their organization through the shared module
         run: python3 scripts/check-org-app-module.py
       - name: Assert the org-app module check still catches what it claims to
