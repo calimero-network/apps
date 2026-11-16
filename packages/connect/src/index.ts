@@ -128,6 +128,8 @@ export {
   appPeople,
   appTeamIdIn,
   createAppOrg,
+  finishAppOrg,
+  isAppBound,
   isAppOnly,
   leaveApp,
   leaveOrg,

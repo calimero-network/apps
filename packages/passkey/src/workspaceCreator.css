@@ -1,0 +1,23 @@
+.cp-resume-notice {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  z-index: 1000;
+  max-width: 360px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font: 13px/1.4 var(--passkey-font, inherit);
+  color: var(--passkey-ink, var(--glass-ink, light-dark(#0e1222, #eceef5)));
+  background: var(--passkey-secondary-bg, var(--glass-surface-solid, light-dark(#ffffff, #161b2b)));
+  box-shadow: 0 0 0 1px var(--passkey-line, light-dark(rgba(14, 18, 34, 0.14), rgba(255, 255, 255, 0.16))), 0 12px 28px -12px rgba(14, 18, 34, 0.4);
+}
+.cp-resume-notice button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
