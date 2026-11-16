@@ -21,7 +21,8 @@ import { APP_DISPLAY_NAME } from '../config';
 import { useSignedIn } from '../sessionContext';
 import {
   createSpreadsheet,
-  ensureWorkspace,
+  finishWorkspace,
+  publishWorkspaceName,
   listInstances,
   listOrgs,
   mintInvite,
@@ -75,7 +76,10 @@ export interface UseWorkspaceReturn {
   namespacesFailed: boolean;
   retryNamespaces: () => void;
   openWorkspace: (contextId: string) => void;
-  createWorkspace: (name: string) => Promise<void>;
+  /** No workspace holds a spreadsheet yet: the first one needs a workspace the node approves (the shared dialog). */
+  needsWorkspace: boolean;
+  /** Creates a spreadsheet in the workspace, or in `made`, a workspace the dialog just created. */
+  createWorkspace: (name: string, made?: { orgId: string; selfName: string }) => Promise<void>;
   /** The name a freshly-created spreadsheet should be initialised with. */
   pendingInitName: string | null;
   clearPendingInit: () => void;
@@ -174,17 +178,17 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   const creatingRef = useRef(false);
   const createWorkspace = useCallback(
-    async (name: string) => {
-      if (!listed || listError || creatingRef.current) return;
+    async (name: string, made?: { orgId: string; selfName: string }) => {
+      if (!listed || listError || creatingRef.current || (!made && !namespaceId)) return;
       creatingRef.current = true;
       setBusy(true);
       setError(null);
       try {
-        const { orgId, warning } = await ensureWorkspace(
-          client,
-          { existing: namespaceId, name: APP_DISPLAY_NAME, passkey, source },
-          setStatus,
-        );
+        const { orgId, warning } = made
+          ? await finishWorkspace(client, made.orgId, passkey, source, setStatus)
+          : { orgId: namespaceId as string, warning: null };
+        // Best effort: the name gate asks for it on entering if this fails.
+        if (made) await publishWorkspaceName(client, orgId, accountId, made.selfName).catch(() => {});
         const appId = await createSpreadsheet(client, source, orgId, name, passkey, setStatus);
         if (warning) setError(new Error(warning));
         setJoinedNsId(orgId);
@@ -200,7 +204,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         after();
       }
     },
-    [client, source, passkey, after, listed, listError, namespaceId, refresh],
+    [client, source, passkey, after, accountId, listed, listError, namespaceId, refresh],
   );
 
   const loadOtherOrgs = useCallback(async () => {
@@ -299,6 +303,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     activeName,
     ready: contextId !== null,
     loading: (listing && !listed) || busy,
+    needsWorkspace: namespaceId === null,
     canCreate: listed && !listError && !busy,
     status,
     error,

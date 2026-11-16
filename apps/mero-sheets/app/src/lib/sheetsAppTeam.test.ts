@@ -9,11 +9,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppSource } from '@calimero-apps/connect';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
 import {
   createSpreadsheet,
-  ensureWorkspace,
+  finishWorkspace,
   leaveWorkspace,
   leaveWorkspaceOrg,
   mintInvite,
@@ -24,6 +25,15 @@ import {
 const PKG = 'com.calimero.mero-sheets';
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function ensureWorkspace(
+  client: ReturnType<typeof orgCluster>['client'],
+  { name, source }: { existing: null; name: string; passkey: () => PasskeyProvider; source: AppSource },
+) {
+  const { orgId } = await client.orgs.create({ name });
+  return finishWorkspace(client, orgId, passkey, source);
+}
 
 async function workspace(people: Record<string, string> = {}) {
   const cluster = orgCluster();
