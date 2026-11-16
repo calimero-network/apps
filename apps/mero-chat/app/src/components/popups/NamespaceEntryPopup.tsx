@@ -11,7 +11,6 @@ import { isDelegatedSession } from "../../api/meroJsClient";
 import { useSessionKey } from "../../hooks/useSessionKey";
 import type { GroupSummary } from "../../api/groupApi";
 import {
-  getApplicationId,
   getGroupId,
   getGroupMemberIdentity,
   setGroupMemberIdentity,
@@ -23,14 +22,7 @@ import {
   setIdentityDisplayName,
 } from "../../utils/messengerName";
 import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
-import {
-  AppNotInstalledError,
-  installConfiguredApp,
-  resolveInstalledAppId,
-} from "../../utils/installedApps";
-import { useToast } from "../../contexts/ToastContext";
-import { askOnConsentPage, consentRequest, frontendBound } from "../../api/consent";
-import { finishWorkspace } from "../../utils/finishWorkspace";
+import { openCreateWorkspace } from "../../utils/createWorkspaceStore";
 import {
   enterWorkspace,
   forgetJoinedAwaitingName,
@@ -46,10 +38,6 @@ type Step =
   | "enter-name"       // namespace ok, need username
   | "joining"          // submitting username
   | "no-workspace"     // no namespaces: offer create, or say how to join
-  | "create"           // show create workspace form
-  | "creating"         // creating namespace
-  | "not-installed"    // configured app missing on the node: offer install
-  | "installing"       // installing the configured app
   | "error";
 
 // ─── Styled components ────────────────────────────────────────────────────────
@@ -211,22 +199,6 @@ const Spinner = styled.div`
   margin: 0 auto 1rem;
 `;
 
-const BtnSpinner = styled.div`
-  width: 14px;
-  height: 14px;
-  border: 2px solid color-mix(in srgb, var(--glass-accent) 30%, transparent);
-  border-top-color: var(--glass-accent);
-  border-radius: 50%;
-  animation: ${spin} 0.7s linear infinite;
-  flex-shrink: 0;
-`;
-
-const FieldError = styled.p`
-  color: var(--glass-bad-ink);
-  font-size: 0.72rem;
-  margin: 0.3rem 0 0;
-`;
-
 const Row = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -290,16 +262,11 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   // Only the newest load may apply its result: one started for a session that
   // has since changed must not overwrite the list of the one that replaced it.
   const loadGeneration = useRef(0);
-  const { addToast } = useToast();
 
   const [step, setStep] = useState<Step>("loading");
   const [namespaces, setNamespaces] = useState<GroupSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [nameInput, setNameInput] = useState(getMessengerDisplayName() || lastUsedName());
-  const [nsNameInput, setNsNameInput] = useState("");
-  // Your name in the workspace being created: asked with its name, so a new
-  // workspace is never entered (or left half-made) without one.
-  const [selfNameInput, setSelfNameInput] = useState(() => lastUsedName());
   const [error, setError] = useState("");
 
   // Final step: commit the selection and go into the chat (see enterWorkspace).
@@ -467,67 +434,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
   }, [nameInput, selectedId, enterChat]);
 
-  const handleCreate = useCallback(async () => {
-    const trimmedNs = nsNameInput.trim();
-    const selfName = selfNameInput.trim();
-    if (!trimmedNs || !selfName) return;
-
-    const isDuplicate = namespaces.some(
-      (n) => (n.alias ?? "").toLowerCase() === trimmedNs.toLowerCase(),
-    );
-    if (isDuplicate) {
-      setError("A workspace with this name already exists");
-      return;
-    }
-
-    setStep("creating");
-    setError("");
-
-    try {
-      // A session opened on Chat's frontend may not create an organization
-      // (core#4934): the node's consent page does it, with the person's
-      // passkey, and `ConsentReturn` finishes the workspace when it sends
-      // them back.
-      if (await frontendBound()) {
-        const intent = { kind: "createOrg" as const, name: trimmedNs, selfName };
-        if (!(await askOnConsentPage(intent, consentRequest(intent)))) setStep("create");
-        return;
-      }
-
-      const appId = await resolveInstalledAppId(getApplicationId());
-      const createRes = await api.current.createGroup({
-        applicationId: appId,
-        name: trimmedNs,
-      });
-      if (createRes.error || !createRes.data) {
-        throw new Error(createRes.error?.message || "Failed to create namespace");
-      }
-
-      const { groupId, haError } = createRes.data;
-      // An account's founding also asked the cloud to host the workspace, and
-      // it can say no (the account is not linked to a cloud user, no fleet
-      // node could be admitted, …). The workspace exists either way; what is
-      // lost is the ability to invite anyone until the cause is fixed. Say so
-      // now, where the person can act on it, not as a failed Invite later.
-      if (haError) {
-        addToast({
-          title: "Workspace created, but not hosted yet",
-          message: `Nobody can be invited to it until this is fixed: ${haError}`,
-          type: "channel",
-          duration: 12000,
-        });
-      }
-      await finishWorkspace(api.current, groupId, trimmedNs, selfName, addToast);
-    } catch (err) {
-      if (err instanceof AppNotInstalledError) {
-        setStep("not-installed");
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Failed to create namespace");
-      setStep("create");
-    }
-  }, [nsNameInput, selfNameInput, namespaces, addToast]);
-
   // "Connect to an existing organization": an org the account is in that
   // holds no chat yet (one made for another app) becomes a workspace once
   // #general is created in it. Only on the person's choice; its name and
@@ -572,44 +478,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     />
   );
 
-  // Install the configured app, then resume the create the user asked for.
-  const handleInstallApp = useCallback(async () => {
-    setStep("installing");
-    setError("");
-    try {
-      const installedId = await installConfiguredApp();
-      const expectedId = getApplicationId();
-      // The id is a hash over the wasm AND its metadata, so a successful
-      // install can still produce a different app than this build targets.
-      if (installedId !== expectedId) {
-        setError(
-          `Installed ${installedId}, but this build expects ${expectedId}. ` +
-            `The published WASM or its metadata differs from what this build was made against.`,
-        );
-        setStep("error");
-        return;
-      }
-      setStep("create");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to install the application");
-      setStep("error");
-    }
-  }, []);
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const isDuplicateNsName =
-    nsNameInput.trim().length > 0 &&
-    namespaces.some((n) => (n.alias ?? "").toLowerCase() === nsNameInput.trim().toLowerCase());
-
   const selectedNs = namespaces.find((g) => g.groupId === selectedId);
-  const canCreate =
-    step !== "creating" &&
-    nsNameInput.trim().length > 0 &&
-    nsNameInput.trim().length <= 64 &&
-    !isDuplicateNsName &&
-    selfNameInput.trim().length > 0;
-
   return (
     <Overlay>
       <Box>
@@ -629,7 +500,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           </>
         )}
 
-        {/* Creating namespace — handled inline inside the "create" step (spinner on button) */}
 
         {/* Select namespace */}
         {step === "select" && (
@@ -656,7 +526,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Continue
             </Button>
-            <CreateLink onClick={() => { setError(""); setNsNameInput(""); setStep("create"); }}>
+            <CreateLink onClick={() => { setError(""); openCreateWorkspace(); }}>
               + Create new workspace
             </CreateLink>
             {connectExisting}
@@ -728,7 +598,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               type="button"
               variant="primary"
               style={{ width: "100%" }}
-              onClick={() => { setError(""); setStep("create"); }}
+              onClick={() => { setError(""); openCreateWorkspace(); }}
             >
               Create workspace
             </Button>
@@ -738,115 +608,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             </JoinHint>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
-          </>
-        )}
-
-        {/* Create namespace */}
-        {(step === "create" || step === "creating") && (
-          <>
-            <Header>
-              <Title>Create workspace</Title>
-              <Sub>Name your server, and choose how others in it will see you.</Sub>
-            </Header>
-            <Field>
-              <Label>Server name</Label>
-              <div onKeyDown={(e) => {
-                if (e.key === "Enter" && canCreate) void handleCreate();
-              }}>
-                <Input
-                  type="text"
-                  placeholder="e.g. My Team"
-                  value={nsNameInput}
-                  onChange={(e) => { setNsNameInput(e.target.value); setError(""); }}
-                  autoFocus
-                  disabled={step === "creating"}
-                />
-              </div>
-              {nsNameInput.length > 64 && (
-                <FieldError>Name must be 64 characters or fewer ({nsNameInput.length}/64)</FieldError>
-              )}
-              {nsNameInput.length <= 64 && isDuplicateNsName && (
-                <FieldError>A workspace with this name already exists</FieldError>
-              )}
-              {nsNameInput.length <= 64 && !isDuplicateNsName && error && (
-                <FieldError>{error}</FieldError>
-              )}
-            </Field>
-            <Field>
-              <Label>Your name</Label>
-              <div onKeyDown={(e) => { if (e.key === "Enter" && canCreate) void handleCreate(); }}>
-                <Input
-                  type="text"
-                  placeholder="e.g. Alice"
-                  value={selfNameInput}
-                  onChange={(e) => setSelfNameInput(e.target.value)}
-                  disabled={step === "creating"}
-                  maxLength={64}
-                  data-testid="create-self-name"
-                />
-              </div>
-            </Field>
-            <Button
-              type="button"
-              variant="primary"
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
-              onClick={() => void handleCreate()}
-              disabled={!canCreate}
-            >
-              {step === "creating" ? (
-                <>
-                  <BtnSpinner />
-                  Creating…
-                </>
-              ) : "Create"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
-              onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
-              disabled={step === "creating"}
-            >
-              ← Back
-            </Button>
-            <Divider />
-            <LogoutBtn onClick={onLogout} disabled={step === "creating"}>Disconnect node</LogoutBtn>
-          </>
-        )}
-
-        {/* Configured app missing on the node */}
-        {(step === "not-installed" || step === "installing") && (
-          <>
-            <Header>
-              <Title>Chat isn't installed yet</Title>
-            </Header>
-            <Sub>
-              This node doesn't have the chat application installed. Install it
-              to create your workspace.
-            </Sub>
-            <Button
-              type="button"
-              variant="primary"
-              style={{ width: "100%" }}
-              onClick={handleInstallApp}
-              disabled={step === "installing"}
-            >
-              {step === "installing" ? (
-                <>
-                  <BtnSpinner />
-                  Installing…
-                </>
-              ) : "Install"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              style={{ backgroundColor: "var(--glass-surface-solid)", color: "var(--glass-ink)", borderColor: "var(--glass-line-strong)", width: "100%", marginTop: "0.5rem" }}
-              onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
-              disabled={step === "installing"}
-            >
-              ← Back
-            </Button>
           </>
         )}
 

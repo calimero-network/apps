@@ -1,12 +1,9 @@
 /**
- * What "Create workspace" does once its organization exists: name it, give
- * its members Chat's default capabilities, make #general, and enter it.
- *
- * Shared by the picker's own create (`NamespaceEntryPopup`) and by the return
- * from the node's consent page (`ConsentReturn`), where the organization was
- * created on the page for a session opened on Chat's frontend.
+ * What "Create workspace" does once its organization exists: Chat's team and
+ * the members' default capabilities, its name, #general, and entering it.
  */
 import type { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
+import { finishOrg } from "../api/platform";
 import type { ToastNotification } from "../components/common/ToastManager";
 import { setStoredGroupAlias, setGroupMemberIdentity } from "../constants/config";
 import { createChannel, GENERAL_CHANNEL } from "./createChannel";
@@ -19,13 +16,14 @@ type Toast = (toast: Omit<ToastNotification, "id">) => string;
 export async function finishWorkspace(
   api: Pick<
     GroupApiDataSource,
-    "setGroupMetadata" | "setDefaultCapabilities" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
+    "setGroupMetadata" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
   >,
   groupId: string,
   name: string,
   selfName: string,
   addToast: Toast,
 ): Promise<void> {
+  await finishOrg(groupId, DEFAULT_MEMBER_CAPABILITIES);
   setStoredGroupAlias(groupId, name);
   // Before #general, so the channel is made under your name in it.
   setMessengerDisplayName(selfName, groupId);
@@ -34,10 +32,6 @@ export async function finishWorkspace(
   // write it explicitly. The creator is the owner, so this succeeds and gives
   // the workspace a name everyone can see.
   await api.setGroupMetadata(groupId, name).catch(() => {});
-
-  // A session opened on Chat's frontend is refused this (core#4934): the
-  // workspace then keeps the org's defaults until an admin changes them.
-  await api.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
 
   // Every workspace starts with #general: someone who joins from an
   // invitation lands in a channel rather than an empty workspace, and the

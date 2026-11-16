@@ -29,11 +29,6 @@ beforeEach(() => {
 describe("Chat's consent page", () => {
   it("asks the node for what a frontend session may not do, returning to Chat's own root", () => {
     const returnTo = `${window.location.origin}/1.0.0/`;
-    expect(consentRequest({ kind: "createOrg", name: "Acme", selfName: "Ann" })).toEqual({
-      kind: "createOrg",
-      subject: { name: "Acme" },
-      returnTo,
-    });
     expect(consentRequest({ kind: "createInvite", org: "org-1" }, { inviteTeams: ["team-chat"] })).toEqual({
       kind: "createInvite",
       subject: { org: "org-1", role: "member", teams: ["team-chat"] },
@@ -59,7 +54,7 @@ describe("Chat's consent page", () => {
   });
 
   it("keeps what Chat was doing, shows the page's code first, and forgets it when the person stays", async () => {
-    const intent = { kind: "createOrg" as const, name: "Acme", selfName: "Ann" };
+    const intent = { kind: "createInvite" as const, org: "org-1" };
     h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
       expect(consentIntent()).toEqual(intent);
       opts.confirm({ code: "ABC-DEF" });

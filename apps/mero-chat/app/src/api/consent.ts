@@ -8,8 +8,8 @@
  * invite and redeeming one (`403 FORBIDDEN: a session opened on an app's
  * frontend can use that app only; do this on the cluster's own page`). The
  * node's consent page does each of those for the person, with their passkey,
- * on the node's own origin (core#5014): `createOrg`, `createInvite` and
- * `acceptInvite`.
+ * on the node's own origin (core#5014): `createInvite` and `acceptInvite`
+ * (a workspace's `createOrg` is the shared create-workspace dialog's).
  *
  * The page is a full-page redirect (`client.openConsentPage`), so what Chat
  * was doing is kept in `sessionStorage` ({@link ConsentIntent}) and finished
@@ -20,7 +20,6 @@
 import {
   acceptInviteConsent,
   createInviteConsent,
-  createOrgConsent,
   type CalimeroClient,
   type ConsentRequest,
   type ConsentResult,
@@ -31,8 +30,6 @@ import { nodeBasename } from "../utils/servedByNode";
 
 /** What Chat was doing when it sent the person to the consent page. */
 export type ConsentIntent =
-  /** "Create workspace": the workspace's name, and the person's own name in it. */
-  | { kind: "createOrg"; name: string; selfName: string }
   /** "Invite" in the workspace `org`. */
   | { kind: "createInvite"; org: string }
   /** "Join workspace" for the pending invitation (its token stays where `captureInvite` put it). */
@@ -113,8 +110,6 @@ export function consentRequest(
 ): ConsentRequest {
   const returnTo = consentReturnTo();
   switch (intent.kind) {
-    case "createOrg":
-      return createOrgConsent(intent.name, returnTo);
     case "createInvite":
       return createInviteConsent({ org: intent.org, role: "member", teams: terms.inviteTeams ?? [] }, returnTo);
     case "acceptInvite":
