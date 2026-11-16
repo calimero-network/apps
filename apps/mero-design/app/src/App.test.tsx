@@ -52,17 +52,35 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
-    AcceptInviteDialog: (p: { open: boolean; token: string; appName?: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      labels?: object;
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
       p.open
         ? createElement(
             "div",
             { "data-testid": "accept-dialog" },
             createElement("p", { "data-testid": "accept-props" }, `${p.token} ${p.appName}`),
+            createElement("pre", { "data-testid": "accept-extra" }, JSON.stringify({ org: p.org, labels: p.labels })),
+            createElement("button", { "data-testid": "accept-error", onClick: () => p.onError?.(new Error("spent")) }, "error"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "done"),
           )
         : null,
-    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; labels?: { title?: string }; linkBase?: string }) =>
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      appName?: string;
+      labels?: { noun?: string; note?: string; title?: string };
+      linkBase?: string;
+    }) =>
       p.open
         ? createElement(
             "div",
@@ -70,6 +88,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
             createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName })),
             createElement("pre", { "data-testid": "invite-base" }, p.linkBase),
+            createElement("pre", { "data-testid": "invite-labels" }, JSON.stringify({ noun: p.labels?.noun, note: p.labels?.note })),
           )
         : null,
   };
@@ -322,17 +341,29 @@ describe("App", () => {
     });
   });
 
-  it("does not offer Join to someone already in the team, and keeps the link unspent", async () => {
+  it("hands the dialog the team the link names and the team wording, and clears a spent link on error", async () => {
+    remember();
+    hold({ token: "tok-1", org: "org-1" });
+    render(<App deps={deps(fakeClient())} />);
+    expect(JSON.parse((await screen.findByTestId("accept-extra")).textContent ?? "")).toEqual({
+      org: "org-1",
+      labels: { noun: "team", title: "Join this team", body: expect.stringContaining("boards"), join: "Join the team" },
+    });
+    expect(invites.token()).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-error"));
+    expect(invites.token()).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeTruthy();
+  });
+
+  it("opens the team a member continues into, without redeeming", async () => {
     remember();
     hold({ token: "tok-1", org: "org-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(await screen.findByText("You're already in this team")).toBeTruthy();
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId("invitation-continue"));
-    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
   });
 
   it("opens the shared invite dialog from the shell, worded for the team and linking to it", async () => {
@@ -344,6 +375,7 @@ describe("App", () => {
     expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to Design team");
     expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Mero Design" });
     expect(new URL(screen.getByTestId("invite-base").textContent ?? "").searchParams.get("org")).toBe("org-1");
+    expect(JSON.parse(screen.getByTestId("invite-labels").textContent ?? "")).toEqual({ noun: "team" });
   });
 
   it("closing the join dialog drops the invite and joins nothing", async () => {

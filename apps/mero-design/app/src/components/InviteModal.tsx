@@ -1,3 +1,4 @@
+import { appOnlyInviteNote } from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
 import { getApi } from "../api/client";
 import { PRODUCT_NAME } from "../api/rpc";
@@ -11,6 +12,8 @@ interface Props {
   teamName: string;
   /** The app team the invite names; empty for an org-wide invite (`teamInviteTeams`). */
   teams?: string[];
+  /** The invite gives Mero Design only (an org that keeps its apps apart). */
+  appOnly?: boolean;
   open: boolean;
   onClose: () => void;
 }
@@ -20,7 +23,7 @@ interface Props {
  * approves the invite, and the link names the team so someone already in it is
  * not offered Join. Mounted once by the shell, which toggles `open`.
  */
-export default function InviteModal({ teamId, teamName, teams, open, onClose }: Props) {
+export default function InviteModal({ teamId, teamName, teams, appOnly, open, onClose }: Props) {
   const { client, passkey } = getApi();
   return (
     <InviteDialog
@@ -31,7 +34,7 @@ export default function InviteModal({ teamId, teamName, teams, open, onClose }: 
       org={teamId}
       teams={teams}
       appName={PRODUCT_NAME}
-      labels={{ title: `Invite to ${teamName}`, subtitle: SUBTITLE }}
+      labels={{ noun: "team", title: `Invite to ${teamName}`, subtitle: SUBTITLE, note: appOnly ? appOnlyInviteNote(PRODUCT_NAME) : undefined }}
       linkBase={inviteLinkBase(teamId)}
     />
   );

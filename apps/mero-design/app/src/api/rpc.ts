@@ -326,10 +326,10 @@ export async function leaveTeamOrg(org: string): Promise<void> {
  * shared invite dialog: it gives Mero Design only in an org that keeps its apps
  * apart. Org-wide (no team) in a legacy org.
  */
-export async function teamInviteTeams(org: string): Promise<string[]> {
+export async function teamInviteTeams(org: string): Promise<{ teams: string[]; appOnly: boolean }> {
   const { client, source, after } = getApi();
   try {
-    return (await appInviteTeams(client, org, source)).teams;
+    return await appInviteTeams(client, org, source);
   } finally {
     after();
   }

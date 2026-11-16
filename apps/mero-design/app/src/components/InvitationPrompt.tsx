@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { AcceptInvitation, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { useAskedInvite } from "@calimero-apps/passkey";
 import { publishMyName } from "../api/names";
 import { readTeam } from "../api/rpc";
 import { suggestedName } from "../utils/boardName";
 import UsernameModal from "./UsernameModal";
 import { useAuth, useSessionApi } from "../sessionContext";
 import { inviteDestination, invites, takeJoinedAtSignUp } from "../utils/inviteLink";
-import styles from "./InviteModal.module.css";
 
-const CLASS_NAMES = {
-  root: styles.modal,
-  title: styles.title,
-  text: styles.desc,
-  actions: styles.actions,
-  primary: styles.primaryBtn,
+const ACCEPT_LABELS = {
+  noun: "team",
+  title: "Join this team",
+  body: "You were invited to a team in Mero Design. Join it to see its boards.",
+  join: "Join the team",
 };
 
 /**
@@ -23,7 +22,7 @@ const CLASS_NAMES = {
  * taken into storage before the first render, see `captureInvite`).
  *
  * Mounted once, above the routes, because a link can land on any page. It
- * asks rather than joins (the shared `AcceptInvitation`, through the node's
+ * asks rather than joins (the shared `AcceptInviteDialog`, through the node's
  * consent page): joining puts you in someone's organization, and a forwarded
  * link or a refreshing background tab should not do that silently.
  *
@@ -34,10 +33,8 @@ const CLASS_NAMES = {
  * asks for one first, once: every board in the team uses it.
  *
  * Someone already in the team is not offered Join. Redeeming spends the
- * link's single use, so the owner testing their own link used to leave the
- * person it was meant for with "unknown invite". When the link names its team
- * (`&org=`) and the account is in it, the token is dropped and the prompt says
- * so instead; when it cannot tell, it asks as before.
+ * link's single use, so when the link names its team (`&org=`) the dialog
+ * checks it first and says so instead; continuing opens the team.
  */
 export default function InvitationPrompt() {
   const { isAuthenticated: signedIn, accountId } = useAuth();
@@ -89,22 +86,25 @@ export default function InvitationPrompt() {
   if (!invite || !signedIn || !binding) return null;
 
   return createPortal(
-    <AcceptInvitation
+    <AcceptInviteDialog
       key={invite.token}
+      open
       client={binding.client}
+      passkey={binding.passkey()}
       token={invite.token}
-      org={invite.org}
+      org={invite.org ?? undefined}
       appName="Mero Design"
-      joining="this team"
-      drop={() => invites.drop()}
-      after={binding.after}
-      onJoined={({ org }) => void joined(org ?? invite.org ?? null)}
-      onClose={({ member }) => {
+      labels={ACCEPT_LABELS}
+      onError={() => invites.drop()}
+      onClose={() => {
+        invites.drop();
         close();
-        if (member) navigate(inviteDestination(invite, member));
       }}
-      overlay={styles.overlay}
-      classNames={CLASS_NAMES}
+      onJoined={({ org }) => {
+        invites.drop();
+        binding.after();
+        void joined(org ?? invite.org ?? null);
+      }}
     />,
     document.body,
   );

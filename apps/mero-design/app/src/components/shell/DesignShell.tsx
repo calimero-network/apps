@@ -76,7 +76,7 @@ export default function DesignShell() {
   const [railOpen, setRailOpen] = useState(readRailOpen);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteTeams, setInviteTeams] = useState<string[]>([]);
+  const [inviteTeams, setInviteTeams] = useState<{ teams: string[]; appOnly: boolean }>({ teams: [], appOnly: false });
   const [boardSlot, setBoardSlot] = useState<HTMLElement | null>(null);
   const [account, setAccount] = useState("");
   const [deleting, setDeleting] = useState<Project | null>(null);
@@ -331,7 +331,7 @@ export default function DesignShell() {
       </div>
 
       {teamId && (
-        <InviteModal teamId={teamId} teamName={teamName} teams={inviteTeams} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+        <InviteModal teamId={teamId} teamName={teamName} {...inviteTeams} open={inviteOpen} onClose={() => setInviteOpen(false)} />
       )}
       {deleting && (
         <ConfirmDialog

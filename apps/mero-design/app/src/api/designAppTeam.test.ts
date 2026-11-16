@@ -85,14 +85,14 @@ describe("invites and people", () => {
 
   it("standalone: the invite names the team; every member but a guest is listed", async () => {
     const { cluster, org } = await team(people);
-    expect(await teamInviteTeams(org)).toEqual([cluster.teamOf(org, PKG)]);
+    expect(await teamInviteTeams(org)).toEqual({ teams: [cluster.teamOf(org, PKG)], appOnly: false });
     expect((await listGroupMembers(org)).members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
   it("apps kept apart: Mero Design only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect(await teamInviteTeams(org)).toEqual([cluster.teamOf(org, PKG)]);
+    expect(await teamInviteTeams(org)).toEqual({ teams: [cluster.teamOf(org, PKG)], appOnly: true });
     const listed = await listGroupMembers(org);
     expect(listed.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect(listed.appOnly).toBe(true);
@@ -102,7 +102,7 @@ describe("invites and people", () => {
   it("a legacy org: the org-wide invite, every member listed", async () => {
     const cluster = signedIn();
     const org = cluster.addOrg({ mode: "legacy", members: people });
-    expect(await teamInviteTeams(org)).toEqual([]);
+    expect(await teamInviteTeams(org)).toEqual({ teams: [], appOnly: false });
     expect((await listGroupMembers(org)).members).toHaveLength(4);
   });
 });
