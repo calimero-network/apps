@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
 
 vi.mock("./calimero", () => ({
   connectEvents: { emit: vi.fn() },
@@ -7,7 +8,8 @@ vi.mock("./calimero", () => ({
   useCalimero: () => ({ isAuthenticated: true }),
 }));
 
-import { indexOf, streamApp, v1Payload, type AppEvent } from "./events";
+import { MAX_STREAMS, indexOf, streamApp, useAppEvents, v1Payload, type AppEvent } from "./events";
+import { getClient } from "./calimero";
 import { bytesParser } from "../utils/bytesParser";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
@@ -41,5 +43,28 @@ describe("streamApp", () => {
     await streamApp(client as never, "app-1", (e) => seen.push(e), ctrl.signal);
     expect(client.events).toHaveBeenCalledWith("app-1", 42, ctrl.signal);
     expect(seen).toEqual([{ app: "app-1", kind: "MessageSent", data: JSON.stringify({ message_id: "m1" }) }]);
+  });
+});
+
+describe("useAppEvents", () => {
+  it("streams only the first apps and checks the rest for new messages", async () => {
+    const view = vi.fn(async (_app: string) => ({ index: 5, result: "0" }));
+    const events = vi.fn((_app: string, _from: number, signal: AbortSignal) =>
+      (async function* () {
+        await new Promise((resolve) => signal.addEventListener("abort", resolve));
+        yield* [];
+      })(),
+    );
+    const client = withRoutes({ view, events });
+    vi.mocked(getClient).mockReturnValue(client as never);
+    const seen: AppEvent[] = [];
+    const apps = ["open", "b", "c", "d", "e"];
+    const { unmount } = renderHook(() => useAppEvents(apps, (e) => seen.push(e)));
+    await waitFor(() => expect(events).toHaveBeenCalledTimes(MAX_STREAMS));
+    expect(events.mock.calls.map((c) => c[0])).toEqual(["open", "b", "c"]);
+    // The others are read once for their head (no event yet).
+    await waitFor(() => expect(view.mock.calls.map((c) => c[0])).toContain("e"));
+    expect(seen).toEqual([]);
+    unmount();
   });
 });

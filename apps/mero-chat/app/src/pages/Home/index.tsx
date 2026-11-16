@@ -1082,10 +1082,13 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   useEffect(() => {
     if (!app || !allContextIdsKey) return;
 
-    const contextIds = allContextIdsKey.split(",");
+    // The open conversation first: it is always one of the live streams.
+    const open = activeChat?.contextId;
+    const ids = allContextIdsKey.split(",");
+    const contextIds = open && ids.includes(open) ? [open, ...ids.filter((id) => id !== open)] : ids;
     log.info("Home", `Subscribing to ${contextIds.length} contexts`, { totalContexts: contextIds.length });
     webSocket.subscribeToContexts(contextIds);
-  }, [app, allContextIdsKey, webSocket]);
+  }, [app, allContextIdsKey, webSocket, activeChat?.contextId]);
 
   // Refill the hole a dropped event stream leaves behind.
   //
