@@ -11,6 +11,7 @@ import { messageOf } from "./kombat";
 import { rememberName, storedName } from "./useCornerNames";
 
 const CREATE_LABELS = {
+  noun: "arena",
   title: "New arena",
   subtitle: "Name your arena, and choose the name your opponent sees.",
   nameLabel: "Arena name",
