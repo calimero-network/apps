@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import NewTeamDialog from "./NewTeamDialog";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage } from "../../utils/errorMessage";
 import { teamLabel } from "../../utils/teamName";
-import { suggestedName } from "../../utils/boardName";
-import { useAuth } from "../../sessionContext";
 import { initialsOf, tileGradient } from "../../utils/artwork";
 import { IconCheck, IconChevron, IconPlus } from "../HomeIcons";
 import { useShell } from "./shellContext";
@@ -19,11 +18,6 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
   const { showToast } = useToast();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  // Your name in the new team: asked here, once, and used by every board in it.
-  const { accountId } = useAuth();
-  const [myName, setMyName] = useState("");
-  const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,32 +36,16 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      setCreating(false);
-      setNewName("");
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (creating) setMyName(suggestedName(accountId));
-  }, [creating, accountId]);
-
-  async function create() {
-    const name = newName.trim();
-    if (!name || !myName.trim() || busy) return;
-    setBusy(true);
+  async function created(made: { orgId: string; name: string; selfName: string }) {
+    setCreating(false);
     try {
-      const { id, warning } = await teams.createTeam(name, myName);
-      setOpen(false);
-      if (id) openTeam(id);
+      const { id, warning } = await teams.teamCreated(made);
+      openTeam(id);
       // Say it now, not at invite time: an unhosted team's invitations cannot
       // be claimed, and "link this account in the wallet" is the fix.
       if (warning) showToast(warning);
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not create team."));
-    } finally {
-      setBusy(false);
+      showToast(extractErrorMessage(err, "Could not set up the team."));
     }
   }
 
@@ -130,63 +108,22 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
           {!teams.listed && teams.teams.length === 0 && (
             <p className={styles.menuNote}>{teams.error ? "Could not load teams." : "Loading teams…"}</p>
           )}
-          {creating ? (
-            <>
-              <div className={styles.inlineField}>
-                <input
-                  autoFocus
-                  className={styles.inlineInput}
-                  placeholder="New team name…"
-                  aria-label="New team name"
-                  value={newName}
-                  maxLength={64}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void create();
-                    if (e.key === "Escape") { e.stopPropagation(); setCreating(false); }
-                  }}
-                  data-testid="new-team-input"
-                />
-              </div>
-              <div className={styles.inlineField}>
-                <input
-                  className={styles.inlineInput}
-                  placeholder="Your name in this team…"
-                  aria-label="Your name in this team"
-                  value={myName}
-                  maxLength={32}
-                  onChange={(e) => setMyName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void create();
-                    if (e.key === "Escape") { e.stopPropagation(); setCreating(false); }
-                  }}
-                  data-testid="new-team-my-name"
-                />
-                <button
-                  type="button"
-                  className={styles.inlineBtn}
-                  onClick={() => void create()}
-                  disabled={busy || !newName.trim() || !myName.trim()}
-                  data-testid="create-team-btn"
-                >
-                  {busy ? "…" : "Create"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <button
-              type="button"
-              role="menuitem"
-              className={styles.menuItem}
-              onClick={() => setCreating(true)}
-              data-testid="new-team-btn"
-            >
-              <span className={styles.menuIcon} aria-hidden="true"><IconPlus size={15} /></span>
-              <span className={styles.menuItemText}>New team</span>
-            </button>
-          )}
+          <button
+            type="button"
+            role="menuitem"
+            className={styles.menuItem}
+            onClick={() => {
+              setOpen(false);
+              setCreating(true);
+            }}
+            data-testid="new-team-btn"
+          >
+            <span className={styles.menuIcon} aria-hidden="true"><IconPlus size={15} /></span>
+            <span className={styles.menuItemText}>New team</span>
+          </button>
         </div>
       )}
+      <NewTeamDialog open={creating} onClose={() => setCreating(false)} onCreated={created} />
     </div>
   );
 }

@@ -4,13 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindApi } from "./client";
 import {
   createBoard,
-  createTeam,
   getBlob,
   listBoards,
   listGroupMembers,
   listOtherTeams,
   listTeams,
   design,
+  finishTeam,
   i64,
   optI64,
   readElements,
@@ -114,17 +114,16 @@ describe("teams and boards", () => {
     expect(await listTeams()).toEqual([{ namespaceId: "org-9", name: "New", role: "owner" }]);
   });
 
-  it("creates a team whose members may create boards and invite", async () => {
-    const createOrg = vi.fn().mockResolvedValue("org-9");
+  it("sets up a team whose members may create boards and invite", async () => {
     const setCapabilities = vi.fn().mockResolvedValue(undefined);
-    bind(withRoutes({ createOrg, setCapabilities }));
-    expect(await createTeam("Design")).toEqual({ namespaceId: "org-9" });
+    bind(withRoutes({ setCapabilities }));
+    expect(await finishTeam("org-9")).toEqual({ namespaceId: "org-9" });
     expect(setCapabilities).toHaveBeenCalledWith("org-9", expect.any(Number), expect.anything());
   });
 
   it("keeps the team when members could not be given the defaults, and says so", async () => {
-    bind(withRoutes({ createOrg: vi.fn().mockResolvedValue("org-9"), setCapabilities: vi.fn().mockRejectedValue(new Error("no")) }));
-    const made = await createTeam("Design");
+    bind(withRoutes({ setCapabilities: vi.fn().mockRejectedValue(new Error("no")) }));
+    const made = await finishTeam("org-9");
     expect(made.namespaceId).toBe("org-9");
     expect(made.warning).toMatch(/will not be able to create boards/);
   });
