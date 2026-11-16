@@ -28,9 +28,10 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
             createElement(
               "button",
-              { "data-testid": "create-done", onClick: () => void p.onCreated({ orgId: "org-new", name: "Spaceship", selfName: "Ada" }) },
+              { "data-testid": "create-done", disabled: p.fieldsValid === false, onClick: () => void p.onCreated({ orgId: "org-new", name: "Space studio", selfName: "Ada" }) },
               "done",
             ),
+            p.fields,
           )
         : null,
   };
@@ -187,9 +188,14 @@ describe("the studio's front door", () => {
     expect(await screen.findByText(/No scenes yet/)).toBeTruthy();
     fireEvent.click(screen.getByTestId("new-scene"));
     expect(screen.getByTestId("create-title").textContent).toBe("New scene");
+    // Continue waits for the scene's name.
+    expect((screen.getByTestId("create-done") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Spaceship" } });
+    expect((screen.getByTestId("create-done") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByTestId("create-done"));
     expect(await screen.findByText(`studio app-new in org-new as ${ME}`)).toBeTruthy();
     expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.createApp).toHaveBeenCalledWith("Spaceship", "bundle-hash", { org: "org-new" });
     expect(storedName()).toBe("Ada");
     expect(client.createApp).toHaveBeenCalledWith("Spaceship", "bundle-hash", { org: "org-new" });
   });
@@ -200,6 +206,7 @@ describe("the studio's front door", () => {
     renderPage(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("new-scene"));
+    fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Spaceship" } });
     fireEvent.click(screen.getByTestId("create-done"));
     expect(await screen.findByText(/quota exceeded/)).toBeTruthy();
   });
@@ -208,8 +215,9 @@ describe("the studio's front door", () => {
     const client = fakeClient([scene("app-1", "Castle")]);
     renderPage(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.change(await screen.findByLabelText("Name for the scene to add"), { target: { value: "Keep" } });
     fireEvent.click(await screen.findByRole("button", { name: "Add scene" }));
-    await waitFor(() => expect(client.createApp).toHaveBeenCalledWith("Untitled scene", "bundle-hash", { org: "org-1" }));
+    await waitFor(() => expect(client.createApp).toHaveBeenCalledWith("Keep", "bundle-hash", { org: "org-1" }));
     expect(client.createOrg).not.toHaveBeenCalled();
   });
 

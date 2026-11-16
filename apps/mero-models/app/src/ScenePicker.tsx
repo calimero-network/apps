@@ -14,13 +14,23 @@ import { createScene, listScenes, studiosOf } from "./scenes";
 import { IconCube, IconPlus } from "./ui/icons";
 
 const CREATE_LABELS = {
+  noun: "scene",
   title: "New scene",
-  subtitle: "Name your scene, and choose the name collaborators see.",
-  nameLabel: "Scene name",
-  namePlaceholder: "e.g. Spaceship",
+  subtitle: "Name your studio and your first scene, and choose the name collaborators see.",
+  nameLabel: "Studio name",
+  namePlaceholder: "e.g. Space studio",
   selfLabel: "Your name",
   selfPlaceholder: "e.g. Ada",
 };
+
+function SceneNameField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+  return (
+    <div className="mero-cw-field">
+      <label htmlFor="scene-name">Scene name</label>
+      <input id="scene-name" value={value} maxLength={80} placeholder="e.g. Spaceship" onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
 
 /**
  * Choose which scene to open, or make one.
@@ -53,6 +63,7 @@ export function ScenePicker({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [sceneName, setSceneName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -87,10 +98,11 @@ export function ScenePicker({
     }
   }
 
-  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+  async function created({ orgId, selfName }: { orgId: string; selfName: string }) {
     setCreating(false);
     if (selfName.trim()) rememberName(selfName.trim());
-    await create("new", orgId, name);
+    await create("new", orgId, sceneName);
+    setSceneName("");
   }
 
   const studios = studiosOf(scenes ?? []);
@@ -123,6 +135,8 @@ export function ScenePicker({
         onClose={() => setCreating(false)}
         onCreated={(c) => void created(c)}
         labels={CREATE_LABELS}
+        fields={<SceneNameField value={sceneName} onChange={setSceneName} />}
+        fieldsValid={sceneName.trim() !== ""}
       />
       <section className="lobby-hero">
         <div className="lobby-copy">
@@ -195,6 +209,16 @@ export function ScenePicker({
             </p>
             {studios.length === 0 && <p className="empty">Your studios appear here once you have a scene.</p>}
             {studios.length > 0 && (
+              <input
+                className="add-scene-name"
+                placeholder="Scene name"
+                value={sceneName}
+                maxLength={80}
+                onChange={(e) => setSceneName(e.target.value)}
+                aria-label="Name for the scene to add"
+              />
+            )}
+            {studios.length > 0 && (
               <ul className="ns-list">
                 {studios.map((org) => (
                   <li key={org}>
@@ -206,7 +230,7 @@ export function ScenePicker({
                         {askAnOwnerCopy("a scene")}
                       </p>
                     ) : (
-                      <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org, "")}>
+                      <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org, sceneName)}>
                         {busy === org ? "Creating…" : "Add scene"}
                       </button>
                     )}
