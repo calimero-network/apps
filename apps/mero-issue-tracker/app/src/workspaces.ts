@@ -1,11 +1,11 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
-  appInvite,
   appPeople,
+  appTeamIdIn,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -13,7 +13,6 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -35,7 +34,7 @@ import { MeroIssueTrackerClient } from './generated/client';
  * | a workspace: a namespace of the app | an **organization** (`createOrg`) |
  * | a repo: a context in the namespace (`serviceName: issue-tracker`) | an **app instance** in the org (`createApp(name, source, { org })`) |
  * | the repo name: the context's name | the instance's `name` |
- * | a namespace invitation (signed payload in a deflate+base58 link) | an **org invite** token in `?invite=` naming this app's team (`appInvite`, a passkey step-up; `redeemInvite` after sign-in) |
+ * | a namespace invitation (signed payload in a deflate+base58 link) | an **org invite** token in `?invite=` naming this app's team (the shared invite dialog; `redeemInvite` after sign-in) |
  * | member aliases: namespace member metadata | org **member metadata** `{ name }` |
  * | `Admin` / `Member` + capability bits | org roles `owner`/`admin`/`member`/`guest` + the same capability bits |
  *
@@ -169,6 +168,8 @@ export interface OrgMembers {
   people: string[];
   /** The org keeps its apps apart and this one has its team: invites and Remove are this app's only. */
   appOnly: boolean;
+  /** This app's team in the org, which its invites name; `null` where there is none. */
+  appTeam: string | null;
 }
 
 export async function readMembers(
@@ -194,6 +195,7 @@ export async function readMembers(
     defaultCapabilities: typeof o.defaultCapabilities === 'number' ? o.defaultCapabilities : null,
     people: appPeople(view, pkg),
     appOnly: isAppOnly(view, pkg),
+    appTeam: appTeamIdIn(view, pkg),
   };
 }
 
@@ -227,38 +229,20 @@ export function leaveWorkspaceOrg(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming this app's team (`appInvite`): in an org that keeps
- * its apps apart it gives this app only (`appOnly`). Org-wide in a legacy org.
- */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/**
- * The link that opens this frontend with `token` to redeem, and the page it
- * was made on (its route, relative to the router's basename). It also names
- * `org`: the token does not say which org it is for until it is redeemed, and
- * redeeming spends it, so the link carries the org for the app to tell an
- * existing member "you are already in" without spending a use.
+ * The page an invite link opens: this frontend's root, naming the page it was
+ * made on (its route, relative to the router's basename) and `org`. The token
+ * does not say which org it is for until it is redeemed, and redeeming spends
+ * it, so the link carries the org for the app to tell an existing member "you
+ * are already in" without spending a use. The invite dialog adds the token.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
-  org?: string,
-  location: Pick<Location, 'href'> = window.location,
-): string {
+export function inviteLinkBase(org: string, location: Pick<Location, 'href'> = window.location): string {
   const url = new URL(location.href);
   const root = nodeBasename(url, '/');
   const route = url.pathname.startsWith(root) ? `/${url.pathname.slice(root.length)}` : url.pathname;
-  return sharedInviteLink(token, { org, route, root, origin: url.origin });
+  return sharedInviteLinkBase({ org, route, root, origin: url.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), captured in `index.tsx` before React mounts. */

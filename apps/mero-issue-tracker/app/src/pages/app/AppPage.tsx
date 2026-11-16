@@ -8,19 +8,20 @@ import React, {
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
-import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
 import { lastUsedName } from "@calimero-apps/names";
 import { reviewRelease, useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useIssues } from "../../hooks/useItems";
 import { useSignedIn } from "../../sessionContext";
-import { APP_PACKAGE } from "../../config";
+import { APP_PACKAGE, PRODUCT_NAME } from "../../config";
+import { inviteLinkBase } from "../../workspaces";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
 import NewIssueModal from "../../components/NewIssueModal";
-import InviteModal from "../../components/InviteModal";
 import AddRepoDialog from "../../components/AddRepoDialog";
 import NsEmptyState from "../../components/NsEmptyState";
 import AliasGate from "../../components/AliasGate";
@@ -50,6 +51,8 @@ const CREATE_LABELS = {
   selfLabel: "Your name in this workspace",
   selfPlaceholder: "e.g. ronit",
 };
+
+const INVITE_LABELS = { title: "Invite to workspace" };
 
 export default function AppPage(): React.ReactElement | null {
   const { client, after, source, sourcePending, passkey } = useSignedIn();
@@ -251,6 +254,24 @@ export default function AppPage(): React.ReactElement | null {
         labels={CREATE_LABELS}
       />
 
+      {ws.activeNs && (
+        <InviteDialog
+          client={client}
+          passkey={passkey()}
+          org={ws.activeNs}
+          teams={ws.inviteTeams}
+          appName={PRODUCT_NAME}
+          inviterName={(selfMember && aliases.resolve(selfMember)) || undefined}
+          labels={{
+            ...INVITE_LABELS,
+            ...(ws.roles.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+          }}
+          linkBase={inviteLinkBase(ws.activeNs)}
+          open={showInvite && ws.membersLoaded}
+          onClose={() => setShowInvite(false)}
+        />
+      )}
+
       {showAddRepo && (
         <AddRepoDialog
           onAdd={ws.addRepo}
@@ -351,12 +372,6 @@ export default function AppPage(): React.ReactElement | null {
           repoName={activeRepoName}
           onCreate={createIssue}
           onClose={() => setShowNew(false)}
-        />
-      )}
-      {showInvite && (
-        <InviteModal
-          onInvite={ws.invite}
-          onClose={() => setShowInvite(false)}
         />
       )}
     </Shell>
