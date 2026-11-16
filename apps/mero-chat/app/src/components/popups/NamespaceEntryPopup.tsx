@@ -22,7 +22,7 @@ import {
   setIdentityDisplayName,
 } from "../../utils/messengerName";
 import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
-import { openCreateWorkspace } from "../../utils/createWorkspaceStore";
+import { openCreateWorkspace, useCreateWorkspaceOpen } from "../../utils/createWorkspaceStore";
 import {
   enterWorkspace,
   forgetJoinedAwaitingName,
@@ -259,6 +259,7 @@ interface Props {
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
   const sessionKey = useSessionKey();
+  const creating = useCreateWorkspaceOpen();
   // Only the newest load may apply its result: one started for a session that
   // has since changed must not overwrite the list of the one that replaced it.
   const loadGeneration = useRef(0);
@@ -481,6 +482,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const selectedNs = namespaces.find((g) => g.groupId === selectedId);
+  // The create dialog replaces the picker while it is open.
+  if (creating) return null;
   return (
     <Overlay>
       <Box>

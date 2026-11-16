@@ -17,9 +17,13 @@ const h = vi.hoisted(() => ({
   enterWorkspace: vi.fn(),
   sessionKey: "account:me" as string | null,
   openCreateWorkspace: vi.fn(),
+  createOpen: false,
 }));
 
-vi.mock("../../utils/createWorkspaceStore", () => ({ openCreateWorkspace: h.openCreateWorkspace }));
+vi.mock("../../utils/createWorkspaceStore", () => ({
+  openCreateWorkspace: h.openCreateWorkspace,
+  useCreateWorkspaceOpen: () => h.createOpen,
+}));
 
 vi.mock("../../utils/createChannel", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -80,6 +84,7 @@ beforeEach(() => {
   localStorage.clear();
   h.sessionKey = "account:me";
   h.openCreateWorkspace.mockReset();
+  h.createOpen = false;
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -155,6 +160,18 @@ describe("NamespaceEntryPopup", () => {
     expect(
       screen.queryByText("Join existing workspace"),
     ).not.toBeInTheDocument();
+  });
+
+  it("steps aside while the create dialog is open, and is back when it closes", async () => {
+    h.listGroups.mockResolvedValue({ data: [], error: null });
+    const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    h.createOpen = true;
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(screen.queryByText("Welcome to MeroChat")).toBeNull();
+    h.createOpen = false;
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
   });
 
   it("opens the shared create dialog from the empty state and from the list", async () => {

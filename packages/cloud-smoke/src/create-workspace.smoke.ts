@@ -50,6 +50,8 @@ interface App {
   openCreate: (page: Page) => Promise<void>;
   /** Visible once the new workspace is open. */
   opened: (page: Page, workspace: string) => ReturnType<Page["locator"]>;
+  /** Waited for before the "workspace open" screenshot, so it shows the app as a person sees it. */
+  settled?: (page: Page) => Promise<void>;
   /** The package the app itself runs, when it differs from the origin's (a stand-in build). */
   standIn?: string;
 }
@@ -73,6 +75,11 @@ const APPS: App[] = [
     signedIn: (p) => p.getByText("Welcome to MeroChat"),
     openCreate: (p) => p.getByRole("button", { name: "Create workspace" }).click(),
     opened: (p) => p.getByRole("navigation", { name: "Main navigation" }),
+    settled: async (p) => {
+      await expect(p.getByText("general", { exact: true }).first(), "#general was not made").toBeVisible({ timeout: 60_000 });
+      await expect(p.getByAltText("Mero Chat Application Logo")).toBeVisible();
+      await p.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    },
   },
   {
     name: "mero-issue-tracker",
@@ -227,12 +234,12 @@ for (const app of APPS.filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" &&
     await test.step("the pop-up closed and the new workspace is open", async () => {
       await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 120_000 });
       await expect(app.opened(page, workspace)).toBeVisible({ timeout: 120_000 });
+      await app.settled?.(page);
       await shot("workspace-open");
     });
 
     if (app.name === "mero-chat") {
-      await test.step("#general exists and the shield sits in the header", async () => {
-        await expect(page.getByText("general", { exact: true }).first(), "#general was not made").toBeVisible({ timeout: 60_000 });
+      await test.step("one shield, in the header", async () => {
         const header = page.getByRole("navigation", { name: "Main navigation" });
         await expect(header.getByRole("button", { name: /node/i }).first()).toBeVisible();
         await expect(page.locator(".cp-shield"), "one shield, in the header").toHaveCount(1);
