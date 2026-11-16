@@ -109,8 +109,10 @@ function views(method: string): unknown {
   }
 }
 
-function fakeClient(apps: AppInfo[] = []) {
+/** `apps`: the lobbies listed; `registered`: the lobbies this account is on the roster of already. */
+function fakeClient(apps: AppInfo[] = [], registered: string[] = []) {
   let session: CalimeroSession | undefined;
+  const onRoster = new Set(registered);
   return {
     get session() {
       return session;
@@ -140,12 +142,21 @@ function fakeClient(apps: AppInfo[] = []) {
       memberMetadata: { 'acct-bob': { name: 'Bob' } },
     })),
     setMemberMetadata: vi.fn(async () => undefined),
-    call: vi.fn(async (_app: string, method: string, _args?: unknown) => ({
-      index: 2,
-      result: (method === 'createMatch' ? 'acct-alice-1-ab' : method === 'registerPlayer' ? 'acct-alice' : null) as unknown,
-      events: [],
+    call: vi.fn(async (app: string, method: string, _args?: unknown) => {
+      if (method === 'registerPlayer') onRoster.add(app);
+      return {
+        index: 2,
+        result: (method === 'createMatch' ? 'acct-alice-1-ab' : method === 'registerPlayer' ? 'acct-alice' : null) as unknown,
+        events: [],
+      };
+    }),
+    view: vi.fn(async (app: string, method: string) => ({
+      index: 1,
+      result:
+        method === 'getPlayers'
+          ? (views(method) as { player: string }[]).filter((p) => p.player !== 'acct-alice' || onRoster.has(app))
+          : views(method),
     })),
-    view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: views(method) })),
     events: vi.fn(async function* () {}),
     me: vi.fn(async () => ({ orgs: [{ orgId: 'org-1', name: 'Harbour', role: 'owner' }] })),
     redeemInvite: vi.fn(async () => ({})),
@@ -222,6 +233,17 @@ describe('App', () => {
     fireEvent.click(screen.getByTestId('create-done'));
     expect(await screen.findByText('quota exceeded')).toBeTruthy();
     expect(screen.queryByText('Lobby created')).toBeNull();
+  });
+
+  it('does not register again in a lobby whose roster has this account', async () => {
+    signedIn();
+    at('/lobby?id=app-1');
+    const client = fakeClient([LOBBY], ['app-1']);
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByText('Bob')).toBeVisible();
+    await waitFor(() => expect(client.view).toHaveBeenCalledWith('app-1', 'getPlayers', expect.anything()));
+    expect(client.call).not.toHaveBeenCalledWith('app-1', 'registerPlayer', expect.anything());
   });
 
   it('opens a lobby: registers, lists the org with names, challenges, and deploys a fleet', async () => {

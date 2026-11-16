@@ -48,8 +48,9 @@ export interface UseBattleshipsLobbyReturn {
   /** v1 listed TEE nodes admitted to the namespace; an org has none. */
   teeMembers: LobbyMember[];
   refetchMembers: () => Promise<void>;
-  refetchPlayerKeys: () => Promise<void>;
-  refetchPlayerMap: () => Promise<void>;
+  /** The players on the roster, or null when it could not be read. */
+  refetchPlayerKeys: () => Promise<string[] | null>;
+  refetchPlayerMap: () => Promise<string[] | null>;
   /** The signed-in account. */
   selfIdentity: string | null;
   membersLoading: boolean;
@@ -230,20 +231,23 @@ export function useBattleshipsLobby({
 
   // ── Players: the accounts that have opened the lobby ────────────────────────
   const [playerKeys, setPlayerKeys] = useState<string[]>([]);
-  const refetchPlayerKeys = useCallback(async () => {
+  const refetchPlayerKeys = useCallback(async (): Promise<string[] | null> => {
     if (!api) {
       setPlayerKeys([]);
-      return;
+      return null;
     }
     try {
-      setPlayerKeys((await api.contract.getPlayers()).map((p) => p.player));
+      const keys = (await api.contract.getPlayers()).map((p) => p.player);
+      setPlayerKeys(keys);
+      return keys;
     } catch {
       // The next poll retries.
+      return null;
     }
   }, [api]);
 
-  // Register on every open: idempotent, and what puts this account on the
-  // roster others challenge from.
+  // On the roster others challenge from: read it once, and register only when
+  // this account is not on it yet.
   const [lobbyJoined, setLobbyJoined] = useState(false);
   useEffect(() => {
     setLobbyJoined(false);
@@ -251,19 +255,23 @@ export function useBattleshipsLobby({
     if (!api) return;
     let live = true;
     (async () => {
-      try {
-        await api.contract.registerPlayer();
-      } catch {
-        // A guest or a lobby still landing: the roster read below still runs.
-      }
+      const keys = await refetchPlayerKeys();
       if (!live) return;
-      setLobbyJoined(true);
-      await refetchPlayerKeys();
+      if (!accountId || !keys?.includes(accountId)) {
+        try {
+          await api.contract.registerPlayer();
+        } catch {
+          // A guest or a lobby still landing: the roster read below still runs.
+        }
+        if (!live) return;
+        await refetchPlayerKeys();
+      }
+      if (live) setLobbyJoined(true);
     })();
     return () => {
       live = false;
     };
-  }, [api, refetchPlayerKeys]);
+  }, [api, accountId, refetchPlayerKeys]);
 
   const playerByAccount = useMemo(
     () => Object.fromEntries(playerKeys.map((k) => [k, k])),
