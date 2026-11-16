@@ -98,6 +98,13 @@ const channel = (page: Page) => page.getByTestId("channel-item").filter({ hasTex
 
 test.describe.configure({ mode: "serial" });
 
+// Not runnable on merod local yet: its passkeys are for the rp-id `localhost`,
+// and Chromium refuses that rp-id on Chat's served origin, `<label>.localhost`
+// ("not a registrable domain suffix of, nor equal to the current domain"), so
+// the sign-in in step 1 never completes. Runs again once merod local serves
+// apps under an rp-id their origins are a subdomain of.
+test.fixme(true, "merod local's rp-id `localhost` is refused on the served origin `<label>.localhost`");
+
 let ann: Person;
 let bob: Person;
 let annBrowser: Browsing;
