@@ -7,6 +7,8 @@ import type { CursorState } from "../types";
 export const HEARTBEAT_MS = 4_000;
 /** At most one pointer update per this long. */
 export const CURSOR_THROTTLE_MS = 2_500;
+/** A pointer that has not moved for this long is taken back, and no longer sent. */
+export const IDLE_MS = 10_000;
 const RETRY_MS = 3_000;
 
 /** What each device publishes: where its pointer is on the board. */
@@ -49,15 +51,19 @@ const hidden = () => typeof document !== "undefined" && document.visibilityState
  * Live pointers on a board, through the node's presence channel: ephemeral,
  * never part of the board's state. `move` is throttled; the pointer is sent
  * again every {@link HEARTBEAT_MS} while the tab is visible, and taken back
- * when the board closes.
+ * when the pointer leaves the board, stands still for {@link IDLE_MS}, or the
+ * board closes.
  */
 export function usePresenceCursors(app: string | null): {
   cursors: CursorState[];
   move: (x: number, y: number) => void;
+  /** The pointer left the board: take it back, and stop sending it. */
+  leave: () => void;
 } {
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const current = useRef<CursorSlice | null>(null);
   const seq = useRef(0);
+  const lastMove = useRef(0);
   const throttle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const publish = useCallback(
@@ -76,6 +82,7 @@ export function usePresenceCursors(app: string | null): {
   const move = useCallback(
     (x: number, y: number) => {
       current.current = { x, y };
+      lastMove.current = Date.now();
       if (throttle.current) return;
       throttle.current = setTimeout(() => {
         throttle.current = null;
@@ -85,11 +92,20 @@ export function usePresenceCursors(app: string | null): {
     [publish],
   );
 
-  // Heartbeat while a pointer is set and the tab is seen; retract on close.
+  const leave = useCallback(() => {
+    if (throttle.current) clearTimeout(throttle.current);
+    throttle.current = null;
+    if (current.current) publish(null);
+    current.current = null;
+  }, [publish]);
+
+  // Heartbeat while a pointer is set and seen; retract once it stands still, and on close.
   useEffect(() => {
     if (!app) return undefined;
     const timer = setInterval(() => {
-      if (current.current && !hidden()) publish(current.current);
+      if (!current.current || hidden()) return;
+      if (Date.now() - lastMove.current > IDLE_MS) leave();
+      else publish(current.current);
     }, HEARTBEAT_MS);
     return () => {
       clearInterval(timer);
@@ -98,7 +114,7 @@ export function usePresenceCursors(app: string | null): {
       if (current.current) publish(null);
       current.current = null;
     };
-  }, [app, publish]);
+  }, [app, publish, leave]);
 
   // Everyone else's pointers.
   useEffect(() => {
@@ -132,5 +148,5 @@ export function usePresenceCursors(app: string | null): {
     return () => ctrl.abort();
   }, [app]);
 
-  return { cursors, move };
+  return { cursors, move, leave };
 }

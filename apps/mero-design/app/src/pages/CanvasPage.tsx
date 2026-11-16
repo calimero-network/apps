@@ -75,7 +75,7 @@ export default function CanvasPage() {
   // Collaboration state
   const [comments, setComments] = useState<CanvasComment[]>([]);
   // Live pointers: the node's presence channel, never the board's state.
-  const { cursors, move: moveCursor } = usePresenceCursors(projectId ?? null);
+  const { cursors, move: moveCursor, leave: leaveCursor } = usePresenceCursors(projectId ?? null);
   const [members, setMembers] = useState<Member[]>([]);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [nameSuggestion, setNameSuggestion] = useState("");
@@ -639,7 +639,7 @@ export default function CanvasPage() {
         boardHasContent={elements.length > 0}
       />
       <div className={styles.workspace}>
-        <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>
+        <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove} onMouseLeave={leaveCursor}>
           <FabricCanvas
             ref={canvasRef}
             contextId={projectId ?? ""}
