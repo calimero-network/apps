@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
+import { type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import { createElement, useState } from "react";
 import {
   SessionStore,
@@ -11,7 +11,7 @@ import {
   type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StudioPage } from "./StudioPage";
 
@@ -34,7 +34,22 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             p.fields,
           )
         : null,
+    AcceptInviteDialog: (p: Parameters<typeof actual.AcceptInviteDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog", "data-token": p.token },
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
+          )
+        : null,
   };
+});
+
+// The org the mocked accept dialog reports having joined.
+let JOINED_ORG = "org-1";
+beforeEach(() => {
+  JOINED_ORG = "org-1";
 });
 import { storedName } from "./editor/hooks";
 import { useScene } from "./scene";
@@ -245,37 +260,34 @@ describe("the studio's front door", () => {
     const invites = pendingIn(storage, { token: "tok-9", org: "org-1" });
     renderPage(client, storage, invites);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in the studio");
+    await waitFor(() => expect(invites.token()).toBeNull());
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
+  it("closing the accept dialog joins nothing and forgets the invite", async () => {
     const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     const storage = new Memory();
-    const invites = pendingIn(storage, { token: "tok-used" });
+    const invites = pendingIn(storage, { token: "tok-9" });
     renderPage(client, storage, invites);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect(
-      await screen.findByText(
-        "This invite was already used or has expired. Ask the person who invited you for a new link.",
-      ),
-    ).toBeTruthy();
-    expect(invites.token()).toBeNull();
+    fireEvent.click(await screen.findByTestId("accept-close"));
+    await waitFor(() => expect(invites.token()).toBeNull());
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 
-  it("asks to join right after signing in from the invitation page, and redeems only on Join", async () => {
+  it("asks to join right after signing in from the invitation page, and joins only on Join", async () => {
     const client = fakeClient();
     const storage = new Memory();
     const invites = pendingIn(storage, { token: "tok-9" });
     renderPage(client, storage, invites);
     expect(await screen.findByText("You're invited")).toBeTruthy();
     fireEvent.click(screen.getByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("accept-dialog")).dataset.token).toBe("tok-9");
+    expect(invites.token()).toBe("tok-9");
+    fireEvent.click(screen.getByTestId("accept-done"));
     expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
-    expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(invites.token()).toBeNull();
   });
 
@@ -304,27 +316,25 @@ describe("the studio's front door", () => {
 
     it("joining opens the invited org's scene, not the picker or the one open before", async () => {
       const client = fakeClient([...TWO_ORGS]);
-      client.redeemInvite.mockResolvedValue({ org: "org-2" });
+      JOINED_ORG = "org-2";
       const storage = new Memory();
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9" });
       renderPage(client, storage, invites);
-      fireEvent.click(await screen.findByTestId("invitation-join"));
+      fireEvent.click(await screen.findByTestId("accept-done"));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
-      expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
       expect(invites.token()).toBeNull();
     });
 
-    it("a member of the invited org lands in its scene on Continue, without spending the invite", async () => {
+    it("a member of the invited org lands in its scene, without spending the invite", async () => {
       const client = fakeClient([...TWO_ORGS]);
       Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-2" }] })) });
       const storage = new Memory();
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
       renderPage(client, storage, invites);
-      await screen.findByTestId("invitation-outcome");
-      fireEvent.click(screen.getByTestId("invitation-continue"));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
+      expect(screen.queryByTestId("accept-dialog")).toBeNull();
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
     });
@@ -346,39 +356,23 @@ describe("the studio's front door", () => {
 
     it("an org with no scene this member may add says to ask an owner", async () => {
       const client = fakeClient([]);
-      client.redeemInvite.mockResolvedValue({ org: "org-2" });
+      JOINED_ORG = "org-2";
       Object.assign(client, { getOrg: vi.fn(async () => ({ members: { "acct-alice": "member" } })) });
       const storage = new Memory();
       signedIn(storage, false);
       const invites = pendingIn(storage, { token: "tok-9" });
       renderPage(client, storage, invites);
-      fireEvent.click(await screen.findByTestId("invitation-join"));
+      fireEvent.click(await screen.findByTestId("accept-done"));
       await screen.findByText(/Only an owner or admin of this organization can add a scene here/);
-    });
-
-    it.each([
-      [401, "UNAUTHORIZED", "session expired"],
-      [429, "RATE_LIMITED", "too many requests"],
-    ])("keeps the invite when the redemption fails with %i", async (status, code, message) => {
-      const client = fakeClient([...TWO_ORGS]);
-      client.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message));
-      const storage = new Memory();
-      signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-9" });
-      renderPage(client, storage, invites);
-      fireEvent.click(await screen.findByTestId("invitation-join"));
-      await screen.findByText(/Your invite is kept/);
-      expect(invites.token()).toBe("tok-9");
-      expect(screen.getByTestId("invitation-join")).toBeTruthy();
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {
       const client = fakeClient([...TWO_ORGS]);
       const storage = new Memory();
-      signedIn(storage);
+      signedIn(storage, false);
       const invites = pendingIn(storage, { token: "tok-9" });
       renderPage(client, storage, invites);
-      await screen.findByTestId("invitation-join");
+      await screen.findByTestId("accept-dialog");
       fireEvent.click(screen.getByText("Log out"));
       await screen.findByTestId("signin-passkey");
       expect(invites.token()).toBeNull();

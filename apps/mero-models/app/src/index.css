@@ -452,25 +452,6 @@ select:focus {
   min-width: 0;
 }
 
-.link-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 8px 0;
-}
-
-.invite-link {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--field);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 6px 8px;
-}
-
 @media (max-width: 820px) {
   .lobby-grid,
   .lobby-hero {

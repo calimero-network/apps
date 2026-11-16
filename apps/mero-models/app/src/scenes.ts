@@ -1,7 +1,8 @@
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appTarget,
   createInviteStore,
+  INVITE_PARAMS,
   listAppInfos,
   targetKey,
   type AppSource,
@@ -48,17 +49,6 @@ export async function createScene(
   return { appId, name: sceneName, org };
 }
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /**
  * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`):
  * captured in `main.tsx` before React mounts, then bound to the cluster, held
@@ -74,13 +64,16 @@ export const invites: InviteStore = createInviteStore(APP);
 export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
 
 /**
- * Where a minted invite link opens: the router's basename, the served
- * `/{version}/`. `inviteLink` defaults to the origin's root, which a cluster
- * redirects to the newest release only with core's served-redirect fix (it
- * keeps the query); until every cluster runs it, the link stays pinned here.
- * The landing page sends an invited visitor on into the studio.
+ * The page an invite link opens: the router's basename (the served
+ * `/{version}/`), naming `org` so a member is told so instead of spending the
+ * link. The shared dialog adds the token. Pinned here until every cluster keeps
+ * the query on its root redirect (core's served-redirect fix).
  */
-export const inviteRoot = basename;
+export function inviteBase(org: string): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  return url.toString();
+}
 
 /** The keys this app kept its pending invite under before the shared store. */
 const LEGACY_INVITE = [`${APP}:pending-invite`, `${APP}:pending-invite-org`] as const;
