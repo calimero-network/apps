@@ -6,7 +6,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import App from './App';
 import { dropInvite, pendingInvite } from './lib/invites';
 
-import { DETAILS, ME, deps, fakeClient, hold, remember } from './test/fixtures';
+import { SessionStore, resolveTarget } from '@calimero-apps/connect';
+
+import { APP, type SessionDeps } from './session';
+import { DETAILS, DEV_ENV, ME, SESSION, deps, fakeClient, hold, remember } from './test/fixtures';
 
 // The shared dialog is mero-react's to test: here only what the app hands it and does after.
 vi.mock('@calimero-network/mero-react', async (importOriginal) => {
@@ -32,6 +35,29 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
               { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Fresh', selfName: 'Alice' }) },
               'done',
             ),
+          )
+        : null,
+    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; linkBase?: string; labels?: { noun?: string; title?: string; note?: string }; onClose: () => void }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'invite-dialog' },
+            createElement('h2', { 'data-testid': 'invite-title' }, p.labels?.title),
+            createElement('p', { 'data-testid': 'invite-labels' }, JSON.stringify({ noun: p.labels?.noun, note: p.labels?.note })),
+            createElement('pre', { 'data-testid': 'invite-props' }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName, linkBase: p.linkBase })),
+            createElement('button', { 'data-testid': 'invite-close', onClick: p.onClose }, 'close'),
+          )
+        : null,
+    AcceptInviteDialog: (p: { open: boolean; token: string; org?: string; appName?: string; labels?: { noun?: string; body?: string }; onClose: () => void; onError?: (e: unknown) => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'accept-dialog' },
+            createElement('pre', { 'data-testid': 'accept-props' }, JSON.stringify({ token: p.token, org: p.org, appName: p.appName, noun: p.labels?.noun, body: p.labels?.body })),
+            createElement('button', { 'data-testid': 'accept-done', onClick: () => p.onJoined({ org: 'org-1' }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
+            createElement('button', { 'data-testid': 'accept-spent', onClick: () => p.onError?.(new CalimeroError(400, 'REJECTED', 'unknown invite')) }, 'spent'),
+            createElement('button', { 'data-testid': 'accept-offline', onClick: () => p.onError?.(new CalimeroError(503, 'UNAVAILABLE', 'node unreachable')) }, 'offline'),
           )
         : null,
   };
@@ -90,6 +116,52 @@ describe('App', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-new'));
     expect(client.setMemberMetadata).toHaveBeenCalledWith('org-new', ME, { name: 'Alice' });
     expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
+  describe('inviting to a workspace', () => {
+    const PACKAGE_ENV = { DEV: true, VITE_CALIMERO_PACKAGE: 'com.calimero.mero-sign' };
+
+    async function openInvite(client: ReturnType<typeof fakeClient>, env: SessionDeps['env']) {
+      new SessionStore(APP, resolveTarget(env), localStorage).save(SESSION);
+      window.history.replaceState(null, '', '/workspaces');
+      render(<App deps={{ ...deps(client), env }} />);
+      fireEvent.click(await screen.findByLabelText('More options'));
+      fireEvent.click(screen.getByTestId('invite-to-workspace'));
+    }
+    const props = async () => JSON.parse((await screen.findByTestId('invite-props')).textContent ?? 'null');
+
+    it('opens the shared dialog for the workspace, with the app team of a package app', async () => {
+      const client = fakeClient();
+      await openInvite(client, PACKAGE_ENV);
+      expect(await props()).toEqual({ org: 'org-1', teams: ['team-sign'], appName: 'Mero Sign', linkBase: `${window.location.origin}/?org=org-1` });
+      expect(screen.getByTestId('invite-title').textContent).toBe('Invite to Acme Legal');
+      expect(JSON.parse(screen.getByTestId('invite-labels').textContent ?? 'null')).toEqual({ noun: 'workspace' });
+      fireEvent.click(screen.getByTestId('invite-close'));
+      await waitFor(() => expect(screen.queryByTestId('invite-dialog')).toBeNull());
+    });
+
+    it('adds the app-only note when the workspace keeps its apps apart', async () => {
+      const client = fakeClient();
+      client.listAppTeams.mockResolvedValue({ mode: 'shared', appTeams: [{ package: 'com.calimero.mero-sign', teamId: 'team-sign', name: 'Mero Sign', join: 'everyone', memberCount: 2, defaultCapabilities: 0, member: true }] });
+      await openInvite(client, PACKAGE_ENV);
+      const labels = JSON.parse((await screen.findByTestId('invite-labels')).textContent ?? 'null');
+      expect(labels.note).toMatch(/^Invites to Mero Sign only/);
+    });
+
+    it('names no team for a raw bundle', async () => {
+      const client = fakeClient();
+      await openInvite(client, DEV_ENV);
+      expect((await props()).teams).toEqual([]);
+      expect(client.listAppTeams).not.toHaveBeenCalled();
+    });
+
+    it('says so, and opens nothing, when the workspace has no team for the app', async () => {
+      const client = fakeClient();
+      client.listAppTeams.mockResolvedValue({ mode: 'standalone', appTeams: [{ package: 'com.calimero.other', teamId: 'team-o', name: 'O', join: 'everyone', memberCount: 1, defaultCapabilities: 0, member: true }] });
+      await openInvite(client, PACKAGE_ENV);
+      expect((await screen.findByTestId('list-error')).textContent).toMatch(/has not set up com.calimero.mero-sign/);
+      expect(screen.queryByTestId('invite-dialog')).toBeNull();
+    });
   });
 
   it('tells a member who may not add an agreement to ask an owner, instead of offering Create (B8)', async () => {
@@ -167,9 +239,9 @@ describe('App', () => {
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-page');
     fireEvent.click(screen.getByTestId('signin-passkey'));
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
+    fireEvent.click(await screen.findByTestId('accept-done'));
     await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-1'));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId('invitation-page')).toBeNull();
   });
 
@@ -215,46 +287,69 @@ describe('App', () => {
     expect(pendingInvite()).not.toBeNull();
   });
 
-  it('does not redeem an invite into a workspace the account is already in', async () => {
+  it('hands the dialog the invite\'s org, so a member is told so and nothing is redeemed', async () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', agreement: null, org: 'org-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    await screen.findByTestId('invitation-member');
+    expect(JSON.parse((await screen.findByTestId('accept-props')).textContent ?? 'null').org).toBe('org-1');
+    expect(screen.queryByTestId('invitation-member')).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(pendingInvite()).toBeNull();
+    fireEvent.click(screen.getByTestId('accept-done'));
+    await waitFor(() => expect(pendingInvite()).toBeNull());
+    await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-1'));
   });
 
-  it('says plainly when the invite was already used or has expired', async () => {
+  it('drops a stored token the node says is spent, and keeps it for a network failure', async () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', agreement: null }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(
-      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    expect((await screen.findByTestId('invitation-error')).textContent).toBe(
-      'This invite was already used or has expired. Ask the person who invited you for a new link.',
-    );
-    expect(pendingInvite()).toBeNull();
-  });
-
-  it.each([
-    [429, 'RATE_LIMITED'],
-    [401, 'UNAUTHENTICATED'],
-  ])('keeps the invite when redeeming answers %i (B6)', async (status, code) => {
-    remember();
-    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    expect((await screen.findByTestId('invitation-error')).textContent).toMatch(/could not be accepted/);
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId('accept-offline'));
     expect(pendingInvite()?.token).toBe('tok-1');
-    expect(screen.getByTestId('invitation-join')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('accept-spent'));
+    expect(pendingInvite()).toBeNull();
   });
 
-  it('asks before redeeming an invitation, then joins the agreement the link names', async () => {
+  it('hands the shared dialog the token, and drops it when the person closes the dialog', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
+    render(<App deps={deps(fakeClient())} />);
+    expect(JSON.parse((await screen.findByTestId('accept-props')).textContent ?? 'null')).toMatchObject({ token: 'tok-1', appName: 'Mero Sign', noun: 'workspace' });
+    fireEvent.click(screen.getByTestId('accept-close'));
+    await waitFor(() => expect(screen.queryByTestId('accept-dialog')).toBeNull());
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it('keeps the invite until the dialog says the person joined', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', agreement: null }));
+    render(<App deps={deps(fakeClient())} />);
+    await screen.findByTestId('accept-dialog');
+    expect(pendingInvite()?.token).toBe('tok-1');
+    fireEvent.click(screen.getByTestId('accept-done'));
+    await waitFor(() => expect(pendingInvite()).toBeNull());
+    await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-1'));
+  });
+
+  it('retries the last step without joining again when opening the agreement failed', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', agreement: 'agr-1' }));
+    const client = fakeClient();
+    const view = client.view.getMockImplementation()!;
+    client.view.mockImplementation(async (app: string, method: string) =>
+      method === 'listParticipants' ? { index: 1, result: [] } : view(app, method));
+    client.call.mockRejectedValueOnce(new CalimeroError(500, 'INTERNAL', 'boom'));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('accept-done'));
+    expect((await screen.findByTestId('invitation-error')).textContent).toMatch(/could not be accepted/);
+    expect(screen.queryByTestId('accept-dialog')).toBeNull();
+    expect(pendingInvite()).toBeNull();
+    fireEvent.click(screen.getByTestId('invitation-join'));
+    await waitFor(() => expect(window.location.pathname).toBe('/agreements/agr-1'));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+  });
+
+  it('asks before joining, then enters the agreement the link names', async () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', agreement: 'agr-1' }));
     const client = fakeClient();
@@ -274,8 +369,7 @@ describe('App', () => {
                   : null,
     }));
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
+    fireEvent.click(await screen.findByTestId('accept-done'));
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}));
     await screen.findByTestId('agreement-title');

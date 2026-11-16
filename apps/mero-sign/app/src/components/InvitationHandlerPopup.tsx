@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AcceptInviteDialog } from '@calimero-network/mero-react';
 
 import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
 import { enterAgreement } from '../lib/agreements';
+import { PRODUCT_NAME } from '../lib/agreements';
 import {
-  INVITE_REFUSED,
-  alreadyMember,
   dropInvite,
-  inviteRefused,
-  joinedOrg,
   pendingInvite,
   type PendingInvite,
 } from '../lib/invites';
 import { errorMessage, setContextId } from '../lib/node';
 import styles from '../pages/app/AgreementsPage.module.css';
-import { listAppInfos } from '@calimero-apps/connect';
+import { isSpentInvite, listAppInfos } from '@calimero-apps/connect';
 
 /**
  * "Join this workspace?" for an invitation that arrived as a link
@@ -29,12 +27,11 @@ import { listAppInfos } from '@calimero-apps/connect';
  * this asks the moment a session exists. A sign-up from that page already
  * joined with it (`api.joinedInvite`): this goes straight on to what the link
  * names, with nothing redeemed again. Someone already in the workspace (the
- * inviter opening their own link) is told so and the token dropped: redeeming
- * it would spend its single use, and the person it was meant for could no
- * longer join. A refused invite (unknown, used, expired, revoked) is said
- * plainly.
+ * inviter opening their own link) is told so by the dialog, which redeems
+ * nothing, and goes on to what the link names the same way.
  *
- * Joining redeems the org invite, then, for a link that names an agreement,
+ * The shared dialog redeems the org invite (through the node's consent page
+ * for a session bound to the app). Then, for a link that names an agreement,
  * puts you on its roster as a signer (`registerSelfAsParticipant`) and records
  * it in your private library before opening it. There is no "waiting for the
  * agreement to replicate" stage any more: nothing has to sync before a new
@@ -51,45 +48,11 @@ export default function InvitationHandlerPopup() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refused, setRefused] = useState(false);
-  // `null` until the membership check answers; `false` too when it cannot.
-  const [member, setMember] = useState<boolean | null>(null);
-  // Joined (by the sign-up, or a redeem whose next step failed), and into
-  // which org: only what the link names is left, never a second redeem.
+  // Joined (by the sign-up, or by the dialog), and into which org: only what
+  // the link names is left, never a second redeem.
   const [joined, setJoined] = useState<{ org: string | null } | null>(null);
   const client = signedIn?.client ?? null;
   const joinedHere = invite !== null && invite.token === joinedInvite;
-
-  useEffect(() => {
-    if (!client || !invite || joinedHere) return undefined;
-    let live = true;
-    setMember(null);
-    void alreadyMember(client, invite).then((known) => {
-      if (!live) return;
-      if (known) dropInvite();
-      setMember(known ?? false);
-    });
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token
-  }, [client, invite?.token]);
-
-  /** Already a member: nothing to redeem, just open what the link names. */
-  const openIt = useCallback(() => {
-    if (!invite) return;
-    dropInvite();
-    setInvite(null);
-    if (invite.org) setActiveWorkspace(invite.org);
-    navigate(
-      invite.agreement
-        ? `/agreements/${invite.agreement}`
-        : invite.org
-          ? `/workspaces/${invite.org}`
-          : '/workspaces',
-      { replace: true },
-    );
-  }, [invite, navigate]);
 
   const dismiss = useCallback(() => {
     dropInvite();
@@ -97,25 +60,13 @@ export default function InvitationHandlerPopup() {
     setError(null);
   }, []);
 
-  /**
-   * Redeems the invite (unless the sign-up already joined with it), then
-   * opens what the link names.
-   */
+  /** Opens what the link names, once joined. A failure is retried without redeeming again. */
   const join = useCallback(async () => {
-    if (!signedIn || !invite) return;
+    if (!signedIn || !invite || !joined) return;
     setBusy(true);
     setError(null);
     try {
-      let org: string | null;
-      if (joined) {
-        org = joined.org;
-      } else {
-        setStatus('Joining the workspace…');
-        org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token }));
-        dropInvite();
-        // Joined: a failure from here on is retried without redeeming again.
-        setJoined({ org });
-      }
+      const { org } = joined;
       if (org) setActiveWorkspace(org);
       if (invite.agreement) {
         setStatus('Recording you as a participant so you can sign.');
@@ -140,16 +91,7 @@ export default function InvitationHandlerPopup() {
         navigate(org ? `/workspaces/${org}` : '/workspaces', { replace: true });
       }
     } catch (e) {
-      // A refusal (unknown, used, expired, revoked) can never succeed: drop
-      // it. Anything else (the cluster unreachable) is kept for another try.
-      // Once joined, there is no invite left to refuse.
-      if (!joined && inviteRefused(e)) {
-        dropInvite();
-        setRefused(true);
-        setError(INVITE_REFUSED);
-      } else {
-        setError(`The invitation could not be accepted: ${errorMessage(e)}`);
-      }
+      setError(`The invitation could not be accepted: ${errorMessage(e)}`);
     } finally {
       setBusy(false);
       setStatus(null);
@@ -162,50 +104,43 @@ export default function InvitationHandlerPopup() {
   useEffect(() => {
     if (!client || !joinedHere || joined) return;
     dropInvite();
-    setMember(false);
     setJoined({ org: invite?.org ?? null });
   }, [client, joinedHere, joined, invite?.org]);
   const started = useRef(false);
   useEffect(() => {
-    if (!joined || !joinedHere || started.current) return;
+    if (!joined || started.current) return;
     started.current = true;
     void join();
-  }, [joined, joinedHere, join]);
+  }, [joined, join]);
 
-  if (!signedIn || !invite || member === null) return null;
+  if (!signedIn || !invite) return null;
   // Opening what a sign-up joined: nothing to ask unless it failed.
   if (joinedHere && !error) return null;
 
-  if (member) {
+  if (!joined) {
     return (
-      <div className={styles.modalBackdrop}>
-        <div
-          className={styles.modal}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="invitation-title"
-          data-testid="invitation-dialog"
-        >
-          <h2 className={styles.modalTitle} id="invitation-title">
-            You&apos;re already in this workspace
-          </h2>
-          <p className={styles.modalDesc} data-testid="invitation-member">
-            This invitation is for a workspace you are already a member of, so
-            there is nothing to join. The link was left unused for whoever it
-            was meant for.
-          </p>
-          <div className={styles.modalRow}>
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={openIt}
-              data-testid="invitation-open"
-            >
-              Open it
-            </button>
-          </div>
-        </div>
-      </div>
+      <AcceptInviteDialog
+        client={signedIn.client}
+        passkey={signedIn.passkey()}
+        open
+        token={invite.token}
+        org={invite.org ?? undefined}
+        appName={PRODUCT_NAME}
+        labels={{
+          noun: 'workspace',
+          body: invite.agreement
+            ? 'Joining gives you access to the workspace and takes you straight into the agreement you were invited to sign.'
+            : 'Joining gives you access to the workspace and every agreement in it.',
+        }}
+        onClose={dismiss}
+        onError={(e) => {
+          if (isSpentInvite(e)) dropInvite();
+        }}
+        onJoined={({ org }) => {
+          dropInvite();
+          setJoined({ org });
+        }}
+      />
     );
   }
 
@@ -219,12 +154,12 @@ export default function InvitationHandlerPopup() {
         data-testid="invitation-dialog"
       >
         <h2 className={styles.modalTitle} id="invitation-title">
-          {joined ? 'You joined the workspace' : 'Join the workspace?'}
+          You joined the workspace
         </h2>
         <p className={styles.modalDesc}>
           {invite.agreement
-            ? 'Joining gives you access to the workspace and takes you straight into the agreement you were invited to sign.'
-            : 'Joining gives you access to the workspace and every agreement in it.'}
+            ? 'Next is the agreement you were invited to sign.'
+            : 'Next is the workspace.'}
         </p>
         {status && <p className={styles.hint}>{status}</p>}
         {error && (
@@ -240,20 +175,18 @@ export default function InvitationHandlerPopup() {
             disabled={busy}
             data-testid="invitation-dismiss"
           >
-            {refused ? 'Close' : 'Not now'}
+            Close
           </button>
-          {!refused && (
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={() => void join()}
-              disabled={busy}
-              data-testid="invitation-join"
-            >
-              {busy ? <span className={styles.spinner} /> : null}
-              {busy ? (joined ? 'Opening…' : 'Joining…') : joined ? 'Try again' : 'Join'}
-            </button>
-          )}
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => void join()}
+            disabled={busy}
+            data-testid="invitation-join"
+          >
+            {busy ? <span className={styles.spinner} /> : null}
+            {busy ? 'Opening…' : 'Try again'}
+          </button>
         </div>
       </div>
     </div>

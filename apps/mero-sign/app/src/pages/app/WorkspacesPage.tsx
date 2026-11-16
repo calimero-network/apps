@@ -7,8 +7,8 @@ import {
   type CSSProperties,
 } from 'react';
 import { useHref, useLocation, useNavigate } from 'react-router-dom';
-import { appOnlyInviteNote, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
-import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { appInviteTeams, appOnlyInviteNote, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
+import { CreateWorkspaceDialog, InviteDialog } from '@calimero-network/mero-react';
 import { lastUsedName, setOrgName } from '@calimero-apps/names';
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from '@calimero-apps/passkey';
 import {
@@ -35,7 +35,7 @@ import {
   type WorkspaceRow,
 } from '../../lib/agreements';
 import { PACKAGE_NAME } from '../../constants/config';
-import { appInviteToken, inviteLink as linkFor } from '../../lib/invites';
+import { inviteBase } from '../../lib/invites';
 import { hueOf, initials } from '../../lib/monogram';
 import { errorMessage } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
@@ -114,10 +114,9 @@ export default function WorkspacesPage({
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
 
-  const [inviteFor, setInviteFor] = useState<WorkspaceRow | null>(null);
-  const [inviteLink, setInviteLink] = useState('');
-  const [inviteAppOnly, setInviteAppOnly] = useState(false);
-  const [minting, setMinting] = useState(false);
+  // Kept after the dialog closes: it stays mounted to finish an invite approved on a full-page trip to the node.
+  const [inviteFor, setInviteFor] = useState<{ row: WorkspaceRow; teams: string[]; appOnly: boolean } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -263,21 +262,14 @@ export default function WorkspacesPage({
   const invite = useCallback(
     async (row: WorkspaceRow) => {
       if (!app) return;
-      setInviteFor(row);
-      setInviteLink('');
-      setMinting(true);
       try {
-        // An org invite: a passkey step-up for the inviter. The link carries
-        // the token; the recipient redeems it after signing in.
-        const { token, appOnly } = await appInviteToken(app.client, row.namespaceId, app.passkey(), app.source);
-        setInviteLink(linkFor(token, null, window.location, row.namespaceId));
-        setInviteAppOnly(appOnly);
+        const { teams, appOnly } = await appInviteTeams(app.client, row.namespaceId, app.source);
+        setInviteFor({ row, teams, appOnly });
+        setInviteOpen(true);
       } catch (error) {
-        setInviteFor(null);
         setBanner({ kind: 'error', text: errorMessage(error) });
       } finally {
         app.after();
-        setMinting(false);
       }
     },
     [app],
@@ -462,6 +454,24 @@ export default function WorkspacesPage({
           />
         )}
 
+        {app && (
+          <InviteDialog
+            client={app.client}
+            passkey={app.passkey()}
+            open={inviteOpen}
+            onClose={() => setInviteOpen(false)}
+            org={inviteFor?.row.namespaceId ?? getActiveWorkspace() ?? ''}
+            teams={inviteFor?.teams}
+            appName={PRODUCT_NAME}
+            labels={{
+              noun: 'workspace',
+              ...(inviteFor && { title: `Invite to ${inviteFor.row.name}` }),
+              ...(inviteFor?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+            }}
+            linkBase={inviteFor ? inviteBase(inviteFor.row.namespaceId) : undefined}
+          />
+        )}
+
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <h2 className={styles.sectionTitle}>All workspaces</h2>
@@ -485,63 +495,6 @@ export default function WorkspacesPage({
             signature is. Only the way in moved. */}
       </main>
 
-      {inviteFor && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={() => setInviteFor(null)}
-        >
-          <div
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invite-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className={styles.modalTitle} id="invite-title">
-              Invite to {inviteFor.name}
-            </h2>
-            <p className={styles.modalDesc}>
-              Single use: one person can join the workspace and its agreements
-              with this link. Make a new one for each person you invite.
-              Creating it asks for your passkey.
-            </p>
-            {inviteLink && inviteAppOnly && (
-              <p className={styles.modalDesc} data-testid="invite-app-only">
-                {appOnlyInviteNote(PRODUCT_NAME)}
-              </p>
-            )}
-            {minting ? (
-              <p className={styles.empty}>
-                <span className={styles.spinner} /> Minting…
-              </p>
-            ) : (
-              <textarea
-                className={styles.textarea}
-                readOnly
-                value={inviteLink}
-                data-testid="invite-link"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-            )}
-            <div className={styles.modalRow}>
-              <button
-                className={styles.btnGhost}
-                onClick={() => setInviteFor(null)}
-              >
-                Done
-              </button>
-              <button
-                className={styles.btn}
-                disabled={!inviteLink}
-                onClick={() => void navigator.clipboard.writeText(inviteLink)}
-              >
-                <Copy size={16} />
-                Copy link
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }

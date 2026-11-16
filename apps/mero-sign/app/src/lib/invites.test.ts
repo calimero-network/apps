@@ -1,16 +1,7 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { withRoutes } from '@calimero-apps/connect/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  captureInvite,
-  dropInvite,
-  inviteLink,
-  inviteToken,
-  joinedOrg,
-  migrateLegacyInvite,
-  pendingInvite,
-} from './invites';
+import { captureInvite, dropInvite, inviteBase, migrateLegacyInvite, pendingInvite } from './invites';
 
 beforeEach(() => {
   localStorage.clear();
@@ -19,23 +10,15 @@ beforeEach(() => {
 });
 
 describe('invitations', () => {
-  it('are org invites to the workspace, as a member, approved with a passkey', async () => {
-    const invite = vi.fn(async () => 'tok');
-    const passkey = { create: vi.fn(), get: vi.fn() };
-    expect(await inviteToken(withRoutes({ invite }) as never, 'org-1', passkey)).toBe('tok');
-    expect(invite).toHaveBeenCalledWith('org-1', 'member', expect.objectContaining({ confirm: expect.any(Function) }));
-  });
-
-  it('travel as this frontend’s own URL at its root, naming the agreement when there is one', () => {
+  it('open at this frontend’s root, naming the workspace and the agreement when there is one', () => {
     const loc = { href: 'http://localhost:5173/agreements/a1' };
-    expect(inviteLink('tok', 'a1', loc)).toBe('http://localhost:5173/?invite=tok&agreement=a1');
-    expect(inviteLink('tok', null, loc)).toBe('http://localhost:5173/?invite=tok');
+    expect(inviteBase('org-1', 'a1', loc)).toBe('http://localhost:5173/?org=org-1&agreement=a1');
     // Naming the workspace lets a member who opens it be told so, not spend it.
-    expect(inviteLink('tok', null, loc, 'org-1')).toBe('http://localhost:5173/?invite=tok&org=org-1');
+    expect(inviteBase('org-1', null, loc)).toBe('http://localhost:5173/?org=org-1');
     // Where a node serves the app, under its `/{version}/` root.
     const served = `https://${'a'.repeat(52)}.apps.calimero.network`;
-    expect(inviteLink('tok', 'a1', { href: `${served}/1.0.0/agreements/a1` })).toBe(
-      `${served}/1.0.0/?invite=tok&agreement=a1`,
+    expect(inviteBase('org-1', 'a1', { href: `${served}/1.0.0/agreements/a1` })).toBe(
+      `${served}/1.0.0/?org=org-1&agreement=a1`,
     );
   });
 
@@ -55,9 +38,18 @@ describe('invitations', () => {
     expect(pendingInvite()).toBeNull();
   });
 
-  it('name the org they joined, whichever field the node used', () => {
-    expect(joinedOrg({ org: 'o1' })).toBe('o1');
-    expect(joinedOrg({ orgId: 'o2' })).toBe('o2');
-    expect(joinedOrg({})).toBeNull();
+  it('take the token off a shared-dialog link, which carries it in the fragment', () => {
+    window.history.replaceState(null, '', '/?org=o1&agreement=a1#invite=tok');
+    captureInvite();
+    expect(pendingInvite()).toEqual({ token: 'tok', agreement: 'a1', org: 'o1' });
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+  });
+
+  it('leave a page without an invite alone', () => {
+    window.history.replaceState(null, '', '/x#other=1');
+    captureInvite();
+    expect(pendingInvite()).toBeNull();
+    expect(window.location.hash).toBe('#other=1');
   });
 });

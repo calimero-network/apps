@@ -107,6 +107,10 @@ export function fakeClient() {
                   ? true
                   : null,
     })),
+    listAppTeams: vi.fn(async (_org: string) => ({
+      mode: 'standalone',
+      appTeams: [{ package: 'com.calimero.mero-sign', teamId: 'team-sign', name: 'Mero Sign', join: 'everyone', memberCount: 2, defaultCapabilities: 0, member: true }],
+    })),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
     createOrg: vi.fn(async () => 'org-new'),
     setCapabilities: vi.fn(async () => undefined),

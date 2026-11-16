@@ -12,7 +12,6 @@ import type { AppSource } from '@calimero-apps/connect';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
 import { createAgreement, finishWorkspace, readMembers } from './agreements';
-import { appInviteToken } from './invites';
 
 const PKG = 'com.calimero.mero-sign';
 const SOURCE = { package: PKG };
@@ -58,15 +57,12 @@ describe('invites and people', () => {
 
   it('standalone: the invite names the team; every member but a guest', async () => {
     const { cluster, org } = await workspace(people);
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(['acct-me', 'acct-bob', 'acct-cy']);
   });
 
   it('apps kept apart: Mero Sign only, and only its people', async () => {
     const { cluster, org } = await workspace(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
     const read = await readMembers(cluster.client, org, SOURCE);
     expect(read.people).toEqual(['acct-me', 'acct-bob']);
     expect(read.appOnly).toBe(true);
@@ -75,8 +71,6 @@ describe('invites and people', () => {
   it('a legacy org: the org-wide invite, every member', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'legacy', members: people });
-    expect((await appInviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]![3]).toBeUndefined();
     expect((await readMembers(cluster.client, org, SOURCE)).people).toHaveLength(4);
   });
 });
