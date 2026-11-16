@@ -12,7 +12,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
   const { createElement } = await import("react");
   return {
     ...(await importOriginal<object>()),
-    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; labels?: { title?: string }; linkBase?: string }) =>
+    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; labels?: { note?: string; title?: string }; linkBase?: string }) =>
       p.open
         ? createElement(
             "div",
@@ -20,12 +20,15 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
             createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName })),
             createElement("pre", { "data-testid": "invite-base" }, p.linkBase),
+            createElement("pre", { "data-testid": "invite-note" }, p.labels?.note ?? ""),
           )
         : null,
   };
 });
 
 const { InviteCard } = await import("./TeamCard");
+const { appOnlyInviteNote } = await import("@calimero-apps/connect");
+const { PRODUCT_NAME } = await import("./lib/orgs");
 
 afterEach(() => {
   cleanup();
@@ -42,6 +45,7 @@ describe("the invite card", () => {
     const base = new URL(screen.getByTestId("invite-base").textContent ?? "");
     expect(base.searchParams.get("org")).toBe("org-1");
     expect(base.searchParams.get("workspace")).toBe("app-1");
+    expect(screen.getByTestId("invite-note").textContent).toBe("");
   });
 
   it("names Mero Forms' own team in an org that has app teams", async () => {
@@ -50,6 +54,7 @@ describe("the invite card", () => {
     render(<InviteCard org="org-1" appId="app-1" />);
     fireEvent.click(screen.getByText("Create invite link"));
     expect(JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "").teams).toEqual(["team-forms"]);
+    expect((await screen.findByTestId("invite-note")).textContent).toBe(appOnlyInviteNote(PRODUCT_NAME));
   });
 
   it("opens no dialog, and says why, when the org has app teams but none for Mero Forms", async () => {

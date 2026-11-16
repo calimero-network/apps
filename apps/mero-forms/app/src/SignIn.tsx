@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AcceptInvitation, SignInPanel as SharedSignInPanel, useAskedInvite, usePendingInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { SignInPanel as SharedSignInPanel, useAskedInvite, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { inviteWorkspace, invites } from "./lib/orgs";
@@ -71,7 +72,11 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
   );
 }
 
-const ALREADY_IN = { root: "dialog dialog-body", text: "empty" };
+const ACCEPT_LABELS = {
+  title: "Join this workspace",
+  body: "You were invited to a workspace in Mero Forms. Join it to reach its forms.",
+  join: "Join the workspace",
+};
 
 /**
  * The invitation screens, wrapped around the app because a link can land on
@@ -83,13 +88,13 @@ const ALREADY_IN = { root: "dialog dialog-body", text: "empty" };
  *  - signed out: "You're invited", with the same passkey sign-in and sign-up
  *    as the landing page's popup. "Not now" shows the landing page and keeps
  *    the token, so signing in later still asks.
- *  - signed in: the shared join dialog (`AcceptInvitation`, through the node's
+ *  - signed in: the shared join dialog (`AcceptInviteDialog`, through the node's
  *    consent page) straight away. It asks rather than joins: joining puts you
  *    in someone's organization.
  *
  * Redeeming spends one of the invite's uses even for someone already in the
- * org, so a link that names its org is checked against the account's orgs
- * first, and a member is told so instead of being asked.
+ * org, so the dialog checks a link that names its org first, and a member is
+ * told so instead of being asked.
  */
 export function InvitationHost({ onJoined, children }: { onJoined: () => void; children: ReactNode }) {
   const { api } = useSessionApi();
@@ -142,25 +147,26 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
   return (
     <>
       {children}
-      <AcceptInvitation
+      <AcceptInviteDialog
         key={invite.token}
+        open
         client={signedIn.client}
+        passkey={signedIn.passkey()}
         token={invite.token}
-        org={invite.org}
+        org={invite.org ?? undefined}
         appName="Mero Forms"
-        joining="this workspace"
-        drop={() => invites.drop()}
-        after={signedIn.after}
+        labels={ACCEPT_LABELS}
+        onError={() => invites.drop()}
+        onClose={() => {
+          invites.drop();
+          close();
+        }}
         onJoined={({ org }) => {
+          invites.drop();
+          signedIn.after();
           close();
           open(org ?? invite.org);
         }}
-        onClose={({ member }) => {
-          close();
-          if (member) open(invite.org);
-        }}
-        overlay="invitation-overlay"
-        classNames={ALREADY_IN}
       />
     </>
   );

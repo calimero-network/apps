@@ -787,14 +787,3 @@ dialog.dialog[open] { animation: dialog-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1
   justify-content: center;
   padding: 20px;
 }
-/* The "already in" notice over the app, behind the same scrim as the shared dialogs. */
-.invitation-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(15, 17, 23, 0.45);
-}

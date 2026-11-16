@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { InviteDialog } from "@calimero-network/mero-react";
-import { appInviteTeams, describeError } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, describeError } from "@calimero-apps/connect";
 import { PRODUCT_NAME, inviteLinkBase } from "./lib/orgs";
 import { PersonName, useOrg } from "./names";
 import { useSignedIn } from "./sessionContext";
@@ -123,13 +123,13 @@ export function TeamCard({
  */
 export function InviteCard({ org, appId }: { org: string; appId: string }) {
   const { client, passkey, source } = useSignedIn();
-  const [teams, setTeams] = useState<string[] | null>(null);
+  const [invite, setInvite] = useState<{ teams: string[]; appOnly: boolean } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   async function open() {
     setFailed(null);
     try {
-      setTeams((await appInviteTeams(client, org, source)).teams);
+      setInvite(await appInviteTeams(client, org, source));
     } catch (e) {
       setFailed(describeError(e));
     }
@@ -150,12 +150,16 @@ export function InviteCard({ org, appId }: { org: string; appId: string }) {
       <InviteDialog
         client={client}
         passkey={passkey()}
-        open={teams !== null}
-        onClose={() => setTeams(null)}
+        open={invite !== null}
+        onClose={() => setInvite(null)}
         org={org}
-        teams={teams ?? undefined}
+        teams={invite?.teams}
         appName={PRODUCT_NAME}
-        labels={{ title: "Invite to this workspace", subtitle: "Choose what the people you invite can do in this organization." }}
+        labels={{
+          title: "Invite to this workspace",
+          subtitle: "Choose what the people you invite can do in this organization.",
+          note: invite?.appOnly ? appOnlyInviteNote(PRODUCT_NAME) : undefined,
+        }}
         linkBase={inviteLinkBase(appId, org)}
       />
     </div>

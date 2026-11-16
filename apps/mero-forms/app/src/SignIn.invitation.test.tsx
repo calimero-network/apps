@@ -22,12 +22,23 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
   const { createElement } = await import("react");
   return {
     ...(await importOriginal<object>()),
-    AcceptInviteDialog: (p: { open: boolean; token: string; appName?: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      labels?: object;
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
       p.open
         ? createElement(
             "div",
             { "data-testid": "accept-dialog" },
             createElement("p", { "data-testid": "accept-props" }, `${p.token} ${p.appName}`),
+            createElement("pre", { "data-testid": "accept-extra" }, JSON.stringify({ org: p.org, labels: p.labels })),
+            createElement("button", { "data-testid": "accept-error", onClick: () => p.onError?.(new Error("spent")) }, "error"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-2" }) }, "done"),
           )
@@ -200,17 +211,30 @@ describe("an invite link", () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 
-  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+  it("hands the dialog the org the link names and the workspace wording, and clears a spent link on error", async () => {
+    storeSession();
+    hold("tok-1", "org-1");
+    renderHost(fakeClient({ signedIn: true }));
+
+    expect(JSON.parse((await screen.findByTestId("accept-extra")).textContent ?? "")).toEqual({
+      org: "org-1",
+      labels: { title: "Join this workspace", body: expect.stringContaining("forms"), join: "Join the workspace" },
+    });
+    expect(invites.token()).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-error"));
+    expect(invites.token()).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeTruthy();
+  });
+
+  it("opens the workspace a member continues into, without redeeming", async () => {
     storeSession();
     hold("tok-own", "org-1");
     const client = fakeClient({ signedIn: true });
     renderHost(client);
 
-    expect(await screen.findByText("You're already in this workspace")).toBeTruthy();
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    expect(getActive()).toEqual({ appId: "app-1", org: "org-2" });
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId("invitation-continue"));
-    expect(getActive()).toEqual({ appId: "app-1", org: "org-1" });
   });
 });
