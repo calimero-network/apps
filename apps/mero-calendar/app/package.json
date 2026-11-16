@@ -13,6 +13,7 @@
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-react": "catalog:component",
     "@calimero-network/mero-ui": "catalog:",
     "@reduxjs/toolkit": "^1.8.3",
     "classnames": "^2.3.1",
