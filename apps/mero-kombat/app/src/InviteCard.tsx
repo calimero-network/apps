@@ -5,7 +5,7 @@ import { InviteDialog } from "@calimero-network/mero-react";
 import { arenaInviteBase } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
 
-const LABELS = { title: "Invite to this arena", subtitle: "Choose what your opponent can do." };
+const LABELS = { noun: "arena", title: "Invite to this arena", subtitle: "Choose what your opponent can do." };
 
 /**
  * Invite someone to this arena.

@@ -77,8 +77,7 @@ export function invitedArena(invite: PendingInvite | null): string | null {
 /**
  * The page an invite link opens: this frontend, naming `arena` to open after
  * joining and `org`: the token does not say which org it is for until it is
- * redeemed, and redeeming spends one of its uses even for someone already in
- * the org, so the link carries it for the app to tell a member first. The
+ * redeemed, so the link carries it for the dialog to tell a member. The
  * shared dialog adds the token.
  *
  * Pinned to the router's basename (the served `/{version}/`) until every

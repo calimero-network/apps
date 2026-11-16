@@ -59,7 +59,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       p.open
         ? createElement(
             "div",
-            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase },
+            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase, "data-noun": p.labels?.noun },
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
             createElement(
               "button",
@@ -72,7 +72,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       p.open
         ? createElement(
             "div",
-            { "data-testid": "accept-dialog", "data-token": p.token },
+            { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-noun": p.labels?.noun },
+            createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
@@ -231,6 +232,7 @@ describe("App", () => {
     expect(screen.getByTestId("invite-title").textContent).toBe("Invite to this arena");
     const dialog = screen.getByTestId("invite-dialog");
     expect(dialog.dataset.org).toBe("org-1");
+    expect(dialog.dataset.noun).toBe("arena");
     expect(new URL(dialog.dataset.base ?? "").searchParams.toString()).toBe("org=org-1&arena=app-new");
     fireEvent.click(screen.getByTestId("invite-done"));
     expect(client.invite).not.toHaveBeenCalled();
@@ -314,18 +316,25 @@ describe("App", () => {
     expect(invites.token()).toBe("tok-9");
   });
 
-  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+  it("hands the accept dialog the link's org and the arena wording", async () => {
     at("/play");
-    const client = Object.assign(fakeClient(), {
-      me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-9" }] })),
-    });
     const storage = new Memory();
     const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    render(<App deps={deps(client)} storage={storage} invites={invites} />);
-    await waitFor(() => expect(invites.token()).toBeNull());
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    render(<App deps={deps(fakeClient())} storage={storage} invites={invites} />);
+    const dialog = await screen.findByTestId("accept-dialog");
+    expect(dialog.dataset).toMatchObject({ org: "org-9", noun: "arena" });
+  });
+
+  it("forgets a spent link when the node refuses it, and keeps the dialog open", async () => {
+    at("/play");
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(fakeClient())} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("accept-fail"));
+    expect(invites.token()).toBeNull();
+    expect(screen.getByTestId("accept-dialog")).toBeTruthy();
   });
 
   it("asks to join an invitation opened before signing in, then opens the arena it names", async () => {
@@ -433,20 +442,6 @@ describe("App", () => {
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
       fireEvent.click(await screen.findByTestId("accept-done"));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
-      expect(invites.token()).toBeNull();
-    });
-
-    it("a member of the invited org lands in its arena, without spending the invite", async () => {
-      at("/play");
-      const client = fakeClient([...TWO_ORGS]);
-      Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-2" }] })) });
-      const storage = new Memory();
-      signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await waitFor(() => expect(selected(storage)).toBe("app-b"));
-      expect(screen.queryByTestId("accept-dialog")).toBeNull();
-      expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
     });
 
