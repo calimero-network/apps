@@ -69,7 +69,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             "div",
             { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-title": p.labels?.title, "data-noun": p.labels?.noun },
             createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
-            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-9" }) }, "join"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-9", alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: "org-9", alreadyMember: true }) }, "member"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
@@ -333,6 +334,18 @@ describe("App", () => {
       await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "table", expect.anything()));
       expect(invites.token()).toBeNull();
       expect(JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null")).toMatchObject({ appId: "app-9" });
+    });
+
+    it("says the player is already in when they continue as a member", async () => {
+      at("/play");
+      const client = fakeClient();
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("accept-member"));
+      expect(await screen.findByText("You're already in this table.")).toBeTruthy();
+      expect(screen.queryByText(/Invitation accepted/)).toBeNull();
     });
 
     it("an invitation link opened later asks too: a session already there does not join on its own", async () => {

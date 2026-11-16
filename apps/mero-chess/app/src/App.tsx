@@ -207,7 +207,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org, table: named } = landing;
+    const { org, table: named, alreadyMember } = landing;
     void (async () => {
       setLobbyKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -219,7 +219,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         return;
       }
       open(null);
-      setNotice("Invitation accepted: the table is in your list.");
+      setNotice(alreadyMember ? "You're already in this table." : "Invitation accepted: the table is in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -282,10 +282,10 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
           invites.drop();
           closeInvite();
         }}
-        onJoined={({ org }) => {
+        onJoined={({ org, alreadyMember }) => {
           invites.drop();
           closeInvite();
-          setLanding({ org, table: invitedTable(invite) });
+          setLanding({ org, table: invitedTable(invite), alreadyMember });
           after();
         }}
       />
