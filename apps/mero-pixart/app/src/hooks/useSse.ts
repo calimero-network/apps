@@ -53,7 +53,8 @@ export function useAppEvents(
             if (typeof index === "number") from = index + 1;
           }
           for await (const event of client.events(app, from, abort.signal)) {
-            const index = Number(event.id);
+            // Ids are "<index>:<seq>": the part before the colon is the log index.
+            const index = Number.parseInt(String(event.id).split(":")[0] ?? "", 10);
             if (Number.isFinite(index)) from = index + 1;
             onEventRef.current(event.kind, event.data);
           }
