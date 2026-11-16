@@ -3,9 +3,10 @@ import Foundation
 import MeroKit
 
 /// Creating a channel the way the web app does (`api/platform.ts`): an open
-/// channel is one app instance of chat in the org itself (every member
-/// reaches it); a private one gets its own team that admits by invitation,
-/// with the instance inside it. Then the creator's `set_profile`.
+/// channel is one app instance of chat in the org itself (reaching chat's app
+/// team where the org has one, else every member); a private one gets its own
+/// team that admits by invitation (under chat's app team), with the instance
+/// inside it. Then the creator's `set_profile`.
 struct ChannelCreator: Sendable {
     let backend: any ChatBackend
 
