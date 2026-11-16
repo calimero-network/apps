@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { appSource, memberOf, targetKey } from '@calimero-apps/connect';
+import { appSource, targetKey } from '@calimero-apps/connect';
 import { AcceptInviteDialog, CreateWorkspaceDialog, InviteDialog } from '@calimero-network/mero-react';
 import { lastUsedName } from '@calimero-apps/names';
-import { AppListing, reviewRelease, usePendingInvite, useResolvedSource } from '@calimero-apps/passkey';
+import { AppListing, reviewRelease, useAskedInvite, useResolvedSource } from '@calimero-apps/passkey';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -30,7 +30,7 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
-import { invitedLobby, listLobbies, lobbyLinkBase } from '../../lobbies';
+import { invitedLobby, inviter, listLobbies, lobbyLinkBase } from '../../lobbies';
 import { LISTING, describeTarget, useInviteState, useSessionApi } from '../../session';
 import { SHIP_TARGETS, validateFleetPayload } from './config';
 
@@ -48,6 +48,7 @@ import PlacementGrid from '../../components/PlacementGrid';
 import ShipSelector from '../../components/ShipSelector';
 
 const INVITE_LABELS = {
+  noun: 'lobby',
   title: 'Invite to this lobby',
   subtitle: 'Choose what the players you invite can do in this lobby.',
   next: 'Create invite link',
@@ -199,46 +200,22 @@ export default function MatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render; only the fields listed matter
   }, [view, location.search, lobby.selectedLobby, lobby.lobbies, lobby.lobbyContextId]);
 
-  // An invitation is asked about, never redeemed on its own: `AcceptInviteDialog`
-  // joins on Join. A player already in the lobby's organization (the inviter
-  // opening their own link) is told so instead: redeeming would spend the
-  // link's single use. Joining opens the lobby the link named (else one in the
-  // org it joined); a sign-up from the invitation page joined with the invite
-  // already (`SessionProvider` sets `landing`), and its lobby opens.
+  // An invitation is asked about, never redeemed on its own. The asked invite
+  // outlives the dropped token, so a refusal stays on screen in the dialog.
   const { invites, landing, setLanding } = useInviteState();
-  const pending = usePendingInvite(invites);
-  const invite = client ? pending : null;
-  const [asked, setAsked] = useState<string | null>(null);
-  useEffect(() => {
-    if (!client || !invite) return;
-    let live = true;
-    const { org } = invite;
-    void (org ? memberOf(client, org) : Promise.resolve(false)).then((member) => {
-      if (!live) return;
-      if (member && org) {
-        invites.drop();
-        setLanding({ org, lobby: invitedLobby(invite), member: true });
-      } else {
-        setAsked(invite.token);
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, [client, invite, invites, setLanding]);
+  const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
 
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
     const { org, lobby: named } = landing;
-    const title = landing.member ? "You're already in this lobby" : 'Invitation accepted';
     void (async () => {
       const listed = await listLobbies(client, source).catch(() => []);
       const found = (named ? listed.find((l) => l.appId === named) : undefined)
         ?? (org ? listed.find((l) => l.org === org) : undefined);
       await lobby.refetchLobbies();
       after();
-      show({ title, variant: 'success' });
+      show({ title: 'Invitation accepted', variant: 'success' });
       if (found) {
         manualLobbySelect.current = false;
         setView('lobby-select');
@@ -813,6 +790,7 @@ export default function MatchPage() {
   );
 
   const org = lobby.selectedLobby?.org;
+  const inviterName = accountId ? nameOf(accountId) : undefined;
   const inviteDialog = client && org && lobby.namespaceId && (
     <InviteDialog
       client={client}
@@ -822,19 +800,33 @@ export default function MatchPage() {
       org={org}
       appName="Battleships"
       labels={INVITE_LABELS}
-      linkBase={lobbyLinkBase(lobby.namespaceId, org)}
+      inviterName={inviterName}
+      linkBase={lobbyLinkBase(lobby.namespaceId, org, inviterName)}
     />
   );
+  const from = inviter(invite);
   const acceptDialog = client && invite && (
     <AcceptInviteDialog
       client={client}
       passkey={sessionApi.passkey()}
-      open={asked === invite.token}
-      onClose={() => invites.drop()}
+      open
+      onClose={() => {
+        invites.drop();
+        closeInvite();
+      }}
       token={invite.token}
+      org={invite.org ?? undefined}
       appName="Battleships"
+      labels={{
+        noun: 'lobby',
+        title: from ? `Join ${from}'s game` : 'Join the game',
+        body: `You were invited to ${from ? `${from}'s game` : 'a game'} in Battleships. Join it with your account.`,
+        join: 'Join',
+      }}
+      onError={() => invites.drop()}
       onJoined={({ org }) => {
         invites.drop();
+        closeInvite();
         setLanding({ org, lobby: invitedLobby(invite) });
       }}
     />

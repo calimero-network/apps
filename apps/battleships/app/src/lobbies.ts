@@ -86,6 +86,8 @@ export const basename = (): string => nodeBasename(new URL(window.location.href)
 
 /** The link parameter naming the lobby an invite opens. */
 const LOBBY_PARAM = 'lobby';
+/** The link parameter naming who sent the invite. */
+const FROM_PARAM = 'from';
 
 /**
  * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`),
@@ -94,25 +96,31 @@ const LOBBY_PARAM = 'lobby';
  * for the account that signs in with it and dropped on sign-out by the passkey
  * session (`usePasskeySession({ invites })`).
  */
-export const invites: InviteStore = createInviteStore(APP, { keep: [LOBBY_PARAM] });
+export const invites: InviteStore = createInviteStore(APP, { keep: [LOBBY_PARAM, FROM_PARAM] });
 
 /** The lobby a pending invite's link names, opened once it is redeemed. */
 export function invitedLobby(invite: PendingInvite | null): string | null {
   return invite?.extra[LOBBY_PARAM] ?? null;
 }
 
+/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
+export function inviter(invite: PendingInvite | null): string | null {
+  return invite?.extra[FROM_PARAM] ?? null;
+}
+
 /**
  * The page an invite link opens (`InviteDialog`'s `linkBase`): this frontend,
- * naming the lobby to open and `org`, so a player already in it is not made to
- * spend the token's single use.
+ * naming the lobby to open, `org` (so a member is told so, not charged the
+ * token's single use) and the inviter's name.
  *
  * Pinned to the router's basename (the served `/{version}/`) until every
  * cluster keeps the query on its root redirect (core's served-redirect fix).
  */
-export function lobbyLinkBase(lobby: string, org: string): string {
+export function lobbyLinkBase(lobby: string, org: string, from?: string | null): string {
   const url = new URL(basename(), window.location.origin);
   url.searchParams.set(INVITE_PARAMS.org, org);
   url.searchParams.set(LOBBY_PARAM, lobby);
+  if (from) url.searchParams.set(FROM_PARAM, from);
   return url.toString();
 }
 

@@ -42,7 +42,7 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
             'div',
             { 'data-testid': 'invite-dialog' },
             createElement('h2', { 'data-testid': 'invite-title' }, p.labels?.title),
-            createElement('pre', { 'data-testid': 'invite-props' }, JSON.stringify({ org: p.org, role: p.role, teams: p.teams, linkBase: p.linkBase })),
+            createElement('pre', { 'data-testid': 'invite-props' }, JSON.stringify({ org: p.org, role: p.role, teams: p.teams, linkBase: p.linkBase, noun: p.labels?.noun, inviterName: p.inviterName })),
           )
         : null,
     AcceptInviteDialog: (p: Parameters<typeof actual.AcceptInviteDialog>[0]) =>
@@ -51,6 +51,8 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
             'div',
             { 'data-testid': 'accept-dialog' },
             createElement('pre', { 'data-testid': 'accept-token' }, p.token),
+            createElement('pre', { 'data-testid': 'accept-props' }, JSON.stringify({ org: p.org, labels: p.labels })),
+            createElement('button', { 'data-testid': 'accept-fail', onClick: () => p.onError?.(new Error('spent')) }, 'fail'),
             createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org-9' }) }, 'join'),
             createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
           )
@@ -250,14 +252,20 @@ describe('App', () => {
     signedIn();
     at('/lobby?id=app-1');
     const client = fakeClient([LOBBY]);
+    client.getOrg.mockResolvedValue({
+      members: { 'acct-alice': 'owner', 'acct-bob': 'member' },
+      memberMetadata: { 'acct-bob': { name: 'Bob' }, 'acct-alice': { name: 'Alice' } },
+    } as never);
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByText('Invite player'));
     expect(screen.getByTestId('invite-title').textContent).toBe('Invite to this lobby');
     const props = JSON.parse(screen.getByTestId('invite-props').textContent ?? '');
-    expect(props).toMatchObject({ org: 'org-1' });
+    expect(props).toMatchObject({ org: 'org-1', noun: 'lobby' });
     const base = new URL(props.linkBase);
     expect(base.searchParams.get('lobby')).toBe('app-1');
     expect(base.searchParams.get('org')).toBe('org-1');
+    expect(props.inviterName).toBe('Alice');
+    expect(base.searchParams.get('from')).toBe('Alice');
   });
 
   it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
@@ -347,16 +355,29 @@ describe('App', () => {
       expect(invites.token()).toBeNull();
     });
 
-    it('a player already in the organization is not asked, and the lobby opens', async () => {
+    it('hands the dialog the link\'s org and wording, so the dialog skips a member', async () => {
       signedIn();
       at('/lobby');
       const client = fakeClient([LOBBY]);
-      const invites = pendingIn({ token: 'tok-9', org: 'org-1', extra: { lobby: 'app-1' } });
+      const invites = pendingIn({ token: 'tok-9', org: 'org-1', extra: { lobby: 'app-1', from: 'Ada' } });
       render(<App deps={deps(client)} invites={invites} />);
-      await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
-      expect(screen.queryByTestId('accept-dialog')).toBeNull();
-      expect(invites.token()).toBeNull();
+      const props = JSON.parse((await screen.findByTestId('accept-props')).textContent ?? '');
+      expect(props.org).toBe('org-1');
+      expect(props.labels).toMatchObject({ title: "Join Ada's game", join: 'Join' });
+      expect(props.labels.body).toContain("Ada's game");
       expect(client.redeemInvite).not.toHaveBeenCalled();
+    });
+
+    it('a refused join forgets the token but keeps the dialog on screen', async () => {
+      signedIn();
+      at('/lobby');
+      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
+      render(<App deps={deps(fakeClient([LOBBY]))} invites={invites} />);
+      fireEvent.click(await screen.findByTestId('accept-fail'));
+      await waitFor(() => expect(invites.token()).toBeNull());
+      expect(screen.getByTestId('accept-dialog')).toBeVisible();
+      fireEvent.click(screen.getByTestId('accept-close'));
+      await waitFor(() => expect(screen.queryByTestId('accept-dialog')).toBeNull());
     });
 
     it('signing out drops the pending invite, so the next person is not asked to join', async () => {

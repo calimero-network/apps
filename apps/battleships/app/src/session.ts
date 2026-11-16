@@ -50,8 +50,6 @@ export function useSession(
 export interface InviteLanding {
   org: string | null;
   lobby: string | null;
-  /** The account was in the org already: nothing was joined. */
-  member?: boolean;
 }
 
 /** The pending-invite store, and where a join lands, for every screen (`SessionProvider`). */
