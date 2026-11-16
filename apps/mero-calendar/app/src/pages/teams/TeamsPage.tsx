@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { appOnlyInviteNote, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { lastUsedName } from "@calimero-apps/names";
-import { messageOf } from "../../api/calendar";
+import { messageOf, PACKAGE } from "../../api/calendar";
 import { useSignedIn } from "../../api/sessionContext";
 import {
   CONNECTED_CALENDAR_NAME,
   createCalendar,
-  createTeam as createOrgTeam,
+  finishTeam,
   inviteLink,
   inviteToken,
   leaveTeam as leaveOrgTeam,
@@ -33,6 +34,15 @@ import {
 import styles from "./teams.module.scss";
 import { passkeyConfirm } from "@calimero-network/mero-js";
 
+const CREATE_LABELS = {
+  title: "New team",
+  subtitle: "Name your team. Its members share its calendars.",
+  nameLabel: "Team name",
+  namePlaceholder: "e.g. Design",
+  selfLabel: "Your name in this team",
+  selfPlaceholder: "e.g. Ada",
+};
+
 /**
  * The teams this account is in: Calimero organizations (v1: namespaces of
  * this app). Orgs are the platform's teams, so one made in another Calimero
@@ -48,10 +58,8 @@ export default function TeamsPage() {
   // The cluster has answered the list (empty or not). A failed read has not, and
   // must not forget a team it simply could not see.
   const [listed, setListed] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  // Your name in the new team, asked here once: every calendar in it uses it.
-  const [myName, setMyName] = useState(() => lastUsedName());
+  const [showCreate, setShowCreate] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [inviteFor, setInviteFor] = useState<{ id: string; link: string; appOnly?: boolean } | null>(
     null,
@@ -145,24 +153,19 @@ export default function TeamsPage() {
     [client, source, passkey, after, navigate],
   );
 
-  async function createTeam() {
-    const name = newName.trim();
-    const me = myName.trim();
-    if (!name || !me) return;
-    setCreating(true);
+  async function teamCreated({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setShowCreate(false);
     try {
-      const { groupId, warning } = await createOrgTeam(client, name, passkey, source);
+      const { groupId, warning } = await finishTeam(client, orgId, passkey, source);
       setStoredTeamName(groupId, name);
       // Best effort: the team exists either way, and a calendar in it asks
       // once when the name is missing.
-      await setMyTeamName(client, groupId, accountId, me).catch(() => {});
+      await setMyTeamName(client, groupId, accountId, selfName).catch(() => {});
       setTeams((prev) => [...prev, { groupId, name, role: "owner" }]);
-      setNewName("");
       if (warning) showToast(warning);
     } catch (err) {
-      showToast(`Could not create team: ${messageOf(err)}`);
+      showToast(`Could not set up the team: ${messageOf(err)}`);
     } finally {
-      setCreating(false);
       after();
     }
   }
@@ -263,32 +266,24 @@ export default function TeamsPage() {
         <p className={styles.subtitle}>Teams are shared calendars.</p>
 
         <div className={styles.createRow}>
-          <input
-            className={`mc-input ${styles.createInput}`}
-            placeholder="New team name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTeam()}
-            data-testid="new-team-input"
-          />
-          <input
-            className={`mc-input ${styles.createInput}`}
-            placeholder="Your name in this team"
-            aria-label="Your name in this team"
-            value={myName}
-            onChange={(e) => setMyName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTeam()}
-            data-testid="new-team-my-name"
-          />
           <button
             className="mc-btn mc-btn--primary"
-            onClick={createTeam}
-            disabled={creating || !newName.trim() || !myName.trim()}
+            onClick={() => setShowCreate(true)}
             data-testid="create-team-btn"
           >
-            {creating ? "Creating…" : "Create team"}
+            New team
           </button>
         </div>
+        <CreateWorkspaceDialog
+          client={client}
+          passkey={passkey()}
+          release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE })}
+          defaultSelfName={lastUsedName()}
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={teamCreated}
+          labels={CREATE_LABELS}
+        />
         <ConnectExistingOrg appName="Mero Calendar" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (

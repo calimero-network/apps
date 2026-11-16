@@ -1,6 +1,7 @@
 import "@calimero-apps/glass/glass.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import App from "./App";
 import { captureInvite } from "./utils/inviteLink";
 import "./index.css";
@@ -12,6 +13,8 @@ captureInvite();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </StrictMode>,
 );

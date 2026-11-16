@@ -25,16 +25,13 @@ export async function listGroups(client: ClientRoutes<{ apps: "list" }>, source:
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
-/**
- * A new voting group: an organization for it first, so members can be invited, then
- * the app instance in it. Answers the instance's id and its org.
- */
+/** A new voting group's app instance, in the organization the node approved for it. Answers the instance's id and its org. */
 export async function createGroup(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
+  org: string,
 ): Promise<{ appId: string; org: string }> {
-  const org = (await client.orgs.create({ name })).orgId;
   const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
   return { appId, org };
 }

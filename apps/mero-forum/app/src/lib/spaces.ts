@@ -9,7 +9,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -139,22 +139,17 @@ export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
 
 /**
- * A new space: an org whose members may create forums and invite. Setting the
- * defaults is a passkey step-up; refused, the org stays (only its owner and
- * admins can then create forums and invite).
+ * What follows a space the node approved: its mark, the member defaults (a
+ * passkey step-up, skipped on a session bound to the app; refused, only its
+ * owner and admins can then create forums and invite) and this app's own team, open.
  */
-export async function createSpace(
-  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
-  name: string,
+export async function finishSpace(
+  client: ClientRoutes<{ orgs: "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
-  onStatus: (m: string) => void = () => {},
   source?: AppSource,
 ): Promise<{ namespaceId: string; warning: string | null }> {
-  onStatus("Creating the space…");
-  // The org, marked so it is listed as a space before it holds a forum, its
-  // member defaults, and this app's own team, open (declined, or an older
-  // node: a legacy org).
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     namespaceId: made.orgId,
     warning: made.capabilitiesError

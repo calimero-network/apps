@@ -8,11 +8,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
 import {
   createAudience,
-  createCompany,
+  finishCompany,
   leaveCompany,
   leaveCompanyOrg,
   mintInvite,
@@ -23,6 +24,12 @@ import {
 const PKG = "com.calimero.mero-updates";
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createCompany(client: ReturnType<typeof orgCluster>["client"], name: string, passkey: () => PasskeyProvider, source?: AppSource) {
+  const { orgId } = await client.orgs.create({ name });
+  return finishCompany(client, orgId, passkey, source);
+}
 
 async function company(people: Record<string, string> = {}) {
   const cluster = orgCluster();

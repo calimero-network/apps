@@ -1,42 +1,49 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppInfo } from "@calimero-network/mero-js";
-import { describeError, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, type AppSource } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
-import { MeroStandupClient, type AppTransport } from "./generated/client";
-import { decodeText } from "./standup";
+import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
+import { MeroStandupClient } from "./generated/client";
+import { PACKAGE, decodeText } from "./standup";
 import { createTeam, listTeams } from "./teams";
 
-type PickerClient = AppTransport &
-  ClientRoutes<{
-    apps: "list" | "create" | "call" | "view";
-    orgs: "create" | "get" | "memberMetadata";
-  }>;
+const CREATE_LABELS = {
+  title: "Start a team",
+  subtitle: "A new organization with this team in it. Invite teammates from the team's Invite tab.",
+  nameLabel: "Team name",
+  namePlaceholder: "e.g. Platform",
+  selfLabel: "Your name in this team",
+  selfPlaceholder: "e.g. Alice",
+};
 
 /**
  * v1's context picker: the teams this account reaches (app instances of this
  * app), and a new one. A new team is an organization with the app in it, named
- * with `setTeamName` so every member sees the same name. Your name in it is
- * asked here, once, and kept on the org.
+ * with `setTeamName` so every member sees the same name. The organization comes
+ * from the shared dialog, which also asks your name in it, kept on the org.
  */
 export function TeamPicker({
   client,
   accountId,
   source,
+  passkey,
   onOpen,
   after,
 }: {
-  client: PickerClient;
+  client: CalimeroClient;
   accountId: string;
   source: AppSource;
+  passkey: () => PasskeyProvider;
   onOpen: (app: Pick<AppInfo, "appId" | "name" | "org">) => void;
   /** Runs after each request (keeps the stored session current). */
   after: () => void;
 }) {
   const [teams, setTeams] = useState<AppInfo[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
-  const [teamName, setTeamName] = useState("");
-  const [myName, setMyName] = useState(() => lastUsedName());
+  const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -67,16 +74,16 @@ export function TeamPicker({
     void refresh();
   }, [refresh]);
 
-  async function create() {
-    const name = teamName.trim();
+  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setShowCreate(false);
     setBusy(true);
     setError(null);
     try {
-      const { appId, org } = await createTeam(client, source, name);
+      const { appId, org } = await createTeam(client, source, name, orgId);
       after();
       // Best effort: the team exists either way, and opening it asks once
       // when the org has no name for you.
-      await setOrgName(client, org, accountId, myName).catch(() => {});
+      await setOrgName(client, org, accountId, selfName).catch(() => {});
       await new MeroStandupClient(client, appId, { after }).setTeamName({ name });
       onOpen({ appId, name, org });
     } catch (e) {
@@ -109,37 +116,27 @@ export function TeamPicker({
         )}
       </section>
 
-      <form
-        className="card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (teamName.trim() && myName.trim()) void create();
-        }}
-      >
+      <section className="card">
         <h2>Start a team</h2>
         <p className="empty" style={{ marginBottom: 10 }}>
           A new organization with this team in it. Invite teammates from the team&apos;s Invite tab.
         </p>
         <div className="row">
-          <input
-            aria-label="team name"
-            placeholder="Team name, e.g. Platform"
-            maxLength={80}
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-          />
-          <input
-            aria-label="your name in this team"
-            placeholder="Your name in this team"
-            maxLength={64}
-            value={myName}
-            onChange={(e) => setMyName(e.target.value)}
-          />
-          <button type="submit" disabled={busy || !teamName.trim() || !myName.trim()}>
+          <button type="button" onClick={() => setShowCreate(true)} disabled={busy}>
             {busy ? "Starting…" : "Start a new team"}
           </button>
         </div>
-      </form>
+      </section>
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={created}
+        labels={CREATE_LABELS}
+      />
       {error && <pre className="err">{error}</pre>}
     </>
   );

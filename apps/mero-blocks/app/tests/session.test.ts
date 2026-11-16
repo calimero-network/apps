@@ -5,6 +5,10 @@ import type { KeyValueStorage } from "@calimero-apps/connect";
 import { connect, describeTarget, deviceLabel, signIn, signOut, signUp, type SessionDeps } from "../src/net/session";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
+// connect() mounts the floating shield's React root and never unmounts it; under load
+// its render ran after the environment was torn down ("window is not defined").
+vi.mock("@calimero-apps/passkey/nodeShield", () => ({ bindNodeShield: () => () => {} }));
+
 function memory(): KeyValueStorage & { data: Map<string, string> } {
   const data = new Map<string, string>();
   return {

@@ -6,6 +6,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 
 import App from "./App";
@@ -34,9 +35,11 @@ root.render(
           <ModalProvider>
             <PopupProvider>
               {/* The cluster serves the bundled frontend under its own path. */}
-              <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
-                <App />
-              </BrowserRouter>
+              <ConsentPopupReturn>
+                <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
+                  <App />
+                </BrowserRouter>
+              </ConsentPopupReturn>
             </PopupProvider>
           </ModalProvider>
         </StoreProvider>

@@ -8,11 +8,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
 import {
   createForum,
-  createSpace,
+  finishSpace,
   inviteToken,
   leaveSpace,
   leaveSpaceOrg,
@@ -24,9 +25,15 @@ const PKG = "com.calimero.mero-forum";
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
 
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createSpace(client: ReturnType<typeof orgCluster>["client"], name: string, passkey: () => PasskeyProvider, source?: AppSource) {
+  const { orgId } = await client.orgs.create({ name });
+  return finishSpace(client, orgId, passkey, source);
+}
+
 async function space(people: Record<string, string> = {}) {
   const cluster = orgCluster();
-  const { namespaceId: org, warning } = await createSpace(cluster.client, "Acme", passkey, undefined, SOURCE);
+  const { namespaceId: org, warning } = await createSpace(cluster.client, "Acme", passkey, SOURCE);
   expect(warning).toBeNull();
   Object.assign(cluster.org(org).members, people);
   return { cluster, org };
@@ -44,7 +51,7 @@ describe("a new space gets Forum's own app team", () => {
   it("a declined team leaves a legacy space, whose forums use organization access as before", async () => {
     const cluster = orgCluster();
     cluster.state.declined.add("scopeApps");
-    const { namespaceId: org } = await createSpace(cluster.client, "Acme", passkey, undefined, SOURCE);
+    const { namespaceId: org } = await createSpace(cluster.client, "Acme", passkey, SOURCE);
     expect(cluster.modeOf(org)).toBe("legacy");
     await createForum(cluster.client, SOURCE, org, "General", passkey);
     expect(cluster.callsOf("createApp")[0]![2]).toEqual({ org });

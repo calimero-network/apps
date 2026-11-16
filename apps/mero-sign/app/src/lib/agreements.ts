@@ -21,7 +21,7 @@ import {
 import {
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   isAppOnly,
   listAppInfos,
   orgInstanceOptions,
@@ -125,22 +125,18 @@ export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
 
 /**
- * A new workspace: an org whose members may create agreements and invite.
- * Setting the defaults is a passkey step-up; refused, the org stays and only
- * its owner and admins can create agreements and invite.
+ * What follows a workspace the node approved: its mark, the member defaults (a
+ * passkey step-up, skipped on a session bound to the app; refused, the org
+ * stays and only its owner and admins can create agreements and invite) and
+ * Mero Sign's own team, open (declined, or an older node: a legacy org).
  */
-export async function createWorkspace(
-  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
-  name: string,
+export async function finishWorkspace(
+  client: ClientRoutes<{ orgs: 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
-  onStatus: StatusFn = noop,
   source?: AppSource,
 ): Promise<{ namespaceId: string; warning: string | null }> {
-  onStatus('Creating the workspace…');
-  // The org, marked so it is listed as a workspace before it holds an
-  // agreement, its member defaults, and Mero Sign's own team, open (declined,
-  // or an older node: a legacy org).
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     namespaceId: made.orgId,
     warning: made.capabilitiesError

@@ -3,7 +3,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -270,17 +270,14 @@ export interface CreatedTeam {
 }
 
 /**
- * Found a team: an org whose members may create boards and invite. Setting
- * those defaults is a passkey step-up; refused, the org stays (only its owner
- * and admins can then create boards and invite).
+ * What follows a team the node approved: its mark, member defaults (a passkey
+ * step-up, skipped on a session bound to the app; refused, only its owner and
+ * admins can then create boards and invite) and this app's own team, open.
  */
-export async function createTeam(name: string): Promise<CreatedTeam> {
+export async function finishTeam(org: string): Promise<CreatedTeam> {
   const { client, source, passkey, after } = getApi();
   try {
-    // The org, marked so it is listed as a team before it holds a board, its
-    // member defaults, and this app's own team, open (declined, or an older
-    // node: a legacy org).
-    const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+    const made = await finishAppOrg(client, org, source, passkey, { capabilities: MEMBER_DEFAULTS });
     if (!made.capabilitiesError) return { namespaceId: made.orgId };
     return {
       namespaceId: made.orgId,

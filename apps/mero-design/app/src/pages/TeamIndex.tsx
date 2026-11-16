@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import NewTeamDialog from "../components/shell/NewTeamDialog";
 import { CONNECTED_BOARD_NAME, createBoard, listOtherTeams } from "../api/rpc";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../sessionContext";
@@ -9,7 +10,6 @@ import { useShell } from "../components/shell/shellContext";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { pickTeam, readLastVisit } from "../utils/lastVisit";
-import { suggestedName } from "../utils/boardName";
 import styles from "./TeamHome.module.css";
 
 /**
@@ -22,13 +22,10 @@ import styles from "./TeamHome.module.css";
  */
 export default function TeamIndex() {
   const { teams } = useShell();
-  const { nodeUrl, accountId } = useAuth();
+  const { nodeUrl } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [name, setName] = useState("");
-  // Your name in the new team: asked here, once, and used by every board in it.
-  const [myName, setMyName] = useState(() => suggestedName(accountId));
-  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
   // "Connect to an existing organization": boards go into an org the account
   // has for another app only on this explicit choice.
   const connectOrg = useCallback(
@@ -65,18 +62,14 @@ export default function TeamIndex() {
   const target = pickTeam(teams.teams.map((t) => t.groupId), readLastVisit(nodeUrl).team);
   if (target) return <Navigate to={`/teams/${target}/projects`} replace state={{ resume: true }} />;
 
-  async function create() {
-    const trimmed = name.trim();
-    if (!trimmed || !myName.trim() || busy) return;
-    setBusy(true);
+  async function created(made: { orgId: string; name: string; selfName: string }) {
+    setCreating(false);
     try {
-      const { id, warning } = await teams.createTeam(trimmed, myName);
+      const { id, warning } = await teams.teamCreated(made);
       if (warning) showToast(warning);
-      if (id) navigate(`/teams/${id}/projects`);
+      navigate(`/teams/${id}/projects`);
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not create team."));
-    } finally {
-      setBusy(false);
+      showToast(extractErrorMessage(err, "Could not set up the team."));
     }
   }
 
@@ -91,34 +84,10 @@ export default function TeamIndex() {
             sync between them directly. Name it to start — or open an invitation link someone sent you.
           </p>
           <div className={styles.emptyField}>
-            <div className={styles.field}>
-              <input
-                className={styles.input}
-                placeholder="New team name…"
-                aria-label="New team name"
-                value={name}
-                maxLength={64}
-                autoFocus
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void create()}
-                data-testid="first-team-input"
-              />
-            </div>
-            <div className={styles.field}>
-              <input
-                className={styles.input}
-                placeholder="Your name in this team…"
-                aria-label="Your name in this team"
-                value={myName}
-                maxLength={32}
-                onChange={(e) => setMyName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void create()}
-                data-testid="first-team-my-name"
-              />
-              <button className={styles.btn} onClick={() => void create()} disabled={busy || !name.trim() || !myName.trim()} data-testid="first-team-create">
-                {busy ? "Creating…" : "Create"}
-              </button>
-            </div>
+            <button className={styles.btn} onClick={() => setCreating(true)} data-testid="first-team-create">
+              Create a team
+            </button>
+            <NewTeamDialog open={creating} onClose={() => setCreating(false)} onCreated={created} />
             <ConnectExistingOrg appName="Mero Design" load={listOtherTeams} onConnect={connectOrg} />
           </div>
         </section>

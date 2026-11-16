@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { askAnOwnerCopy, canCreateIn, describeError, orgsWithApp, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName, setOrgName } from "@calimero-apps/names";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { formsClient } from "./formsApi";
-import { createWorkspace, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
+import { createWorkspace, createWorkspaceInNewOrg, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
+import { APP_PACKAGE } from "./session";
 import { useSignedIn } from "./sessionContext";
+
+const CREATE_LABELS = {
+  title: "New workspace",
+  subtitle: "Name your workspace. It lives in a new organization you own.",
+  nameLabel: "Workspace name",
+  namePlaceholder: "e.g. Marketing",
+  selfLabel: "Your name in this workspace",
+  selfPlaceholder: "e.g. Alice",
+};
 
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
@@ -20,7 +32,8 @@ function shortId(id: string) {
  * existing organization", on the person's explicit choice.
  */
 export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => void }) {
-  const { client, source, passkey, after } = useSignedIn();
+  const { client, accountId, source, passkey, after } = useSignedIn();
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
   /** The orgs holding a workspace of this app: the only ones the start form offers. */
   const [withApp, setWithApp] = useState<OrgRow[] | null>(null);
@@ -35,6 +48,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
   const [name, setName] = useState("");
   const [org, setOrg] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -57,13 +71,14 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
     };
   }, [client, source, after, tick]);
 
+  /** In an org the account is already in: no org is made, so no consent page is asked. */
   async function start() {
     const title = name.trim();
-    if (!title) return;
+    if (!title || !org) return;
     setBusy(true);
     setError(null);
     try {
-      const made = await createWorkspace(client, source, title, org || null, () => passkey());
+      const made = await createWorkspace(client, source, title, org, () => passkey());
       // Name it right away. Best effort: an unnamed workspace still works.
       await formsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
       onOpen(made);
@@ -72,6 +87,24 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
       setTick((t) => t + 1);
     } finally {
       setBusy(false);
+      after();
+    }
+  }
+
+  /** The org and its name come from the shared dialog, which the node approved. */
+  async function created({ orgId, name: title, selfName }: { orgId: string; name: string; selfName: string }) {
+    setShowCreate(false);
+    setError(null);
+    try {
+      const made = await createWorkspaceInNewOrg(client, source, title, orgId, () => passkey());
+      // Best effort: an unnamed workspace, or an org member without a name, still works.
+      await setOrgName(client, orgId, accountId, selfName).catch(() => undefined);
+      await formsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
+      onOpen(made);
+    } catch (e) {
+      setError(describeError(e));
+      setTick((t) => t + 1);
+    } finally {
       after();
     }
   }
@@ -134,13 +167,6 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
       >
         <h2>Start a workspace</h2>
         <div className="row">
-          <input
-            aria-label="new workspace name"
-            placeholder="Workspace name, e.g. Marketing"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
           {creatable && creatable.length > 0 && (
             <select aria-label="organization" value={org} onChange={(e) => setOrg(e.target.value)}>
               <option value="">In a new organization</option>
@@ -151,9 +177,24 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
               ))}
             </select>
           )}
-          <button type="submit" disabled={busy || !name.trim()}>
-            {busy ? "Creating…" : "Start a new workspace"}
-          </button>
+          {org && (
+            <input
+              aria-label="new workspace name"
+              placeholder="Workspace name, e.g. Marketing"
+              maxLength={80}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          )}
+          {org ? (
+            <button type="submit" disabled={busy || !name.trim()}>
+              {busy ? "Creating…" : "Start a new workspace"}
+            </button>
+          ) : (
+            <button type="button" onClick={() => setShowCreate(true)}>
+              Start a new workspace
+            </button>
+          )}
         </div>
         {withApp && creatable && creatable.length < withApp.length && (
           <p className="empty" data-testid="workspace-ask-owner">
@@ -163,6 +204,16 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
         {error && <pre className="err">{error}</pre>}
         <ConnectExistingOrg appName="Mero Forms" load={loadOtherOrgs} onConnect={connect} />
       </form>
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={releasePending ? null : (reviewRelease(release) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={created}
+        labels={CREATE_LABELS}
+      />
     </>
   );
 }

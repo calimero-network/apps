@@ -33,6 +33,35 @@ vi.mock("@calimero-apps/passkey", async (importOriginal) => {
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
 });
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Fresh", selfName: "Ana" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 const HOST = `https://${"a".repeat(52)}.apps.calimero.network`;
 
 // The landing page is generated and tested on its own; here it is the door.
@@ -167,6 +196,19 @@ describe("App", () => {
     expect(client.signIn).toHaveBeenCalled();
     await screen.findByText("Team");
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
+  });
+
+  it("opens the shared dialog for a new space, then names you in it and opens it", async () => {
+    remember();
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("create-space"));
+    expect((await screen.findByTestId("create-title")).textContent).toBe("New space");
+    expect(JSON.parse(screen.getByTestId("create-release").textContent ?? "null")).toEqual({ package: "com.calimero.mero-forum" });
+    fireEvent.click(screen.getByTestId("create-done"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Ana" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/spaces/org-new"));
+    expect(screen.queryByTestId("create-dialog")).toBeNull();
   });
 
   it("reopens the remembered forum and shows its feed in the screens' shapes", async () => {

@@ -23,6 +23,35 @@ afterEach(() => {
   globalThis.localStorage.clear();
 });
 
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-1", name: "Platform", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 class Memory implements KeyValueStorage {
   readonly items = new Map<string, string>();
   getItem(k: string) {
@@ -171,13 +200,12 @@ describe("App", () => {
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
-    fireEvent.change(screen.getByLabelText("team name"), { target: { value: "Platform" } });
-    // Your name in the new team is asked in the same step, and required.
-    expect((screen.getByText("Start a new team") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("your name in this team"), { target: { value: "Alice" } });
+    // The org, its name and yours come from the shared dialog.
     fireEvent.click(screen.getByText("Start a new team"));
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.mero-standup" });
+    fireEvent.click(screen.getByTestId("create-done"));
     await screen.findByText("Platform");
-    expect(client.createOrg).toHaveBeenCalledWith("Platform");
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("Platform", "bundle-hash", { org: "org-1" });
     expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice" });
     expect(team.call).toHaveBeenCalledWith("app-new", "setTeamName", { name: "Platform" });

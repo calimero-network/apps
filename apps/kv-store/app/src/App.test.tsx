@@ -78,6 +78,35 @@ function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = D
   };
 }
 
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-1", name: "team", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 const LOCAL: Target = resolveTarget(DEV_ENV);
 
 /** An invite store on `storage` holding `invite`, as `main.tsx` leaves it after capturing a link. */
@@ -171,16 +200,35 @@ describe("App", () => {
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
-    fireEvent.change(screen.getByLabelText("store name"), { target: { value: "team" } });
+    // Shared by default: the org, its name and yours come from the shared dialog.
+    expect(screen.queryByLabelText("store name")).toBeNull();
     fireEvent.click(screen.getByText("Create"));
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.kv-store" });
+    fireEvent.click(screen.getByTestId("create-done"));
     await screen.findByText("Write");
-    expect(client.createOrg).toHaveBeenCalledWith("team");
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("team", "bundle-hash", { org: "org-1" });
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-new", "entries", {}));
 
     fireEvent.click(screen.getByText("Create an invitation link"));
     await screen.findByText(/invite=tok-123&org=org-1/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
+  });
+
+  it("creates a private store with no org and no dialog", async () => {
+    const client = fakeClient();
+    render(<App deps={deps(client)} storage={new Memory()} />);
+
+    await screen.findByText(/Connected to merod local \(3 nodes\)/);
+    fireEvent.click(screen.getByText("Create an account"));
+    await screen.findByText("Your stores");
+    fireEvent.click(screen.getByLabelText(/shared/));
+    fireEvent.change(screen.getByLabelText("store name"), { target: { value: "mine" } });
+    fireEvent.click(screen.getByText("Create"));
+    await screen.findByText("Write");
+    expect(client.createApp).toHaveBeenCalledWith("mine", "bundle-hash");
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("create-dialog")).toBeNull();
   });
 
   it("restores the session and the store opened last time", async () => {

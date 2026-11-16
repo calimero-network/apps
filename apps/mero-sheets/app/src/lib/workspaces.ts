@@ -15,7 +15,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -112,21 +112,20 @@ export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
 
 /**
- * The workspace to create a spreadsheet in: `existing`, or a new org whose
- * members may create spreadsheets and invite. Setting those defaults is a
- * passkey step-up; refused, the org stays (only its owner and admins can then
- * create and invite) and `warning` says so.
+ * What follows a workspace the node approved: its member defaults (a passkey
+ * step-up, skipped on a session bound to the app; refused, the org stays and
+ * `warning` says so) and Mero Sheets' own team, open (declined, or an older
+ * node: a legacy org).
  */
-export async function ensureWorkspace(
-  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
-  opts: { existing: string | null; name: string; passkey: () => PasskeyProvider; source?: AppSource | null },
+export async function finishWorkspace(
+  client: ClientRoutes<{ orgs: 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
+  orgId: string,
+  passkey: () => PasskeyProvider,
+  source?: AppSource | null,
   onStatus: StatusFn = noop,
 ): Promise<{ orgId: string; warning: string | null }> {
-  if (opts.existing) return { orgId: opts.existing, warning: null };
-  onStatus('Creating your workspace…');
-  // The org, its member defaults, and Mero Sheets' own team, open (declined,
-  // or an older node: a legacy org).
-  const made = await createAppOrg(client, opts.name, opts.source, opts.passkey, {
+  onStatus('Setting up your workspace…');
+  const made = await finishAppOrg(client, orgId, source, passkey, {
     capabilities: MEMBER_DEFAULTS,
     mark: false,
   });

@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { SessionProvider } from "./api/sessionContext";
@@ -22,9 +23,11 @@ createRoot(document.getElementById("root")!).render(
         cluster in a production build; see @calimero-apps/connect. */}
     <SessionProvider>
       {/* The cluster serves the bundled frontend under its own path. */}
-      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
-        <App />
-      </BrowserRouter>
+      <ConsentPopupReturn>
+        <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
+          <App />
+        </BrowserRouter>
+      </ConsentPopupReturn>
     </SessionProvider>
   </StrictMode>,
 );

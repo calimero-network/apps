@@ -26,6 +26,35 @@ vi.mock("@calimero-apps/passkey", async (importOriginal) => {
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
 });
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Studio", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 const HOST = `https://${"a".repeat(52)}.apps.calimero.network`;
 
 // The landing page is generated and tested on its own; here it is the door.
@@ -191,23 +220,21 @@ describe("App", () => {
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
-  it("asks your name in a new team in the same step as its name, and keeps it in the team", async () => {
+  it("opens the shared dialog from the empty state, and names you in the team it made", async () => {
     remember();
     window.history.replaceState(null, "", "/teams");
     const client = fakeClient();
     client.me.mockResolvedValue({ orgs: [] });
     client.getOrg.mockResolvedValue({ name: "Studio", members: { [ME]: "owner" }, memberMetadata: {} });
+    localStorage.setItem("calimero-names:last", "Alice");
     render(<App deps={deps(client)} />);
-    fireEvent.change(await screen.findByTestId("first-team-input"), { target: { value: "Studio" } });
-    const mine = screen.getByTestId("first-team-my-name") as HTMLInputElement;
-    // Required: no name, no team.
-    fireEvent.change(mine, { target: { value: " " } });
-    expect((screen.getByTestId("first-team-create") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(mine, { target: { value: "Alice" } });
-    fireEvent.click(screen.getByTestId("first-team-create"));
-    await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Studio"));
+    fireEvent.click(await screen.findByTestId("first-team-create"));
+    expect((await screen.findByTestId("create-title")).textContent).toBe("New team");
+    expect(screen.getByTestId("create-self").textContent).toBe("Alice");
+    fireEvent.click(screen.getByTestId("create-done"));
     await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Alice" }));
-    expect(localStorage.getItem("calimero-names:last")).toBe("Alice");
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-new/projects"));
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 
   describe("an invitation link opened while signed out", () => {

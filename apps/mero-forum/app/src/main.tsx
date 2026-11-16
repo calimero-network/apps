@@ -2,6 +2,7 @@ import "@calimero-apps/glass/glass.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import App from "./App";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { invites, migrateLegacyInvite } from "./lib/spaces";
@@ -16,6 +17,8 @@ invites.capture(window.location, { basename: nodeBasename(new URL(window.locatio
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </React.StrictMode>,
 );

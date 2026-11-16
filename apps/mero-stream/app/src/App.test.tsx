@@ -9,6 +9,35 @@ import {
 import { SessionStore, resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-1", name: "Team", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -177,18 +206,22 @@ describe("App", () => {
     renderApp(client, "/streams");
 
     // Signed out: the landing page; its connect opens the passkey sign-in.
-    fireEvent.click((await screen.findAllByText(/^Sign in$/))[0]);
-    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    // Pressed until the dialog is up: a click before the session settles is lost when the landing page remounts.
+    await waitFor(() => {
+      fireEvent.click(screen.getAllByText(/^Sign in$/)[0]);
+      expect(screen.getByTestId("signup-passkey")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("signup-passkey"));
     await screen.findByText("Your streams");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     await screen.findByTestId("streams-empty");
 
-    fireEvent.change(screen.getByTestId("stream-name-input"), { target: { value: "Team" } });
-    // Your name in the stream is asked with it, once.
-    expect((screen.getByTestId("create-stream") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByTestId("stream-self-name-input"), { target: { value: "Alice" } });
+    // The org, its name and yours come from the shared dialog.
     fireEvent.click(screen.getByTestId("create-stream"));
-    await waitFor(() => expect(client.createOrg).toHaveBeenCalledWith("Team"));
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.mero-stream" });
+    fireEvent.click(screen.getByTestId("create-done"));
+    await waitFor(() => expect(client.setCapabilities).toHaveBeenCalled());
+    expect(client.createOrg).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", "acct-alice", { name: "Alice" }),
     );

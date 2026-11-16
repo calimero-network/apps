@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
+    "@calimero-network/mero-react": "catalog:component",
     "@calimero-network/mero-js": "catalog:component",
     "react": "catalog:",
     "react-dom": "catalog:"

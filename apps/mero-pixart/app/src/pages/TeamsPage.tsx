@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
-import { messageOf } from "../api/pixart";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
+import { messageOf, PACKAGE } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
 import { lastUsedName } from "@calimero-apps/names";
 import {
   CONNECTED_PROJECT,
   createProject,
-  createTeam as createOrgTeam,
+  finishTeam,
   leaveTeam as leaveOrgTeam,
   leaveTeamOrg,
   listTeams,
@@ -26,6 +27,15 @@ import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume
 import styles from "./TeamsPage.module.css";
 import { passkeyConfirm } from "@calimero-network/mero-js";
 
+const CREATE_LABELS = {
+  title: "New team",
+  subtitle: "Name your team. Its members edit its image projects together.",
+  nameLabel: "Team name",
+  namePlaceholder: "e.g. Design",
+  selfLabel: "Your name in this team",
+  selfPlaceholder: "e.g. Sandi",
+};
+
 /**
  * The teams this account is in: Calimero organizations (v1: namespaces of
  * this app). Orgs are the platform's teams, so one made in another Calimero
@@ -41,10 +51,8 @@ export default function TeamsPage() {
   // The cluster has answered the list (empty or not). A failed read has not, and
   // must not forget a team it simply could not see.
   const [listed, setListed] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  // Your name in the new team: asked here, once, and used by every project in it.
-  const [myName, setMyName] = useState(() => lastUsedName() || legacyUsername());
+  const [showCreate, setShowCreate] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -113,23 +121,18 @@ export default function TeamsPage() {
     [client, source, passkey, after, navigate],
   );
 
-  async function createTeam() {
-    const name = newName.trim();
-    const me = myName.trim();
-    if (!name || !me) return;
-    setCreating(true);
+  async function teamCreated({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setShowCreate(false);
     try {
-      const { groupId, warning } = await createOrgTeam(client, name, passkey, source);
+      const { groupId, warning } = await finishTeam(client, orgId, passkey, source);
       setStoredTeamName(groupId, name);
       // Best effort: without it the team's first project asks, once.
-      await setMyTeamName(client, groupId, accountId, me).catch(() => {});
+      await setMyTeamName(client, groupId, accountId, selfName).catch(() => {});
       setTeams((prev) => [...prev, { groupId, name, role: "owner" }]);
-      setNewName("");
       if (warning) showToast(warning);
     } catch (err) {
-      showToast(`Could not create team: ${messageOf(err)}`);
+      showToast(`Could not set up the team: ${messageOf(err)}`);
     } finally {
-      setCreating(false);
       after();
     }
   }
@@ -198,33 +201,20 @@ export default function TeamsPage() {
         <p className={styles.subtitle}>Teams are shared workspaces. Each holds image projects you edit together.</p>
 
         <div className={styles.createRow}>
-          <input
-            className={`mp-input ${styles.createInput}`}
-            placeholder="New team name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTeam()}
-            data-testid="new-team-input"
-          />
-          <input
-            className={`mp-input ${styles.createInput}`}
-            placeholder="Your name in this team…"
-            aria-label="Your name in this team"
-            value={myName}
-            onChange={(e) => setMyName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTeam()}
-            maxLength={32}
-            data-testid="new-team-my-name"
-          />
-          <button
-            className="mp-btn mp-btn--primary"
-            onClick={createTeam}
-            disabled={creating || !newName.trim() || !myName.trim()}
-            data-testid="create-team-btn"
-          >
-            {creating ? "Creating…" : "Create team"}
+          <button className="mp-btn mp-btn--primary" onClick={() => setShowCreate(true)} data-testid="create-team-btn">
+            New team
           </button>
         </div>
+        <CreateWorkspaceDialog
+          client={client}
+          passkey={passkey()}
+          release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE })}
+          defaultSelfName={lastUsedName() || legacyUsername()}
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={teamCreated}
+          labels={CREATE_LABELS}
+        />
         <ConnectExistingOrg appName="Mero PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (

@@ -23,6 +23,7 @@
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-react": "catalog:component",
     "clsx": "catalog:",
     "fabric": "^7.4.0",
     "react": "catalog:",

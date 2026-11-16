@@ -45,6 +45,8 @@ interface App {
   package: string;
   /** The production build to serve there. */
   dist: string;
+  /** The landing page's way to the passkey sign-in, when it is not a "Sign in" button. */
+  signIn?: (page: Page) => ReturnType<Page["locator"]>;
   /** What the app shows once signed in with no workspace: the way to create one. */
   signedIn: (page: Page) => ReturnType<Page["locator"]>;
   openCreate: (page: Page) => Promise<void>;
@@ -54,6 +56,8 @@ interface App {
   settled?: (page: Page) => Promise<void>;
   /** The package the app itself runs, when it differs from the origin's (a stand-in build). */
   standIn?: string;
+  /** Page errors a stand-in build raises on its own: its instance runs CRM's contract, which has none of the app's methods. */
+  standInErrors?: RegExp;
 }
 
 const APPS_DIR = join(REPO, "apps");
@@ -102,6 +106,96 @@ const APPS: App[] = [
     },
     opened: (p, w) => p.getByTestId("workspace-switcher").filter({ hasText: w }),
   },
+];
+
+/** An app no cluster serves yet: its build is served at Mero CRM's origin, with `VITE_CALIMERO_PACKAGE` set to CRM's package. */
+const atCrm = (name: string, standIn: string, rest: Omit<App, "name" | "package" | "dist" | "standIn">): App => ({
+  name,
+  package: "com.calimero.mero-crm",
+  standIn,
+  dist: dist(name),
+  ...rest,
+});
+
+const byText = (p: Page, w: string) => p.getByText(w).first();
+
+const BATCH_A: App[] = [
+  atCrm("mero-calendar", "com.calimero.mero-calendar", {
+    signedIn: (p) => p.getByTestId("empty-teams"),
+    openCreate: (p) => p.getByTestId("create-team-btn").click(),
+    opened: byText,
+  }),
+  atCrm("mero-pixart", "com.calimero.mero-pixart", {
+    signedIn: (p) => p.getByTestId("empty-teams"),
+    openCreate: (p) => p.getByTestId("create-team-btn").click(),
+    opened: byText,
+  }),
+  atCrm("mero-design", "com.calimero.mero-design", {
+    signedIn: (p) => p.getByTestId("empty-teams"),
+    openCreate: (p) => p.getByTestId("first-team-create").click(),
+    opened: (p, w) => p.getByTestId("team-switcher").filter({ hasText: w }),
+  }),
+  atCrm("mero-forms", "com.calimero.mero-forms", {
+    signedIn: (p) => p.getByRole("button", { name: "Start a new workspace" }),
+    openCreate: (p) => p.getByRole("button", { name: "Start a new workspace" }).click(),
+    // The instance runs CRM's contract here, so the workspace view's first call answers UnknownMethod: that is the view having opened.
+    opened: (p) => p.getByText("UnknownMethod"),
+    standInErrors: /UnknownMethod/,
+  }),
+  atCrm("mero-forum", "com.calimero.mero-forum", {
+    signedIn: (p) => p.getByTestId("create-space"),
+    openCreate: (p) => p.getByTestId("create-space").click(),
+    opened: byText,
+  }),
+  atCrm("mero-pass", "com.calimero.mero-pass", {
+    signedIn: (p) => p.getByTestId("teams-empty"),
+    openCreate: (p) => p.getByTestId("team-create").click(),
+    opened: byText,
+  }),
+  atCrm("mero-sheets", "com.calimero.mero-sheets", {
+    signedIn: (p) => p.getByTestId("action-init_project"),
+    openCreate: (p) => p.getByTestId("action-init_project").click(),
+    opened: (p) => p.getByTitle(/^(Live|Offline)$/),
+    standInErrors: /APP_ERROR|UnknownMethod/,
+  }),
+  atCrm("mero-sign", "com.calimero.mero-sign", {
+    signedIn: (p) => p.getByTestId("create-workspace"),
+    openCreate: (p) => p.getByTestId("create-workspace").click(),
+    opened: (p) => p.getByRole("heading", { name: "Agreements" }),
+  }),
+  atCrm("mero-standup", "com.calimero.mero-standup", {
+    signedIn: (p) => p.getByRole("button", { name: "Start a new team" }),
+    openCreate: (p) => p.getByRole("button", { name: "Start a new team" }).click(),
+    // The instance runs CRM's contract here, so naming the team answers UnknownMethod: the team exists by then.
+    opened: (p) => p.getByText("UnknownMethod"),
+    standInErrors: /UnknownMethod/,
+  }),
+  atCrm("mero-stream", "com.calimero.mero-stream", {
+    signedIn: (p) => p.getByTestId("create-stream"),
+    openCreate: (p) => p.getByTestId("create-stream").click(),
+    opened: byText,
+  }),
+  atCrm("mero-updates", "com.calimero.mero-updates", {
+    signedIn: (p) => p.getByTestId("create-space"),
+    openCreate: (p) => p.getByTestId("create-space").click(),
+    opened: byText,
+  }),
+  atCrm("mero-vote", "com.calimero.mero-vote", {
+    signedIn: (p) => p.getByRole("button", { name: "Create voting group" }),
+    openCreate: (p) => p.getByRole("button", { name: "Create voting group" }).click(),
+    opened: byText,
+  }),
+  atCrm("hyperfeed", "com.calimero.hyperfeed", {
+    signIn: (p) => p.getByRole("button", { name: "Open your feed" }).first(),
+    signedIn: (p) => p.getByRole("button", { name: "Create my feed" }),
+    openCreate: (p) => p.getByRole("button", { name: "Create my feed" }).click(),
+    opened: (p, w) => p.getByTitle("Switch feed").filter({ hasText: w }),
+  }),
+  atCrm("kv-store", "com.calimero.kv-store", {
+    signedIn: (p) => p.getByRole("button", { name: "Create", exact: true }),
+    openCreate: (p) => p.getByRole("button", { name: "Create", exact: true }).click(),
+    opened: byText,
+  }),
 ];
 
 /** Answers the page's own files from `dist`, keeping the real response's headers (its CSP included). */
@@ -157,7 +251,7 @@ test.afterEach(async ({}, info) => {
 
 const only = process.env.E2E_APPS?.split(/[\s,]+/).filter(Boolean);
 
-for (const app of APPS.filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" && (!only || only.includes(a.name)))) {
+for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" && (!only || only.includes(a.name)))) {
   test(`${app.name} creates a workspace on the cluster serving ${app.package}`, async ({ page, context }) => {
     const shots = join(SHOTS, app.name);
     mkdirSync(shots, { recursive: true });
@@ -180,7 +274,9 @@ for (const app of APPS.filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" &&
     await test.step("open the served page and sign up with a new passkey", async () => {
       await page.goto(`${origin}/${version}/`, { waitUntil: "domcontentloaded" });
       const signUp = page.getByTestId("signup-passkey");
-      if (!(await signUp.isVisible())) await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+      const signIn = app.signIn?.(page) ?? page.getByRole("button", { name: "Sign in", exact: true }).first();
+      await expect(signUp.or(signIn).first()).toBeVisible({ timeout: 60_000 });
+      if (!(await signUp.isVisible())) await signIn.click();
       await expect(signUp).toBeVisible({ timeout: 60_000 });
       await shot("signed-out");
       await signUp.click();
@@ -190,6 +286,12 @@ for (const app of APPS.filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" &&
       if (await approve.isVisible()) await approve.click();
       await expect(app.signedIn(page)).toBeVisible({ timeout: 120_000 });
       await shot("signed-in");
+      // The header at phone width: nothing wraps off the page.
+      const wide = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: join(shots, "mobile-header.png") });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth), "the page scrolls sideways at 390px").toBeLessThanOrEqual(390);
+      if (wide) await page.setViewportSize(wide);
     });
 
     const workspace = `E2E ${app.name} ${Date.now().toString(36)}`;
@@ -249,7 +351,8 @@ for (const app of APPS.filter((a) => process.env.CREATE_WORKSPACE_E2E === "1" &&
     }
 
     await test.step("no page errors", () => {
-      expect(consoleLines.filter((l) => /pageerror/.test(l)), consoleLines.join("\n")).toEqual([]);
+      const errors = consoleLines.filter((l) => /pageerror/.test(l) && !app.standInErrors?.test(l));
+      expect(errors, consoleLines.join("\n")).toEqual([]);
     });
   });
 }

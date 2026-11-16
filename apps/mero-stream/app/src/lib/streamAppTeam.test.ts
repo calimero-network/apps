@@ -8,9 +8,16 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { appInviteToken, createRoom, createStream, listStreams, streamInfo } from "./streams";
+import { appInviteToken, createRoom, finishStream, listStreams, streamInfo } from "./streams";
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createStream(client: ReturnType<typeof orgCluster>["client"], name: string, passkey: () => PasskeyProvider, source?: AppSource) {
+  const { orgId } = await client.orgs.create({ name });
+  return finishStream(client, orgId, passkey, source);
+}
 
 const PKG = "com.calimero.mero-stream";
 const SOURCE = { package: PKG };

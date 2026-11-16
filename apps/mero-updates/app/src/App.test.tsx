@@ -93,6 +93,35 @@ vi.mock("./lib/sessionContext", () => {
   };
 });
 
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-2", name: "Globex", selfName: "Ana Lee" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 // jsdom has `<dialog>` but not `showModal()`/`close()`.
 beforeAll(() => {
   const proto = window.HTMLDialogElement.prototype;
@@ -236,13 +265,12 @@ describe("the company pages", () => {
         </MemoryRouter>
       </ToastProvider>,
     );
-    fireEvent.change(await screen.findByTestId("space-name-input"), { target: { value: "Globex" } });
-    // Your name in the company is asked here, once, with the company.
-    expect(screen.getByTestId("create-space")).toBeDisabled();
-    fireEvent.change(screen.getByTestId("self-name-input"), { target: { value: "Ana Lee" } });
-    fireEvent.click(screen.getByTestId("create-space"));
+    // The org, its name and yours come from the shared dialog.
+    fireEvent.click(await screen.findByTestId("create-space"));
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.mero-updates" });
+    fireEvent.click(screen.getByTestId("create-done"));
     expect(await screen.findByText("audiences of the new company")).toBeInTheDocument();
-    expect(h.client.createOrg).toHaveBeenCalledWith("Globex");
+    expect(h.client.createOrg).not.toHaveBeenCalled();
     expect(h.client.setCapabilities).toHaveBeenCalledWith("org-2", expect.any(Number), expect.anything());
     expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-2", "ana", { name: "Ana Lee" });
   });

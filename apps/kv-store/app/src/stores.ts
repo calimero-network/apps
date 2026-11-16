@@ -27,16 +27,15 @@ export async function listStores(client: ClientRoutes<{ apps: "list" }>, source:
 }
 
 /**
- * A new store. `shared` creates an organization for it first, so members can be
- * invited; otherwise only this account reaches it.
+ * A new store. In `org`, the organization the node approved for it, members can
+ * be invited; without one only this account reaches it.
  */
 export async function createStore(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
-  shared: boolean,
+  org?: string,
 ): Promise<string> {
-  const org = shared ? (await client.orgs.create({ name })).orgId : undefined;
   return (await client.apps.create({ name, ...appTarget(source), ...(org ? { org } : {}) })).appId;
 }
 

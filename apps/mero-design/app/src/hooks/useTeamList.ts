@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LeftApp } from "@calimero-apps/connect";
 import {
-  createTeam as createOrg,
+  finishTeam,
   deleteTeam as deleteOrg,
   leaveTeam as leaveOrg,
   leaveTeamOrg,
@@ -29,7 +29,8 @@ export interface TeamList {
    * Founds a team and adds it to the list; rejects with the node's reason.
    * `myName` is your name in it, asked in the same step so no board asks.
    */
-  createTeam: (name: string, myName?: string) => Promise<CreatedTeam>;
+  /** Sets up a team the node approved (its defaults, your name in it) and lists it. */
+  teamCreated: (created: { orgId: string; name: string; selfName: string }) => Promise<CreatedTeam>;
   /** Its owner only (a passkey step-up). Rejects with the node's reason; the team stays listed then. */
   deleteTeam: (teamId: string) => Promise<void>;
   /** What a member who is not an admin does instead. The team stays listed when refused. */
@@ -80,14 +81,14 @@ export function useTeamList(): TeamList {
     return () => clearInterval(id);
   }, [reload]);
 
-  const createTeam = useCallback(async (name: string, myName?: string): Promise<CreatedTeam> => {
-    const data = await createOrg(name);
+  const teamCreated = useCallback(async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }): Promise<CreatedTeam> => {
+    const data = await finishTeam(orgId);
     const id = data.namespaceId;
     // Best effort: refused, the team's first board asks for it, once.
-    if (id && myName?.trim()) await publishMyName(id, getApi().accountId, myName).catch(() => {});
+    if (selfName.trim()) await publishMyName(id, getApi().accountId, selfName).catch(() => {});
     // Cache the name so it survives even if the server later returns no alias,
     // and so it can be embedded in invitations for joiners.
-    if (id) setStoredTeamName(id, name);
+    setStoredTeamName(id, name);
     setTeams((prev) => (prev.some((t) => t.groupId === id) ? prev : [...prev, { groupId: id, name }]));
     return { id, ...(data.warning ? { warning: data.warning } : {}) };
   }, []);
@@ -108,7 +109,7 @@ export function useTeamList(): TeamList {
   }, []);
 
   return useMemo(
-    () => ({ teams, listed, error, reload, createTeam, deleteTeam, leaveTeam, leaveOrganization }),
-    [teams, listed, error, reload, createTeam, deleteTeam, leaveTeam, leaveOrganization],
+    () => ({ teams, listed, error, reload, teamCreated, deleteTeam, leaveTeam, leaveOrganization }),
+    [teams, listed, error, reload, teamCreated, deleteTeam, leaveTeam, leaveOrganization],
   );
 }

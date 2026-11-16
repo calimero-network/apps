@@ -3,7 +3,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -86,29 +86,38 @@ export async function listWorkspaces(
 }
 
 /**
- * A new workspace: in `org` when given, else in a new org of the same name
- * (v1 made a namespace and a context in it). A new org gets this app's open
- * team (`createAppOrg`); the instance goes on the app's team, made first by an
+ * A new workspace: an instance in `org`, on the app's team, made first by an
  * owner or admin in an org whose other apps have teams (`orgInstanceOptions`),
- * or uses organization access in a legacy org. Answers the instance id and org.
+ * or with organization access in a legacy org. Answers the instance id and org.
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, "session"> &
-    ClientRoutes<{ orgs: "create" | "get" | "metadata" | "capabilities" | "appTeamsScope"; apps: "create" }>,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "appTeamsScope"; apps: "create" }>,
   source: AppSource,
   name: string,
-  org: string | null,
+  org: string,
   passkey: () => PasskeyProvider,
 ): Promise<{ appId: string; org: string }> {
-  const orgId = org ?? (await createAppOrg(client, name, source, passkey, { mark: false })).orgId;
   const appId = (
     await client.apps.create({
       name,
       ...appTarget(source),
-      ...(await orgInstanceOptions(client, orgId, source, passkey, PRODUCT_NAME)),
+      ...(await orgInstanceOptions(client, org, source, passkey, PRODUCT_NAME)),
     })
   ).appId;
-  return { appId, org: orgId };
+  return { appId, org };
+}
+
+/** A workspace in an org the node just approved: the org gets this app's open team first (`finishAppOrg`). */
+export async function createWorkspaceInNewOrg(
+  client: Pick<CalimeroClient, "session"> &
+    ClientRoutes<{ orgs: "get" | "metadata" | "capabilities" | "appTeamsScope"; apps: "create" }>,
+  source: AppSource,
+  name: string,
+  org: string,
+  passkey: () => PasskeyProvider,
+): Promise<{ appId: string; org: string }> {
+  await finishAppOrg(client, org, source, passkey, { mark: false });
+  return createWorkspace(client, source, name, org, passkey);
 }
 
 // ── members ──────────────────────────────────────────────────────────────────

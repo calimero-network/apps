@@ -8,7 +8,13 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { otherOrgs, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg } from '@calimero-apps/passkey';
+import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { lastUsedName } from '@calimero-apps/names';
+import {
+  ConnectExistingOrg,
+  reviewRelease,
+  useResolvedSource,
+} from '@calimero-apps/passkey';
 import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';
@@ -18,8 +24,8 @@ import { useCalimero } from '../../calimero';
 import {
   CONNECTED_VAULT_NAME,
   createVault,
-  createPersonalVault,
-  createTeam,
+  finishPersonalVault,
+  finishTeam,
   listTeams,
   listVaults,
   mintTeamInvite,
@@ -28,7 +34,26 @@ import type { TeamRow } from '../../lib/vaults';
 import { hueOf, monogramOf } from '../../lib/itemView';
 import styles from '../../styles/shell.module.css';
 import { describeError } from '../../lib/errors';
+import { PACKAGE } from '../../lib/meroPass';
 import { pickTeam, readLastVisit } from '../../lib/lastVisit';
+
+const TEAM_LABELS = {
+  title: 'New team',
+  subtitle: 'Name your team. You become its Admin and can invite people.',
+  nameLabel: 'Team name',
+  namePlaceholder: 'e.g. Family',
+  selfLabel: 'Your name in this team',
+  selfPlaceholder: 'e.g. Ana',
+};
+
+const PRIVATE_LABELS = {
+  title: 'Private vault',
+  subtitle: 'A vault only you can open, synced across your own devices.',
+  nameLabel: 'Vault name',
+  namePlaceholder: 'e.g. Private',
+  selfLabel: 'Your name',
+  selfPlaceholder: 'e.g. Ana',
+};
 
 /**
  * Your teams. The app's front screen once you are signed in.
@@ -48,7 +73,12 @@ import { pickTeam, readLastVisit } from '../../lib/lastVisit';
  * hover), and "start a team" beside "join a team" as two panels underneath.
  */
 export default function TeamsPage() {
-  const { client, source, passkey, after, where } = useCalimero();
+  const { client, accountId, source, passkey, after, where } = useCalimero();
+  const { source: release, pending: releasePending } = useResolvedSource(
+    client,
+    accountId,
+    source,
+  );
   const conn = useMemo(
     () => (client ? { client, source, passkey, after } : null),
     [client, source, passkey, after],
@@ -65,7 +95,7 @@ export default function TeamsPage() {
   const [personalVaultId, setPersonalVaultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState<'team' | 'private' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [invite, setInvite] = useState<{
@@ -152,32 +182,36 @@ export default function TeamsPage() {
     return () => document.removeEventListener('mousedown', onOutside);
   }, []);
 
-  const create = useCallback(async () => {
-    const name = newName.trim();
-    if (!conn || !name) return;
-    setError(null);
-    try {
-      const { namespaceId, warning: haError } = await createTeam(
-        conn,
-        name,
-        setBusy,
-      );
-      setNewName('');
-      await load();
-      // The team exists either way. What `haError` says is that nobody can
-      // JOIN it yet (an account the cloud cannot place, typically one not yet
-      // linked to its cloud user) — so the team screen says that now, next to
-      // the invite controls, rather than the first invitation failing later.
-      navigate(
-        `/teams/${namespaceId}`,
-        haError ? { state: { hostingNotice: haError } } : undefined,
-      );
-    } catch (e) {
-      setError(describeError(e));
-    } finally {
-      setBusy(null);
-    }
-  }, [conn, newName, load, navigate]);
+  const teamCreated = useCallback(
+    async ({ orgId, selfName }: { orgId: string; selfName: string }) => {
+      if (!conn) return;
+      setCreating(null);
+      setError(null);
+      try {
+        const { namespaceId, warning: haError } = await finishTeam(
+          conn,
+          orgId,
+          accountId ?? '',
+          selfName,
+          setBusy,
+        );
+        await load();
+        // The team exists either way. What `haError` says is that nobody can
+        // JOIN it yet (an account the cloud cannot place, typically one not yet
+        // linked to its cloud user) - so the team screen says that now, next to
+        // the invite controls, rather than the first invitation failing later.
+        navigate(
+          `/teams/${namespaceId}`,
+          haError ? { state: { hostingNotice: haError } } : undefined,
+        );
+      } catch (e) {
+        setError(describeError(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [conn, accountId, load, navigate],
+  );
 
   // "Connect to an existing organization": a vault goes into an org the
   // account has for another app only on this explicit choice.
@@ -201,19 +235,23 @@ export default function TeamsPage() {
     [conn, load, navigate],
   );
 
-  const createPersonal = useCallback(async () => {
-    if (!conn) return;
-    setError(null);
-    try {
-      const { contextId } = await createPersonalVault(conn, setBusy);
-      await load();
-      navigate(`/vault/${contextId}`);
-    } catch (e) {
-      setError(describeError(e));
-    } finally {
-      setBusy(null);
-    }
-  }, [conn, load, navigate]);
+  const personalCreated = useCallback(
+    async ({ orgId, name }: { orgId: string; name: string }) => {
+      if (!conn) return;
+      setCreating(null);
+      setError(null);
+      try {
+        const { contextId } = await finishPersonalVault(conn, orgId, name, setBusy);
+        await load();
+        navigate(`/vault/${contextId}`);
+      } catch (e) {
+        setError(describeError(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [conn, load, navigate],
+  );
 
   const inviteTo = useCallback(
     async (team: TeamRow) => {
@@ -313,7 +351,7 @@ export default function TeamsPage() {
             <button
               type="button"
               className={styles.btn}
-              onClick={() => void createPersonal()}
+              onClick={() => setCreating('private')}
               disabled={!conn || !!busy}
               data-testid="personal-create"
             >
@@ -460,23 +498,14 @@ export default function TeamsPage() {
               </span>
             </div>
             <div className={styles.createRow}>
-              <input
-                className={styles.input}
-                placeholder="New team name…"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void create()}
-                aria-label="New team name"
-                data-testid="team-name"
-              />
               <button
                 type="button"
                 className={styles.btn}
-                onClick={() => void create()}
-                disabled={!conn || !newName.trim() || !!busy}
+                onClick={() => setCreating('team')}
+                disabled={!conn || !!busy}
                 data-testid="team-create"
               >
-                Create
+                New team
               </button>
             </div>
             <ConnectExistingOrg appName="Mero Pass" load={loadOtherOrgs} onConnect={connectOrg} />
@@ -493,6 +522,23 @@ export default function TeamsPage() {
         hint="Whoever opens this link can join the team and read every vault in it."
         onClose={() => setInvite(null)}
       />
+
+      {client && (
+        <CreateWorkspaceDialog
+          client={client}
+          passkey={passkey()}
+          release={
+            releasePending
+              ? null
+              : (reviewRelease(release) ?? { package: PACKAGE })
+          }
+          defaultSelfName={lastUsedName()}
+          open={creating !== null}
+          onClose={() => setCreating(null)}
+          onCreated={creating === 'private' ? personalCreated : teamCreated}
+          labels={creating === 'private' ? PRIVATE_LABELS : TEAM_LABELS}
+        />
+      )}
     </AppShell>
   );
 }

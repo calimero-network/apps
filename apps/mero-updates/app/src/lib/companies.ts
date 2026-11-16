@@ -3,7 +3,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -134,17 +134,18 @@ export interface CreatedCompany {
   warning: string | null;
 }
 
-/** A new company: an org whose members may start audiences and invite (a passkey step-up). */
-export async function createCompany(
-  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
-  name: string,
+/**
+ * What follows a company the node approved: its mark, the member defaults (a
+ * passkey step-up, skipped on a session bound to the app) and Mero Updates'
+ * own team, open (declined, or an older node: a legacy org).
+ */
+export async function finishCompany(
+  client: ClientRoutes<{ orgs: "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedCompany> {
-  // The org, marked so it is listed as a company before it holds an audience,
-  // its member defaults, and Mero Updates' own team (core#4890), open
-  // (declined, or an older node: a legacy org).
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     namespaceId: made.orgId,
     warning: made.capabilitiesError

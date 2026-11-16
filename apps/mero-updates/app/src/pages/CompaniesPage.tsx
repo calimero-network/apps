@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useToast } from "../contexts/ToastContext";
 import {
   CONNECTED_AUDIENCE_NAME,
   createAudience,
-  createCompany,
+  finishCompany,
   setCompanyName,
   inviteLink,
   listCompanies,
@@ -18,6 +19,7 @@ import {
   type NamespaceRow,
 } from "../lib/companies";
 import { getUsername } from "../lib/active";
+import { APP_PACKAGE } from "../lib/config";
 import { describeTarget } from "../lib/session";
 import { useSignedIn } from "../lib/sessionContext";
 import InviteModal from "../components/InviteModal";
@@ -38,6 +40,15 @@ import {
 import styles from "./CompaniesPage.module.css";
 import { passkeyConfirm } from "@calimero-network/mero-js";
 
+const CREATE_LABELS = {
+  title: "New company",
+  subtitle: "A private space for investor relations. Invite someone once and they can read every audience inside it.",
+  nameLabel: "Company name",
+  namePlaceholder: "e.g. Acme Inc.",
+  selfLabel: "Your name in this company",
+  selfPlaceholder: "e.g. Ana Lee",
+};
+
 /**
  * Companies = ORGANIZATIONS. Each holds audiences (instances of this app),
  * listed on AudiencesPage. People are invited to a company, once, and can then
@@ -53,10 +64,8 @@ export default function CompaniesPage() {
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
-  const [name, setName] = useState("");
-  // Your name in the new company: asked here, once, and used by every
-  // audience in it. Offered from the last company you named yourself in.
-  const [selfName, setSelfName] = useState(() => lastUsedName() || getUsername());
+  const [showCreate, setShowCreate] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
 
   // One key names the action in flight ("create", `invite:<id>`), so clicking
   // Invite on one row does not read as the whole page locking up.
@@ -115,22 +124,22 @@ export default function CompaniesPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpenId]);
 
-  const create = useCallback(() => {
-    const companyName = name.trim();
-    const yourName = selfName.trim();
-    if (!companyName || !yourName) return;
-    void run("create", async (onStatus) => {
-      onStatus("Creating the company — approve with your passkey…");
-      const created = await createCompany(client, companyName, passkey, source);
-      // Best effort: the company exists either way, and its first audience
-      // asks for the name once if this did not land.
-      await setCompanyName(client, created.namespaceId, accountId, yourName).catch(() => {});
-      setName("");
-      if (created.warning) showToast(created.warning, "error");
-      // Straight into it: it has no audiences yet, and making one is the next step.
-      navigate(`/companies/${created.namespaceId}`);
-    });
-  }, [name, selfName, client, accountId, passkey, source, run, navigate, showToast]);
+  const created = useCallback(
+    ({ orgId, selfName }: { orgId: string; name: string; selfName: string }) => {
+      setShowCreate(false);
+      void run("create", async (onStatus) => {
+        onStatus("Setting up the company - approve with your passkey…");
+        const made = await finishCompany(client, orgId, passkey, source);
+        // Best effort: the company exists either way, and its first audience
+        // asks for the name once if this did not land.
+        await setCompanyName(client, made.namespaceId, accountId, selfName).catch(() => {});
+        if (made.warning) showToast(made.warning, "error");
+        // Straight into it: it has no audiences yet, and making one is the next step.
+        navigate(`/companies/${made.namespaceId}`);
+      });
+    },
+    [client, accountId, passkey, source, run, navigate, showToast],
+  );
 
   // "Connect to an existing organization": an audience goes into an org the
   // account has for another app only on this explicit choice.
@@ -238,41 +247,15 @@ export default function CompaniesPage() {
         </div>
 
         <section className={styles.createCard}>
-          <label className={styles.label} htmlFor="new-company">
-            New company
-          </label>
           <div className={styles.createRow}>
-            <input
-              id="new-company"
-              className={styles.input}
-              placeholder="Your company’s name — e.g. Acme Inc."
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              data-testid="space-name-input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim() && selfName.trim()) create();
-              }}
-            />
-            <input
-              className={styles.input}
-              aria-label="Your name in this company"
-              placeholder="Your name in this company"
-              value={selfName}
-              maxLength={64}
-              onChange={(e) => setSelfName(e.target.value)}
-              data-testid="self-name-input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim() && selfName.trim()) create();
-              }}
-            />
             <button
               className={styles.btn}
-              onClick={create}
-              disabled={pending === "create" || !name.trim() || !selfName.trim()}
+              onClick={() => setShowCreate(true)}
+              disabled={pending === "create"}
               data-testid="create-space"
             >
               {pending !== "create" && <PlusIcon size={16} />}
-              {pending === "create" ? "Creating…" : "Create"}
+              {pending === "create" ? "Creating…" : "New company"}
             </button>
           </div>
           <ConnectExistingOrg appName="Mero Updates" load={loadOtherOrgs} onConnect={connectOrg} />
@@ -476,6 +459,17 @@ export default function CompaniesPage() {
         scope={`Whole company · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
         appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
+      />
+
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={releasePending ? null : (reviewRelease(release) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName() || getUsername()}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={created}
+        labels={CREATE_LABELS}
       />
     </div>
   );

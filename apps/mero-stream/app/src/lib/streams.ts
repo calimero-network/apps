@@ -10,7 +10,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -137,19 +137,17 @@ export interface CreatedStream {
 }
 
 /**
- * A new stream: an organization the caller owns, whose members may create
- * rooms (the org's default capabilities, a passkey step-up).
+ * What follows a stream the node approved: its mark, the member defaults (a
+ * passkey step-up, skipped on a session bound to the app) and Mero Stream's
+ * own team, open (declined, or an older node: a legacy org).
  */
-export async function createStream(
-  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
-  name: string,
+export async function finishStream(
+  client: ClientRoutes<{ orgs: "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedStream> {
-  // The org, marked so it is listed as a stream before it holds a room, its
-  // member defaults, and Mero Stream's own team (core#4890), open (declined,
-  // or an older node: a legacy org).
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     orgId: made.orgId,
     warning: made.capabilitiesError

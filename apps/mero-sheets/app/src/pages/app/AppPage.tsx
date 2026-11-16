@@ -24,13 +24,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { targetKey, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg, ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
+import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { lastUsedName } from '@calimero-apps/names';
+import { ConnectExistingOrg, ManageInHomeLink, NodeShield, reviewRelease, useResolvedSource } from '@calimero-apps/passkey';
 import { useSessionApi, useSignedIn } from '../../sessionContext';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
-import { APP_DISPLAY_NAME } from '../../config';
+import { APP_DISPLAY_NAME, APP_PACKAGE } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { leaveWorkspace, leaveWorkspaceOrg, removeFromWorkspace } from '../../lib/workspaces';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
@@ -83,6 +85,15 @@ import { normaliseName, selfNameStep, skipWorkspaceName } from '../../lib/displa
 import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 import { passkeyConfirm } from '@calimero-network/mero-js';
 
+
+const CREATE_LABELS = {
+  title: 'Create your workspace',
+  subtitle: 'Your spreadsheets live in a workspace. You can invite people to it.',
+  nameLabel: 'Workspace name',
+  namePlaceholder: 'e.g. Finance team',
+  selfLabel: 'Your name in this workspace',
+  selfPlaceholder: 'e.g. Alice',
+};
 
 export default function AppPage() {
   const { client, signOut: endSession, passkey, after, target, accountId, source } = useSignedIn();
@@ -230,6 +241,8 @@ export default function AppPage() {
 
   // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
+  const [showCreate, setShowCreate] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
 
   // A freshly-created workspace must be initialised with its project name once
   // its context is ready (the client is available by then). `ws.pendingInitName`
@@ -1407,7 +1420,7 @@ export default function AppPage() {
                 <PrimaryBtn
                   data-testid="action-init_project"
                   disabled={!projectName.trim() || !ws.canCreate}
-                  onClick={() => void ws.createWorkspace(projectName.trim())}
+                  onClick={() => (ws.needsWorkspace ? setShowCreate(true) : void ws.createWorkspace(projectName.trim()))}
                 >
                   Create spreadsheet
                 </PrimaryBtn>
@@ -1424,6 +1437,19 @@ export default function AppPage() {
                 onConnect={(o: OtherOrg) => ws.connectWorkspace(o, projectName.trim())}
               />
             </Card>
+            <CreateWorkspaceDialog
+              client={client}
+              passkey={passkey()}
+              release={releasePending ? null : (reviewRelease(release) ?? { package: APP_PACKAGE })}
+              defaultSelfName={lastUsedName()}
+              open={showCreate}
+              onClose={() => setShowCreate(false)}
+              onCreated={({ orgId, selfName }) => {
+                setShowCreate(false);
+                void ws.createWorkspace(projectName.trim(), { orgId, selfName });
+              }}
+              labels={CREATE_LABELS}
+            />
           </PickerGrid>
         </PickerMain>
 

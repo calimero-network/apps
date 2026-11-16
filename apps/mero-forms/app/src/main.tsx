@@ -1,6 +1,7 @@
 import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import { App } from "./App";
 import { invites, migrateLegacyInvite } from "./lib/orgs";
 import { BASE } from "./route";
@@ -29,6 +30,8 @@ const Wrapper = import.meta.env.DEV
 
 createRoot(root).render(
   <Wrapper>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </Wrapper>,
 );

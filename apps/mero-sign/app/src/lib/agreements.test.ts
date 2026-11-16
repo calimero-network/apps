@@ -5,7 +5,7 @@ import {
   LIBRARY_NAME,
   MEMBER_DEFAULTS,
   createAgreement,
-  createWorkspace,
+  finishWorkspace,
   displayName,
   ensurePrivateLibrary,
   enterAgreement,
@@ -86,7 +86,7 @@ describe('workspaces', () => {
       ],
     });
     expect((await listWorkspaces(c as never, 'b')).map((r) => r.namespaceId)).toEqual(['org-a']);
-    await createWorkspace(c as never, 'Fresh', () => ({}) as never, () => {}, 'b');
+    await finishWorkspace(c as never, 'org-new', () => ({}) as never, 'b');
     expect((await listWorkspaces(c as never, 'b')).map((r) => r.namespaceId)).toEqual(['org-a', 'org-new']);
   });
 
@@ -99,7 +99,7 @@ describe('workspaces', () => {
   it('a new one lets members create agreements and invite', async () => {
     const c = fake();
     const passkey = { create: vi.fn(), get: vi.fn() };
-    const res = await createWorkspace(c as never, 'Acme', () => passkey);
+    const res = await finishWorkspace(c as never, 'org-new', () => passkey);
     expect(res).toEqual({ namespaceId: 'org-new', warning: null });
     expect(c.setCapabilities).toHaveBeenCalledWith('org-new', MEMBER_DEFAULTS, expect.objectContaining({ confirm: expect.any(Function) }));
     expect(MEMBER_DEFAULTS & ORG_CAPABILITIES.CREATE_APP).toBeTruthy();
@@ -109,7 +109,7 @@ describe('workspaces', () => {
   it('keeps the workspace when the capability step-up is declined, and says so', async () => {
     const c = fake();
     c.setCapabilities.mockRejectedValueOnce(new Error('cancelled'));
-    const res = await createWorkspace(c as never, 'Acme', () => ({}) as never);
+    const res = await finishWorkspace(c as never, 'org-new', () => ({}) as never);
     expect(res.namespaceId).toBe('org-new');
     expect(res.warning).toMatch(/will not be able to create agreements/);
   });

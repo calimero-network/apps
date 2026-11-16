@@ -8,7 +8,9 @@ import {
 } from 'react';
 import { useHref, useLocation, useNavigate } from 'react-router-dom';
 import { appOnlyInviteNote, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
-import { ConnectExistingOrg } from '@calimero-apps/passkey';
+import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { lastUsedName, setOrgName } from '@calimero-apps/names';
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from '@calimero-apps/passkey';
 import {
   ArrowRight,
   Copy,
@@ -28,10 +30,11 @@ import {
   CONNECTED_AGREEMENT_NAME,
   PRODUCT_NAME,
   createAgreement,
-  createWorkspace,
+  finishWorkspace,
   listWorkspaces,
   type WorkspaceRow,
 } from '../../lib/agreements';
+import { PACKAGE_NAME } from '../../constants/config';
 import { appInviteToken, inviteLink as linkFor } from '../../lib/invites';
 import { hueOf, initials } from '../../lib/monogram';
 import { errorMessage } from '../../lib/node';
@@ -64,6 +67,15 @@ import styles from './AgreementsPage.module.css';
 // link cover a working relationship instead of one PDF, and it is why the
 // invite control lives on this screen rather than on an agreement's.
 
+const CREATE_LABELS = {
+  title: 'New workspace',
+  subtitle: 'Name it after the people or the deal. You can invite them as soon as it exists.',
+  nameLabel: 'Workspace name',
+  namePlaceholder: 'e.g. Acme legal',
+  selfLabel: 'Your name in this workspace',
+  selfPlaceholder: 'e.g. Alice',
+};
+
 interface Banner {
   kind: 'notice' | 'error';
   text: string;
@@ -88,12 +100,17 @@ export default function WorkspacesPage({
   const { key: navigationKey } = useLocation();
   const home = useHref('/').replace(/\/$/, '');
   const { app } = useCalimero();
+  const { source: release, pending: releasePending } = useResolvedSource(
+    app?.client ?? null,
+    app?.accountId ?? null,
+    app?.source ?? { package: PACKAGE_NAME },
+  );
 
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState<Banner | null>(null);
 
-  const [newName, setNewName] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -173,43 +190,39 @@ export default function WorkspacesPage({
     [navigate],
   );
 
-  const create = useCallback(async () => {
-    const name = newName.trim();
-    if (!name || !app) return;
-    setCreating(true);
-    setBanner(null);
-    try {
-      // An org whose members may create agreements and invite: setting that
-      // is a passkey step-up, so the person is asked once more.
-      const created = await createWorkspace(
-        app.client,
-        name,
-        app.passkey,
-        setStatus,
-        app.source,
-      );
-      setNewName('');
-      setStatus('');
-      setActiveWorkspace(created.namespaceId);
-      if (created.warning) {
-        // Created, but the member defaults were not set (the passkey prompt
-        // was declined): said now, where the person can act on it.
-        await load();
-        setBanner({
-          kind: 'notice',
-          text: `"${name}" was created, but ${created.warning}.`,
-        });
-        return;
+  const created = useCallback(
+    async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) => {
+      if (!app) return;
+      setShowCreate(false);
+      setCreating(true);
+      setBanner(null);
+      try {
+        // An org whose members may create agreements and invite: setting that
+        // is a passkey step-up, so the person is asked once more.
+        const made = await finishWorkspace(app.client, orgId, app.passkey, app.source);
+        // Best effort: the name gate asks for it on entering if this fails.
+        await setOrgName(app.client, orgId, app.accountId, selfName).catch(() => {});
+        setActiveWorkspace(made.namespaceId);
+        if (made.warning) {
+          // Created, but the member defaults were not set (the passkey prompt
+          // was declined): said now, where the person can act on it.
+          await load();
+          setBanner({
+            kind: 'notice',
+            text: `"${name}" was created, but ${made.warning}.`,
+          });
+          return;
+        }
+        navigate(`/workspaces/${made.namespaceId}`);
+      } catch (error) {
+        setBanner({ kind: 'error', text: errorMessage(error) });
+      } finally {
+        app.after();
+        setCreating(false);
       }
-      navigate(`/workspaces/${created.namespaceId}`);
-    } catch (error) {
-      setStatus('');
-      setBanner({ kind: 'error', text: errorMessage(error) });
-    } finally {
-      app.after();
-      setCreating(false);
-    }
-  }, [app, load, navigate, newName]);
+    },
+    [app, load, navigate],
+  );
 
   // "Connect to an existing organization": agreements go into an org the
   // account has for another app only on this explicit choice.
@@ -422,28 +435,32 @@ export default function WorkspacesPage({
             </div>
           </div>
           <div className={styles.createRow}>
-            <input
-              className={styles.input}
-              placeholder="New workspace name…"
-              aria-label="New workspace name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void create()}
-              data-testid="new-workspace-name"
-            />
             <button
               className={styles.btn}
-              onClick={() => void create()}
-              disabled={creating || !newName.trim() || !app}
+              onClick={() => setShowCreate(true)}
+              disabled={creating || !app}
               data-testid="create-workspace"
             >
               {creating ? <span className={styles.spinner} /> : null}
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? 'Creating…' : 'New workspace'}
             </button>
           </div>
-          {creating && status && <p className={styles.hint}>{status}</p>}
+          {status && <p className={styles.hint}>{status}</p>}
           <ConnectExistingOrg appName="Mero Sign" load={loadOtherOrgs} onConnect={connectOrg} />
         </section>
+
+        {app && (
+          <CreateWorkspaceDialog
+            client={app.client}
+            passkey={app.passkey()}
+            release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE_NAME })}
+            defaultSelfName={lastUsedName()}
+            open={showCreate}
+            onClose={() => setShowCreate(false)}
+            onCreated={created}
+            labels={CREATE_LABELS}
+          />
+        )}
 
         <section className={styles.section}>
           <div className={styles.sectionHead}>

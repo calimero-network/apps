@@ -16,6 +16,35 @@ function hold(legacy: string) {
 }
 
 // The landing page is generated and tested on its own; here it is the door.
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const { createElement } = await import('react');
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'create-dialog' },
+            createElement('h2', { 'data-testid': 'create-title' }, p.labels?.title),
+            createElement('p', { 'data-testid': 'create-self' }, p.defaultSelfName),
+            createElement('pre', { 'data-testid': 'create-release' }, JSON.stringify(p.release)),
+            createElement(
+              'button',
+              { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Mero Sheets', selfName: 'Alice' }) },
+              'done',
+            ),
+          )
+        : null,
+  };
+});
+
 vi.mock('./pages/landing/LandingPage', () => ({
   default: ({ onConnect }: { onConnect?: () => void }) => (
     <button type="button" onClick={onConnect}>
@@ -173,7 +202,7 @@ describe('App', () => {
     expect(pill.parentElement?.contains(screen.getByTestId('node-shield'))).toBe(true);
   });
 
-  it('creates the workspace with the first spreadsheet, then names it in the contract', async () => {
+  it('asks the shared dialog for the workspace of the first spreadsheet, then names it in the contract', async () => {
     remember();
     const client = fakeClient([]);
     render(<App deps={deps(client)} />);
@@ -181,8 +210,11 @@ describe('App', () => {
     fireEvent.change(name, { target: { value: 'Forecast' } });
     await waitFor(() => expect((screen.getByTestId('action-init_project') as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByTestId('action-init_project'));
+    expect((await screen.findByTestId('create-title')).textContent).toBe('Create your workspace');
+    expect(client.createApp).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('create-done'));
     await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Forecast', 'bundle-hash', { org: 'org-new' }));
-    expect(client.createOrg).toHaveBeenCalled();
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.setCapabilities).toHaveBeenCalled();
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('sheet-new', 'initProject', { name: 'Forecast' }));
   });
@@ -210,6 +242,7 @@ describe('App', () => {
       fireEvent.change(name, { target: { value: 'Forecast' } });
       await waitFor(() => expect((screen.getByTestId('action-init_project') as HTMLButtonElement).disabled).toBe(false));
       fireEvent.click(screen.getByTestId('action-init_project'));
+      fireEvent.click(await screen.findByTestId('create-done'));
       await waitFor(() => expect(client.createApp).toHaveBeenCalledWith('Forecast', 'bundle-hash', { org: 'org-new' }));
       expect(client.createApp).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), { org: 'ow' });
     });

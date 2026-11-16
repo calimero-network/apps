@@ -1,9 +1,39 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SessionContext, type SessionApi } from "./session";
+import { NewFeedDialog } from "./NewFeedDialog";
 import { FeedSwitcher } from "./FeedPicker";
 import { openFeed, selectionKey, useOpenFeed } from "./newFeed";
 import { withRoutes } from "@calimero-apps/connect/testing";
+
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Work", selfName: "Ana" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
 
 /** What each feed holds: feed-bbbb has 39 rows. */
 const pages: Record<string, { counts: { all: number; archived: number }; items: { chain_at: number }[] }> = {
@@ -25,7 +55,6 @@ const client = withRoutes({
   getApp: vi.fn(async (id: string) => ({ appId: id, metadata: metadata[id] ?? null })),
   setAppMetadata: vi.fn(async (id: string, m: Record<string, unknown>) => void (metadata[id] = m)),
   deleteApp: vi.fn(async (id: string) => void deleted.push(id)),
-  createOrg: vi.fn(async (name: string) => (made.push(`org ${name}`), "org-new")),
   createApp: vi.fn(async (name: string, _source: unknown, options: { org?: string }) => {
     made.push(`app ${name} in ${options.org}`);
     return "feed-dddd-4444";
@@ -54,6 +83,7 @@ function Harness() {
   return (
     <>
       <FeedSwitcher current={current} />
+      <NewFeedDialog />
       <main data-testid="open">{current}</main>
     </>
   );
@@ -115,27 +145,20 @@ describe("Switching feeds", () => {
     deleted.length = 0;
   });
 
-  it("names a new feed as it is made: an organization of its own, then the feed in it", async () => {
+  it("opens the shared dialog for a new feed, then makes the feed in the organization it approved", async () => {
     openFeed("feed-aaaa-1111");
     renderIt();
     await waitFor(() => expect(screen.getByTitle("Switch feed")).toHaveTextContent("My feed · feed-aaa"));
     fireEvent.click(screen.getByTitle("Switch feed"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Create a new feed" }));
 
-    // "My feed" is taken: the next free one is offered.
-    const form = screen.getByRole("group", { name: "Name your new feed" });
-    const input = within(form).getByRole("textbox", { name: "Name" });
-    await waitFor(() => expect(input).toHaveValue("My feed 2"));
-    fireEvent.change(input, { target: { value: "   " } });
-    expect(within(form).getByText("Give the feed a name.")).toBeInTheDocument();
-    expect(within(form).getByRole("button", { name: "Create" })).toBeDisabled();
-
-    fireEvent.change(input, { target: { value: " Work " } });
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.hyperfeed" });
     await act(async () => {
-      fireEvent.click(within(form).getByRole("button", { name: "Create" }));
+      fireEvent.click(screen.getByTestId("create-done"));
     });
-    expect(made).toEqual(["org Work", "app Work in org-new"]);
+    expect(made).toEqual(["app Work in org-new"]);
     expect(screen.getByTestId("open")).toHaveTextContent("feed-dddd-4444");
+    expect(screen.queryByTestId("create-dialog")).toBeNull();
   });
 
   it("renames an unnamed feed from the switcher, in its metadata", async () => {

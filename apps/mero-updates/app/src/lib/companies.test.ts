@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createCompany, listCompanies } from "./companies";
+import { finishCompany, listCompanies } from "./companies";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
@@ -32,7 +32,7 @@ describe("companies", () => {
   it("leave out an org made for another app; a company made here is listed before it holds an audience", async () => {
     const c = client();
     expect((await listCompanies(c as never, "b")).map((r) => [r.namespaceId, r.audienceCount])).toEqual([["acme", 1]]);
-    await createCompany(c as never, "Fresh", () => ({}) as never, "b");
+    await finishCompany(c as never, "new", () => ({}) as never, "b");
     expect((await listCompanies(c as never, "b")).map((r) => r.namespaceId)).toEqual(["acme", "new"]);
   });
 });

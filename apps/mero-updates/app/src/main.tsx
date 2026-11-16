@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
 
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import App from "./App";
 import "./index.css";
 import "./app.css";
@@ -23,7 +24,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <SessionProvider>
       {/* Under the node's /{version}/ when the cluster serves the bundle's frontend. */}
       <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
-        <App />
+        <ConsentPopupReturn>
+          <App />
+        </ConsentPopupReturn>
       </BrowserRouter>
     </SessionProvider>
   </React.StrictMode>,

@@ -11,11 +11,11 @@ import type { PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { bindApi } from "./client";
+import { bindApi, getApi } from "./client";
 import {
   createBoard,
-  createTeam,
   createTeamInvitation,
+  finishTeam,
   leaveTeam,
   leaveTeamOrg,
   listGroupMembers,
@@ -37,6 +37,12 @@ function signedIn(source: AppSource = SOURCE) {
     scope: "test",
   });
   return cluster;
+}
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createTeam(name: string) {
+  const { orgId } = await getApi().client.orgs.create({ name });
+  return finishTeam(orgId);
 }
 
 async function team(people: Record<string, string> = {}) {

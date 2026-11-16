@@ -16,6 +16,10 @@ import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { PACKAGE } from "../src/net/blocks";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
+// connect() mounts the floating shield's React root and never unmounts it; under load
+// its render ran after the environment was torn down ("window is not defined").
+vi.mock("@calimero-apps/passkey/nodeShield", () => ({ bindNodeShield: () => () => {} }));
+
 const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const ENV = { DEV: true, VITE_CALIMERO_TARGET: "local", VITE_CALIMERO_BUNDLE: "bundle-1" };
 

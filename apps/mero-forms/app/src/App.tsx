@@ -15,7 +15,7 @@ import { useActiveWorkspace } from "./useActiveWorkspace";
 import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
-import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { ManageInHomeLink, NodeShield } from "@calimero-apps/passkey";
 import { done } from "./formsApi";
 
 export function App({ deps }: { deps?: SessionDeps } = {}) {
@@ -165,7 +165,10 @@ function Shell({
           <span className="brand-name">Forms</span>
           {left}
         </div>
-        <div className="topbar-right">{right}</div>
+        <div className="topbar-right">
+          <NodeShield compactBelow={720} />
+          {right}
+        </div>
       </header>
       {children}
     </div>

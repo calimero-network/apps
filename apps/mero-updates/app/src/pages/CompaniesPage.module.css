@@ -531,3 +531,10 @@
     font-size: 30px;
   }
 }
+
+/* The node shield already names the node; the tag would push Log out off a phone. */
+@media (max-width: 560px) {
+  .nodeTag {
+    display: none;
+  }
+}
