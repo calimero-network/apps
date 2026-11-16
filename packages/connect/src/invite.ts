@@ -134,10 +134,23 @@ export interface InviteLinkOptions extends InviteTarget {
 
 /** The link that opens this app with `token` to redeem, and where it points. */
 export function inviteLink(token: string, options: InviteLinkOptions = {}): string {
+  return build(token, options);
+}
+
+/**
+ * {@link inviteLink} without its token: the page a shared invite dialog's
+ * `linkBase` names, which adds the token itself (in the fragment, which
+ * {@link InviteStore.capture} reads).
+ */
+export function inviteLinkBase(options: InviteLinkOptions = {}): string {
+  return build(null, options);
+}
+
+function build(token: string | null, options: InviteLinkOptions): string {
   const origin = options.origin ?? globalThis.location?.origin;
   if (!origin) throw new Error("inviteLink needs an origin outside a browser");
   const url = new URL(options.root ?? "/", origin);
-  url.searchParams.set(INVITE_PARAMS.token, token);
+  if (token !== null) url.searchParams.set(INVITE_PARAMS.token, token);
   for (const key of ["org", "team", "doc"] as const) {
     const v = options[key];
     if (v) url.searchParams.set(INVITE_PARAMS[key], v);

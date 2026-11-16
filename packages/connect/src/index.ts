@@ -47,6 +47,7 @@ export {
   describeInviteRefusal,
   describeRedeemFailure,
   inviteLink,
+  inviteLinkBase,
   inviteRefusal,
   isSpentInvite,
   joinedOrg,

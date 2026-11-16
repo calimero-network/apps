@@ -12,6 +12,7 @@ import {
   createInviteStore,
   describeRedeemFailure,
   inviteLink,
+  inviteLinkBase,
   inviteRefusal,
   isSpentInvite,
   joinedOrg,
@@ -117,6 +118,17 @@ describe("inviteLink: at the root, never pinned to the inviter's frontend versio
 
   it("can still be pinned to a base for a cluster that drops the query on its redirect", () => {
     expect(inviteLink("t", { origin: "https://x.example", root: "/1.2.0/" })).toBe("https://x.example/1.2.0/?invite=t");
+  });
+});
+
+describe("inviteLinkBase", () => {
+  it("is the invite link without its token, and a dialog's fragment token is captured from it", () => {
+    const options = { origin: "https://x.example", root: "/1.2.0/", org: "o", route: "/deals/7" };
+    expect(inviteLinkBase(options)).toBe("https://x.example/1.2.0/?org=o&to=%2Fdeals%2F7");
+    expect(inviteLink("t", options)).toBe("https://x.example/1.2.0/?invite=t&org=o&to=%2Fdeals%2F7");
+    const store = createInviteStore("crm", { storage: memoryStorage() });
+    store.capture({ href: `${inviteLinkBase(options)}#invite=t` }, { basename: "/1.2.0/", history: history() });
+    expect(store.pending()).toMatchObject({ token: "t", org: "o", route: "/deals/7" });
   });
 });
 
