@@ -27,6 +27,8 @@ function fakeClient(): CalimeroClient {
     },
     // The create-workspace dialog, always mounted, asks whether the session is bound.
     auth: { me: async () => ({}) },
+    // The invite dialog, always mounted, reads the workspace's permissions.
+    orgs: { get: async () => ({ members: {}, capabilities: {}, defaultCapabilities: 0 }) },
     verification: () => ({ ...SEALED, checkedAt: Date.now() }),
     verify: async () => ({ ...SEALED, checkedAt: Date.now() }),
   } as unknown as CalimeroClient;
