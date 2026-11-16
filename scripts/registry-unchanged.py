@@ -48,7 +48,7 @@ import urllib.request
 EXCLUDED_TOP = {"appVersion", "signerId", "signature"}
 
 # What the registry's sanitizer adds to a stored manifest in its responses
-# (app-registry packages/backend/src/lib/bundle-sanitize.js, api/v2/bundles):
+# (app-registry packages/backend/src/lib/bundle-sanitize.js, api/bundles):
 # none of it is in a .mpk. Its server-stamped `_installSize`/`_publishedAt`
 # are `_` keys, dropped below with every other `_` key, which the registry
 # itself leaves out of signature verification (lib/verify.js).
@@ -123,7 +123,7 @@ def fetch_json(url):
 def latest_manifest(registry, package, fetch=fetch_json):
     """The registry's latest non-yanked manifest of `package`, guide included,
     or None when there is none or it cannot be read."""
-    api = registry.rstrip("/") + "/api/v2/bundles"
+    api = registry.rstrip("/") + "/api/bundles"
     q = urllib.parse.urlencode({"package": package, "fresh": "1"})
     listing = fetch(f"{api}?{q}")
     if not isinstance(listing, list) or not listing or not isinstance(listing[0], dict):

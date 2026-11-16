@@ -126,7 +126,7 @@ jobs:
           # resets the lineage to the floor and signs BELOW what is already out
           # there. Only a well-formed answer may decide.
           if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
-              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+              "https://apps.calimero.network/api/bundles?package=$PACKAGE"); then
             echo "::error::could not reach the registry to resolve the next version"
             exit 1
           fi
@@ -167,7 +167,7 @@ jobs:
           # an unreadable registry must not be guessed past.
           for _ in $(seq 1 20); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
-              "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$version" || echo "000")
+              "https://apps.calimero.network/api/bundles/$PACKAGE/$version" || echo "000")
             case "$code" in
               404) break ;;
               200)
@@ -196,7 +196,7 @@ jobs:
           # with the registry (or a concurrent release landed) — stop, rather
           # than fail deep in the publish step after signing.
           code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
-            "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION" || echo "000")
+            "https://apps.calimero.network/api/bundles/$PACKAGE/$VERSION" || echo "000")
           case "$code" in
             404) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
             200) echo "::error::$PACKAGE $VERSION is already published — version resolution disagrees with the registry"; exit 1 ;;
@@ -255,7 +255,7 @@ jobs:
           local_signer=$(cargo mero key derive-signer-id --key "$RUNNER_TEMP/mero-sign-key.json")
 
           if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
-              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+              "https://apps.calimero.network/api/bundles?package=$PACKAGE"); then
             echo "::error::could not reach the registry to verify the signer — refusing to publish blind"
             exit 1
           fi
@@ -376,7 +376,7 @@ jobs:
             # The app's own page, not the registry root: the point of a release
             # summary is to be one click from what was released.
             echo "- **App:** https://apps.calimero.network/apps/$PACKAGE"
-            echo "- **Bundle:** https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION"
+            echo "- **Bundle:** https://apps.calimero.network/api/bundles/$PACKAGE/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "::notice title=Published::$PACKAGE $VERSION — https://apps.calimero.network/apps/$PACKAGE"

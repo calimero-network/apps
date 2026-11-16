@@ -52,7 +52,7 @@ GREEN, RED, YELLOW, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\
 
 def published():
     """package -> newest published bundle record."""
-    with urllib.request.urlopen(f"{REGISTRY}/api/v2/bundles?fresh=1", timeout=60) as h:
+    with urllib.request.urlopen(f"{REGISTRY}/api/bundles?fresh=1", timeout=60) as h:
         bundles = json.loads(h.read())
 
     def key(b):

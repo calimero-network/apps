@@ -314,6 +314,6 @@ jobs:
               echo "- **Frontend:** none"
             fi
             echo "- **App:** $REGISTRY/apps/$PACKAGE"
-            echo "- **Bundle:** $REGISTRY/api/v2/bundles/$PACKAGE/$VERSION"
+            echo "- **Bundle:** $REGISTRY/api/bundles/$PACKAGE/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=Published::$PACKAGE $VERSION — $REGISTRY/apps/$PACKAGE"
