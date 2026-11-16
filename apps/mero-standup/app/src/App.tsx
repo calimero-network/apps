@@ -277,6 +277,10 @@ export function App({
         theme={theme}
         setTheme={setTheme}
         onSwitchTeam={() => open(null)}
+        onLost={() => {
+          setNotice("You no longer have access to that team.");
+          open(null);
+        }}
         onLogout={signOut}
       />
     </>
@@ -338,6 +342,7 @@ function TeamView({
   theme,
   setTheme,
   onSwitchTeam,
+  onLost,
   onLogout,
 }: {
   transport: TeamTransport;
@@ -350,9 +355,11 @@ function TeamView({
   theme: Theme;
   setTheme: (t: Theme) => void;
   onSwitchTeam: () => void;
+  /** The team no longer admits this account: closed, back to the picker. */
+  onLost: () => void;
   onLogout: () => void;
 }) {
-  const team = useTeam(transport, opened.appId, after);
+  const team = useTeam(transport, opened.appId, after, onLost);
   const [tab, setTab] = useState<Tab>("standup");
   const [decisionDraft, setDecisionDraft] = useState<DecisionDraft | null>(null);
   // Read once from the contract: it is the same string every view's `author`

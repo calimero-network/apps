@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
+import { NotFound, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -266,7 +266,7 @@ describe("App", () => {
       expect(team.call).toHaveBeenCalledWith("app-new", "postUpdate", expect.objectContaining({ done: "Wrote the guide" })),
     );
     await screen.findByText("Wrote the guide");
-    expect(client.events).toHaveBeenCalledWith("app-new", 0, expect.anything());
+    expect(client.events).toHaveBeenCalledWith("app-new", 2, expect.anything());
   });
 
   it("restores the session and the team opened last time, and invites into the team's org", async () => {
@@ -299,6 +299,22 @@ describe("App", () => {
     fireEvent.click(screen.getByLabelText("account menu"));
     fireEvent.click(screen.getByText("Switch team"));
     await screen.findByText("Your teams");
+  });
+
+  it("closes a team that no longer admits the account, back to the picker", async () => {
+    const { client } = fakeClient([
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    client.events = vi.fn(() => ({
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new NotFound("not found")) }),
+    })) as unknown as typeof client.events;
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Infra", org: "org-9" }));
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByText("You no longer have access to that team.");
+    await screen.findByText("Your teams");
+    expect(storage.getItem(selectionKey(LOCAL, "acct-alice"))).toBeNull();
   });
 
   it("never asks in a team whose org has your name, and feeds it to the team's contract", async () => {
