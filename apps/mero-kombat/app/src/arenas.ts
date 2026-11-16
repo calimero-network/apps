@@ -33,28 +33,25 @@ export async function listArenas(client: ClientRoutes<{ apps: "list" }>, source:
 }
 
 /**
- * A new arena named `name`. In `org` when given (v1: another context in a
- * namespace you have), otherwise in a new organization of its own (v1's "New
- * arena" made a namespace and a context in it). `now` is the creator's clock,
- * the arena's `createdAt`.
+ * A new arena named `name` in `org`: one the node just created for it, or a
+ * dojo the account has. `now` is the creator's clock, the arena's `createdAt`.
  */
 export async function createArena(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
-  org?: string,
+  org: string,
   now: number = Date.now(),
 ): Promise<{ appId: string; org: string }> {
-  const inOrg = org ?? (await client.orgs.create({ name })).orgId;
   const appId = (
     await client.apps.create({
       name,
       ...appTarget(source),
-      org: inOrg,
+      org,
       initArgs: { title: name, now: String(Math.floor(now)) },
     })
   ).appId;
-  return { appId, org: inOrg };
+  return { appId, org };
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
