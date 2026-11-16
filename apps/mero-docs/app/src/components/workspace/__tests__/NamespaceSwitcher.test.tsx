@@ -26,7 +26,6 @@ const workspaceCreated = vi.fn();
 driveState.workspaceCreated = workspaceCreated;
 vi.mock('@/calimero/session', () => ({
   useSession: () => ({
-    session: { status: 'signed-in', target: { kind: 'local', nodes: [] } },
     passkey: () => ({}),
     source: { package: 'com.example.docs', version: '1.0.0' },
     resolvingSource: false,
@@ -35,19 +34,21 @@ vi.mock('@/calimero/session', () => ({
 vi.mock('@/calimero/react', () => ({ useLive: () => ({ client: {} }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 // The shared dialog is mero-react's to test: here only what the switcher hands it and does after.
-vi.mock('@calimero-apps/passkey', () => ({
-  WorkspaceCreator: (p: {
+vi.mock('@calimero-network/mero-react', () => ({
+  CreateWorkspaceDialog: (p: {
     open: boolean;
     labels?: { title?: string };
-    onCreated: (c: { orgId: string; selfName: string }) => void;
+    onCreated: (c: { orgId: string; name: string; selfName: string }) => void;
   }) =>
     p.open ? (
       <div role="dialog" aria-label="create dialog">
         <h2>{p.labels?.title}</h2>
-        <button onClick={() => p.onCreated({ orgId: 'ns-new', selfName: 'Ada' })}>done</button>
+        <button onClick={() => p.onCreated({ orgId: 'ns-new', name: 'New', selfName: 'Ada' })}>done</button>
       </div>
     ) : null,
 }));
+vi.mock('@calimero-apps/passkey', () => ({ reviewRelease: () => ({ package: 'com.example.docs', version: '1.0.0' }) }));
+vi.mock('@calimero-apps/names', () => ({ lastUsedName: () => 'Ada' }));
 
 // Radix DropdownMenu opens on pointerdown in jsdom.
 function openMenu() {
@@ -105,7 +106,7 @@ describe('NamespaceSwitcher', () => {
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
     fireEvent.click(screen.getByRole('button', { name: 'done' }));
-    await waitFor(() => expect(workspaceCreated).toHaveBeenCalledWith({ orgId: 'ns-new', selfName: 'Ada' }));
+    await waitFor(() => expect(workspaceCreated).toHaveBeenCalledWith({ orgId: 'ns-new', name: 'New', selfName: 'Ada' }));
     expect(screen.queryByRole('dialog', { name: 'create dialog' })).toBeNull();
   });
 

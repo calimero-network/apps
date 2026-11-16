@@ -24,23 +24,29 @@ vi.mock('@calimero-apps/passkey', async (importOriginal) => {
       shieldApp(...args);
       return actual.useNodeShieldApp(...args);
     },
-    // The shared dialog is mero-react's to test: here only what the app hands it and does after.
-    WorkspaceCreator: (p: Parameters<typeof actual.WorkspaceCreator>[0]) =>
+    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
+      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
       p.open
         ? createElement(
             'div',
             { 'data-testid': 'create-dialog' },
-            p.pending
+            p.release === null
               ? createElement('p', { 'data-testid': 'create-pending' }, 'pending')
               : [
                   createElement('h2', { key: 't', 'data-testid': 'create-title' }, p.labels?.title),
-                  createElement('pre', { key: 's', 'data-testid': 'create-source' }, JSON.stringify(p.source)),
-                  createElement('button', { key: 'b', 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', selfName: 'Alice' }) }, 'done'),
+                  createElement('pre', { key: 's', 'data-testid': 'create-source' }, JSON.stringify(p.release)),
+                  createElement('button', { key: 'b', 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Platform', selfName: 'Alice' }) }, 'done'),
                 ],
           )
         : null,
-    useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
-      actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
 });
 const HOST = `https://${'a'.repeat(52)}.apps.calimero.network`;

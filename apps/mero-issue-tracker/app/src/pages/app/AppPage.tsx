@@ -8,7 +8,9 @@ import React, {
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
-import { useNodeShieldApp, WorkspaceCreator } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName } from "@calimero-apps/names";
+import { reviewRelease, useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useIssues } from "../../hooks/useItems";
@@ -50,7 +52,7 @@ const CREATE_LABELS = {
 };
 
 export default function AppPage(): React.ReactElement | null {
-  const { client, after, source, sourcePending, target, passkey } = useSignedIn();
+  const { client, after, source, sourcePending, passkey } = useSignedIn();
   const ws = useWorkspace();
   useNodeShieldApp(ws.activeRepo, source);
   const toast = useToast();
@@ -234,13 +236,11 @@ export default function AppPage(): React.ReactElement | null {
   // and the workspace both drive the same dialogs.
   const dialogs = (
     <>
-      <WorkspaceCreator
+      <CreateWorkspaceDialog
         client={client}
-        target={target}
-        passkey={passkey}
-        source={source}
-        pending={sourcePending}
-        appPackage={APP_PACKAGE}
+        passkey={passkey()}
+        release={sourcePending ? null : (reviewRelease(source) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName()}
         open={showCreateNs}
         onClose={() => setShowCreateNs(false)}
         onCreated={async (created) => {
@@ -250,6 +250,7 @@ export default function AppPage(): React.ReactElement | null {
         }}
         labels={CREATE_LABELS}
       />
+
       {showAddRepo && (
         <AddRepoDialog
           onAdd={ws.addRepo}

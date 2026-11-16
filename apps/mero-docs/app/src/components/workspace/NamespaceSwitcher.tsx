@@ -19,7 +19,9 @@ import {
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { peopleCount } from '@/lib/roles';
-import { WorkspaceCreator } from '@calimero-apps/passkey';
+import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { lastUsedName } from '@calimero-apps/names';
+import { reviewRelease } from '@calimero-apps/passkey';
 import { toast } from 'sonner';
 import { useLive } from '@/calimero/react';
 import { useSession } from '@/calimero/session';
@@ -44,7 +46,7 @@ export function NamespaceSwitcher() {
     refetch,
     workspaceCreated,
   } = useDriveWorkspace();
-  const { session, passkey, source, resolvingSource } = useSession();
+  const { passkey, source, resolvingSource } = useSession();
   const client = useLive()?.client ?? null;
   const [showCreate, setShowCreate] = useState(false);
   // A menu hands focus back to its trigger as it closes, which lands AFTER a
@@ -156,14 +158,12 @@ export function NamespaceSwitcher() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {client && session.status === 'signed-in' && (
-        <WorkspaceCreator
+      {client && (
+        <CreateWorkspaceDialog
           client={client}
-          target={session.target}
-          passkey={passkey}
-          source={source}
-          pending={resolvingSource}
-          appPackage={PACKAGE_NAME}
+          passkey={passkey()}
+          release={resolvingSource ? null : (reviewRelease(source) ?? { package: PACKAGE_NAME })}
+          defaultSelfName={lastUsedName()}
           open={showCreate}
           onClose={() => setShowCreate(false)}
           onCreated={async (created) => {
@@ -176,6 +176,7 @@ export function NamespaceSwitcher() {
           }}
           labels={CREATE_LABELS}
         />
+
       )}
     </>
   );

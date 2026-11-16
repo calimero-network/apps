@@ -1,5 +1,7 @@
 import { useCallback, useRef } from "react";
-import { useResolvedSource, WorkspaceCreator } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName } from "@calimero-apps/names";
+import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 
 import { APP_PACKAGE, chatSource, passkey, useCalimero } from "../../api/calimero";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
@@ -30,9 +32,8 @@ export default function ChatWorkspaceCreator() {
   const { source, pending } = useResolvedSource(session?.client ?? null, session?.accountId ?? null, chatSource());
 
   const onCreated = useCallback(
-    async ({ orgId, selfName }: { orgId: string; selfName: string }) => {
+    async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) => {
       closeCreateWorkspace();
-      const name = (await api.current.getGroup(orgId)).data?.alias?.trim() || "Workspace";
       await finishWorkspace(api.current, orgId, name, selfName, addToast);
     },
     [addToast],
@@ -40,13 +41,11 @@ export default function ChatWorkspaceCreator() {
 
   if (!session) return null;
   return (
-    <WorkspaceCreator
+    <CreateWorkspaceDialog
       client={session.client}
-      target={session.target}
-      passkey={passkey}
-      source={source}
-      pending={pending}
-      appPackage={APP_PACKAGE}
+      passkey={passkey()}
+      release={pending ? null : (reviewRelease(source) ?? { package: APP_PACKAGE })}
+      defaultSelfName={lastUsedName()}
       open={open}
       onClose={closeCreateWorkspace}
       onCreated={onCreated}

@@ -6,7 +6,7 @@ import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
-import { ConsentPopupReturn } from "@calimero-apps/passkey";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import { BrowserRouter } from "react-router-dom";
 import "./pwa/installPrompt";
 import { SERVED_BY_NODE, nodeBasename } from "./utils/servedByNode";

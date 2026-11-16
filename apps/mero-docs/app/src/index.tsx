@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
-import { ConsentPopupReturn } from '@calimero-apps/passkey';
+import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import { captureInvite } from '@/hooks/useNamespaceInvitation';
 
 // Unregister stale service workers from previous builds / sibling apps

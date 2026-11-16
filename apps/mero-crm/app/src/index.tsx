@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
-import { ConsentPopupReturn } from '@calimero-apps/passkey';
+import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import { THEME } from './config';
 import { nodeBasename } from '@calimero-apps/node-served';
 import { invites, migrateLegacyInvite } from './workspaces';
