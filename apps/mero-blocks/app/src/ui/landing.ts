@@ -643,7 +643,7 @@ export class Landing {
         const world = worldIn(await listWorlds(phase.client, source).catch(() => []), joined.org, joined.world);
         phase.sessions.sync(phase.client);
         if (world) return enter(world, { joined: true });
-        noteEl.textContent = "Invitation accepted — pick the world below.";
+        noteEl.textContent = "Invitation accepted - pick the world below.";
       }
       // An invitation: asked, never redeemed on its own (the dialog skips a member).
       const pending = this.invites.pending();
@@ -708,7 +708,7 @@ export class Landing {
             phase.sessions.sync(phase.client);
             const world = worldIn(worlds, org, invitedWorld(pending));
             dialog.unmount();
-            resolve({ world, note: world ? "" : alreadyMember ? "You're already in this world" : "Invitation accepted — pick the world below." });
+            resolve({ world, note: world ? "" : alreadyMember ? "You're already in this world" : "Invitation accepted - pick the world below." });
           })();
         },
         onClose: () => {
