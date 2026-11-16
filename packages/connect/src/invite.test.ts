@@ -142,6 +142,17 @@ describe("createInviteStore", () => {
     expect(store.pending()).toBe(store.pending());
   });
 
+  it("captures a token from the fragment, the shared dialogs' link, keeping an unrelated fragment", () => {
+    const h = history();
+    const store = createInviteStore("crm", { storage: memoryStorage() });
+    expect(store.capture({ href: "https://a.example/?org=o&to=%2Fx#invite=tok&k=v" }, { history: h })).toMatchObject({
+      token: "tok",
+      org: "o",
+      route: "/x",
+    });
+    expect(h.replaceState).toHaveBeenCalledWith(null, "", "https://a.example/#k=v");
+  });
+
   it("reads a version-pinned link's route from its path, relative to the basename", () => {
     const store = createInviteStore("crm", { storage: memoryStorage() });
     store.capture(
