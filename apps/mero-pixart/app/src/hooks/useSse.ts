@@ -26,7 +26,7 @@ export function useSse(
 }
 
 export function useAppEvents(
-  client: Pick<CalimeroClient, "events"> | null,
+  client: Pick<CalimeroClient, "events" | "apps"> | null,
   app: string | null,
   onEvent: (kind: string, data: unknown) => void,
   onReconnect?: () => void,
@@ -46,6 +46,12 @@ export function useAppEvents(
       while (!abort.signal.aborted) {
         try {
           if (dropped) onReconnectRef.current?.();
+          // Where the log is now: the stream starts after it rather than
+          // replaying every event since the project began.
+          if (from === undefined) {
+            const { index } = await client.apps.view({ app, method: "canEdit", args: {} }, { signal: abort.signal });
+            if (typeof index === "number") from = index + 1;
+          }
           for await (const event of client.events(app, from, abort.signal)) {
             const index = Number(event.id);
             if (Number.isFinite(index)) from = index + 1;
