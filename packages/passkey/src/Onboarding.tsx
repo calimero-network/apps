@@ -446,6 +446,8 @@ export interface AcceptInvitationProps {
   onJoined: (joined: JoinedInvitation) => void;
   /** Dismissed, or the account was already in `member`. */
   onClose: (closed: InvitationClosed) => void;
+  /** Around the "already in" notice, which the app lays over its page (the shared dialog has its own backdrop). */
+  overlay?: string;
   classNames?: OnboardingClassNames;
   titleAs?: Heading;
 }
@@ -465,6 +467,7 @@ export function AcceptInvitation({
   after,
   onJoined,
   onClose,
+  overlay,
   classNames = {},
   titleAs = "h2",
 }: AcceptInvitationProps) {
@@ -487,7 +490,11 @@ export function AcceptInvitation({
   }, [client, org]);
 
   if (member === "yes") {
-    return <AlreadyMember joining={joining} classNames={classNames} titleAs={titleAs} onContinue={() => onClose({ member: org })} />;
+    return (
+      <div className={overlay}>
+        <AlreadyMember joining={joining} classNames={classNames} titleAs={titleAs} onContinue={() => onClose({ member: org })} />
+      </div>
+    );
   }
   return (
     <AcceptInviteDialog
