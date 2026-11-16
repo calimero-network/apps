@@ -25,6 +25,8 @@ function fakeClient(): CalimeroClient {
     signOut: async () => {
       session = undefined;
     },
+    // The create-workspace dialog, always mounted, asks whether the session is bound.
+    auth: { me: async () => ({}) },
     verification: () => ({ ...SEALED, checkedAt: Date.now() }),
     verify: async () => ({ ...SEALED, checkedAt: Date.now() }),
   } as unknown as CalimeroClient;

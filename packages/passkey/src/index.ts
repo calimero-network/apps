@@ -101,5 +101,3 @@ export { NodeShield, bindNodeShield } from "./NodeShield";
 export { openNodeShield, useNodeShieldApp } from "./nodeShieldStore";
 export { reviewRelease, type ReviewRelease } from "./nodeChecks";
 export { WorkspaceReview, WorkspaceTrust, type WorkspaceReviewProps, type WorkspaceTrustProps } from "./WorkspaceReview";
-export { WorkspaceCreator, type WorkspaceCreatorProps } from "./WorkspaceCreator";
-export { ConsentPopupReturn } from "@calimero-network/mero-react";
