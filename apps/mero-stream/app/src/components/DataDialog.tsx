@@ -4,6 +4,7 @@ import { LIVE_WIDTH, LIVE_HEIGHT } from "../hooks/useLiveStream";
 import { upstreamBitsPerSecond } from "../lib/capacity";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { fmt } from "../lib/format";
+import { visibleInterval } from "../lib/visibleInterval";
 import { MetricValue } from "./MetricValue";
 import { AlertTriangleIcon, DownloadIcon, RefreshIcon, XIcon } from "./icons";
 import styles from "./DataDialog.module.css";
@@ -80,8 +81,7 @@ export default function DataDialog({
   useEffect(() => {
     if (!open) return;
     s.refreshStats();
-    const id = setInterval(() => s.refreshStats(), 1000);
-    return () => clearInterval(id);
+    return visibleInterval(() => s.refreshStats(), 1000);
     // `refreshStats` is a stable useCallback; listing `s` would re-run this on
     // every stats update, which is the update this effect causes.
     // eslint-disable-next-line react-hooks/exhaustive-deps

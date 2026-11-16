@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
+import { confirmConsentHandoff } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
@@ -10,6 +12,7 @@ import {
   createRoom,
   inviteBase,
   listRooms,
+  membersCreateReturned,
   membersCreateRooms,
   setMembersCreateRooms,
   streamInfo,
@@ -125,6 +128,31 @@ export default function RoomsPage() {
     void load();
   }, [load]);
 
+  // Back from the node's consent page with "Members can create rooms": say how it went.
+  const client = conn?.client ?? null;
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    membersCreateReturned(client).then(
+      (back) => {
+        if (!live || !back) return;
+        if (!back.approved) showToast("Not approved. Nothing was changed.", "error");
+        else if (back.on !== null) {
+          showToast(back.on ? "Members can now create rooms." : "Only owners and admins can create rooms now.");
+          void load(false);
+        }
+      },
+      (e: unknown) => {
+        if (live) setError(describeError(e));
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // Once per load: the return is read off the address bar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
+
   // Each room's roster, read from its contract: who has joined the call.
   useEffect(() => {
     if (!conn || rooms.length === 0) return;
@@ -170,7 +198,16 @@ export default function RoomsPage() {
       if (!conn || memberDefaults === null) return;
       void run("members-create", async (onStatus) => {
         onStatus("Approve the change with your passkey…");
-        await setMembersCreateRooms(conn.client, orgId, memberDefaults, on, conn.passkey());
+        await setMembersCreateRooms(conn.client, orgId, memberDefaults, on, conn.passkey(), {
+          consent: {
+            confirm: (started) =>
+              confirmConsentHandoff({
+                code: started.code ?? "",
+                appName: PRODUCT_NAME,
+                action: on ? "Let members create rooms" : "Let only owners and admins create rooms",
+              }),
+          },
+        });
         conn.after();
         await load(false);
         showToast(on ? "Members can now create rooms." : "Only owners and admins can create rooms now.");

@@ -20,6 +20,15 @@ import type {
 /** The package a production instance is created from. */
 export const PACKAGE = "com.calimero.mero-stream";
 
+/**
+ * Whether `me` is already in the room's roster under `name`: then `join`
+ * would write nothing new, and is not sent. Unknown (`members` null) is not.
+ */
+export function alreadyJoined(members: Member[] | null, me: string | null, name: string): boolean {
+  if (!members || !me) return false;
+  return members.some((m) => m.memberId === me && m.username === name);
+}
+
 // The contract is called through `MeroStreamClient`, which `meroctl app
 // codegen` writes from logic/res/abi.json (`src/generated/client.ts`): u64
 // arguments as decimal strings (`u64`), bytes as base64url (`toBase64Url`).

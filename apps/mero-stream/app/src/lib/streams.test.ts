@@ -8,6 +8,7 @@ import {
   createRoom,
   finishStream,
   setMembersCreateRooms,
+  membersCreateReturned,
   dropInvite,
   inviteBase,
   listRooms,
@@ -137,6 +138,41 @@ describe("members of a new stream may create rooms (core's CREATE_APP)", () => {
     expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others | ORG_CAPABILITIES.CREATE_APP, expect.objectContaining({ confirm: expect.any(Function) }));
     await setMembersCreateRooms(client as never, "o1", others | ORG_CAPABILITIES.CREATE_APP, false, pk);
     expect(client.setCapabilities).toHaveBeenLastCalledWith("o1", others, expect.objectContaining({ confirm: expect.any(Function) }));
+  });
+
+  it("on a session bound to the app, the toggle is the node's consent page, not a direct call", async () => {
+    const client = withRoutes({ setCapabilities: vi.fn(async () => {}) });
+    const openConsentPage = vi.fn(async (_req: unknown, o: { confirm: (s: unknown) => Promise<boolean> }) => {
+      await o.confirm({ code: "1234" });
+      return { code: "1234" };
+    });
+    const others = ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+    await setMembersCreateRooms(Object.assign(client, { openConsentPage }) as never, "o1", others, true, {} as never, {
+      bound: true,
+      consent: { returnTo: "https://stream.example/streams/o1", confirm: () => true, navigate: () => {} },
+    });
+    expect(client.setCapabilities).not.toHaveBeenCalled();
+    expect(openConsentPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "setCapabilities",
+        subject: { org: "o1", capabilities: others | ORG_CAPABILITIES.CREATE_APP },
+      }),
+      expect.anything(),
+    );
+    sessionStorage.clear();
+  });
+
+  it("reads the consent page's return only for the change this tab sent there", async () => {
+    const resumeConsent = vi.fn(async () => ({ requestId: "r1", kind: "setCapabilities", status: "approved" }));
+    const href = "https://stream.example/streams/o1?request_id=r1&result=approved";
+    expect(await membersCreateReturned({ resumeConsent } as never, href)).toBeNull();
+    expect(resumeConsent).not.toHaveBeenCalled();
+    sessionStorage.setItem(
+      "calimero-connect:consent-intent",
+      JSON.stringify({ kind: "setCapabilities", org: "o1", capabilities: ORG_CAPABILITIES.CREATE_APP }),
+    );
+    expect(await membersCreateReturned({ resumeConsent } as never, href)).toEqual({ approved: true, org: "o1", on: true });
+    expect(await membersCreateReturned({ resumeConsent } as never, "https://stream.example/streams/o1")).toBeNull();
   });
 });
 

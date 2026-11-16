@@ -1,4 +1,5 @@
 import {
+  consentReturn,
   passkeyConfirm,
   DEFAULT_ORG_CAPABILITIES,
   ORG_CAPABILITIES,
@@ -7,19 +8,26 @@ import {
   type PasskeyProvider,
 } from "@calimero-network/mero-js";
 import {
+  appConsentIntent,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
+  goToConsent,
   inviteLinkBase,
   isAppOnly,
+  isFrontendBound,
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
+  resumeAppConsent,
   sourcePackage,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
+  type ConsentClient,
+  type ConsentOptions,
+  type MaybeMe,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
@@ -146,18 +154,54 @@ export function membersCreateRooms(memberDefaults: number): boolean {
  * Turn "Members can create rooms" on or off: `CREATE_APP` in the org's
  * default, the other bits kept. A member an owner set capabilities for keeps
  * their own. Owner or admin only, with their passkey.
+ *
+ * An org's default is organization-wide: on a session bound to Mero Stream's
+ * frontend it is the node's consent page (`setCapabilities`), and this never
+ * settles while the page leaves for it. `consentReturned` says how it went.
  */
 export async function setMembersCreateRooms(
-  client: ClientRoutes<{ orgs: "capabilities" }>,
+  client: ClientRoutes<{ orgs: "capabilities" }> & MaybeMe & ConsentClient,
   org: string,
   memberDefaults: number,
   on: boolean,
   passkey: PasskeyProvider,
+  options: { bound?: boolean; consent?: ConsentOptions } = {},
 ): Promise<void> {
   const next = on
     ? memberDefaults | ORG_CAPABILITIES.CREATE_APP
     : memberDefaults & ~ORG_CAPABILITIES.CREATE_APP;
+  if (await isFrontendBound(client, options.bound)) {
+    return goToConsent(client, { kind: "setCapabilities", org, capabilities: next }, options.consent);
+  }
   await client.orgs.capabilities({ org, capabilities: next }, { confirm: passkeyConfirm(passkey) });
+}
+
+/** What came back from the consent page for "Members can create rooms", or null when it did not send this tab here. */
+export interface MembersCreateReturn {
+  approved: boolean;
+  org: string | null;
+  /** Whether members may now create rooms; null when the intent was not kept. */
+  on: boolean | null;
+}
+
+/**
+ * On load: the node's decision on a "Members can create rooms" change this
+ * tab sent to the consent page. Null for any other page load, and for a
+ * return the shared dialogs started (they resume their own).
+ */
+export async function membersCreateReturned(
+  client: Pick<CalimeroClient, "resumeConsent">,
+  href: string = window.location.href,
+): Promise<MembersCreateReturn | null> {
+  if (!consentReturn(href) || appConsentIntent()?.kind !== "setCapabilities") return null;
+  const back = await resumeAppConsent(client);
+  if (!back || back.kind !== "setCapabilities") return null;
+  const intent = back.intent;
+  return {
+    approved: back.approved,
+    org: intent?.org ?? null,
+    on: intent ? membersCreateRooms(intent.capabilities) : null,
+  };
 }
 
 /** A stream's name, its members, and the display names they set for it. */
