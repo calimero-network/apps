@@ -1,18 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import { createInviteStore, type InviteStore } from "@calimero-apps/connect";
 
 import {
   alreadyInInvitedWorld,
   createWorld,
   invitedWorld,
-  inviter,
   listWorlds,
   migrateStoredInvite,
   readCurrentWorld,
-  redeemPendingInvite,
-  worldInviteLink,
+  worldLinkBase,
   writeCurrentWorld,
 } from "../src/net/worlds";
 import { withRoutes } from "@calimero-apps/connect/testing";
@@ -67,7 +65,7 @@ describe("createWorld", () => {
 
 describe("invitations", () => {
   function store(storage = memory()): InviteStore {
-    return createInviteStore("merraria", { storage, keep: ["world", "from"] });
+    return createInviteStore("merraria", { storage, keep: ["world"] });
   }
   function holding(token: string, org: string | null = null, extra: Record<string, string> = {}): InviteStore {
     const s = store();
@@ -75,31 +73,19 @@ describe("invitations", () => {
     return s;
   }
 
-  it("link to this frontend with the token, the org, the world and the inviter", () => {
-    expect(worldInviteLink("tok", "org-1", { world: "w-1", from: "Ada", root: "/1.0.0/" })).toBe(
-      `${window.location.origin}/1.0.0/?invite=tok&org=org-1&world=w-1&from=Ada`,
-    );
-  });
-
-  it("are captured into the shared store and off the address bar", () => {
+  it("link to a page naming the org and the world, and are captured before sign-in", () => {
+    const base = new URL(worldLinkBase("org-1", "w-1"));
+    expect(base.origin + base.pathname).toBe(`${window.location.origin}/`);
+    expect(base.searchParams.get("org")).toBe("org-1");
+    expect(base.searchParams.get("world")).toBe("w-1");
+    // The shared dialog puts the token in the fragment.
     const s = store();
-    window.history.replaceState(null, "", "/?invite=tok-1&org=org-1&world=w-1&from=Ada&x=1");
+    window.history.replaceState(null, "", "/?org=org-1&world=w-1&x=1#invite=tok-1");
     s.capture(window.location);
     expect(s.pending()).toMatchObject({ token: "tok-1", org: "org-1" });
     expect(invitedWorld(s.pending())).toBe("w-1");
-    expect(inviter(s.pending())).toBe("Ada");
     expect(window.location.search).toBe("?x=1");
-  });
-
-  it("are redeemed on Join, opening the world the link named, else the one in the joined org", async () => {
-    const client = {
-      redeemInvite: vi.fn(async () => ({ org: "org-2" })),
-      listApps: vi.fn(async () => [app("1", "a", "org-1"), app("2", "b", "org-2"), app("3", "c", "org-2")] as AppInfo[]),
-    };
-    const s = holding("tok1");
-    expect((await redeemPendingInvite(withRoutes(client), "abc", s))?.appId).toBe("2");
-    expect(s.token()).toBeNull();
-    expect((await redeemPendingInvite(withRoutes(client), "abc", holding("tok2", "org-2", { world: "3" })))?.appId).toBe("3");
+    expect(window.location.hash).toBe("");
   });
 
   it("are not spent by a player already in the world they name", async () => {
@@ -110,26 +96,6 @@ describe("invitations", () => {
     const theirs = holding("tok2", "org-9");
     expect(await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", theirs)).toBeNull();
     expect(theirs.token()).toBe("tok2");
-  });
-
-  it("drop a token only when the node refuses it for good", async () => {
-    const refusing = (e: unknown) => ({ redeemInvite: vi.fn(async () => Promise.reject(e)), listApps: vi.fn(async () => []) });
-    const spent = holding("tok1");
-    await expect(
-      redeemPendingInvite(withRoutes(refusing(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"))), "abc", spent),
-    ).rejects.toThrow();
-    expect(spent.token()).toBeNull();
-    // A lapsed session, a rate limit, the cluster or the network down: kept (B6).
-    for (const e of [
-      new CalimeroError(401, "UNAUTHORIZED", "session expired"),
-      new CalimeroError(429, "RATE_LIMITED", "slow down"),
-      new CalimeroError(503, "UNAVAILABLE", "later"),
-      new TypeError("Failed to fetch"),
-    ]) {
-      const kept = holding("tok1");
-      await expect(redeemPendingInvite(withRoutes(refusing(e)), "abc", kept)).rejects.toBe(e);
-      expect(kept.token()).toBe("tok1");
-    }
   });
 
   it("stored by an older build move into the shared store", () => {

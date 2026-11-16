@@ -2,17 +2,14 @@
 //
 // A world is an app instance (v1: a context). Each world is created in an
 // organization of its own (v1: a namespace), whose members reach it; an
-// invitation is an org invite (v1: a namespace invitation), made with the
-// inviter's passkey and redeemed by whoever opens the link, after signing in
-// and saying Join.
+// invitation is an org invite (v1: a namespace invitation), made and redeemed
+// through the shared dialogs (`ui/inviteDialogs.tsx`).
 
-import { passkeyConfirm, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import {
   appTarget,
   createInviteStore,
-  inviteLink,
-  isSpentInvite,
-  joinedOrg,
+  INVITE_PARAMS,
   listAppInfos,
   type AppSource,
   type ClientRoutes,
@@ -57,58 +54,38 @@ export async function createWorld(
   return { appId, name, org };
 }
 
-/** An invitation into the world's org as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /** The link parameter naming the world an invite opens. */
 const WORLD_PARAM = "world";
-/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
-const FROM_PARAM = "from";
 
 /**
  * This game's pending invite (`createInviteStore` in `@calimero-apps/connect`),
- * with the world its link names (`&world=`) and who sent it (`&from=`).
+ * with the world its link names (`&world=`).
  * Captured in `main.ts` before anything renders; the launcher binds it to the
  * cluster, holds it for the account that signs in (another account's sign-in
  * drops it) and drops it on sign-out (`ui/landing.ts`).
  */
-export const invites: InviteStore = createInviteStore(APP, { keep: [WORLD_PARAM, FROM_PARAM] });
+export const invites: InviteStore = createInviteStore(APP, { keep: [WORLD_PARAM] });
 
 /** The world a pending invite's link names. */
 export function invitedWorld(invite: PendingInvite | null): string | null {
   return invite?.extra[WORLD_PARAM] ?? null;
 }
 
-/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
-export function inviter(invite: PendingInvite | null): string | null {
-  return invite?.extra[FROM_PARAM] ?? null;
-}
-
 /** Where this frontend is served: `/`, or the node's `/{version}/`. */
 export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
 
 /**
- * The link that opens this frontend with `token` to redeem. `org` names the
- * world's organization, so a player already in it (the inviter opening their
- * own link, say) is not made to spend the token's single use; `world` is the
- * world to enter after joining, `from` the inviter's name for the question the
- * invitee is asked. Pinned to the served `/{version}/` until every cluster
- * keeps the query on its root redirect.
+ * The page an invite link opens (`InviteDialog`'s `linkBase`): this frontend,
+ * naming `org`, so a player already in it (the inviter opening their own link,
+ * say) is not made to spend the token's single use, and the `world` to enter.
+ * Pinned to the served `/{version}/` until every cluster keeps the query on its
+ * root redirect.
  */
-export function worldInviteLink(
-  token: string,
-  org: string,
-  { world, from, root = basename() }: { world?: string | null; from?: string | null; root?: string } = {},
-): string {
-  return inviteLink(token, { org, root, extra: { [WORLD_PARAM]: world, [FROM_PARAM]: from } });
+export function worldLinkBase(org: string, world: string): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  url.searchParams.set(WORLD_PARAM, world);
+  return url.toString();
 }
 
 /** The keys this game kept its pending invite under before the shared store. */
@@ -167,36 +144,6 @@ export async function alreadyInInvitedWorld(
   const world = worldIn(await listWorlds(client, source).catch(() => []), invite.org, invitedWorld(invite));
   if (world) store.drop();
   return world;
-}
-
-/**
- * Redeem the pending invitation and answer the world it opens: the world the
- * link named, else the first in the org the invite joined. `null` when there
- * is no invite, or the org holds no world this frontend plays.
- *
- * The token is dropped once redeemed, or when the node refuses the invite for
- * good (`isSpentInvite`: unknown, used up, expired, its org gone). A lapsed
- * session (401), a rate limit (429), the cluster or the network down keep it
- * for another try; the error is thrown for the caller to say so
- * (`describeRedeemFailure`).
- */
-export async function redeemPendingInvite(
-  client: ClientRoutes<{ orgs: "inviteRedeem"; apps: "list" }>,
-  source: AppSource,
-  store: InviteStore = invites,
-): Promise<World | null> {
-  const invite = store.pending();
-  if (!invite) return null;
-  let answer: unknown;
-  try {
-    answer = await client.orgs.inviteRedeem({ token: invite.token });
-  } catch (e) {
-    if (isSpentInvite(e)) store.drop();
-    throw e;
-  }
-  store.drop();
-  const org = joinedOrg(answer) ?? invite.org;
-  return worldIn(await listWorlds(client, source).catch(() => []), org, invitedWorld(invite));
 }
 
 /** The name of the stored key the world last played is kept under (`Connection.scopedKey`). */

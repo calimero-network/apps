@@ -41,8 +41,8 @@ const ZOOM_MAX = 1.6;
 
 export interface PauseCallbacks {
   onLeave: () => void;
-  /** mint a copyable invite for the current world */
-  onInvite?: () => Promise<string>;
+  /** open the invite dialog for the current world */
+  onInvite?: () => void;
   /** live-apply the zoom slider to the renderer */
   onZoomChange?: (zoom: number) => void;
 }
@@ -99,7 +99,7 @@ export class PauseMenu {
         <h3>Game menu</h3>
         <button class="mto-btn primary" data-testid="resume-btn">Back to game</button>
         <button class="mto-btn ghost" data-testid="options-btn">Options…</button>
-        ${this.callbacks.onInvite ? `<button class="mto-btn ghost" data-testid="invite-btn">Copy world invite</button>` : ""}
+        ${this.callbacks.onInvite ? `<button class="mto-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
         <button class="mto-btn danger" data-testid="leave-btn">Save &amp; leave world</button>
       </div>`;
     this.root.querySelector("[data-testid=resume-btn]")!.addEventListener("click", () => this.hide());
@@ -110,26 +110,7 @@ export class PauseMenu {
     this.root.querySelector("[data-testid=leave-btn]")!.addEventListener("click", () =>
       this.callbacks.onLeave(),
     );
-    const inviteBtn = this.root.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
-    if (inviteBtn && this.callbacks.onInvite) {
-      inviteBtn.addEventListener("click", async () => {
-        inviteBtn.disabled = true;
-        inviteBtn.textContent = "Creating invite…";
-        try {
-          const code = await this.callbacks.onInvite!();
-          await navigator.clipboard.writeText(code);
-          inviteBtn.textContent = "Single-use invite copied!";
-        } catch {
-          inviteBtn.textContent = "Invite failed — try again";
-        } finally {
-          // brief confirmation, then back to normal — mint as many as you like
-          setTimeout(() => {
-            inviteBtn.textContent = "Copy world invite";
-            inviteBtn.disabled = false;
-          }, 2500);
-        }
-      });
-    }
+    this.root.querySelector("[data-testid=invite-btn]")?.addEventListener("click", () => this.callbacks.onInvite?.());
   }
 
   private renderOptions(): void {
