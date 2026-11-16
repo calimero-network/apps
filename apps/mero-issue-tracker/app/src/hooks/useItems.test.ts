@@ -16,7 +16,9 @@ function fakeNode() {
   let push: (() => void) | null = null;
   const view = vi.fn(async (_app: string, _method: string) => ({ index: 1, result: [] }));
   const call = vi.fn(async () => ({ index: 2, result: null, events: [] }));
-  async function* events(_app: string, _from: unknown, signal?: AbortSignal) {
+  const froms: unknown[] = [];
+  async function* events(_app: string, from: unknown, signal?: AbortSignal) {
+    froms.push(from);
     while (!signal?.aborted) {
       await new Promise<void>((resolve) => {
         push = resolve;
@@ -25,7 +27,7 @@ function fakeNode() {
     }
   }
   const client = Object.assign(withRoutes({ view, call }), { events });
-  return { client, view, call, emit: () => push?.() };
+  return { client, view, call, froms, emit: () => push?.() };
 }
 
 /** Full reads so far: each reads `listIssues` once. */
@@ -34,6 +36,14 @@ const reads = (view: ReturnType<typeof fakeNode>['view']) =>
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('useIssues events', () => {
+  it('streams from after the log\'s head, not the whole log', async () => {
+    const node = fakeNode();
+    renderHook(() => useIssues({ client: node.client, appId: 'app-1', filters: FILTERS }));
+    await waitFor(() => expect(node.froms).toEqual([2]));
+  });
 });
 
 describe('useIssues writes', () => {

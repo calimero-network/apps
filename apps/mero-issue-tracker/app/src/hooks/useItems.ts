@@ -70,14 +70,24 @@ export interface UseIssuesReturn {
   deleteComment: (commentId: string) => Promise<void>;
 }
 
-/** Calls `onChange` (coalesced) for each event of `app` until the returned stop. */
-export function watchEvents(client: Pick<CalimeroClient, 'events'>, app: string, onChange: () => void): () => void {
+/**
+ * Calls `onChange` (coalesced) for each event of `app` until the returned
+ * stop. The stream starts after `head()`, the log index the app is at: what is
+ * already committed is what the first read covers, not replayed.
+ */
+export function watchEvents(
+  client: Pick<CalimeroClient, 'events'>,
+  app: string,
+  onChange: () => void,
+  head: () => Promise<number>,
+): () => void {
   const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   void (async () => {
     try {
-      // From the next event on: the first read already covers what came before.
-      for await (const _event of client.events(app, undefined, abort.signal)) {
+      const from = (await head()) + 1;
+      if (abort.signal.aborted) return;
+      for await (const _event of client.events(app, from, abort.signal)) {
         clearTimeout(timer);
         timer = setTimeout(onChange, EVENT_COALESCE_MS);
       }
@@ -163,11 +173,17 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
 
   useEffect(() => {
     if (!appId) return;
-    return watchEvents(client, appId, () => {
-      const waiting = [...echoRef.current];
-      echoRef.current.clear();
-      void refresh().finally(() => waiting.forEach((done) => done()));
-    });
+    const head = async () => (await new MeroIssueTrackerClient(client, appId).raw.getStatusCounts()).index;
+    return watchEvents(
+      client,
+      appId,
+      () => {
+        const waiting = [...echoRef.current];
+        echoRef.current.clear();
+        void refresh().finally(() => waiting.forEach((done) => done()));
+      },
+      head,
+    );
   }, [client, appId, refresh]);
 
   const write = useCallback(
