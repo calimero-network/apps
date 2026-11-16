@@ -157,7 +157,6 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     revokeInvite: vi.fn(async (_org: string, key: string) => {
       invites = invites.filter((i) => i.inviteKey !== key);
     }),
-    invite: vi.fn(async () => "tok-new"),
     removeMember: vi.fn(async () => ({})),
     packages: vi.fn(async () => [
       { package: CHAT },

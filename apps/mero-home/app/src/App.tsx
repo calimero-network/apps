@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import type { InviteStore, KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { isSpentInvite, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
+import { AppListing, InvitationSignIn, SignInPanel, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 
 import { Home } from "./Home";
 import { invites as homeInvites } from "./invites";
@@ -80,26 +81,6 @@ export function App({
             </section>
           ))}
 
-        {session.status === "signed-in" && asking && (
-          <JoinInvitation
-            {...ONBOARDING}
-            key={asking.token}
-            client={session.client}
-            token={asking.token}
-            org={asking.org}
-            drop={invites.drop}
-            after={after}
-            onJoined={({ org }) => {
-              closeInvite();
-              if (org) setLanding(org);
-            }}
-            onClose={({ member }) => {
-              closeInvite();
-              if (member) setLanding(member);
-            }}
-          />
-        )}
-
         {session.status === "signed-in" && !asking && (
           <Home
             client={session.client}
@@ -111,6 +92,32 @@ export function App({
           />
         )}
       </main>
+
+      {session.status === "signed-in" && (
+        <AcceptInviteDialog
+          key={asking?.token}
+          client={session.client}
+          passkey={deps.passkey()}
+          open={!!asking}
+          token={asking?.token ?? ""}
+          org={asking?.org ?? undefined}
+          appName="Calimero Home"
+          labels={{ noun: "organization" }}
+          onClose={() => {
+            invites.drop();
+            closeInvite();
+          }}
+          onError={(e) => {
+            if (isSpentInvite(e)) invites.drop();
+          }}
+          onJoined={({ org }) => {
+            invites.drop();
+            closeInvite();
+            setLanding(org);
+            after();
+          }}
+        />
+      )}
 
       {session.status === "signed-in" && (
         <footer className="home-row home-footer">

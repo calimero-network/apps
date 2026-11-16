@@ -360,12 +360,8 @@ export function inviteExpiry(invite: Pick<OrgInvite, "expiresAt" | "expired">, n
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
-/** The lifetimes the invite form offers, in seconds. */
-export const TTL_CHOICES: ReadonlyArray<{ label: string; secs: number }> = [
-  { label: "1 day", secs: 86_400 },
-  { label: "7 days", secs: 7 * 86_400 },
-  { label: "30 days", secs: 30 * 86_400 },
-];
+export const EXPIRY_OPTIONS = [86_400, 7 * 86_400, 30 * 86_400]; // seconds
+export const DEFAULT_EXPIRY = 7 * 86_400; // seconds
 
 /** Installed packages Home can set up in an org: those without an app team there yet, Home itself left out. */
 export function installable(packages: ReadonlyArray<{ package: string }>, view: OrgView): string[] {

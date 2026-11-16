@@ -1512,6 +1512,9 @@ importers:
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 35.6.0
+      '@calimero-network/mero-react':
+        specifier: catalog:component
+        version: 11.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
