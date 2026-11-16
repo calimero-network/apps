@@ -43,7 +43,6 @@ export function NamespaceSwitcher() {
     namespaceMembers,
     loading,
     error,
-    refetch,
     workspaceCreated,
   } = useDriveWorkspace();
   const { passkey, source, resolvingSource } = useSession();
