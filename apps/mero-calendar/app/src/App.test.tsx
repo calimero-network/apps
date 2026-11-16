@@ -35,12 +35,23 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
   const { createElement } = await import("react");
   return {
     ...(await importOriginal<object>()),
-    AcceptInviteDialog: (p: { open: boolean; token: string; appName?: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      labels?: object;
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
       p.open
         ? createElement(
             "div",
             { "data-testid": "accept-dialog" },
             createElement("p", { "data-testid": "accept-props" }, `${p.token} ${p.appName}`),
+            createElement("pre", { "data-testid": "accept-extra" }, JSON.stringify({ org: p.org, labels: p.labels })),
+            createElement("button", { "data-testid": "accept-error", onClick: () => p.onError?.(new Error("spent")) }, "error"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "done"),
           )
@@ -163,19 +174,34 @@ describe("an invitation link opened while signed out", () => {
     expect(invites.token()).toBe("tok-1");
   });
 
-  it("does not spend the link of a team this account is already in", async () => {
+  it("hands the dialog the team the link names and the team wording, and clears a spent link on error", async () => {
+    localStorage.setItem(PENDING, "tok-1");
+    localStorage.setItem(`${PENDING}-org`, "org-1");
+    migrateLegacyInvite();
+    renderApp(fakeClient());
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    expect(JSON.parse((await screen.findByTestId("accept-extra")).textContent ?? "")).toEqual({
+      org: "org-1",
+      labels: { noun: "team", title: "Join the team", body: expect.stringContaining("calendars"), join: "Join the team" },
+    });
+    expect(invites.token()).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-error"));
+    expect(invites.token()).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeTruthy();
+  });
+
+  it("opens the team a member continues into, without redeeming", async () => {
     localStorage.setItem(PENDING, "tok-1");
     localStorage.setItem(`${PENDING}-org`, "org-1");
     migrateLegacyInvite();
     const client = fakeClient();
+    client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ada" } } });
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect(await screen.findByText("You're already in the team")).toBeTruthy();
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId("invitation-continue"));
-    expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
   });
 
   it("creating the account joins in that step and opens the page the link named (B10)", async () => {

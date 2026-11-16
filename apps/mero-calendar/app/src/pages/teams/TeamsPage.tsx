@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { appInviteTeams, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
 import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { lastUsedName } from "@calimero-apps/names";
@@ -43,6 +43,7 @@ const CREATE_LABELS = {
 };
 
 const INVITE_LABELS = {
+  noun: "team",
   title: "Invite to this team",
   subtitle: "Choose what the people you invite can do in this team.",
 };
@@ -65,7 +66,7 @@ export default function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [inviteFor, setInviteFor] = useState<{ org: string; teams: string[] } | null>(null);
+  const [inviteFor, setInviteFor] = useState<{ org: string; teams: string[]; appOnly: boolean } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // Mounted once a team exists, so a full-page approval finishes here on return.
   const inviteOrg = inviteFor?.org ?? teams[0]?.groupId;
@@ -224,7 +225,7 @@ export default function TeamsPage() {
   async function inviteTo(org: string) {
     setMenuOpenId(null);
     try {
-      setInviteFor({ org, teams: (await appInviteTeams(client, org, source)).teams });
+      setInviteFor({ org, ...(await appInviteTeams(client, org, source)) });
     } catch (err) {
       showToast(`Failed to generate invitation: ${messageOf(err)}`);
     }
@@ -281,7 +282,7 @@ export default function TeamsPage() {
             org={inviteOrg}
             teams={inviteFor?.teams}
             appName={PRODUCT_NAME}
-            labels={INVITE_LABELS}
+            labels={inviteFor?.appOnly ? { ...INVITE_LABELS, note: appOnlyInviteNote(PRODUCT_NAME) } : INVITE_LABELS}
             linkBase={inviteFor ? inviteLinkBase(inviteFor.org, { href: new URL(appRoot(), window.location.origin).href }) : undefined}
           />
         )}
