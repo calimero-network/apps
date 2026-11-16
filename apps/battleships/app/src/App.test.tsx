@@ -9,12 +9,35 @@ import {
   type PendingInvite,
   type Target,
 } from '@calimero-apps/connect';
+import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
 import { invites as appInvites, migrateStoredInvite } from './lobbies';
 import { APP, type SessionDeps } from './session';
 import { withRoutes } from '@calimero-apps/connect/testing';
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'create-dialog' },
+            createElement('h2', { 'data-testid': 'create-title' }, p.labels?.title),
+            createElement('pre', { 'data-testid': 'create-release' }, JSON.stringify(p.release)),
+            createElement(
+              'button',
+              { 'data-testid': 'create-done', onClick: () => void p.onCreated({ orgId: 'org-new', name: 'Friday game', selfName: 'Ada' }) },
+              'done',
+            ),
+          )
+        : null,
+  };
+});
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -150,7 +173,7 @@ describe('App', () => {
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
 
-  it('signs up with a passkey, then creates a lobby in a new organization', async () => {
+  it('signs up with a passkey, then creates a lobby in the organization the dialog made', async () => {
     at('/lobby');
     const client = fakeClient();
     render(<App deps={deps(client)} />);
@@ -158,12 +181,26 @@ describe('App', () => {
     await waitFor(() => expect(client.signUp).toHaveBeenCalled());
     expect(client.signUp.mock.calls[0]?.[1]).toBe('');
 
-    fireEvent.change(await screen.findByPlaceholderText('Lobby name'), { target: { value: 'Friday game' } });
-    fireEvent.click(screen.getByText('Create'));
+    fireEvent.click(await screen.findByText('Create a lobby'));
+    expect(screen.getByTestId('create-title').textContent).toBe('New lobby');
+    fireEvent.click(screen.getByTestId('create-done'));
     await waitFor(() => expect(client.createApp).toHaveBeenCalled());
-    expect(client.createOrg).toHaveBeenCalledWith('Friday game');
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.setMemberMetadata).toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith('Friday game', 'bundle-hash', { org: 'org-new' });
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
+  });
+
+  it('shows why the lobby could not be made once its organization exists', async () => {
+    at('/lobby');
+    const client = fakeClient();
+    client.createApp.mockRejectedValueOnce(new Error('quota exceeded'));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('signup-passkey'));
+    fireEvent.click(await screen.findByText('Create a lobby'));
+    fireEvent.click(screen.getByTestId('create-done'));
+    expect(await screen.findByText('quota exceeded')).toBeTruthy();
+    expect(screen.queryByText('Lobby created')).toBeNull();
   });
 
   it('opens a lobby: registers, lists the org with names, challenges, and deploys a fleet', async () => {

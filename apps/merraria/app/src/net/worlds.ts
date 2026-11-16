@@ -39,19 +39,18 @@ export async function listWorlds(client: ClientRoutes<{ apps: "list" }>, source:
 }
 
 /**
- * A new world: an org for it (so friends can be invited), the app instance in
- * it, then `createWorld` with its name and seed, which only the creator (the
- * instance's owner) may run.
+ * A new world in `org` (made by the node for it, so friends can be invited):
+ * the app instance, then `createWorld` with its name and seed, which only the
+ * creator (the instance's owner) may run.
  */
 export async function createWorld(
-  client: ClientRoutes<{ apps: "create" | "call" | "view"; orgs: "create" }> & Pick<CalimeroClient, "events">,
+  client: ClientRoutes<{ apps: "create" | "call" | "view" }> & Pick<CalimeroClient, "events">,
   source: AppSource,
   name: string,
   seed: number,
+  org: string,
   after: () => void = () => {},
 ): Promise<World> {
-  const org = (await client.orgs.create({ name })).orgId;
-  after();
   const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
   after();
   await new MerrariaClient(client, appId, { after }).createWorld({ name, seed, now: nowSecs() });

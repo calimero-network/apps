@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Input } from '@calimero-network/mero-ui';
 
 interface LobbyRecord {
   /** The lobby's app instance id. */
@@ -17,9 +16,6 @@ interface LobbySelectProps {
   selectedNamespaceId: string | null;
   lobbyContextId: string | null;
   namespaceId: string | null;
-  createLobbyLoading: boolean;
-  newLobbyName: string;
-  onNewLobbyNameChange: (v: string) => void;
   onSelectLobby: (nsId: string) => void;
   onCreateLobby: () => void;
   onEnter: () => void;
@@ -39,9 +35,6 @@ const LOBBY_INFO_TOOLTIP =
 export default function LobbySelect({
   lobbies, lobbiesLoading, lobbiesFailed = false, onRetryLobbies, selectedNamespaceId,
   lobbyContextId, namespaceId,
-  createLobbyLoading,
-  newLobbyName,
-  onNewLobbyNameChange,
   onSelectLobby, onCreateLobby, onEnter,
 }: LobbySelectProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -114,35 +107,19 @@ export default function LobbySelect({
         </div>
         <div className="naval-card-body">
           <div className="tab-content">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newLobbyName.trim()) return;
-                onCreateLobby();
-              }}
-              style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
-            >
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '160px' }}>
-                  <Input
-                    type="text"
-                    placeholder="Lobby name"
-                    value={newLobbyName}
-                    onChange={(e) => onNewLobbyNameChange(e.target.value)}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="btn-deploy"
-                  disabled={createLobbyLoading || !newLobbyName.trim() || (lobbiesFailed && lobbies.length === 0)}
-                >
-                  {createLobbyLoading ? 'Creating…' : 'Create'}
-                </button>
-              </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-deploy"
+                disabled={lobbiesFailed && lobbies.length === 0}
+                onClick={onCreateLobby}
+              >
+                Create a lobby
+              </button>
               <span className="console-hint">
                 The name is the lobby's, for everyone you invite.
               </span>
-            </form>
+            </div>
           </div>
         </div>
       </div>

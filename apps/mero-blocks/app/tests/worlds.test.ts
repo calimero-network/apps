@@ -40,6 +40,18 @@ const app = (appId: string, name: string, org: string | null): AppInfo => ({
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 
+import { toSeed } from "../src/net/blocks";
+
+describe("toSeed", () => {
+  it("keeps a seed the contract takes (a u32), else the fallback", () => {
+    expect(toSeed("42", 1337)).toBe(42);
+    expect(toSeed("-42", 1337)).toBe(42);
+    expect(toSeed("abc", 1337)).toBe(1337);
+    expect(toSeed("0", 1337)).toBe(1337);
+    expect(toSeed(2 ** 32 + 5, 1)).toBe(5);
+  });
+});
+
 describe("worlds are app instances", () => {
   it("come from the dev bundle, else the package", () => {
     expect(worldSource({ VITE_CALIMERO_BUNDLE: "abc" })).toBe("abc");
@@ -54,12 +66,10 @@ describe("worlds are app instances", () => {
     expect(listApps).toHaveBeenLastCalledWith({ package: "p" });
   });
 
-  it("are created in an organization of their own, with the init arguments", async () => {
-    const createOrg = vi.fn(async () => "org-1");
+  it("are created in the organization the node made for them, with the init arguments", async () => {
     const createApp = vi.fn(async () => "app-1");
-    const made = await createWorld(withRoutes({ createOrg, createApp }), "abc", "overworld", 1337, 1700000000);
+    const made = await createWorld(withRoutes({ createApp }), "abc", "overworld", 1337, "org-1", 1700000000);
     expect(made).toEqual({ appId: "app-1", org: "org-1", name: "overworld" });
-    expect(createOrg).toHaveBeenCalledWith("overworld");
     expect(createApp).toHaveBeenCalledWith("overworld", "abc", {
       org: "org-1",
       initArgs: { name: "overworld", seed: "1337", now: "1700000000" },

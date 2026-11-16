@@ -3,6 +3,24 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The shared dialog is mero-react's to test: here only what the launcher hands it and does after.
+vi.mock("../src/ui/createWorld", async () => {
+  const actual = await vi.importActual<typeof import("../src/ui/createWorld")>("../src/ui/createWorld");
+  return {
+    ...actual,
+    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, _seed: number, onCreated: (c: unknown, seed: number) => void) => ({
+      open: () => {
+        const done = document.createElement("button");
+        done.dataset.testid = "create-done";
+        done.onclick = () => onCreated({ orgId: "org-new", name: "mesa", selfName: "Grace" }, 42);
+        document.body.appendChild(done);
+      },
+      source: () => base,
+      unmount: () => document.querySelector("[data-testid=create-done]")?.remove(),
+    }),
+  };
+});
+
 import { Connection } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { SessionStore, createInviteStore, type InviteStore, type PendingInvite } from "@calimero-apps/connect";
@@ -60,7 +78,7 @@ function launcher(
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   const landing = new Landing(parent, conn, "bundle-hash", invites);
-  const chosen = landing.show({ name: "Ada", seed: 1337 });
+  const chosen = landing.show({ name: "Ada", seed: 42 });
   const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     parent.querySelector<T>(`[data-testid="${id}"]`);
   return { client, conn, parent, chosen, $ };
@@ -381,23 +399,29 @@ describe("the launcher", () => {
     });
   });
 
-  it("creates a world: an org, the instance, then createWorld with the seed", async () => {
-    const { client, chosen, $ } = launcher(true);
+  it("creates a world in the org the dialog made: the instance, then createWorld with the seed", async () => {
+    const { client, chosen } = launcher(true);
     await settle();
-    $("create-world-open-btn")!.click();
-    $<HTMLInputElement>("world-name-input")!.value = "mesa";
-    $<HTMLInputElement>("seed-input")!.value = "42";
-    // The name is asked here, once, and lives on the world's org.
-    expect($<HTMLInputElement>("self-name-input")!.value).toBe("Ada");
-    $<HTMLInputElement>("self-name-input")!.value = "Grace";
-    $("create-world-btn")!.click();
+    document.querySelector<HTMLElement>("[data-testid=create-world-open-btn]")!.click();
+    document.querySelector<HTMLElement>("[data-testid=create-done]")!.click();
     const choice = await chosen;
     expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", "acct-ada", { name: "Grace" });
     expect(choice.name).toBe("Grace");
-    expect($("name-modal")).toBeNull();
     expect(choice.world).toEqual({ appId: "w-new", name: "mesa", org: "org-new" });
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("mesa", "bundle-hash", { org: "org-new" });
     expect(client.call).toHaveBeenCalledWith("w-new", "createWorld", expect.objectContaining({ name: "mesa", seed: 42 }));
+  });
+
+  it("says why the world could not be made once its org exists", async () => {
+    const { client, $ } = launcher(true, (c) => c.createApp.mockRejectedValueOnce(new Error("quota exceeded")));
+    await settle();
+    document.querySelector<HTMLElement>("[data-testid=create-world-open-btn]")!.click();
+    document.querySelector<HTMLElement>("[data-testid=create-done]")!.click();
+    await settle();
+    await settle();
+    expect($("join-error")?.textContent).toContain("Could not create world: quota exceeded");
+    expect(client.createApp).toHaveBeenCalledTimes(1);
   });
 
   it("invites friends into the world last played, as a link with the org invite", async () => {

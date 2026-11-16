@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CreateWorkspaceDialog, type CreateWorkspaceDialogProps } from "@calimero-network/mero-react";
 import { askAnOwnerCopy, canCreateIn, type AppSource, type ClientRoutes } from "@calimero-apps/connect";
 
 import { createArena, listArenas } from "./arenas";
@@ -7,6 +8,17 @@ import type { OpenArena } from "./ArenaPage";
 import { Portrait } from "./FighterSelect";
 import { ROSTER } from "./game/fighters";
 import { messageOf } from "./kombat";
+import { rememberName, storedName } from "./useCornerNames";
+
+const CREATE_LABELS = {
+  noun: "arena",
+  title: "New arena",
+  subtitle: "Name your arena, and choose the name your opponent sees.",
+  nameLabel: "Arena name",
+  namePlaceholder: "e.g. Friday rumble",
+  selfLabel: "Your name",
+  selfPlaceholder: "e.g. Ada",
+};
 
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
@@ -22,12 +34,17 @@ function shortId(id: string) {
  */
 export function Lobby({
   client,
+  passkey,
   source,
+  release,
   onOpen,
   after,
 }: {
-  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "list" | "create"; orgs: "create" | "get" }>;
+  client: CalimeroClient & ClientRoutes<{ apps: "list" | "create"; orgs: "get" }>;
+  passkey: () => PasskeyProvider;
   source: AppSource;
+  /** What a new arena's dojo runs, reviewed in the create dialog; `null` while it is read. */
+  release: CreateWorkspaceDialogProps["release"];
   onOpen: (arena: OpenArena) => void;
   /** Runs after each request (keeps the stored session current). */
   after: () => void;
@@ -35,6 +52,7 @@ export function Lobby({
   const [arenas, setArenas] = useState<AppInfo[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -74,11 +92,10 @@ export function Lobby({
     };
   }, [client, orgKey]);
 
-  async function make(key: string, org?: string) {
+  async function make(name: string, org: string, key: string) {
     setBusy(key);
     setFailed(null);
     try {
-      const name = `Arena ${(arenas?.length ?? 0) + 1}`;
       const made = await createArena(client, source, name, org);
       after();
       onOpen({ appId: made.appId, name, org: made.org });
@@ -91,8 +108,24 @@ export function Lobby({
     }
   }
 
+  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setCreating(false);
+    if (selfName.trim()) rememberName(selfName.trim());
+    await make(name, orgId, "new");
+  }
+
   return (
     <div className="lobby">
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={release}
+        defaultSelfName={storedName()}
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(c) => void created(c)}
+        labels={CREATE_LABELS}
+      />
       <section className="lobby-hero">
         <div className="lobby-copy">
           <p className="eyebrow">Lobby</p>
@@ -102,7 +135,7 @@ export function Lobby({
             cluster&apos;s log. No game server: each punch is a transaction the contract executes.
           </p>
           <div className="row">
-            <button className="large" onClick={() => void make("new")} disabled={busy !== null}>
+            <button className="large" onClick={() => setCreating(true)} disabled={busy !== null}>
               {busy === "new" ? "Creating…" : "New arena"}
             </button>
             <button className="ghost large" onClick={() => void refresh()} disabled={busy !== null}>
@@ -178,7 +211,7 @@ export function Lobby({
                         {askAnOwnerCopy("an arena")}
                       </p>
                     ) : (
-                      <button className="ghost small" disabled={busy !== null} onClick={() => void make(org, org)}>
+                      <button className="ghost small" disabled={busy !== null} onClick={() => void make(`Arena ${(arenas?.length ?? 0) + 1}`, org, org)}>
                         {busy === org ? "Creating…" : "Add arena"}
                       </button>
                     )}

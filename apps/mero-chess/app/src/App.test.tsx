@@ -9,12 +9,14 @@ import {
   type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
+import { createElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import type { SeatView, WireTableView } from "./chess";
 import { APP, type SessionDeps } from "./session";
 import { migrateStoredInvite, selectionKey } from "./tables";
+import { storedName } from "./useChess";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 class Memory implements KeyValueStorage {
@@ -29,6 +31,27 @@ class Memory implements KeyValueStorage {
     this.items.delete(k);
   }
 }
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-network/mero-react")>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => void p.onCreated({ orgId: "org-1", name: "Friday blitz", selfName: "Ada" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
 
 const SESSION: CalimeroSession = { accountId: "acct-alice", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
@@ -155,18 +178,21 @@ describe("App", () => {
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.click(screen.getByText("New table"));
+    expect(screen.getByTestId("create-title").textContent).toBe("New table");
+    fireEvent.click(screen.getByTestId("create-done"));
     await screen.findByText("Invite an opponent");
-    expect(client.createOrg).toHaveBeenCalledWith("Table 1");
-    expect(client.createApp).toHaveBeenCalledWith("Table 1", "bundle-hash", {
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.createApp).toHaveBeenCalledWith("Friday blitz", "bundle-hash", {
       org: "org-1",
-      initArgs: { title: "Table 1", now: expect.stringMatching(/^\d+$/) },
+      initArgs: { title: "Friday blitz", now: expect.stringMatching(/^\d+$/) },
     });
+    expect(storedName()).toBe("Ada");
     await waitFor(() =>
       expect(client.view).toHaveBeenCalledWith("app-new", "table", { now: expect.stringMatching(/^\d+$/) }),
     );
     // The table announces the player and streams its events.
     await waitFor(() =>
-      expect(client.call).toHaveBeenCalledWith("app-new", "join", { name: "Guest", now: expect.stringMatching(/^\d+$/) }),
+      expect(client.call).toHaveBeenCalledWith("app-new", "join", { name: "Ada", now: expect.stringMatching(/^\d+$/) }),
     );
     await waitFor(() => expect(client.events).toHaveBeenCalledWith("app-new", 2, expect.anything()));
 
@@ -174,8 +200,19 @@ describe("App", () => {
     const link = await screen.findByLabelText("invitation link");
     // The link names the org (a member is told so instead of spending it) and
     // the inviter (a seatless inviter by a short account id).
-    expect(link.textContent).toMatch(/invite=tok-123&org=org-1&table=app-new&from=acct-alice/);
+    expect(link.textContent).toMatch(/invite=tok-123&org=org-1&table=app-new&from=Ada/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
+  });
+
+  it("shows why the table could not be made once its organization exists", async () => {
+    at("/play");
+    const client = fakeClient();
+    client.createApp.mockRejectedValueOnce(new Error("quota exceeded"));
+    render(<App deps={deps(client)} storage={new Memory()} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByText("New table"));
+    fireEvent.click(screen.getByTestId("create-done"));
+    expect(await screen.findByText(/quota exceeded/)).toBeTruthy();
   });
 
   it("takes the free seat with the typed name, and goes back to the lobby", async () => {

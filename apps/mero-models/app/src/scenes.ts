@@ -34,20 +34,18 @@ export function studiosOf(scenes: AppInfo[]): string[] {
 }
 
 /**
- * A new scene. In `org` when given (a studio the person is in, so its members
- * reach it too); otherwise in a new organization of its own, so people can be
- * invited. Answers what the studio opens.
+ * A new scene in `org`: the studio the node just created for it, or one the
+ * person is in, so its members reach it too. Answers what the studio opens.
  */
 export async function createScene(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
-  org: string | null = null,
+  org: string,
 ): Promise<OpenedScene> {
   const sceneName = name.trim() || "Untitled scene";
-  const inOrg = org ?? (await client.orgs.create({ name: sceneName })).orgId;
-  const appId = (await client.apps.create({ name: sceneName, ...appTarget(source), org: inOrg })).appId;
-  return { appId, name: sceneName, org: inOrg };
+  const appId = (await client.apps.create({ name: sceneName, ...appTarget(source), org })).appId;
+  return { appId, name: sceneName, org };
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */

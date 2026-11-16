@@ -9,12 +9,14 @@ import {
   type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
+import { createElement } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { migrateStoredInvite, selectionKey } from "./arenas";
 import type { ArenaView, FighterView } from "./kombat";
 import { APP, type SessionDeps } from "./session";
+import { storedName } from "./useCornerNames";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 class Memory implements KeyValueStorage {
@@ -33,6 +35,27 @@ class Memory implements KeyValueStorage {
 beforeAll(() => {
   // jsdom has no 2D canvas; the cabinet and portraits draw nothing without one.
   HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+});
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-network/mero-react")>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => void p.onCreated({ orgId: "org-1", name: "Friday rumble", selfName: "Ada" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
 });
 
 const SESSION: CalimeroSession = { accountId: "acct-alice", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
@@ -157,12 +180,15 @@ describe("App", () => {
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.click(screen.getByText("New arena"));
+    expect(screen.getByTestId("create-title").textContent).toBe("New arena");
+    fireEvent.click(screen.getByTestId("create-done"));
     await screen.findByText("Invite an opponent");
-    expect(client.createOrg).toHaveBeenCalledWith("Arena 1");
-    expect(client.createApp).toHaveBeenCalledWith("Arena 1", "bundle-hash", {
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.createApp).toHaveBeenCalledWith("Friday rumble", "bundle-hash", {
       org: "org-1",
-      initArgs: { title: "Arena 1", now: expect.stringMatching(/^\d+$/) },
+      initArgs: { title: "Friday rumble", now: expect.stringMatching(/^\d+$/) },
     });
+    expect(storedName()).toBe("Ada");
     await waitFor(() =>
       expect(client.view).toHaveBeenCalledWith("app-new", "arena", { now: expect.stringMatching(/^\d+$/) }),
     );
@@ -177,6 +203,17 @@ describe("App", () => {
     const link = await screen.findByLabelText("invitation link");
     expect(link.textContent).toMatch(/invite=tok-123&org=org-1&arena=app-new/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
+  });
+
+  it("shows why the arena could not be made once its organization exists", async () => {
+    at("/play");
+    const client = fakeClient();
+    client.createApp.mockRejectedValueOnce(new Error("quota exceeded"));
+    render(<App deps={deps(client)} storage={new Memory()} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByText("New arena"));
+    fireEvent.click(screen.getByTestId("create-done"));
+    expect(await screen.findByText(/quota exceeded/)).toBeTruthy();
   });
 
   it("takes a corner and calls a rematch through the contract", async () => {

@@ -1,4 +1,5 @@
 import { nodeBasename } from '@calimero-apps/node-served';
+import { NodeShield } from '@calimero-apps/passkey';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
@@ -68,6 +69,7 @@ export default function NavBar({
             stylesheet can override short of `!important`, and which is a colour
             from the library's dark theme. The button is its own control; it
             needs no wrapper. */}
+        <NodeShield />
         <button type="button" className="nav-logout" onClick={onLogout}>
           Logout
         </button>

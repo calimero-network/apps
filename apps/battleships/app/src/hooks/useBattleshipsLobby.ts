@@ -41,10 +41,8 @@ export interface UseBattleshipsLobbyReturn {
   clearLobby: () => void;
   refetchLobbies: () => Promise<void>;
 
-  /** Resolves with the new lobby's id; rejects with why it failed. */
-  createLobby: (name?: string) => Promise<string>;
-  createLobbyLoading: boolean;
-  createLobbyError: Error | null;
+  /** Finishes a lobby whose organization the node approved: its app instance, your name in it. Rejects with why it failed. */
+  lobbyCreated: (created: { orgId: string; name: string; selfName: string }) => Promise<string>;
 
   namespaceId: string | null;
 
@@ -282,30 +280,23 @@ export function useBattleshipsLobby({
   );
 
   // ── Mutations ───────────────────────────────────────────────────────────────
-  const [createLobbyLoading, setCreateLobbyLoading] = useState(false);
-  const [createLobbyError, setCreateLobbyError] = useState<Error | null>(null);
-  const createLobby = useCallback(
-    async (name?: string) => {
-      if (!client) throw new Error('Not signed in');
-      setCreateLobbyLoading(true);
-      setCreateLobbyError(null);
+  const lobbyCreated = useCallback(
+    async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) => {
+      if (!client || !accountId) throw new Error('Not signed in');
       try {
-        const { appId } = await createLobbyApp(client, source, name?.trim() || 'lobby');
+        const appId = await createLobbyApp(client, source, orgId, name.trim());
+        // Best effort: the lobby exists either way, and the name can be set in it.
+        if (selfName.trim()) await saveMemberName(client, orgId, accountId, selfName.trim()).catch(() => {});
         userCleared.current = false;
         setSelectedId(appId);
         writeSelection(selectionKey, appId);
         await refetchLobbies();
         return appId;
-      } catch (e) {
-        const err = asError(e);
-        setCreateLobbyError(err);
-        throw err;
       } finally {
-        setCreateLobbyLoading(false);
         after();
       }
     },
-    [client, source, selectionKey, refetchLobbies, after],
+    [client, accountId, source, selectionKey, refetchLobbies, after],
   );
 
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -331,9 +322,7 @@ export function useBattleshipsLobby({
     clearLobby,
     refetchLobbies,
 
-    createLobby,
-    createLobbyLoading,
-    createLobbyError,
+    lobbyCreated,
 
     namespaceId,
 

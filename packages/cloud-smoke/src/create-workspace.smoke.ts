@@ -58,6 +58,16 @@ interface App {
   standIn?: string;
   /** Page errors a stand-in build raises on its own: its instance runs CRM's contract, which has none of the app's methods. */
   standInErrors?: RegExp;
+  /** The test id of the control that creates an account, when it is not `<PasskeySignIn>`'s. */
+  signUpTestId?: string;
+  /** The shield sits in the header bar of the app's signed-in start page (otherwise it is the floating chip). */
+  headerShield?: boolean;
+  /** What the app calls what it creates (`labels.noun`): the review's button reads "Create {noun}". */
+  noun?: string;
+  /** Fills the app's own inputs in the dialog's names step (beyond the two names). */
+  fillFields?: (dialog: ReturnType<Page["locator"]>) => Promise<void>;
+  /** Why `opened` is not the game itself. */
+  standInNote?: string;
 }
 
 const APPS_DIR = join(REPO, "apps");
@@ -105,6 +115,87 @@ const APPS: App[] = [
       await p.getByRole("menuitem", { name: /New workspace/i }).click();
     },
     opened: (p, w) => p.getByTestId("workspace-switcher").filter({ hasText: w }),
+  },
+  {
+    name: "battleships",
+    noun: "lobby",
+    headerShield: true,
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.battleships",
+    dist: dist("battleships"),
+    signedIn: (p) => p.getByRole("button", { name: "Create a lobby" }),
+    openCreate: (p) => p.getByRole("button", { name: "Create a lobby" }).click(),
+    opened: (p, w) => p.getByTestId("lobby-row").filter({ hasText: w }),
+  },
+  {
+    name: "mero-chess",
+    noun: "table",
+    headerShield: true,
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.mero-chess",
+    dist: dist("mero-chess"),
+    signedIn: (p) => p.getByRole("button", { name: "New table" }),
+    openCreate: (p) => p.getByRole("button", { name: "New table" }).click(),
+    opened: (p) => p.getByText(/INIT_FAILED/),
+    standInNote: "a stand-in package cannot run the game's init: the node's own refusal is shown, after the org was made",
+  },
+  {
+    name: "mero-kombat",
+    noun: "arena",
+    headerShield: true,
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.mero-kombat",
+    dist: dist("mero-kombat"),
+    signedIn: (p) => p.getByRole("button", { name: "New arena" }),
+    openCreate: (p) => p.getByRole("button", { name: "New arena" }).click(),
+    opened: (p) => p.getByText(/INIT_FAILED/),
+    standInNote: "a stand-in package cannot run the game's init: the node's own refusal is shown, after the org was made",
+  },
+  {
+    name: "mero-models",
+    noun: "scene",
+    fillFields: async (d) => {
+      await d.getByLabel("Scene name").fill("E2E scene");
+    },
+    headerShield: true,
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.mero-models",
+    dist: dist("mero-models"),
+    signedIn: (p) => p.getByTestId("new-scene"),
+    openCreate: (p) => p.getByTestId("new-scene").click(),
+    opened: (p) => p.getByText(/The scene is empty/),
+  },
+  {
+    name: "mero-blocks",
+    noun: "world",
+    fillFields: async (d) => {
+      await expect(d.getByLabel("Seed")).toHaveValue("1337");
+      await d.getByLabel("Seed").fill("42");
+    },
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.mero-blocks",
+    dist: dist("mero-blocks"),
+    signUpTestId: "sign-up-btn",
+    signedIn: (p) => p.getByTestId("create-world-open-btn"),
+    openCreate: (p) => p.getByTestId("create-world-open-btn").click(),
+    opened: (p) => p.getByTestId("join-error").filter({ hasText: /Could not create world.*INIT_FAILED/ }),
+    standInNote: "a stand-in package cannot run the game's init: the node's own refusal is shown, after the org was made",
+  },
+  {
+    name: "merraria",
+    noun: "world",
+    fillFields: async (d) => {
+      await expect(d.getByLabel("Seed")).toHaveValue("1337");
+      await d.getByLabel("Seed").fill("42");
+    },
+    package: "com.calimero.mero-crm",
+    standIn: "com.calimero.merraria",
+    dist: dist("merraria"),
+    signUpTestId: "sign-up-btn",
+    signedIn: (p) => p.getByTestId("create-world-open-btn"),
+    openCreate: (p) => p.getByTestId("create-world-open-btn").click(),
+    opened: (p) => p.getByTestId("join-error").filter({ hasText: /Could not create world/ }),
+    standInNote: "a stand-in package has no createWorld: the node's own refusal is shown, after the org and the instance were made",
   },
 ];
 
@@ -273,7 +364,7 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
     const auth = await virtualAuthenticator(page);
     await test.step("open the served page and sign up with a new passkey", async () => {
       await page.goto(`${origin}/${version}/`, { waitUntil: "domcontentloaded" });
-      const signUp = page.getByTestId("signup-passkey");
+      const signUp = page.getByTestId(app.signUpTestId ?? "signup-passkey");
       const signIn = app.signIn?.(page) ?? page.getByRole("button", { name: "Sign in", exact: true }).first();
       await expect(signUp.or(signIn).first()).toBeVisible({ timeout: 60_000 });
       if (!(await signUp.isVisible())) await signIn.click();
@@ -292,6 +383,7 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await page.screenshot({ path: join(shots, "mobile-header.png") });
       expect(await page.evaluate(() => document.documentElement.scrollWidth), "the page scrolls sideways at 390px").toBeLessThanOrEqual(390);
       if (wide) await page.setViewportSize(wide);
+      if (app.headerShield) await expect(page.locator("header .cp-shield, nav .cp-shield"), "the shield is in the header").toHaveCount(1);
     });
 
     const workspace = `E2E ${app.name} ${Date.now().toString(36)}`;
@@ -301,6 +393,7 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await expect(dialog).toBeVisible();
       await dialog.locator("input").nth(0).fill(workspace);
       await dialog.locator("input").nth(1).fill("Ada");
+      await app.fillFields?.(dialog);
       await shot("names");
       await dialog.getByRole("button", { name: /Continue/ }).click();
     });
@@ -311,14 +404,14 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await expect(dialog.getByText(app.standIn ?? app.package, { exact: false }).or(dialog.getByText(app.package)).first()).toBeVisible();
       await expect(dialog.getByText("What it can do")).toBeVisible();
       await expect(dialog.getByText(/Loading what this app can do/)).toHaveCount(0, { timeout: 60_000 });
-      await expect(dialog.getByRole("button", { name: "Create workspace" })).toBeEnabled({ timeout: 90_000 });
+      await expect(dialog.getByRole("button", { name: `Create ${app.noun ?? "workspace"}` })).toBeEnabled({ timeout: 90_000 });
       await shot("review");
     });
 
     let popup!: Page;
     await test.step("create, and approve on the node in the pop-up", async () => {
       const opened = context.waitForEvent("page");
-      await page.getByRole("dialog").getByRole("button", { name: "Create workspace" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: `Create ${app.noun ?? "workspace"}` }).click();
       popup = await opened;
       await copyPasskey(auth, popup);
       await expect(page.getByRole("dialog").getByText(/[A-Z0-9]{3}-[A-Z0-9]{3}/).first()).toBeVisible({ timeout: 60_000 });
@@ -339,6 +432,12 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await app.settled?.(page);
       await shot("workspace-open");
     });
+
+    if (app.name !== "mero-chat") {
+      await test.step("one shield", async () => {
+        await expect(page.locator(".cp-shield"), "one shield").toHaveCount(1);
+      });
+    }
 
     if (app.name === "mero-chat") {
       await test.step("one shield, in the header", async () => {

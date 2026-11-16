@@ -133,3 +133,10 @@ export function blocks(client: AppTransport, app: string, device: string, after:
 export function playerId(account: string, device: string): string {
   return device ? `${account}/${device}` : account;
 }
+
+/** A seed the contract takes: a non-negative integer below 2^32. */
+export function toSeed(raw: unknown, fallback: number): number {
+  const n = Math.floor(Math.abs(Number(raw)));
+  if (!Number.isFinite(n) || n === 0) return fallback;
+  return n % 2 ** 32;
+}

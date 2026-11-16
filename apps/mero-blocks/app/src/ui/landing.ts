@@ -85,6 +85,7 @@ import { PACKAGE } from "../net/blocks";
 import { knownName, readOrgName, saveOrgName } from "../net/playerName";
 import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
+import { mountCreateWorld, type CreateWorldDialog } from "./createWorld";
 import { Panorama } from "./panorama";
 
 /** The world the player entered, and who they are. */
@@ -260,6 +261,8 @@ export class Landing {
    * it joined (`null` when it cannot be told) and the world its link named.
    */
   private joined: { org: string | null; world: string | null } | null = null;
+  /** The create-world dialog, mounted while the world picker shows. */
+  private createDialog: CreateWorldDialog | null = null;
   /** Takes the "new version" prompt away (sign-out, entering a world). */
   private stopUpgrades: (() => void) | null = null;
 
@@ -291,6 +294,7 @@ export class Landing {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
         this.offerUpgrades(null);
+        this.createDialog?.unmount();
         this.panorama.destroy();
         this.root.remove();
         resolve(choice);
@@ -350,16 +354,13 @@ export class Landing {
   }
 
   private renderPlayCard(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+    this.createDialog?.unmount();
+    this.createDialog = null;
     const phase = this.phase;
     if (phase.status === "listing") this.renderListing();
     else if (phase.status === "unconfigured") this.renderUnconfigured(phase.message);
     else if (phase.status === "signed-out") this.renderSignIn(phase, defaults, done);
     else this.renderWorldPicker(phase, defaults, done);
-  }
-
-  private readSeed(shade: HTMLElement, fallback: number): number {
-    const raw = shade.querySelector<HTMLInputElement>("#mbl-seed")?.value;
-    return Math.abs(Math.floor(Number(raw))) % 4294967296 || fallback;
   }
 
   // state 1: a copy no cluster serves (its listing page): open it where Calimero Cloud serves it
@@ -615,9 +616,25 @@ export class Landing {
         this.renderPlayCard(defaults, done);
       });
     });
-    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
-      this.openCreateWorldModal(phase, defaults, enter),
-    );
+    // A refused create says so here, with the node's own words.
+    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }, seed: number) => {
+      errEl.textContent = "";
+      try {
+        const made = await createWorld(phase.client, dialog.source(), name, seed, orgId);
+        phase.sessions.sync(phase.client);
+        // The world's org holds the player's name from here on. Best effort:
+        // a refused write leaves it unset, and the next entry adopts the name
+        // remembered here instead of asking.
+        rememberLastUsedName(selfName);
+        await saveOrgName(phase.client, made.org, phase.accountId, selfName).catch(() => {});
+        void enter({ appId: made.appId, name: made.name, org: made.org }, { name: selfName });
+      } catch (e) {
+        errEl.textContent = `Could not create world: ${describeError(e)}`;
+      }
+    };
+    const dialog = mountCreateWorld(phase.client, this.deps.passkey(), source, defaults.seed, (c, seed) => void created(c, seed));
+    this.createDialog = dialog;
+    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () => dialog.open());
 
     void (async () => {
       // A sign-up that carried the invite joined in that step: enter the
@@ -830,80 +847,6 @@ export class Landing {
       menu.hidden = true;
     });
     return card;
-  }
-
-  /** popup: create a world. Buttons lock while the cluster works — no double-create. */
-  private openCreateWorldModal(
-    phase: SignedIn,
-    defaults: { name: string; seed: number },
-    enter: (w: EnteredWorld, opts: { name: string }) => Promise<void>,
-  ): void {
-    const shade = document.createElement("div");
-    shade.className = "mbl-modal-shade";
-    shade.dataset.testid = "create-modal";
-    shade.innerHTML = `
-      <div class="mbl-modal">
-        <div class="mbl-modal-head">
-          <h3>Create world</h3>
-          <button class="mbl-modal-close" data-testid="create-close" aria-label="Close">✕</button>
-        </div>
-        <label>world name</label>
-        <input id="mbl-world-name" data-testid="world-name-input" value="overworld" maxlength="24" />
-        <label>seed</label>
-        <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
-        <label>your name in this world</label>
-        <input id="mbl-self-name" data-testid="self-name-input" value="${escapeHtml(knownName() || defaults.name)}" maxlength="16" />
-        <button class="mbl-btn green" data-testid="create-world-btn">Create world</button>
-        <div class="mbl-error" data-testid="create-error"></div>
-      </div>
-    `;
-    this.root.appendChild(shade);
-    let busy = false;
-    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-close]")!;
-    const createBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-world-btn]")!;
-    const errEl = shade.querySelector<HTMLElement>("[data-testid=create-error]")!;
-    shade.addEventListener("click", (e) => {
-      if (e.target === shade && !busy) shade.remove();
-    });
-    closeBtn.addEventListener("click", () => {
-      if (!busy) shade.remove();
-    });
-    createBtn.addEventListener("click", async () => {
-      if (busy) return;
-      errEl.textContent = "";
-      const worldName = shade.querySelector<HTMLInputElement>("#mbl-world-name")?.value.trim() || "overworld";
-      const selfName = shade.querySelector<HTMLInputElement>("#mbl-self-name")?.value.trim() ?? "";
-      if (!selfName) {
-        errEl.textContent = "Enter the name other players will see.";
-        return;
-      }
-      busy = true;
-      createBtn.disabled = true;
-      closeBtn.disabled = true;
-      createBtn.textContent = "Creating…";
-      try {
-        const created = await createWorld(
-          phase.client,
-          worldSource(this.deps.env),
-          worldName,
-          this.readSeed(shade, defaults.seed),
-        );
-        phase.sessions.sync(phase.client);
-        // The world's org holds the player's name from here on. Best effort:
-        // a refused write leaves it unset, and the next entry adopts the name
-        // remembered here instead of asking.
-        rememberLastUsedName(selfName);
-        await saveOrgName(phase.client, created.org, phase.accountId, selfName).catch(() => {});
-        shade.remove();
-        void enter({ appId: created.appId, name: created.name, org: created.org }, { name: selfName });
-      } catch (e) {
-        errEl.textContent = `Could not create world: ${describeError(e)}`;
-        busy = false;
-        createBtn.disabled = false;
-        closeBtn.disabled = false;
-        createBtn.textContent = "Create world";
-      }
-    });
   }
 
   /**

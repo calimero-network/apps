@@ -26,6 +26,7 @@ import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing } from "./ui/landing";
+import { startUnlessConsentReturn } from "./ui/createWorld";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu, WorldMap } from "./ui/overlays";
 
@@ -619,4 +620,6 @@ function showFatal(app: HTMLElement, message: string): void {
   app.appendChild(el);
 }
 
-void boot();
+startUnlessConsentReturn(() => {
+  void boot();
+});

@@ -48,15 +48,15 @@ export interface CreatedWorld {
   name: string;
 }
 
-/** A new world: its organization, then the instance in it, with the world's `init` arguments. */
+/** A new world: the instance in `org` (made by the node for it), with the world's `init` arguments. */
 export async function createWorld(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
   seed: number,
+  org: string,
   nowSecs: number = Math.floor(Date.now() / 1000),
 ): Promise<CreatedWorld> {
-  const org = (await client.orgs.create({ name })).orgId;
   const appId = (await client.apps.create({ name, ...appTarget(source), org, initArgs: initArgs(name, seed, nowSecs) }))
     .appId;
   return { appId, org, name };

@@ -62,10 +62,11 @@ import {
   type World,
 } from "../net/worlds";
 import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
-import { PACKAGE, toSeed } from "../net/merraria";
+import { PACKAGE } from "../net/merraria";
 import { knownName, readOrgName, saveOrgName } from "../net/playerName";
 import { shortAccount, type Connection } from "../net/session";
 import { deleteWorld } from "../state/persistence";
+import { mountCreateWorld, type CreateWorldDialog } from "./createWorld";
 import { WorldAnim } from "./worldAnim";
 import { showLandingAgain } from "../pages/landing/mount";
 
@@ -287,6 +288,8 @@ export class Landing {
   private anim: WorldAnim | null = null;
   /** A sign-up from this card carried the invite and joined: the org it joined and the world its link named. */
   private joinedAtSignUp: { org: string | null; world: string | null } | null = null;
+  /** The create-world dialog, mounted while the world picker shows. */
+  private createDialog: CreateWorldDialog | null = null;
   /** Takes the "new version" prompt away (sign-out, entering a world). */
   private stopUpgrades: (() => void) | null = null;
 
@@ -318,6 +321,7 @@ export class Landing {
       this.render(defaults, (choice) => {
         this.anim?.stop();
         this.offerUpgrades(false);
+        this.createDialog?.unmount();
         this.root.remove();
         resolve(choice);
       });
@@ -403,6 +407,8 @@ export class Landing {
   }
 
   private renderPlayCard(defaults: Defaults, done: (c: LaunchChoice) => void): void {
+    this.createDialog?.unmount();
+    this.createDialog = null;
     if (this.conn.accountId) this.renderWorldPicker(defaults, done);
     else this.renderSignIn(defaults, done);
   }
@@ -622,9 +628,26 @@ export class Landing {
       this.invites.signedOut();
       void this.conn.signOut().then(() => this.renderPlayCard(defaults, done));
     });
-    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
-      this.openCreateWorldModal(defaults, done),
-    );
+    // A refused create says so here, with the node's own words.
+    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }, seed: number) => {
+      errEl.textContent = "";
+      try {
+        const world = await createWorld(this.conn.client, dialog.source(), name, seed, orgId, this.conn.sync);
+        // The world's org holds the player's name from here on. Best effort:
+        // a refused write leaves it unset, and the next entry adopts the name
+        // remembered here instead of asking.
+        rememberLastUsedName(selfName);
+        await saveOrgName(this.conn.client, orgId, this.conn.accountId ?? "", selfName).catch(() => {});
+        this.conn.sync();
+        this.setCurrent(world);
+        done({ name: selfName, world });
+      } catch (e) {
+        errEl.textContent = `Could not create world: ${describeError(e)}`;
+      }
+    };
+    const dialog = mountCreateWorld(this.conn.client, this.conn.approver(), this.source, defaults.seed, (c, seed) => void created(c, seed));
+    this.createDialog = dialog;
+    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () => dialog.open());
 
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
     if (inviteBtn && current?.org) {
@@ -859,75 +882,6 @@ export class Landing {
       menu.hidden = true;
     });
     return card;
-  }
-
-  /** popup: create a world. Buttons lock while the cluster works — no double-create. */
-  private openCreateWorldModal(defaults: Defaults, done: (c: LaunchChoice) => void): void {
-    const shade = document.createElement("div");
-    shade.className = "mtl-modal-shade";
-    shade.dataset.testid = "create-modal";
-    shade.innerHTML = `
-      <div class="mtl-modal">
-        <div class="mtl-modal-head">
-          <h3>Create world</h3>
-          <button class="mtl-modal-close" data-testid="create-close" aria-label="Close">✕</button>
-        </div>
-        <label>world name</label>
-        <input id="mtl-world-name" data-testid="world-name-input" value="surface" maxlength="24" />
-        <label>seed</label>
-        <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
-        <label>your name in this world</label>
-        <input id="mtl-self-name" data-testid="self-name-input" value="${escapeHtml(knownName() || defaults.name)}" maxlength="16" />
-        <button class="mtl-btn green" data-testid="create-world-btn">Create world</button>
-        <div class="mtl-error" data-testid="create-error"></div>
-      </div>
-    `;
-    this.root.appendChild(shade);
-    let busy = false;
-    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-close]")!;
-    const createBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-world-btn]")!;
-    const errEl = shade.querySelector<HTMLElement>("[data-testid=create-error]")!;
-    shade.addEventListener("click", (e) => {
-      if (e.target === shade && !busy) shade.remove();
-    });
-    closeBtn.addEventListener("click", () => {
-      if (!busy) shade.remove();
-    });
-    createBtn.addEventListener("click", async () => {
-      if (busy) return;
-      errEl.textContent = "";
-      const worldName = shade.querySelector<HTMLInputElement>("#mtl-world-name")?.value.trim() || "surface";
-      const seed = toSeed(shade.querySelector<HTMLInputElement>("#mtl-seed")?.value, defaults.seed);
-      const selfName = shade.querySelector<HTMLInputElement>("#mtl-self-name")?.value.trim() ?? "";
-      if (!selfName) {
-        errEl.textContent = "Enter the name other players will see.";
-        return;
-      }
-      busy = true;
-      createBtn.disabled = true;
-      closeBtn.disabled = true;
-      createBtn.textContent = "Creating…";
-      try {
-        const world = await createWorld(this.conn.client, this.source, worldName, seed, this.conn.sync);
-        // The world's org holds the player's name from here on. Best effort:
-        // a refused write leaves it unset, and the next entry adopts the name
-        // remembered here instead of asking.
-        rememberLastUsedName(selfName);
-        if (world.org) {
-          await saveOrgName(this.conn.client, world.org, this.conn.accountId ?? "", selfName).catch(() => {});
-          this.conn.sync();
-        }
-        this.setCurrent(world);
-        shade.remove();
-        done({ name: selfName, world });
-      } catch (e) {
-        errEl.textContent = `Could not create world: ${describeError(e)}`;
-        busy = false;
-        createBtn.disabled = false;
-        closeBtn.disabled = false;
-        createBtn.textContent = "Create world";
-      }
-    });
   }
 
   /**
