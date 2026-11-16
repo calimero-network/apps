@@ -20,6 +20,7 @@ import {
   orgModeOf,
   orgWideAccess,
   removeFromApp,
+  removeFromAppTeam,
   removeFromPrivateTeam,
   sourcePackage,
 } from "./orgApp";
@@ -340,6 +341,20 @@ describe("a private list", () => {
     expect(c.orgs.teamRemoveMember).toHaveBeenCalledWith({ org: "org", team: "folder", account: "bob" }, CONFIRMED);
     await expect(removeFromPrivateTeam(c, "org", "team-crm", "bob", passkey)).rejects.toThrow(/removeFromApp/);
     expect(c.orgs.teamRemoveMember).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an app's team in any mode", () => {
+  it("removeFromAppTeam takes someone off the app's team and leaves the org alone", async () => {
+    const c = cluster(shared());
+    c.view.teams["team-crm"]!.members.bob = false;
+    await removeFromAppTeam(c, "org", SOURCE, "bob", passkey);
+    expect(c.orgs.teamRemoveMember).toHaveBeenCalledWith({ org: "org", team: "team-crm", account: "bob" }, CONFIRMED);
+    expect(c.orgs.removeMember).not.toHaveBeenCalled();
+    // Someone in through the org, without a row: taken off all the same.
+    await removeFromAppTeam(c, "org", SOURCE, "carol", passkey);
+    expect(c.orgs.teamRemoveMember).toHaveBeenLastCalledWith({ org: "org", team: "team-crm", account: "carol" }, CONFIRMED);
+    await expect(removeFromAppTeam(cluster(legacy()), "org", SOURCE, "bob", passkey)).rejects.toThrow(/no team/);
   });
 });
 

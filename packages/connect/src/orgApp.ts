@@ -477,6 +477,29 @@ export async function removeFromPrivateTeam(
   await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
 }
 
+/**
+ * Takes `account` off `source`'s app team in `org`, whatever the org's mode,
+ * and leaves them in the organization (core drops their rows on the teams
+ * below it too). For an app that keeps its people on its team in a
+ * standalone org as well, where {@link removeFromApp} takes them out of the
+ * organization. A team call, which a session bound to the app's frontend may
+ * make (a passkey step-up). Throws when the app has no team in `org`.
+ */
+export async function removeFromAppTeam(
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" }>,
+  org: string,
+  source: AppSource | null | undefined,
+  account: string,
+  passkey: PasskeyLike,
+): Promise<void> {
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  const team = appTeamIdIn(view, sourcePackage(source));
+  if (!team) throw new Error("this app has no team in the organization");
+  // Also without a row of their own: in an open team someone is in through the
+  // org, and the node keeps them out once taken off.
+  await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
+}
+
 /** What {@link leaveApp} did. */
 export interface LeftApp {
   /** `app`: off this app's team only (a shared org); `org`: out of the organization. */

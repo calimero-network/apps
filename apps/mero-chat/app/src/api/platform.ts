@@ -50,6 +50,8 @@ import {
   orgWideAccess,
   otherOrgs,
   removeFromApp,
+  removeFromAppTeam,
+  removeFromPrivateTeam,
   type AppInviteToken,
   type AppOrgView,
   type OrgTeamView,
@@ -514,7 +516,7 @@ export async function changeChannelMembers(app: string, add: string[], remove: s
   }
   for (const account of new Set(remove)) {
     if (!account) continue;
-    await run((c) => c.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+    await run((c) => removeFromPrivateTeam(c, org, team, account, passkey));
   }
   invalidate(org);
   invalidate(app);
@@ -927,9 +929,8 @@ export async function hasChatTeam(org: string): Promise<boolean> {
  * as it is.
  */
 export async function removeFromChatTeam(org: string, account: string): Promise<void> {
-  const team = chatTeamId(await getOrgRecord(org));
-  if (!team) throw new Error("This workspace has no Chat team; an admin adds it in Calimero Home.");
-  await run((c) => c.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) }));
+  if (!chatTeamId(await getOrgRecord(org))) throw new Error("This workspace has no Chat team; an admin adds it in Calimero Home.");
+  await run((c) => removeFromAppTeam(c, org, chatSource(), account, passkey));
   invalidate(org);
   invalidate();
 }

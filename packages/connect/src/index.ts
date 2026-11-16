@@ -165,6 +165,7 @@ export {
   orgModeOf,
   orgWideAccess,
   removeFromApp,
+  removeFromAppTeam,
   removeFromPrivateTeam,
   sourcePackage,
   type AcceptedInvite,
