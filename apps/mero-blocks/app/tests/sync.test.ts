@@ -6,12 +6,16 @@ import {
   HEARTBEAT_IDLE_MS,
   HEARTBEAT_MOVING_MS,
   PLAYERS_POLL_MS,
+  PRESENCE_MOVING_MS,
+  PRESENCE_REFRESH_MS,
   quantize,
   RemotePlayer,
   SyncEngine,
   Transform,
+  type PresenceChannel,
   type WorldApi,
 } from "../src/net/sync";
+import { decodeSlice } from "../src/net/presence";
 
 const T: Transform = { name: "P", x: 1, y: 2, z: 3, yaw: 0, pitch: 0, sel: 0 };
 
@@ -263,5 +267,78 @@ describe("SyncEngine.connect (a world just joined from an invite)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("SyncEngine over presence", () => {
+  function makePresenceSync() {
+    const made = makeSync({ getOverrides: [], getPlayers: [] });
+    const published: unknown[] = [];
+    let push: (players: RemotePlayer[]) => void = () => {};
+    const stop = vi.fn();
+    const presence: PresenceChannel = {
+      publish: (slice) => published.push(slice),
+      subscribe: (onPlayers) => {
+        push = onPlayers;
+        return stop;
+      },
+    };
+    (made.sync as unknown as { api: WorldApi }).api.presence = presence;
+    return { ...made, published, push: (p: RemotePlayer[]) => push(p), stop };
+  }
+
+  it("sends no contract heartbeat and polls no roster", () => {
+    const { sync, exec, published } = makePresenceSync();
+    for (let i = 0; i < 20; i++) sync.tick(PLAYERS_POLL_MS, { ...T, x: i }, true);
+    expect(exec.mock.calls.filter((c) => c[0] === "heartbeat" || c[0] === "getPlayers")).toHaveLength(0);
+    expect(published.length).toBeGreaterThan(0);
+    expect(published[0]).toMatchObject({ id: "me", x: 0 });
+  });
+
+  it("throttles a moving transform and refreshes an unchanged one", () => {
+    const { sync, published } = makePresenceSync();
+    sync.tick(PRESENCE_MOVING_MS, T, true);
+    expect(published).toHaveLength(1);
+    sync.tick(PRESENCE_MOVING_MS - 1, { ...T, x: 2 }, true);
+    expect(published).toHaveLength(1);
+    sync.tick(1, { ...T, x: 2 }, true);
+    expect(published).toHaveLength(2);
+    // Standing still: nothing until the refresh is due.
+    sync.tick(PRESENCE_REFRESH_MS - 1, { ...T, x: 2 }, false);
+    expect(published).toHaveLength(2);
+    sync.tick(1, { ...T, x: 2 }, false);
+    expect(published).toHaveLength(3);
+  });
+
+  it("takes the roster from presence, without itself", async () => {
+    const { sync, players, push, exec } = makePresenceSync();
+    await sync.connect("P", 1_000);
+    push([
+      { ...T, id: "me", online: true },
+      { ...T, id: "peer", online: true },
+    ]);
+    expect(players.at(-1)!.map((p) => p.id)).toEqual(["peer"]);
+    sync.handleEvent({ kind: "PlayerJoined", value: "peer" });
+    expect(exec.mock.calls.filter((c) => c[0] === "getPlayers")).toHaveLength(0);
+  });
+
+  it("retracts its entry and stops following on leave", async () => {
+    const { sync, published, stop } = makePresenceSync();
+    await sync.connect("P", 1_000);
+    await sync.leave();
+    expect(stop).toHaveBeenCalled();
+    expect(published.at(-1)).toBeNull();
+  });
+});
+
+describe("decodeSlice", () => {
+  const hex = (v: unknown) =>
+    Array.from(new TextEncoder().encode(JSON.stringify(v)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+  it("reads a slice and skips a retracted or malformed one", () => {
+    expect(decodeSlice(hex({ ...T, id: "a/b" }))).toMatchObject({ id: "a/b", x: 1 });
+    expect(decodeSlice(null)).toBeNull();
+    expect(decodeSlice(hex(T))).toBeNull();
+    expect(decodeSlice(hex({ ...T, id: "a", x: "1" }))).toBeNull();
   });
 });

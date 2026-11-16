@@ -17,6 +17,7 @@ import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { playerId, type WorldMeta } from "./net/blocks";
 import { GameClient } from "./net/client";
+import { worldPresence } from "./net/presence";
 import { followInstanceRelease } from "@calimero-apps/connect";
 import { connect, defaultDeps, deviceLabel, type SignedIn } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
@@ -185,7 +186,9 @@ async function boot(): Promise<void> {
     hud.setPlayers(choice.name, players.map((p) => ({ name: p.name })));
   };
 
-  sync = new SyncEngine(client.api, world, () => myId, {
+  // Positions over the world's presence channel: walking is not a contract call.
+  const api = { ...client.api, presence: worldPresence(session.client, worldId) };
+  sync = new SyncEngine(api, world, () => myId, {
     onPlayers,
     onToast: (msg) => hud.toast(msg),
     onRemoteEdits: () => {

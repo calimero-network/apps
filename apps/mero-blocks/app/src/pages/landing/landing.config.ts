@@ -67,7 +67,7 @@ export const CONFIG: LandingConfig = {
         { term: "Namespace", def: "A world you own. Invite people into it and they build in the same world." },
         { term: "Seed", def: "A single number. Terrain is generated from it deterministically, so every player computes an identical world without anyone sending terrain over the network." },
         { term: "Override", def: "One changed block, keyed by its coordinates. Placing or breaking a block writes an override; the map of overrides is the only terrain data that ever syncs." },
-        { term: "Presence", def: "Where other players are right now. Kept in a players map refreshed by a heartbeat, and deliberately not part of the world itself." },
+        { term: "Presence", def: "Where other players are right now. Streamed over the node's ephemeral presence channel, never stored, and deliberately not part of the world itself." },
       ],
     },
     {
