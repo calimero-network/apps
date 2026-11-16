@@ -374,7 +374,7 @@ describe("a new version of the chat (@calimero-apps/passkey/upgrade)", () => {
   it("offers the organization's owner the update once signed in, and takes it away at sign-out", async () => {
     __setForTests(withRoutes(reportingClient("owner")), "acct-me");
     await waitFor(() => expect(upgradePrompt()).not.toBeNull());
-    expect(upgradePrompt()!.textContent).toContain("Version 2.1.0 of Mero Chat is available (you run 2.0.0).");
+    expect(upgradePrompt()!.textContent).toContain("Version 2.1.0 of Hyperfeed Chat is available (you run 2.0.0).");
     await act(() => signOut());
     expect(upgradePrompt()).toBeNull();
   });

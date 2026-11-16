@@ -1,5 +1,4 @@
 import type { ApiResponse } from "../api/types";
-import { toAccountHex } from "./accountIdentity";
 import type { GroupContextEntry } from "../api/groupApi";
 import type { CreateContextResponse } from "../api/nodeApi";
 import type { ContextInfo } from "../types/Common";
@@ -17,9 +16,7 @@ interface CreateDmContextParams {
   /** The namespace id — the new DM subgroup is created directly under it. */
   groupId: string;
   myIdentity: string;
-  myUsername?: string;
   otherIdentity: string;
-  otherUsername?: string;
   contextApi: {
     createGroupContext(params: {
       applicationId: string;
@@ -40,11 +37,6 @@ interface CreateDmContextParams {
     addGroupMember(
       groupId: string,
       identity: string,
-    ): ApiResponse<void>;
-    setMemberMetadata(
-      groupId: string,
-      identity: string,
-      request: { name: string },
     ): ApiResponse<void>;
   };
   onWarning?: (message: string) => void;
@@ -259,46 +251,18 @@ export function isDmContextCandidate(params: {
   return parseDmAlias(params.entry.alias) !== null;
 }
 
+/**
+ * The label of a DM: the other person's name in the workspace (its member
+ * metadata, `otherAlias`), else a truncated account. A DM carries no name of
+ * its own: what its creator wrote at creation could not follow a rename.
+ */
 export function getDmDisplayName(params: {
-  otherUsername?: string;
   otherAlias?: string;
   otherIdentity?: string;
   contextId: string;
 }): string {
-  // Namespace member metadata FIRST. It is the one name a person owns and can
-  // change, it is keyed by their namespace identity, and it replicates through
-  // governance — so a rename shows up everywhere that reads it.
-  //
-  // Everything else here is a snapshot taken when the DM was created, and a
-  // snapshot cannot be renamed. `otherUsername` comes either from the DM
-  // context's description (`{c,o}`, frozen at creation) or from the WASM
-  // `get_profiles` of that context, whose profile map is per-context and was
-  // seeded from whatever name the creator happened to hold at the time.
-  // Preferring those made a rename visible in the channel list and invisible in
-  // the DM list — the same person under two names, permanently.
-  //
-  // They stay as fallbacks because they are available earlier: the description
-  // arrives with `get_info`, whereas the member list needs governance sync. So
-  // this is "live value if we have it, snapshot to bridge the gap", not
-  // "snapshot wins forever".
-  //
-  // We deliberately do NOT consult the DM context's WASM `info.name`,
-  // because it's stamped once at create time by the inviter as
-  // `"DM: <otherUsername>"` and replicates as the same string to both
-  // parties — using it would make the recipient see their own name as
-  // the DM title instead of the inviter's.
   const alias = params.otherAlias?.trim();
-  if (alias) {
-    return alias;
-  }
-
-  const username = params.otherUsername?.trim();
-  if (username) {
-    return username;
-  }
-
-  // Both per-viewer sources empty → governance sync hasn't propagated yet.
-  // Use a truncated identity so the DM is at least identifiable.
+  if (alias) return alias;
   const id = params.otherIdentity?.trim();
   if (id && id.length >= 8) {
     return `${id.slice(0, 4)}…${id.slice(-4)}`;
@@ -346,50 +310,17 @@ export async function createDmContextInGroup(
     );
   }
 
-  // 2b) Record both parties' display names as namespace-level member aliases
-  // so listMembers(namespaceId) returns them immediately after governance
-  // sync — no WASM state required. This is what useDMs reads for the DM list.
-  // These identities can arrive base58 (from the contract's `get_profiles`) or
-  // hex (from the admin members list). setMemberMetadata only accepts hex and
-  // rejects anything else with "Invalid account format: expected 64 hex
-  // characters", so canonicalise before writing — otherwise both names are
-  // silently dropped and the DM shows "Unnamed member".
-  if (params.otherUsername) {
-    params.groupApi
-      .setMemberMetadata(params.groupId, toAccountHex(params.otherIdentity), {
-        name: params.otherUsername,
-      })
-      .catch(() => {/* best-effort */});
-  }
-  if (params.myUsername) {
-    params.groupApi
-      .setMemberMetadata(params.groupId, toAccountHex(params.myIdentity), {
-        name: params.myUsername,
-      })
-      .catch(() => {/* best-effort */});
-  }
-
-  // 3) Create the DM's single context inside the new subgroup.
-  // Encode both participant names in description so any node can derive the
-  // display name from get_info without needing get_profiles or gossip of
-  // namespace aliases. Format: JSON { c: creatorName, o: otherName }.
-  // Each side compares info.creator to its own joined identity to know which
-  // slot is "them" and which is "the other person".
-  const participantMeta = JSON.stringify({
-    c: params.myUsername || "",
-    o: params.otherUsername || "",
-  });
+  // 3) The DM's single context inside the new subgroup. It holds no names:
+  //    both sides read each other's from the workspace's member metadata.
   const createResponse = await params.contextApi.createGroupContext({
     applicationId: params.applicationId,
     groupId: dmSubgroupId,
     initializationParams: {
-      name: params.otherUsername
-        ? `DM: ${params.otherUsername}`
-        : `DM: ${params.otherIdentity}`,
+      name: "DM",
       context_type: "Dm",
-      description: participantMeta,
+      description: "",
       created_at: Date.now(),
-      creator_username: params.myUsername || "",
+      creator_username: "",
     },
   });
 

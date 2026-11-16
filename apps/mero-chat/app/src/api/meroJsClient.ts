@@ -8,6 +8,7 @@
 // `ClientApiDataSource` is unchanged.
 import { getAccountId, getClient } from "./calimero";
 import { ChatError, execute } from "./meroChat";
+import { getAppRecord } from "./platform";
 import type { ResponseData } from "./types";
 
 /** What `ClientApiDataSource` hands `rpcExec` (v1's `ExecuteParams`). */
@@ -102,7 +103,9 @@ export const nodeApi = {
     contextId: string,
   ): Promise<ResponseData<LegacyFetchContextIdentitiesResponse>> {
     try {
-      await getClient().apps.get({ app: contextId });
+      // Whether the account reaches the app: its record, read through the
+      // cache the channel and DM lists share (they ask for every one, every poll).
+      await getAppRecord(contextId);
       const account = getAccountId();
       return { data: { data: { identities: account ? [account] : [] } } };
     } catch (e) {

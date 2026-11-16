@@ -11,6 +11,9 @@ const h = await vi.hoisted(async () => {
     removed: string[];
     parent: string | null;
     metadata: unknown;
+    capabilities?: Record<string, number>;
+    readOnly?: string[];
+    defaultCapabilities?: number | null;
   };
   type Org = {
     orgId: string;
@@ -137,12 +140,45 @@ const h = await vi.hoisted(async () => {
       };
     }),
     invite: vi.fn(async () => "tok-1"),
-    setTeamMember: vi.fn(async (org: string, team: string, account: string) => {
-      state.orgs.get(org)!.teams[team]!.members[account] = false;
-    }),
+    // core's SetTeamMember: the whole row; capabilities left out keep the row's, or a new row takes the default.
+    setTeamMember: vi.fn(
+      async (org: string, team: string, account: string, _opts: unknown, row: { lead?: boolean; capabilities?: number } = {}) => {
+        const o = state.orgs.get(org)!;
+        const t = o.teams[team]!;
+        t.members[account] = row.lead ?? false;
+        t.capabilities ??= {};
+        if (row.capabilities !== undefined) t.capabilities[account] = row.capabilities;
+        else t.capabilities[account] ??= (o.capabilities[account] ?? o.defaultCapabilities) | (t.defaultCapabilities ?? 0);
+      },
+    ),
+    // As core: off a team and every team below it.
     removeTeamMember: vi.fn(async (org: string, team: string, account: string) => {
-      delete state.orgs.get(org)!.teams[team]!.members[account];
+      const o = state.orgs.get(org)!;
+      for (const [id, t] of Object.entries(o.teams)) {
+        if (id === team || t.parent === team) delete t.members[account];
+      }
     }),
+    // A channel's team: its creator leads it.
+    createTeam: vi.fn(async (org: string, _name: string, join: "everyone" | "invite", parent?: string) => {
+      const teamId = `team-${(state.seq += 1)}`;
+      state.orgs.get(org)!.teams[teamId] = { members: { [state.me]: true }, join, removed: [], parent: parent ?? null, metadata: null };
+      return teamId;
+    }),
+    updateTeam: vi.fn(async (org: string, team: string, update: { join?: "everyone" | "invite" }) => {
+      if (update.join) state.orgs.get(org)!.teams[team]!.join = update.join;
+    }),
+    // As core: the team goes, and the instances on it.
+    deleteTeam: vi.fn(async (org: string, team: string) => {
+      delete state.orgs.get(org)!.teams[team];
+      for (const [id, a] of state.apps) if ((a.access as { team?: string }).team === team) state.apps.delete(id);
+      return { teams: [team], apps: [] };
+    }),
+    getTeam: vi.fn(async (_org: string, team: string) => ({
+      teamId: team,
+      apps: [...state.apps.values()]
+        .filter((a) => (a.access as { team?: string }).team === team)
+        .map((a) => ({ appId: a.appId, name: a.name })),
+    })),
     setMemberMetadata: vi.fn(async () => {}),
     setMember: vi.fn(async () => {}),
     removeMember: vi.fn(async () => ({})),
@@ -160,11 +196,16 @@ vi.mock("../calimero", () => ({
   passkey: () => ({ create: vi.fn(), get: vi.fn() }),
 }));
 
-import { chatPackage, invalidate, visibilityOf } from "../platform";
+import { chatPackage, invalidate, MANAGED_IN_HOME, NO_CHAT_TEAM, resetBoundSession, visibilityOf } from "../platform";
+import { CAN_CREATE_SUBGROUP, canCreateSubgroup } from "../../utils/groupCapabilities";
 import { GroupApiDataSource } from "./groupApiDataSource";
+import { ContextApiDataSource } from "./nodeApiDataSource";
 import { createChannel } from "../../utils/createChannel";
+import { createDmContextInGroup } from "../../utils/dmContext";
 
 const api = new GroupApiDataSource();
+
+const CREATE_CHILD_TEAM = 1 << 11;
 
 /** A workspace made in Chat, with #general, and more people in its org. */
 async function workspace(people: Record<string, string> = {}): Promise<{ org: string; general: string }> {
@@ -222,26 +263,28 @@ describe("a new workspace gets chat's own app team", () => {
     expect(chatPackage()).toBe(PKG);
   });
 
-  it("is made open (standalone), and #general is on it", async () => {
+  it("is made open (standalone), and #general is an open team below it", async () => {
     const { org, general } = await workspace();
     expect(h.client.scopeApps).toHaveBeenCalledWith(org, expect.anything(), { apps: [{ package: PKG }], shared: false });
-    expect(h.state.orgs.get(org)!.teams["team-chat"]!.join).toBe("everyone");
-    expect(accessOf(general)).toEqual({ kind: "team", team: "team-chat" });
+    const o = h.state.orgs.get(org)!;
+    expect(o.teams["team-chat"]!.join).toBe("everyone");
+    const team = accessOf(general).team!;
+    expect(team).not.toBe("team-chat");
+    expect(o.teams[team]).toMatchObject({ parent: "team-chat", join: "everyone", members: { "acct-me": true } });
+    expect((await api.getContextVisibility("", general)).data?.mode).toBe("open");
   });
 
-  it("a channel on the app team reads as open", async () => {
-    const { general } = await workspace();
-    const vis = await api.getContextVisibility("", general);
-    expect(vis.data?.mode).toBe("open");
-    expect(visibilityOf({ kind: "team", team: "t" })).toBe("open");
-  });
-
-  it("made private and open again, it goes back onto the app team", async () => {
+  it("made private and open again: its team's join, the instance stays on it", async () => {
     const { org, general } = await workspace();
+    const team = accessOf(general).team!;
     await api.setContextVisibility(org, general, { mode: "restricted" });
-    expect(accessOf(general)).toEqual({ kind: "accounts", accounts: [] });
+    expect(h.client.updateTeam).toHaveBeenLastCalledWith(org, team, { join: "invite" });
+    expect(h.state.orgs.get(org)!.teams[team]!.join).toBe("invite");
+    expect((await api.getContextVisibility("", general)).data?.mode).toBe("restricted");
     await api.setContextVisibility(org, general, { mode: "open" });
-    expect(accessOf(general)).toEqual({ kind: "team", team: "team-chat" });
+    expect(h.state.orgs.get(org)!.teams[team]!.join).toBe("everyone");
+    expect(accessOf(general)).toEqual({ kind: "team", team });
+    expect(h.client.setAccess).not.toHaveBeenCalled();
   });
 
   it("a passkey declined for the team: the workspace stays, a legacy one", async () => {
@@ -296,6 +339,7 @@ describe("the workspace's people are Chat's", () => {
     team.members["acct-bob"] = false;
     invalidate();
     expect((await api.listMembers(org)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
+    // #general is open below Chat's team: Chat's people, not the org's.
     expect((await api.listMembers(general)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect((await api.getGroup(general)).data?.subgroupVisibility).toBe("open");
   });
@@ -320,8 +364,14 @@ describe("the workspace's people are Chat's", () => {
     h.state.orgs.get(org)!.teams["team-chat"]!.join = "invite";
     invalidate();
     await api.addGroupMember(org, "acct-cy");
-    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-cy", expect.anything());
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-cy", expect.anything(), {
+      lead: false,
+      role: "member",
+      // Their org-wide capabilities, and channels and DMs.
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
     expect(h.client.setMember).not.toHaveBeenCalled();
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
   });
 
   it("a legacy org: every org member, the guest too", async () => {
@@ -333,27 +383,28 @@ describe("the workspace's people are Chat's", () => {
 });
 
 describe("removing someone", () => {
-  it("shared: out of Chat (its team and the private channels listing them), never out of the org", async () => {
+  it("shared: out of Chat's team (core drops their channel rows with it), never out of the org", async () => {
     const { org } = await workspace({ "acct-bob": "member" });
     const team = h.state.orgs.get(org)!.teams["team-chat"]!;
     team.join = "invite";
     team.members["acct-bob"] = false;
     const secret = await createChannel(org, "secret", false);
     if ("error" in secret) throw new Error(secret.error);
-    h.state.apps.get(secret.contextId)!.access = { kind: "accounts", accounts: ["acct-bob"] };
+    await api.addGroupMember(secret.contextId, "acct-bob");
     invalidate();
 
     expect((await api.removeMember(org, "acct-bob")).error).toBeNull();
+    expect(h.client.removeTeamMember).toHaveBeenCalledTimes(1);
     expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-bob", expect.anything());
     expect(h.client.removeMember).not.toHaveBeenCalled();
-    expect(accessOf(secret.contextId)).toEqual({ kind: "accounts", accounts: [] });
+    expect(h.state.orgs.get(org)!.teams[accessOf(secret.contextId).team!]!.members).toEqual({ "acct-me": true });
   });
 
-  it("standalone: out of the organization, as before (the org is Chat's)", async () => {
+  it("standalone: off Chat's team, the organization left as it is", async () => {
     const { org } = await workspace({ "acct-bob": "member" });
     await api.removeMember(org, "acct-bob");
-    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-bob", expect.anything());
-    expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-bob", expect.anything());
+    expect(h.client.removeMember).not.toHaveBeenCalled();
   });
 });
 
@@ -375,12 +426,12 @@ describe("leaving", () => {
     expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
   });
 
-  it("standalone: leaving is leaving the organization, as before", async () => {
+  it("standalone: leaving Chat's team, then the organization is offered (lastApp)", async () => {
     const { org } = await workspace({ "acct-ana": "owner" });
     const res = await api.leaveNamespace(org);
-    expect(res.data).toMatchObject({ left: "org", lastApp: false });
-    expect(h.client.removeMember).toHaveBeenCalledWith(org, "acct-me", expect.anything());
-    expect(h.client.removeTeamMember).not.toHaveBeenCalled();
+    expect(res.data).toMatchObject({ left: "app", lastApp: true });
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-me", expect.anything());
+    expect(h.client.removeMember).not.toHaveBeenCalled();
   });
 
   it("a legacy org: leaving is leaving the organization", async () => {
@@ -405,7 +456,8 @@ describe("connecting chat to an organization made for another app", () => {
     if ("error" in made) throw new Error(made.error);
     expect(h.client.scopeApps).toHaveBeenCalledWith(org, expect.anything(), { apps: [{ package: PKG }], shared: false });
     expect(h.state.orgs.get(org)!.teams["team-blocks"]!.join).toBe("everyone");
-    expect(accessOf(made.contextId)).toEqual({ kind: "team", team: "team-chat" });
+    const team = accessOf(made.contextId).team!;
+    expect(h.state.orgs.get(org)!.teams[team]).toMatchObject({ parent: "team-chat", join: "everyone" });
   });
 
   it("an admin of a shared org: chat's team is closed like the others", async () => {
@@ -419,8 +471,246 @@ describe("connecting chat to an organization made for another app", () => {
   it("a member of an org with app teams cannot add Chat: told so, nothing made", async () => {
     const org = otherOrg("standalone", "member");
     const made = await createChannel(org, "general", true);
-    expect(made).toEqual({ error: expect.stringMatching(/owners and admins can add Mero Chat/) });
+    expect(made).toEqual({ error: expect.stringMatching(/owners and admins can add Hyperfeed Chat/) });
     expect(h.client.scopeApps).not.toHaveBeenCalled();
     expect(h.client.createApp).not.toHaveBeenCalled();
+    expect(h.client.createTeam).not.toHaveBeenCalled();
   });
 });
+
+describe("on Chat's own page, a workspace without Chat's team", () => {
+  it("is not given one from here: an admin adds it in Home, nothing made", async () => {
+    const org = otherOrg("standalone", "admin");
+    h.client.me.mockResolvedValueOnce({ orgs: [], app: PKG } as { orgs: [] });
+    resetBoundSession();
+    try {
+      const made = await createChannel(org, "general", true);
+      expect(made).toEqual({ error: NO_CHAT_TEAM });
+      expect(h.client.scopeApps).not.toHaveBeenCalled();
+      expect(h.client.createTeam).not.toHaveBeenCalled();
+      expect(h.client.createApp).not.toHaveBeenCalled();
+    } finally {
+      resetBoundSession();
+    }
+  });
+});
+
+describe("channels and DMs are teams below Chat's", () => {
+  const confirm = { confirm: expect.anything() };
+
+  it("a private channel: a closed team with its creator and the people added, then its instance on it", async () => {
+    const { org } = await workspace({ "acct-bob": "member" });
+    const sg = (await api.createSubgroup(org, { groupName: "secret", visibility: "restricted" })).data!.groupId;
+    await api.addGroupMember(sg, "acct-bob");
+    const made = await createChannel(org, "secret", false, {
+      createSubgroup: async () => ({ data: { groupId: sg }, error: null }),
+      setSubgroupVisibility: (...a) => api.setSubgroupVisibility(...a),
+      createGroupContext: (...a) => new ContextApiDataSource().createGroupContext(...a),
+    });
+    if ("error" in made) throw new Error(made.error);
+    const team = accessOf(made.contextId).team!;
+    expect(h.client.createTeam).toHaveBeenLastCalledWith(org, "secret", "invite", "team-chat");
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, team, "acct-bob", confirm, { lead: false });
+    expect(h.state.orgs.get(org)!.teams[team]).toMatchObject({ join: "invite", members: { "acct-me": true, "acct-bob": false } });
+    expect((await api.getContextVisibility(org, made.contextId)).data?.mode).toBe("restricted");
+    expect((await api.listMembers(made.contextId)).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
+    expect((await api.getContextAllowlist(org, made.contextId)).data).toEqual(["acct-me", "acct-bob"]);
+  });
+
+  it("a DM: a closed team of two named by its alias, nobody's name on it", async () => {
+    const { org } = await workspace({ "acct-bob": "member" });
+    const ctx = await createDmContextInGroup({
+      groupId: org,
+      applicationId: "x",
+      myIdentity: "acct-me",
+      otherIdentity: "acct-bob",
+      groupApi: api,
+      contextApi: new ContextApiDataSource(),
+    });
+    const id = ctx.data!.contextId;
+    const team = accessOf(id).team!;
+    expect(h.client.createTeam).toHaveBeenLastCalledWith(org, ctx.alias, "invite", "team-chat");
+    expect(h.state.orgs.get(org)!.teams[team]).toMatchObject({
+      parent: "team-chat",
+      join: "invite",
+      members: { "acct-me": true, "acct-bob": false },
+      metadata: null,
+    });
+    expect(h.client.updateTeam).not.toHaveBeenCalledWith(org, team, expect.objectContaining({ metadata: expect.anything() }));
+  });
+
+  it("adds an existing workspace member to a channel and removes them: rows on its team", async () => {
+    const { org } = await workspace({ "acct-bob": "member" });
+    const secret = await createChannel(org, "secret", false);
+    if ("error" in secret) throw new Error(secret.error);
+    const team = accessOf(secret.contextId).team!;
+
+    expect((await api.addGroupMember(secret.contextId, "acct-bob")).error).toBeNull();
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, team, "acct-bob", confirm, { lead: false });
+    expect(h.client.invite).not.toHaveBeenCalled();
+    expect(h.client.setMember).not.toHaveBeenCalled();
+
+    expect((await api.removeMember(secret.contextId, "acct-bob")).error).toBeNull();
+    expect(h.client.removeTeamMember).toHaveBeenCalledWith(org, team, "acct-bob", confirm);
+    expect(h.state.orgs.get(org)!.teams[team]!.members).toEqual({ "acct-me": true });
+  });
+
+  it("a member makes a channel closed, then opens it as its lead", async () => {
+    const { org } = await workspace({ "acct-bob": "member" });
+    h.state.me = "acct-bob";
+    h.client.session.accountId = "acct-bob";
+    invalidate();
+    const made = await createChannel(org, "random", true);
+    if ("error" in made) throw new Error(made.error);
+    const team = accessOf(made.contextId).team!;
+    expect(h.client.createTeam).toHaveBeenLastCalledWith(org, "random", "invite", "team-chat");
+    expect(h.client.updateTeam).toHaveBeenLastCalledWith(org, team, { join: "everyone" });
+    expect(h.state.orgs.get(org)!.teams[team]).toMatchObject({ join: "everyone", members: { "acct-bob": true } });
+  });
+
+  it("renames a channel: its team and its instance", async () => {
+    const { org, general } = await workspace();
+    await api.setContextAlias(org, general, "lobby");
+    expect(h.client.updateTeam).toHaveBeenLastCalledWith(org, accessOf(general).team, { name: "lobby" });
+  });
+
+  it("deletes a channel through its team (a passkey step-up), never the app itself", async () => {
+    const { org, general } = await workspace();
+    const team = accessOf(general).team!;
+    expect((await api.deleteGroup(general)).error).toBeNull();
+    expect(h.client.deleteTeam).toHaveBeenCalledWith(org, team, confirm);
+    expect(h.client.deleteApp).not.toHaveBeenCalled();
+    expect(h.state.apps.has(general)).toBe(false);
+
+    const other = await createChannel(org, "other", true);
+    if ("error" in other) throw new Error(other.error);
+    const otherTeam = accessOf(other.contextId).team!;
+    expect((await new ContextApiDataSource().deleteContext({ contextId: other.contextId })).error).toBeNull();
+    expect(h.client.deleteTeam).toHaveBeenLastCalledWith(org, otherTeam, confirm);
+    expect(h.client.deleteApp).not.toHaveBeenCalled();
+  });
+
+  it("lists the channel teams the person is in, then those made before channels had teams", async () => {
+    const { org, general } = await workspace({ "acct-bob": "member" });
+    const secret = await createChannel(org, "secret", false);
+    if ("error" in secret) throw new Error(secret.error);
+    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, access: { kind: "accounts", accounts: ["acct-bob"] }, metadata: null });
+    invalidate();
+    const ids = (await api.listSubgroups(org)).data!.map((s) => s.groupId);
+    expect(ids).toEqual([general, secret.contextId, "app-old"]);
+    expect(h.client.getTeam).toHaveBeenCalledTimes(2);
+
+    // Bob is in #general (open) but has no row on #secret.
+    h.state.me = "acct-bob";
+    h.state.apps.delete(secret.contextId);
+    invalidate();
+    expect((await api.listSubgroups(org)).data!.map((s) => s.groupId)).toEqual([general, "app-old"]);
+  });
+
+  it("a channel made before channels had teams opens as before; its member controls point to Calimero Home", async () => {
+    const { org, general } = await workspace({ "acct-bob": "member" });
+    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, access: { kind: "accounts", accounts: ["acct-bob"] }, metadata: null });
+    h.state.apps.get(general)!.access = { kind: "team", team: "team-chat" };
+    invalidate();
+
+    expect((await api.listMembers("app-old")).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
+    expect((await api.getContextVisibility(org, "app-old")).data?.mode).toBe("restricted");
+    expect((await api.getContextVisibility(org, general)).data?.mode).toBe("open");
+    expect(visibilityOf({ kind: "team", team: "t" })).toBe("open");
+    expect(await api.channelManagedInHome("app-old")).toBe(true);
+    expect(await api.channelManagedInHome(general)).toBe(true);
+
+    for (const res of [
+      await api.addGroupMember("app-old", "acct-cy"),
+      await api.removeMember("app-old", "acct-bob"),
+      await api.setContextVisibility(org, "app-old", { mode: "open" }),
+      await api.setSubgroupVisibility(general, { subgroupVisibility: "restricted" }),
+    ]) {
+      expect(res.error?.message).toBe(MANAGED_IN_HOME);
+    }
+    expect(h.client.setAccess).not.toHaveBeenCalled();
+    expect(h.client.setTeamMember).not.toHaveBeenCalled();
+  });
+});
+
+describe("Chat's permissions are rows on its app team", () => {
+  const people = { "acct-bob": "member", "acct-ana": "admin" };
+
+  it("a member's capabilities are their row's, else the org's with the team's default", async () => {
+    const { org } = await workspace(people);
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.defaultCapabilities = CREATE_CHILD_TEAM;
+    invalidate();
+    const implicit = (await api.getMemberCapabilities(org, "acct-bob")).data!.capabilities;
+    expect(implicit).toBe(4 | CREATE_CHILD_TEAM);
+    // Creating channels and DMs is CREATE_CHILD_TEAM on the Chat-team row.
+    expect(CAN_CREATE_SUBGROUP).toBe(CREATE_CHILD_TEAM);
+    expect(canCreateSubgroup(implicit)).toBe(true);
+    team.members["acct-bob"] = false;
+    team.capabilities = { "acct-bob": 4 };
+    invalidate();
+    expect((await api.getMemberCapabilities(org, "acct-bob")).data!.capabilities).toBe(4);
+    expect(h.client.getOrg).toHaveBeenCalled();
+  });
+
+  it("setting capabilities writes the whole row on chat's team, never org-wide", async () => {
+    const { org } = await workspace(people);
+    const res = await api.setMemberCapabilities(org, "acct-bob", { capabilities: 4 | CREATE_CHILD_TEAM });
+    expect(res.error).toBeNull();
+    expect(h.client.setTeamMember).toHaveBeenCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: false,
+      role: "member",
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+    expect(h.client.setMember).not.toHaveBeenCalled();
+  });
+
+  it("Admin is a lead of chat's team; the row keeps its capabilities, and its lead when only they change", async () => {
+    const { org } = await workspace(people);
+    const team = h.state.orgs.get(org)!.teams["team-chat"]!;
+    team.members["acct-bob"] = false;
+    team.capabilities = { "acct-bob": 4 | CREATE_CHILD_TEAM };
+    invalidate();
+    await api.updateMemberRole(org, "acct-bob", "Admin");
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: true,
+      role: "lead",
+      capabilities: 4 | CREATE_CHILD_TEAM,
+    });
+    expect(h.client.setMember).not.toHaveBeenCalled();
+    const bob = (await api.listMembers(org)).data!.members.find((m) => m.identity === "acct-bob");
+    expect(bob?.role).toBe("Admin");
+
+    await api.setMemberCapabilities(org, "acct-bob", { capabilities: 4 });
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: true,
+      role: "lead",
+      capabilities: 4,
+    });
+
+    await api.updateMemberRole(org, "acct-bob", "Member");
+    expect(h.client.setTeamMember).toHaveBeenLastCalledWith(org, "team-chat", "acct-bob", expect.anything(), {
+      lead: false,
+      role: "member",
+      capabilities: 4,
+    });
+    expect(h.client.setMember).not.toHaveBeenCalled();
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("an organization admin is an Admin Chat does not change", async () => {
+    const { org } = await workspace(people);
+    const ana = (await api.listMembers(org)).data!.members.find((m) => m.identity === "acct-ana");
+    expect(ana).toMatchObject({ role: "Admin", orgAdmin: true });
+  });
+});
+
+describe("a team's default capabilities", () => {
+  it("are never written from Chat", async () => {
+    const { org } = await workspace();
+    await api.addGroupMember(org, "acct-cy");
+    expect(h.client.setCapabilities).not.toHaveBeenCalled();
+  });
+});
+

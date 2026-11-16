@@ -8,7 +8,7 @@ import type { ContextUnread } from "./useUnreadCounts";
  *     launcher the shell polyfills this to a native per-app dock badge; in an
  *     INSTALLED PWA it hits the real OS badge. In a plain browser tab it's a
  *     no-op (there's no app icon to badge), which is why we also do 2 + 3.
- *  2. Document title — `(3) Mero Chat`. Shows in the browser tab / window title.
+ *  2. Document title — `(3) Hyperfeed Chat`. Shows in the browser tab / window title.
  *  3. Favicon — the tab icon is redrawn with a red count bubble (the Gmail/Slack
  *     "unread dot on the tab" trick), the only per-tab icon badge browsers allow.
  *

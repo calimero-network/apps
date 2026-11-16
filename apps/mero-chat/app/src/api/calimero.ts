@@ -14,6 +14,7 @@
  * | `getContextId()`: the context on screen | the same name: the **app instance** on screen |
  * | `getContextIdentity()`: this node's identity in that context | the signed-in **account**: one id everywhere |
  */
+import { countCalls } from "../utils/callCounter";
 import { useSyncExternalStore } from "react";
 import {
   browserPasskey,
@@ -64,7 +65,7 @@ export const APP_PACKAGE = "com.calimero.chat";
 
 /** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Chat",
+  name: "Hyperfeed Chat",
   description: "Private team chat for your organization: channels, threads and direct messages.",
   package: APP_PACKAGE,
   dir: "mero-chat",
@@ -152,7 +153,7 @@ function offerUpgrades(): void {
   if (signedIn && !stopUpgrades) {
     stopUpgrades = {
       ...signedIn,
-      stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Mero Chat", accountId: signedIn.accountId }),
+      stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Hyperfeed Chat", accountId: signedIn.accountId }),
     };
   }
 }
@@ -232,6 +233,7 @@ export function startCalimero(): Promise<void> {
     try {
       target = await connectTarget(import.meta.env, { app: APP, package: APP_PACKAGE });
       client = await createClient(target);
+      if (import.meta.env.DEV) countCalls(client);
       sessions = new SessionStore(APP, target);
       loadSignUpPolicy(client);
       set({ knownAccount: knownAccountHere(target) });
@@ -351,12 +353,15 @@ export function signUp(name = ""): Promise<void> {
         invite: pendingInvite(),
         policy: state.policy,
         join: true,
+        // The name they chose becomes their name in the joined workspace
+        // (its member metadata), so it is not asked again.
+        nameInOrg: true,
       });
       if (made.joined) {
         // Before the session reads as signed in, so the picker's first load
         // already sees it.
         if (made.joined.org) {
-          if (name.trim()) setMessengerDisplayName(name.trim());
+          if (name.trim()) setMessengerDisplayName(name.trim(), made.joined.org);
           markJoinedAwaitingName(made.joined.org);
         }
         dropInvite();

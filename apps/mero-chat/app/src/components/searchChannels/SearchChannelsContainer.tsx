@@ -11,7 +11,6 @@ import {
 } from "../../api/meroJsClient";
 import {
   getGroupId,
-  getGroupMemberIdentity,
   setContextMemberIdentity,
 } from "../../constants/config";
 import { Button, SearchInput } from "@calimero-network/mero-ui";
@@ -19,10 +18,6 @@ import { log } from "../../utils/logger";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import { buildChannelEntryChat } from "../../utils/channelEntry";
 import { isDmContextCandidate } from "../../utils/dmContext";
-import {
-  getIdentityDisplayName,
-  getMessengerDisplayName,
-} from "../../utils/messengerName";
 import { useToast } from "../../contexts/ToastContext";
 
 const SearchContainer = styled.div`
@@ -330,34 +325,6 @@ export default function SearchChannelsContainer({
 
         const memberKey = joinResponse.data.memberPublicKey;
         setContextMemberIdentity(contextId, memberKey);
-        // Seed server-side member alias so other members see a display name
-        // instead of a raw identity hash on rc.35.
-        const namespaceIdentity = getGroupMemberIdentity(groupId);
-        const seedAlias =
-          (namespaceIdentity ? getIdentityDisplayName(namespaceIdentity) : "") ||
-          getMessengerDisplayName() ||
-          "";
-        if (seedAlias) {
-          groupApi
-            .setMemberMetadata(contextId, memberKey, { name: seedAlias })
-            .catch(() => {/* non-fatal — alias is best-effort */});
-          // Register the WASM-level `profile` for this context too — without
-          // this, `get_profiles` on the channel never returns us, and
-          // channel-members / mention / DM-invite UIs all fall through to
-          // displaying our raw identity hash. The auto-join path in
-          // `useGroupContexts` does this for restricted (admin-added)
-          // channels; this is the equivalent for the public/browse "Join"
-          // flow which routes here.
-          new ClientApiDataSource()
-            .joinChat({
-              contextId,
-              executorPublicKey: memberKey,
-              username: seedAlias,
-              isDM: false,
-            })
-            .catch(() => {/* non-fatal — set_profile is best-effort */});
-        }
-
         setAllChannels((prev) =>
           prev.map((ch) =>
             ch.contextId === contextId

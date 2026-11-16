@@ -11,6 +11,8 @@ import {
   getStoredSession,
   updateSessionChat,
 } from "../../utils/session";
+import { ensureAdminRole } from "../../hooks/ensureAdminRole";
+import { visibleInterval } from "../../utils/visibleInterval";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
@@ -75,11 +77,17 @@ import {
 import type { MessageLink } from "../../utils/permalink";
 import { nodeBasename } from "../../utils/servedByNode";
 import ChatAccessGate from "./ChatAccessGate";
+import { generalChannel, landed, wantsGeneral } from "../../utils/landing";
+import { WorkspacePresenceProvider } from "../../hooks/usePresence";
+import { GENERAL_CHANNEL } from "../../utils/createChannel";
 
 /**
  * The selected workspace, behind {@link ChatAccessGate}: someone who no
  * longer has Chat there is told so instead of getting an empty shell.
  */
+/** Event kinds that can add to or change an open thread. */
+const THREAD_EVENT_KINDS = new Set(["MessageSentThread", "MessageEdited", "ReactionUpdated"]);
+
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   return (
     <ChatAccessGate>
@@ -262,9 +270,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
     const isDM = activeChatRef.current?.type === "direct_message";
     const channelId = (isDM ? "private_dm" : activeChatRef.current?.id) || "";
     // Pass the channel's subgroupId so `useChannelMembers` can read the
-    // canonical member list from the admin API. Without this it falls
-    // back to `get_profiles` which misses members who haven't set a
-    // profile yet (the typical state for freshly-added users).
+    // canonical member list from the admin API.
     //
     // No namespaceId: display names no longer come from this call at all.
     // They are resolved per account by the name repository, which reads the
@@ -335,9 +341,8 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       void clearUnread(resolvedChat.contextId, resolvedChat.contextIdentity);
     }
 
-    // Bootstrap WASM admin role for namespace admins. set_member_role allows
-    // a self-promotion to Admin when no admin exists in the WASM roles map yet.
-    // After the first call this is a no-op (Admin → Admin is idempotent).
+    // Bootstrap the contract's Admin role for namespace admins: read once per
+    // channel per session, write only when missing (ensureAdminRole).
     const selfAccount = getSelfAccountBase58();
     if (
       currentGroupPermissions.isAdmin &&
@@ -345,14 +350,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       resolvedChat.contextIdentity &&
       selfAccount
     ) {
-      new ClientApiDataSource()
-        .setMemberRole({
-          contextId: resolvedChat.contextId,
-          executorPublicKey: resolvedChat.contextIdentity,
-          target: selfAccount,
-          role: "Admin",
-        })
-        .catch(() => {});
+      void ensureAdminRole(resolvedChat.contextId, resolvedChat.contextIdentity, selfAccount).catch(() => {});
     }
 
     const chatId = resolvedChat.id || resolvedChat.name;
@@ -400,7 +398,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
             contextId: dm.contextId,
             executorPublicKey: dm.contextIdentity,
             label: getDmDisplayName({
-              otherUsername: dm.otherUsername,
               otherAlias: dm.otherAlias,
               otherIdentity: dm.otherIdentity,
               contextId: dm.contextId,
@@ -474,7 +471,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
           contextId,
           id: contextId,
           name: getDmDisplayName({
-            otherUsername: dm.otherUsername,
             otherAlias: dm.otherAlias,
             otherIdentity: dm.otherIdentity,
             contextId: dm.contextId,
@@ -667,6 +663,66 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   const updateSelectedActiveChatRef = useRef(updateSelectedActiveChat);
   updateSelectedActiveChatRef.current = updateSelectedActiveChat;
 
+  // Just entered the workspace (created, joined, picked): open #general as
+  // soon as it is listed, unless something else was opened first.
+  useEffect(() => {
+    if (!wantsGeneral()) return;
+    if (activeChatRef.current) {
+      landed();
+      return;
+    }
+    const general = generalChannel(groupContextsHook.channels);
+    if (!general?.contextIdentity) return;
+    landed();
+    void updateSelectedActiveChatRef.current({
+      type: "channel",
+      contextId: general.contextId,
+      id: general.contextId,
+      name: general.info?.name ?? general.alias ?? GENERAL_CHANNEL,
+      contextIdentity: general.contextIdentity,
+    });
+  }, [groupContextsHook.channels]);
+
+  // The open channel or DM was listed and is not any more (removed from it,
+  // or deleted): nothing of it stays on screen. Back to #general, or to
+  // nothing when that is the one that went. Only one listed before counts,
+  // so a channel just made and not listed yet is left open.
+  const listedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (groupContextsHook.loading || dmsHook.loading) return;
+    const listed = new Set<string>();
+    groupContextsHook.channels.forEach((ch) => {
+      if (ch.isJoined && ch.contextId) listed.add(ch.contextId);
+    });
+    privateDMs.forEach((dm) => {
+      if (dm.contextId) listed.add(dm.contextId);
+    });
+    // An empty list is a read that failed or has not landed, not every channel gone.
+    if (listed.size === 0) return;
+    const before = listedRef.current;
+    listedRef.current = listed;
+    const open = activeChatRef.current;
+    if (!open?.contextId || !before.has(open.contextId) || listed.has(open.contextId)) return;
+    addToast({
+      title: open.type === "direct_message" ? "Conversation closed" : "Channel closed",
+      message: `You no longer have access to ${open.type === "channel" ? `#${open.name}` : "this conversation"}.`,
+      type: "channel",
+      duration: 5000,
+    });
+    const general = generalChannel(groupContextsHook.channels);
+    if (general?.contextIdentity && general.contextId !== open.contextId) {
+      void updateSelectedActiveChatRef.current({
+        type: "channel",
+        contextId: general.contextId,
+        id: general.contextId,
+        name: general.info?.name ?? general.alias ?? GENERAL_CHANNEL,
+        contextIdentity: general.contextIdentity,
+      });
+    } else {
+      setActiveChat(null);
+    }
+  }, [groupContextsHook.channels, groupContextsHook.loading, privateDMs, dmsHook.loading, addToast]);
+
   const onDMSelected = useCallback(
     async (dm: DMContextInfo) => {
       const contextId = dm.contextId;
@@ -706,28 +762,8 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
 
         resolvedIdentity = joinResponse.data.memberPublicKey;
         setContextMemberIdentity(contextId, resolvedIdentity);
-        // Seed server-side member alias so the other DM participant sees a
-        // display name instead of a raw identity hash on rc.35.
-        const namespaceIdentity = getGroupMemberIdentity(groupId);
-        const seedAlias =
-          (namespaceIdentity ? getIdentityDisplayName(namespaceIdentity) : "") ||
-          getMessengerDisplayName() ||
-          "";
-        if (seedAlias && groupId && namespaceIdentity) {
-          // Must use the NAMESPACE group ID + namespace identity, not the DM
-          // context ID — setMemberAlias stores to the governance DAG which
-          // listMembers(namespaceId) reads. Passing contextId here silently
-          // hits a non-existent group and the alias is never stored.
-          groupApi
-            .setMemberMetadata(groupId, namespaceIdentity, { name: seedAlias })
-            .catch(() => {/* non-fatal — alias is best-effort */});
-          // Register WASM-level profile so the other node's get_profiles
-          // returns our username. Without this, the other side always sees
-          // "Direct message" because their useDMs otherUsername is "".
-          new ClientApiDataSource()
-            .joinChat({ contextId, executorPublicKey: resolvedIdentity, username: seedAlias, isDM: true })
-            .catch(() => {/* non-fatal — set_profile is best-effort */});
-        }
+        // Nothing to write about names: both sides read each other's from
+        // the workspace's member metadata, by account.
         const refreshedDms = await fetchDmsWithGroup();
         const refreshedDm = refreshedDms.find(
           (entry) => entry.contextId === contextId,
@@ -747,12 +783,11 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         contextId,
         id: contextId,
         name: getDmDisplayName({
-          otherUsername: selectedDm.otherUsername,
           otherAlias: selectedDm.otherAlias,
           otherIdentity: selectedDm.otherIdentity,
           contextId: selectedDm.contextId,
         }),
-        username: selectedDm.otherUsername || undefined,
+        username: selectedDm.otherAlias || undefined,
         readOnly: false,
         isSynced: true,
         contextIdentity: resolvedIdentity,
@@ -976,7 +1011,14 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
 
       await handleStateMutation(event);
 
-      if (openThread) {
+      // A thread re-read only for events from the open chat that can change a
+      // thread; any event from any channel used to cost a getMessages.
+      const touchesThread =
+        event.contextId === activeChatRef.current?.contextId &&
+        (event.data?.events ?? []).some((e: { kind?: string }) =>
+          THREAD_EVENT_KINDS.has(e.kind ?? ""),
+        );
+      if (openThread && touchesThread) {
         const sessionChat = getStoredSession();
         const useDM = sessionChat?.type === "direct_message";
 
@@ -1058,7 +1100,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         identityMap.set(dm.contextId, dm.contextIdentity);
         forUnread.push({ contextId: dm.contextId, contextIdentity: dm.contextIdentity });
       }
-      const name = dm.otherUsername || dm.otherAlias || dm.contextId.substring(0, 8);
+      const name = dm.otherAlias || dm.contextId.substring(0, 8);
       nameMap.set(dm.contextId, name);
     });
 
@@ -1081,10 +1123,13 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   useEffect(() => {
     if (!app || !allContextIdsKey) return;
 
-    const contextIds = allContextIdsKey.split(",");
+    // The open conversation first: it is always one of the live streams.
+    const open = activeChat?.contextId;
+    const ids = allContextIdsKey.split(",");
+    const contextIds = open && ids.includes(open) ? [open, ...ids.filter((id) => id !== open)] : ids;
     log.info("Home", `Subscribing to ${contextIds.length} contexts`, { totalContexts: contextIds.length });
     webSocket.subscribeToContexts(contextIds);
-  }, [app, allContextIdsKey, webSocket]);
+  }, [app, allContextIdsKey, webSocket, activeChat?.contextId]);
 
   // Refill the hole a dropped event stream leaves behind.
   //
@@ -1120,22 +1165,19 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
     void fetchMembersRef.current();
   });
 
-  // Poll DMs every 30s — catches deletions and new DMs on both nodes
+  // Poll DMs every 30s while visible — catches deletions and new DMs on both nodes
   useEffect(() => {
-    const interval = setInterval(() => { void fetchDmsRef.current(); }, 30000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void fetchDmsRef.current(); }, 30000);
   }, []);
 
-  // Poll channel list every 30s — catches channel deletions for all members
+  // Poll channel list every 30s while visible — catches channel deletions for all members
   useEffect(() => {
-    const interval = setInterval(() => { void fetchChannelsRef.current(); }, 30000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void fetchChannelsRef.current(); }, 30000);
   }, []);
 
-  // Poll namespace members every 60s — catches new members joining the workspace
+  // Poll namespace members every 60s while visible — catches new members joining the workspace
   useEffect(() => {
-    const interval = setInterval(() => { void debouncedFetchGroupMembers(); }, 60000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void debouncedFetchGroupMembers(); }, 60000);
   }, [debouncedFetchGroupMembers]);
 
   const onJoinedChat = async () => {
@@ -1195,10 +1237,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
       setGroupMemberIdentity(groupId, myIdentity);
-      // `myIdentity` is an account in HEX (admin API); `otherIdentity` comes
-      // from the picker, i.e. the contract's `get_profiles`, in BASE58. Same
-      // account, different encoding — a raw `===` never matched, so the
-      // self-DM guard was inert.
       if (sameAccount(myIdentity, otherIdentity)) {
         return {
           data: "",
@@ -1206,16 +1244,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
 
-      const otherUsername = dmMembers.get(otherIdentity) || chatMembers.get(otherIdentity) || "";
-
-      // Dedup by ACCOUNT, never by display name.
-      //
-      // This used to also match on `otherUsername`, as "a second line of
-      // defence" for when the identity key was missing. It is not a defence:
-      // two people who choose the same name collapse into one DM, and someone
-      // who renames stops matching their own. `sameAccount` handles the
-      // base58/hex split that made the raw `===` unreliable in the first place,
-      // which is the problem the name comparison was really papering over.
+      // Dedup by ACCOUNT, never by display name: two people may share one.
       const freshDms = await fetchDmsWithGroup();
       const existingDm = (freshDms ?? []).find(
         (dm) =>
@@ -1225,8 +1254,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       if (existingDm?.contextId) {
         return { data: existingDm.contextId, error: "" };
       }
-      const myUsername = getIdentityDisplayName(myIdentity) || getMessengerDisplayName();
-
       // 1-group-per-context model: DM = a new restricted subgroup under the
       // namespace + one context inside. The helper handles both steps and
       // adds the other identity as a member of the new DM subgroup.
@@ -1234,9 +1261,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
         applicationId: getApplicationId(),
         groupId,
         myIdentity,
-        myUsername,
         otherIdentity,
-        otherUsername,
         contextApi: nodeApi,
         groupApi,
         onWarning: (message) => log.warn("createDM", message),
@@ -1295,6 +1320,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   );
 
   return (
+    <WorkspacePresenceProvider app={generalChannel(groupContextsHook.channels)?.contextId}>
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
       setIsOpenSearchChannel={setIsOpenSearchChannel}
@@ -1352,5 +1378,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       onClearSearch={handleClearSearch}
       onSearchResultClick={handleResultClick}
     />
+    </WorkspacePresenceProvider>
   );
 }

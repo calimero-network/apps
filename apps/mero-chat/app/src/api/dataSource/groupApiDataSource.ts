@@ -30,7 +30,6 @@ import type {
   ManageAllowlistRequest,
   MemberCapabilities,
   SetContextVisibilityRequest,
-  SetDefaultCapabilitiesRequest,
   SetSubgroupVisibilityRequest,
   SubgroupEntry,
   CreateSubgroupRequest,
@@ -45,38 +44,66 @@ import type {
 import {
   addToChat,
   appMembers,
-  changeAppAccounts,
+  chatRole,
+  chatRowIn,
+  changeChannelMembers,
+  channelManagedInHome,
+  channelRows,
+  channelVisibility,
   chatMembers,
   chatTeamId,
   createOrg,
   createPendingChannel,
-  deleteOrg,
+  deleteChannel,
   getAppRecord,
   getOrgRecord,
   inviteToken,
-  leaveChat,
-  leaveChatOrg,
   invalidate,
   isOrg,
+  isOrgAdmin,
+  listChannels,
   listChatApps,
   memberName,
-  memberRole,
   chatOrgs,
   otherChatOrgs,
   pendingChannel,
   redeemInvite,
-  removeFromChat,
-  run,
+  renameChannel,
   setCapabilities,
+  setChatRow,
   setMemberName,
   setMemberRole,
-  setOrgName,
   setVisibility,
-  visibilityOf,
 } from "../platform";
-import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
+import { CAN_CREATE_CONTEXT, CAN_CREATE_SUBGROUP } from "../../utils/groupCapabilities";
+import {
+  deleteWorkspace,
+  leaveWorkspace,
+  leaveWorkspaceOrg,
+  removeFromWorkspace,
+  renameWorkspace,
+  setOrgRole,
+} from "../orgActions";
 
 type Result<T> = Awaited<ApiResponse<T>>;
+
+/**
+ * core's org-wide `CREATE_TEAM`. Without Chat's app team, a channel or DM is a
+ * team at the top of the organization, which a member makes only with this.
+ */
+const ORG_CREATE_TEAM = 1 << 5;
+
+/** Chat's toggles as org-wide capabilities (a workspace without Chat's team): "Create channels" is `CREATE_APP` and `CREATE_TEAM`. */
+export function toOrgCaps(capabilities: number): number {
+  const caps = capabilities & ~CAN_CREATE_SUBGROUP;
+  return capabilities & CAN_CREATE_SUBGROUP ? caps | ORG_CREATE_TEAM : caps & ~ORG_CREATE_TEAM;
+}
+
+/** Org-wide capabilities as Chat's toggles: "Create channels" only with both `CREATE_APP` and `CREATE_TEAM`. */
+export function fromOrgCaps(caps: number): number {
+  const creates = (caps & CAN_CREATE_CONTEXT) !== 0 && (caps & ORG_CREATE_TEAM) !== 0;
+  return creates ? caps | CAN_CREATE_SUBGROUP : caps & ~CAN_CREATE_SUBGROUP & ~CAN_CREATE_CONTEXT;
+}
 
 function ok<T>(data: T): Result<T> {
   return { data, error: null };
@@ -87,13 +114,15 @@ function fail<T>(code: number, message: string): Result<T> {
 }
 
 function catchError<T>(context: string, error: unknown): Result<T> {
-  console.error(`${context} failed:`, error);
   const status = (error as { status?: unknown })?.status;
+  // Not found is an answer (an org not joined yet, a channel just deleted), not a fault.
+  if (status === 404) console.debug(`${context}: not found`, error);
+  else console.error(`${context} failed:`, error);
   return fail(typeof status === "number" ? status : 500, describeError(error));
 }
 
-/** Every capability: what an owner or admin holds. */
-const ALL_CAPABILITIES = 0xff;
+/** Every capability: what an owner or admin, or a lead of chat's app team, holds. */
+const ALL_CAPABILITIES = 0xfff;
 
 /**
  * Bytes as a blob of conversation `contextId` (its app instance), in the
@@ -111,7 +140,7 @@ export async function uploadBlobDirect(
 }
 
 export class GroupApiDataSource implements GroupApi {
-  /** A workspace: an org whose members may create channels and invite. */
+  /** A workspace: an org with chat's app team, whose members create channels and DMs by its default. */
   async createGroup(request: CreateGroupRequest): ApiResponse<CreateGroupResponse> {
     try {
       const name = (request.name ?? "").trim();
@@ -119,12 +148,9 @@ export class GroupApiDataSource implements GroupApi {
         const problem = groupNameError(name);
         if (problem) return fail(400, problem);
       }
-      // v1 gave members these capabilities on a new namespace; on 1.0 it is a
-      // passkey step-up. Declined, the workspace stays, and only its owner and
-      // admins create channels and invite until an admin allows members to.
       // Chat's own app team comes with it, open; declined, or a node without
       // app teams, the workspace is a legacy one, as every workspace was before.
-      const groupId = await createOrg(name || "Workspace", DEFAULT_MEMBER_CAPABILITIES);
+      const groupId = await createOrg(name || "Workspace");
       return ok({ groupId });
     } catch (error) {
       return catchError("createGroup", error);
@@ -177,7 +203,7 @@ export class GroupApiDataSource implements GroupApi {
         contextCount: 1,
         activeUpgrade: null,
         defaultCapabilities: 0,
-        subgroupVisibility: visibilityOf(app.access),
+        subgroupVisibility: await channelVisibility(app),
       });
     } catch (error) {
       return catchError("getGroup", error);
@@ -214,14 +240,16 @@ export class GroupApiDataSource implements GroupApi {
     return otherChatOrgs();
   }
 
-  /** Deletes a channel (its instance), or the workspace (its org, a passkey step-up). */
+  /**
+   * Deletes a channel or DM (its team, which takes its instance; a passkey
+   * step-up), or the workspace (its org, a passkey step-up).
+   */
   async deleteGroup(groupId: string): ApiResponse<boolean> {
     try {
       if (await isOrg(groupId)) {
-        await deleteOrg(groupId);
+        await deleteWorkspace(groupId);
       } else {
-        await run((c) => c.apps.delete({ app: pendingChannel(groupId)?.appId ?? groupId }));
-        invalidate();
+        await deleteChannel(groupId);
       }
       return ok(true);
     } catch (error) {
@@ -271,8 +299,10 @@ export class GroupApiDataSource implements GroupApi {
         const org = await getOrgRecord(groupId);
         const members = chatMembers(org).map((identity) => ({
           identity,
-          role: memberRole(org.members[identity]),
+          role: chatRole(org, identity),
           alias: memberName(org, identity),
+          ...(isOrgAdmin(org, identity) ? { orgAdmin: true } : {}),
+          ...(org.members[identity] ? { orgRole: org.members[identity] } : {}),
         }));
         return ok({ members, teeMembers: [], selfIdentity: self });
       }
@@ -289,7 +319,7 @@ export class GroupApiDataSource implements GroupApi {
       const org = app.org ? await getOrgRecord(app.org).catch(() => null) : null;
       const members = (await appMembers(app)).map((identity) => ({
         identity,
-        role: identity === app.owner ? ("Admin" as const) : memberRole(org?.members[identity]),
+        role: identity === app.owner ? ("Admin" as const) : org ? chatRole(org, identity) : ("Member" as const),
         alias: org ? memberName(org, identity) : undefined,
       }));
       return ok({ members, teeMembers: [], selfIdentity: self });
@@ -309,7 +339,10 @@ export class GroupApiDataSource implements GroupApi {
     return ok({ memberIdentity, members: listed.data?.members ?? [] });
   }
 
-  /** Adds a person to a private channel (or a pending one). An open channel reaches every member already. */
+  /**
+   * Adds a person to a channel or DM (a row on its team; a passkey step-up),
+   * or to a pending one; or someone in the org to Chat in a workspace.
+   */
   async addGroupMember(groupId: string, identity: string): ApiResponse<void> {
     try {
       const pending = pendingChannel(groupId);
@@ -326,7 +359,7 @@ export class GroupApiDataSource implements GroupApi {
           await setMemberRole(groupId, identity, "member");
         }
       } else {
-        await changeAppAccounts(pending?.appId ?? groupId, [identity]);
+        await changeChannelMembers(pending?.appId ?? groupId, [identity]);
       }
       return ok(undefined);
     } catch (error) {
@@ -335,17 +368,22 @@ export class GroupApiDataSource implements GroupApi {
   }
 
   /**
-   * Removes a person from a workspace (a passkey step-up) or a private
-   * channel. In a shared org that is Chat only (its app team, and the private
+   * Removes a person from a workspace (a passkey step-up) or a channel or DM
+   * (off its team; a passkey step-up). In a shared org that is Chat only (its app team, and the private
    * channels this account may change); the organization and its other apps
    * are Calimero Home's. Elsewhere it is the organization, as before.
    */
   async removeMember(groupId: string, memberIdentity: string): ApiResponse<void> {
     try {
       if (await isOrg(groupId)) {
-        await removeFromChat(groupId, memberIdentity);
+        await removeFromWorkspace(groupId, memberIdentity);
       } else {
-        await changeAppAccounts(pendingChannel(groupId)?.appId ?? groupId, [], [memberIdentity]);
+        const pending = pendingChannel(groupId);
+        if (pending && !pending.appId) {
+          pending.accounts = pending.accounts.filter((a) => a !== memberIdentity);
+        } else {
+          await changeChannelMembers(pending?.appId ?? groupId, [], [memberIdentity]);
+        }
       }
       return ok(undefined);
     } catch (error) {
@@ -353,17 +391,37 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** Admin or member of the workspace (a passkey step-up). */
+  /**
+   * A Chat admin or member: a lead of chat's app team or not (a passkey
+   * step-up). A workspace without chat's app team (legacy, a dev bundle)
+   * keeps the org role.
+   */
   async updateMemberRole(
     groupId: string,
     identity: string,
     role: "Admin" | "Member",
   ): ApiResponse<void> {
     try {
-      await setMemberRole(groupId, identity, role === "Admin" ? "admin" : "member");
+      const org = await getOrgRecord(groupId);
+      if (chatTeamId(org)) await setChatRow(groupId, identity, { lead: role === "Admin" });
+      else await setMemberRole(groupId, identity, role === "Admin" ? "admin" : "member");
       return ok(undefined);
     } catch (error) {
       return catchError("updateMemberRole", error);
+    }
+  }
+
+  /**
+   * Makes `identity` an admin of the workspace's organization, or a member
+   * again: organization-wide, so a session on Chat's frontend approves it on
+   * the node's consent page.
+   */
+  async setOrgAdmin(groupId: string, identity: string, admin: boolean): ApiResponse<void> {
+    try {
+      await setOrgRole(groupId, identity, admin ? "admin" : "member");
+      return ok(undefined);
+    } catch (error) {
+      return catchError("setOrgAdmin", error);
     }
   }
 
@@ -378,11 +436,12 @@ export class GroupApiDataSource implements GroupApi {
       if (pending && !pending.appId) return ok([]);
       const app = await getAppRecord(pending?.appId ?? groupId);
       const members = await appMembers(app);
+      const restricted = (await channelVisibility(app)) === "restricted";
       return ok([
         {
           contextId: app.appId,
           alias: app.name,
-          memberIdentities: app.access.kind === "accounts" ? members : undefined,
+          memberIdentities: restricted ? members : undefined,
           metadata: app.metadata ?? undefined,
         },
       ]);
@@ -418,7 +477,7 @@ export class GroupApiDataSource implements GroupApi {
     try {
       // In a shared org, Chat only; when that was the person's last app
       // there, `lastApp` lets the caller offer to leave the org too.
-      const { left, lastApp } = await leaveChat(namespaceId);
+      const { left, lastApp } = await leaveWorkspace(namespaceId);
       return ok({ namespaceId, memberPublicKey: getAccountId(), left, lastApp });
     } catch (error) {
       return catchError("leaveNamespace", error);
@@ -428,7 +487,7 @@ export class GroupApiDataSource implements GroupApi {
   /** Leaves the organization altogether (offered after leaving Chat, the last app there). */
   async leaveOrganization(namespaceId: string): ApiResponse<void> {
     try {
-      await leaveChatOrg(namespaceId);
+      await leaveWorkspaceOrg(namespaceId);
       return ok(undefined);
     } catch (error) {
       return catchError("leaveOrganization", error);
@@ -437,7 +496,7 @@ export class GroupApiDataSource implements GroupApi {
 
   async deleteNamespace(namespaceId: string): ApiResponse<boolean> {
     try {
-      await deleteOrg(namespaceId);
+      await deleteWorkspace(namespaceId);
       return ok(true);
     } catch (error) {
       return catchError("deleteNamespace", error);
@@ -465,10 +524,18 @@ export class GroupApiDataSource implements GroupApi {
     return ok(listed.data?.members ?? []);
   }
 
+  /**
+   * Whether this channel's people are managed in Calimero Home (one made
+   * before channels had teams), so its member controls say so.
+   */
+  async channelManagedInHome(groupId: string): Promise<boolean> {
+    return channelManagedInHome(groupId).catch(() => false);
+  }
+
   async getContextVisibility(_groupId: string, contextId: string): ApiResponse<ContextVisibility> {
     try {
       const app = await getAppRecord(contextId);
-      return ok({ mode: visibilityOf(app.access), creator: app.owner });
+      return ok({ mode: await channelVisibility(app), creator: app.owner });
     } catch (error) {
       return catchError("getContextVisibility", error);
     }
@@ -489,8 +556,7 @@ export class GroupApiDataSource implements GroupApi {
 
   async getContextAllowlist(_groupId: string, contextId: string): ApiResponse<string[]> {
     try {
-      const app = await getAppRecord(contextId);
-      return ok(app.access.kind === "accounts" ? app.access.accounts : []);
+      return ok(await channelRows(contextId));
     } catch (error) {
       return catchError("getContextAllowlist", error);
     }
@@ -502,31 +568,56 @@ export class GroupApiDataSource implements GroupApi {
     request: ManageAllowlistRequest,
   ): ApiResponse<void> {
     try {
-      await changeAppAccounts(contextId, request.add ?? [], request.remove ?? []);
+      await changeChannelMembers(contextId, request.add ?? [], request.remove ?? []);
       return ok(undefined);
     } catch (error) {
       return catchError("manageContextAllowlist", error);
     }
   }
 
+  /**
+   * What `identity` may do in Chat: the capabilities on their row in chat's
+   * app team (every one for an org admin or a lead). A workspace without
+   * that team reads them org-wide, where creating a channel is `CREATE_APP`
+   * and `CREATE_TEAM` (its channels and DMs are teams at the top).
+   */
   async getMemberCapabilities(groupId: string, identity: string): ApiResponse<MemberCapabilities> {
     try {
       const org = await getOrgRecord(groupId);
-      const role = org.members[identity];
-      if (role === "owner" || role === "admin") return ok({ capabilities: ALL_CAPABILITIES });
-      return ok({ capabilities: org.capabilities[identity] ?? org.defaultCapabilities });
+      if (isOrgAdmin(org, identity)) return ok({ capabilities: ALL_CAPABILITIES });
+      const team = chatTeamId(org);
+      if (team) {
+        const row = chatRowIn(org, team, identity);
+        return ok({ capabilities: row.lead ? ALL_CAPABILITIES : row.capabilities });
+      }
+      const caps = org.capabilities[identity] ?? org.defaultCapabilities;
+      return ok({ capabilities: fromOrgCaps(caps) });
     } catch (error) {
       return catchError("getMemberCapabilities", error);
     }
   }
 
+  /**
+   * Sets what `identity` may do in Chat: their row in chat's app team, its
+   * lead and role kept (a passkey step-up). A workspace without that team
+   * sets them org-wide.
+   */
   async setMemberCapabilities(
     groupId: string,
     identity: string,
     request: SetMemberCapabilitiesRequest,
   ): ApiResponse<void> {
     try {
-      await setCapabilities(groupId, request.capabilities, identity);
+      const org = await getOrgRecord(groupId);
+      const team = chatTeamId(org);
+      if (team) {
+        // "Create channels" is CREATE_CHILD_TEAM on chat's team. CREATE_APP
+        // there (an instance on chat's team itself) is never granted from
+        // this screen: whatever the row holds is kept as it is.
+        const held = chatRowIn(org, team, identity).capabilities & CAN_CREATE_CONTEXT;
+        const capabilities = (request.capabilities & ~CAN_CREATE_CONTEXT) | held;
+        await setChatRow(groupId, identity, { capabilities });
+      } else await setCapabilities(groupId, toOrgCaps(request.capabilities), identity);
       return ok(undefined);
     } catch (error) {
       return catchError("setMemberCapabilities", error);
@@ -553,20 +644,21 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** The workspace's name: its metadata `name`, else the org's own name. */
+  /** The workspace's name: the org's own name (else a name older workspaces kept in its metadata). */
   async getGroupMetadata(groupId: string): ApiResponse<{ name?: string } | null> {
     try {
       const org = await getOrgRecord(groupId);
-      const name = typeof org.metadata?.name === "string" && org.metadata.name ? org.metadata.name : org.name;
+      const name = org.name || (typeof org.metadata?.name === "string" ? org.metadata.name : "");
       return ok(name ? { name } : null);
     } catch (error) {
       return catchError("getGroupMetadata", error);
     }
   }
 
+  /** Renames the workspace: its organization (organization-wide, so through the consent page on Chat's frontend). */
   async setGroupMetadata(groupId: string, name: string): ApiResponse<void> {
     try {
-      await setOrgName(groupId, name);
+      await renameWorkspace(groupId, name);
       return ok(undefined);
     } catch (error) {
       return catchError("setGroupMetadata", error);
@@ -575,28 +667,14 @@ export class GroupApiDataSource implements GroupApi {
 
   async setContextAlias(_groupId: string, contextId: string, name: string): ApiResponse<void> {
     try {
-      const app = await getAppRecord(contextId);
-      await run((c) => c.apps.metadata({ app: contextId, metadata: { ...(app.metadata ?? {}), name } }));
-      invalidate(contextId);
+      await renameChannel(contextId, name);
       return ok(undefined);
     } catch (error) {
       return catchError("setContextAlias", error);
     }
   }
 
-  async setDefaultCapabilities(
-    groupId: string,
-    request: SetDefaultCapabilitiesRequest,
-  ): ApiResponse<void> {
-    try {
-      await setCapabilities(groupId, request.defaultCapabilities);
-      return ok(undefined);
-    } catch (error) {
-      return catchError("setDefaultCapabilities", error);
-    }
-  }
-
-  /** Open (every workspace member) or restricted (the listed accounts). */
+  /** Open (everyone in Chat) or restricted (the people with a row): the channel team's `join`. */
   async setSubgroupVisibility(
     groupId: string,
     request: SetSubgroupVisibilityRequest,
@@ -614,11 +692,15 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** The workspace's channels and DMs: the chat instances in its org that this account reaches. */
+  /**
+   * The workspace's channels and DMs: the teams below chat's app team this
+   * account is in and their instances, and the chat instances made before
+   * channels had teams.
+   */
   async listSubgroups(namespaceId: string): ApiResponse<SubgroupEntry[]> {
     try {
-      const apps = (await listChatApps()).filter((a) => a.org === namespaceId);
-      return ok(apps.map((a) => ({ groupId: a.appId, alias: a.name })));
+      const channels = await listChannels(namespaceId);
+      return ok(channels.map((a) => ({ groupId: a.appId, alias: a.name })));
     } catch (error) {
       return catchError("listSubgroups", error);
     }

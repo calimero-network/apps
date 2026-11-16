@@ -148,6 +148,19 @@ export interface OrgsWithAppOptions {
   marked?: boolean;
 }
 
+/**
+ * Whether a `getOrg` view's `teams` hold `source`'s app team: an org made on
+ * the consent page from the app's frontend has it, and cannot be marked
+ * there (`setOrgMetadata` is refused to a frontend session).
+ */
+function hasAppTeamFor(teams: unknown, source: AppSource): boolean {
+  if (typeof source === "string" || !source.package || !teams || typeof teams !== "object") return false;
+  return Object.values(teams as Record<string, unknown>).some((t) => {
+    const team = t as { parent?: unknown; metadata?: { app?: { package?: unknown } } | null } | null;
+    return !!team && !team.parent && team.metadata?.app?.package === source.package;
+  });
+}
+
 /** The org ids holding one of `apps`. */
 function orgIds(apps: AppInfo[]): Set<string> {
   return new Set(apps.map((a) => a.org).filter((o): o is string => typeof o === "string" && !!o));
@@ -171,15 +184,15 @@ export async function orgsWithApp(
   const keep = await Promise.all(
     orgs.map(async (o) => {
       if (held.has(o.orgId)) return true;
-      const view = (await getOrg(o.orgId).catch(() => null)) as { metadata?: unknown } | null;
-      return isMarkedFor(view?.metadata, source);
+      const view = (await getOrg(o.orgId).catch(() => null)) as { metadata?: unknown; teams?: unknown } | null;
+      return isMarkedFor(view?.metadata, source) || hasAppTeamFor(view?.teams, source);
     }),
   );
   return orgs.filter((_, i) => keep[i]);
 }
 
 const KNOWN_TITLES: Record<string, string> = {
-  chat: "Mero Chat",
+  chat: "Hyperfeed Chat",
   docs: "Mero Docs",
   "mero-drive-docs": "Mero Docs",
   "kv-store": "KV Store",
@@ -212,7 +225,7 @@ export function holdingsLabel(holds: readonly OrgHolding[]): string {
 }
 
 /**
- * An org's apps in words, from its app teams: "Mero Chat, Mero Blocks", with
+ * An org's apps in words, from its app teams: "Hyperfeed Chat, Mero Blocks", with
  * the ones this account is not in marked "(not yours)". An org whose apps
  * this account does not reach still holds them, which the instance list
  * ({@link holdingsLabel}) cannot see: it said "No apps yet" for a shared org

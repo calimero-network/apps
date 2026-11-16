@@ -5,6 +5,7 @@ import { chatAccessIn, type ChatAccess } from "../../api/platform";
 import { clearWorkspaceSelection, getGroupId } from "../../constants/config";
 import { clearNamespaceReady } from "../../utils/session";
 import { nodeBasename } from "../../utils/servedByNode";
+import { visibleInterval } from "../../utils/visibleInterval";
 
 /** How often an open workspace re-asks whether Chat is still the account's there. */
 const POLL_MS = 30_000;
@@ -12,7 +13,7 @@ const POLL_MS = 30_000;
 /**
  * Whether the signed-in account still has Chat in the selected workspace
  * ({@link chatAccessIn}): read on open, when the window regains focus, and
- * every {@link POLL_MS}. `null` until the first answer.
+ * every {@link POLL_MS} while the tab is visible. `null` until the first answer.
  */
 function useChatAccess(groupId: string | null): ChatAccess | null {
   const [access, setAccess] = useState<ChatAccess | null>(null);
@@ -25,11 +26,11 @@ function useChatAccess(groupId: string | null): ChatAccess | null {
       });
     };
     check();
-    const interval = setInterval(check, POLL_MS);
+    const stop = visibleInterval(check, POLL_MS);
     window.addEventListener("focus", check);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
       window.removeEventListener("focus", check);
     };
   }, [groupId]);

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setStoredGroupAlias } from "../../constants/config";
+import { setMessengerDisplayName } from "../../utils/messengerName";
 import NamespaceEntryPopup from "./NamespaceEntryPopup";
 
 // The picker no longer joins anything: an invitation arrives as an opened link
@@ -73,7 +74,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
     resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
     createGroup = h.createGroup;
     listOtherOrgs = h.listOtherOrgs;
-    setDefaultCapabilities = () => Promise.resolve({ data: null, error: null });
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
     syncGroup = () => Promise.resolve({ data: null, error: null });
@@ -140,6 +140,19 @@ describe("NamespaceEntryPopup", () => {
     expect(screen.getByPlaceholderText("e.g. Alice")).toBeInTheDocument();
   });
 
+  it("enters a workspace joined at sign-up straight away when the name was chosen there", async () => {
+    sessionStorage.setItem("chat:joined-awaiting-name", "ns1");
+    setMessengerDisplayName("Ann", "ns1");
+    h.resolveCurrentMemberIdentity.mockResolvedValue({
+      data: { memberIdentity: "me", members: [{ identity: "me", alias: "Ann" }] },
+    });
+    open();
+    await waitFor(() =>
+      expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "ns1", "Ann", "me", { published: true }),
+    );
+    expect(screen.queryByPlaceholderText("e.g. Alice")).toBeNull();
+  });
+
   it("lists workspaces and says how to join another, with no field to paste into", async () => {
     open();
     expect(await screen.findByText("Select workspace")).toBeInTheDocument();
@@ -155,7 +168,7 @@ describe("NamespaceEntryPopup", () => {
   it("says how to join when the node has no workspace yet", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
     open();
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
     expect(screen.getByTestId("join-hint")).toBeInTheDocument();
     expect(
       screen.queryByText("Join existing workspace"),
@@ -165,12 +178,12 @@ describe("NamespaceEntryPopup", () => {
   it("stays mounted but invisible and hidden from assistive tech while the create dialog is open", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
     const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    const title = await screen.findByText("Welcome to MeroChat");
+    const title = await screen.findByText("Welcome to Hyperfeed Chat");
     const card = () => title.closest("[aria-hidden]") ?? title.parentElement!;
     expect(title.closest("[aria-hidden=true]")).toBeNull();
     h.createOpen = true;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
     expect(card().getAttribute("aria-hidden")).toBe("true");
     h.createOpen = false;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
@@ -198,7 +211,7 @@ describe("NamespaceEntryPopup", () => {
     it("is neither listed nor preselected: create is primary", async () => {
       h.listGroups.mockResolvedValue({ data: [], error: null });
       open();
-      expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+      expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
       expect(screen.queryByText("Select workspace")).not.toBeInTheDocument();
       expect(screen.getAllByRole("button")[0]).toHaveTextContent("Create workspace");
       expect(screen.queryByTestId("connect-org-ow")).not.toBeInTheDocument();

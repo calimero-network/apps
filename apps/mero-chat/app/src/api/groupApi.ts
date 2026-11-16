@@ -66,6 +66,10 @@ export interface GroupMember {
   identity: string;
   alias?: string;
   role: GroupMemberRole;
+  /** An owner or admin of the organization: an Admin in Chat whom Chat cannot make a member. */
+  orgAdmin?: boolean;
+  /** Their role in the workspace's organization (`owner`, `admin`, `member`, `guest`), in a workspace's list. */
+  orgRole?: string;
 }
 
 export interface GroupUpgradeStatus {
@@ -100,7 +104,7 @@ export interface CreateInvitationResponse {
   invitation: string;
   groupAlias?: string;
   /**
-   * The invite gives Mero Chat only: it names chat's app team in an org whose
+   * The invite gives Hyperfeed Chat only: it names chat's app team in an org whose
    * apps keep separate people (shared, core#4890), so the organization's
    * other apps are not opened to the person.
    */
@@ -181,10 +185,6 @@ export interface SetMemberMetadataRequest {
 
 export interface MemberCapabilities {
   capabilities: number;
-}
-
-export interface SetDefaultCapabilitiesRequest {
-  defaultCapabilities: number;
 }
 
 export interface SubgroupEntry {
@@ -308,10 +308,6 @@ export interface GroupApi {
     groupId: string,
     identity: string,
     request: SetMemberMetadataRequest,
-  ): ApiResponse<void>;
-  setDefaultCapabilities(
-    groupId: string,
-    request: SetDefaultCapabilitiesRequest,
   ): ApiResponse<void>;
   setSubgroupVisibility(
     groupId: string,

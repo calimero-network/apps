@@ -22,11 +22,18 @@
  * A team made from here is open (`shared: false`) unless the org is shared
  * already, where it is closed like the others; `shared` is always passed,
  * because core closes every team on its own once an org holds two.
+ *
+ * A session bound to the app's frontend ({@link ./consent}) may not create an
+ * organization, invite, join, remove a member or leave: each of those sends
+ * the person to the node's consent page, and the promise never settles while
+ * the page unloads. On return the app calls `resumeAppConsent`. An unbound
+ * session (the cluster's own page, a dev node) calls the routes, as before.
  */
 import { passkeyConfirm, type CalimeroClient, type OrgMode, type PasskeyProvider } from "@calimero-network/mero-js";
 
-import { appTeamMembers, appTeams, createAppTeam, inviteToApp } from "./appTeams";
-import type { OrgAccessView, OrgTeamView } from "./invite";
+import { appTeamMembers, appTeamOf, appTeams, createAppTeam, inviteToApp } from "./appTeams";
+import { goToConsent, isFrontendBound, type ConsentClient, type ConsentOptions, type MaybeMe } from "./consent";
+import { joinedOrg, type OrgAccessView, type OrgTeamView } from "./invite";
 import { markOrgFor } from "./orgs";
 import type { AppSource } from "./target";
 import type { ClientRoutes } from "./routes";
@@ -39,6 +46,17 @@ function provider(passkey: PasskeyLike): PasskeyProvider {
 }
 
 const ADMIN = new Set(["owner", "admin"]);
+
+/** How a function sends the person to the consent page on a session bound to the app's frontend. */
+export interface BoundOptions {
+  /** The consent page's options (`returnTo`, the app's `confirm` dialog, its own `data`). */
+  consent?: ConsentOptions;
+  /** Whether the session is bound (default: asked of `/auth/me` once per client). */
+  bound?: boolean;
+}
+
+/** A client for a function that may go to the consent page: it says who it is and opens the page. */
+type Bindable = MaybeMe & ConsentClient;
 
 // ── reading an org ──────────────────────────────────────────────────────────
 
@@ -135,7 +153,7 @@ export async function adoptAppTeam(
   return made.teamId;
 }
 
-export interface CreateAppOrgOptions {
+export interface CreateAppOrgOptions extends BoundOptions {
   /** The org's default capabilities for members (a passkey step-up); absent: the node's default. */
   capabilities?: number;
   /** Mark the org as made for this app, so it is listed before it holds an instance (default true). */
@@ -157,14 +175,32 @@ export interface CreatedAppOrg {
  * Neither later step fails the workspace: declined defaults come back as
  * `capabilitiesError`, and without a team (declined, a node without app-team
  * routes, a raw bundle) the org is a legacy one, as every org was before.
+ *
+ * On a session bound to the app's frontend this is the consent page's
+ * `createOrg`, which makes the app's team in the same step; the promise never
+ * settles while the page unloads, and `resumeAppConsent` answers the
+ * {@link CreatedAppOrg} on return (member defaults then need their own
+ * approval: its `capabilitiesError` is a `ConsentNeededError`).
  */
 export async function createAppOrg(
-  client: ClientRoutes<{ orgs: "create" | "get" | "metadata" | "capabilities" | "appTeamsScope" }>,
+  client: ClientRoutes<{ orgs: "create" | "get" | "metadata" | "capabilities" | "appTeamsScope" }> & Bindable,
   name: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
   options: CreateAppOrgOptions = {},
 ): Promise<CreatedAppOrg> {
+  if (await isFrontendBound(client, options.bound)) {
+    return goToConsent(
+      client,
+      {
+        kind: "createOrg",
+        name,
+        source: source ?? null,
+        ...(options.capabilities !== undefined ? { capabilities: options.capabilities } : {}),
+      },
+      options.consent,
+    );
+  }
   const orgId = (await client.orgs.create({ name })).orgId;
   return finishAppOrg(client, orgId, source, passkey, options);
 }
@@ -182,7 +218,9 @@ export async function isAppBound(client: object): Promise<boolean> {
 /**
  * What follows an org's creation, for an org made elsewhere (the node's consent
  * page): the mark, the member defaults and the app's team, as {@link createAppOrg}.
- * A package-bound session skips the member defaults: core cannot take them in the consent.
+ * A package-bound session skips the member defaults (core cannot take them in
+ * the consent) and reads the app's team, which the consent page made, rather
+ * than making it.
  */
 export async function finishAppOrg(
   client: ClientRoutes<{ orgs: "get" | "metadata" | "capabilities" | "appTeamsScope" }>,
@@ -192,8 +230,9 @@ export async function finishAppOrg(
   options: CreateAppOrgOptions = {},
 ): Promise<CreatedAppOrg> {
   if (source && options.mark !== false) await markOrgFor(client, orgId, source);
+  const bound = await isAppBound(client);
   let capabilitiesError: unknown = null;
-  if (options.capabilities !== undefined && !(await isAppBound(client))) {
+  if (options.capabilities !== undefined && !bound) {
     try {
       await client.orgs.capabilities(
         { org: orgId, capabilities: options.capabilities },
@@ -205,7 +244,12 @@ export async function finishAppOrg(
   }
   let teamId: string | null = null;
   try {
-    teamId = await adoptAppTeam(client, orgId, source, passkey);
+    const pkg = sourcePackage(source);
+    teamId = bound
+      ? pkg
+        ? ((await appTeamOf(client as unknown as ClientRoutes<{ orgs: "appTeamList" }>, orgId, pkg))?.team?.teamId ?? null)
+        : null
+      : await adoptAppTeam(client, orgId, source, passkey);
   } catch (e) {
     console.warn("createAppOrg: the app's team was not made; the org is a legacy one", e);
   }
@@ -286,18 +330,29 @@ export interface AppInviteToken {
  * org-wide invite where the org has no app teams (legacy, an older node) or
  * under a raw bundle; in an org with app teams but none for this app it is
  * refused (`NoAppTeamError`) rather than widened to the whole org. `teams` adds more (a private vault's or folder's team).
+ *
+ * On a session bound to the app's frontend it is the consent page's
+ * `createInvite`; `resumeAppConsent` answers the token on return.
  */
 export async function appInvite(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
+  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }> & Bindable,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
-  options: { teams?: string[]; ttlSecs?: number; uses?: number } = {},
+  options: { teams?: string[]; ttlSecs?: number; uses?: number } & BoundOptions = {},
 ): Promise<AppInviteToken> {
   const pkg = sourcePackage(source);
   const extra: { ttlSecs?: number; uses?: number } = {};
   if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
   if (options.uses !== undefined) extra.uses = options.uses;
+  const bound = await isFrontendBound(client, options.bound);
+  if (!pkg && bound) {
+    return goToConsent(
+      client,
+      { kind: "createInvite", org, role: "member", teams: options.teams ?? [], ...extra, appTeams: [], mode: null, appOnly: false },
+      options.consent,
+    );
+  }
   if (!pkg) {
     const { token } = await client.orgs.inviteCreate(
       { org, role: "member", teams: options.teams ?? [], ...extra },
@@ -309,13 +364,41 @@ export async function appInvite(
     passkey: provider(passkey),
     ...(options.teams?.length ? { teams: options.teams } : {}),
     ...extra,
+    bound,
+    ...(options.consent ? { consent: options.consent } : {}),
   });
   return { token: made.token, appOnly: made.mode === "shared" && made.teams.length > 0 };
 }
 
+/** What {@link acceptAppInvite} joined. */
+export interface AcceptedInvite {
+  /** The org joined, when the node named it. */
+  org: string | null;
+  /** The node's answer to the redemption. */
+  redeemed: unknown;
+}
+
+/**
+ * The signed-in account joins the org `token` invites to (`redeemInvite`).
+ * On a session bound to the app's frontend it is the consent page's
+ * `acceptInvite`; `resumeAppConsent` answers the org joined on return. `org`
+ * (what the link named) is kept with the intent for the app's own use.
+ */
+export async function acceptAppInvite(
+  client: ClientRoutes<{ orgs: "inviteRedeem" }> & Bindable,
+  token: string,
+  options: BoundOptions & { org?: string | null } = {},
+): Promise<AcceptedInvite> {
+  if (await isFrontendBound(client, options.bound)) {
+    return goToConsent(client, { kind: "acceptInvite", token, org: options.org ?? null }, options.consent);
+  }
+  const redeemed = await client.orgs.inviteRedeem({ token });
+  return { org: joinedOrg(redeemed), redeemed };
+}
+
 // ── removing and leaving ────────────────────────────────────────────────────
 
-export interface RemoveFromAppOptions {
+export interface RemoveFromAppOptions extends BoundOptions {
   /**
    * The app's private lists in the org (a private vault's or folder's team)
    * to take the person off too, in a shared org. Each is tried on its own:
@@ -331,9 +414,13 @@ export interface RemoveFromAppOptions {
  * organization and its other apps are Calimero Home's. Anywhere else
  * (standalone and legacy: the org is everyone's apps) it is out of the
  * organization, as before. Answers which it was.
+ *
+ * Out of the organization, on a session bound to the app's frontend, is the
+ * consent page's `removeMember` (`leaveOrg` for the signed-in account). The
+ * app-only path (its team, rows below it) is the app's own, done here.
  */
 export async function removeFromApp(
-  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }> & Bindable,
   org: string,
   source: AppSource | null | undefined,
   account: string,
@@ -344,6 +431,14 @@ export async function removeFromApp(
   const view = pkg ? ((await client.orgs.get({ org })) as AppOrgView) : null;
   const team = view && isAppOnly(view, pkg) ? appTeamIdIn(view, pkg) : null;
   if (!view || !team) {
+    if (await isFrontendBound(client, options.bound)) {
+      const self = client.session?.accountId;
+      return goToConsent(
+        client,
+        account === self ? { kind: "leaveOrg", org } : { kind: "removeMember", org, account },
+        options.consent,
+      );
+    }
     await client.orgs.removeMember({ org, account }, { confirm: passkeyConfirm(provider(passkey)) });
     return "org";
   }
@@ -382,6 +477,29 @@ export async function removeFromPrivateTeam(
   await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
 }
 
+/**
+ * Takes `account` off `source`'s app team in `org`, whatever the org's mode,
+ * and leaves them in the organization (core drops their rows on the teams
+ * below it too). For an app that keeps its people on its team in a
+ * standalone org as well, where {@link removeFromApp} takes them out of the
+ * organization. A team call, which a session bound to the app's frontend may
+ * make (a passkey step-up). Throws when the app has no team in `org`.
+ */
+export async function removeFromAppTeam(
+  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" }>,
+  org: string,
+  source: AppSource | null | undefined,
+  account: string,
+  passkey: PasskeyLike,
+): Promise<void> {
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  const team = appTeamIdIn(view, sourcePackage(source));
+  if (!team) throw new Error("this app has no team in the organization");
+  // Also without a row of their own: in an open team someone is in through the
+  // org, and the node keeps them out once taken off.
+  await client.orgs.teamRemoveMember({ org, team, account }, { confirm: passkeyConfirm(provider(passkey)) });
+}
+
 /** What {@link leaveApp} did. */
 export interface LeftApp {
   /** `app`: off this app's team only (a shared org); `org`: out of the organization. */
@@ -399,7 +517,8 @@ export interface LeftApp {
  */
 export async function leaveApp(
   client: Pick<CalimeroClient, "session"> &
-    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
+    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }> &
+    Bindable,
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
@@ -409,19 +528,28 @@ export async function leaveApp(
   if (!self) throw new Error("Sign in to leave.");
   const left = await removeFromApp(client, org, source, self, passkey, {
     ...(options.privateTeams ? { privateTeams: options.privateTeams } : {}),
+    ...(options.consent ? { consent: options.consent } : {}),
+    ...(options.bound !== undefined ? { bound: options.bound } : {}),
   });
   if (left === "org") return { left, lastApp: false };
   const after = await appTeams(client, org).catch(() => null);
   return { left, lastApp: !!after && !after.appTeams.some((t) => t.member) };
 }
 
-/** The signed-in account leaves `org` altogether (every app in it). */
+/**
+ * The signed-in account leaves `org` altogether (every app in it). On a
+ * session bound to the app's frontend it is the consent page's `leaveOrg`.
+ */
 export async function leaveOrg(
-  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }> & Bindable,
   org: string,
   passkey: PasskeyLike,
   self: string | undefined = client.session?.accountId,
+  options: BoundOptions = {},
 ): Promise<void> {
   if (!self) throw new Error("Sign in to leave.");
+  if (await isFrontendBound(client, options.bound)) {
+    return goToConsent(client, { kind: "leaveOrg", org }, options.consent);
+  }
   await client.orgs.removeMember({ org, account: self }, { confirm: passkeyConfirm(provider(passkey)) });
 }

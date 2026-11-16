@@ -41,7 +41,9 @@ describe("GroupInviteModal", () => {
       />,
     );
 
-    expect(screen.getByText(/invite to workspace/i)).toBeInTheDocument();
+    expect(screen.getByText(/invite people/i)).toBeInTheDocument();
+    // One action: no second "Done" next to the close button.
+    expect(screen.queryByRole("button", { name: /^done$/i })).not.toBeInTheDocument();
     expect(screen.getByText(/copy invite link/i)).toBeInTheDocument();
     // The legacy calimero:// "desktop link" is gone — the HTTPS link handles both.
     expect(screen.queryByText(/copy desktop link/i)).not.toBeInTheDocument();
@@ -61,19 +63,19 @@ describe("GroupInviteModal", () => {
     expect(await screen.findByText(/copy invite link/i)).toBeInTheDocument();
   });
 
-  it("says when the link gives Mero Chat only (a shared org)", async () => {
+  it("says when the link gives Hyperfeed Chat only (a shared org)", async () => {
     mockCreateInvitation.mockResolvedValue({
       data: { invitation: "tok-9", groupAlias: "Acme", chatOnly: true },
       error: null,
     });
     render(<GroupInviteModal groupId="org-1" isOpen={true} onClose={vi.fn()} />);
-    expect(await screen.findByTestId("invite-chat-only")).toHaveTextContent(/Mero Chat only/);
+    expect(await screen.findByTestId("invite-single-use")).toHaveTextContent(/Hyperfeed Chat only/);
   });
 
   it("says nothing of the kind for a workspace-wide invite", async () => {
     mockCreateInvitation.mockResolvedValue({ data: { invitation: "tok-1" }, error: null });
     render(<GroupInviteModal groupId="org-1" isOpen={true} onClose={vi.fn()} />);
     expect(await screen.findByText(/copy invite link/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("invite-chat-only")).not.toBeInTheDocument();
+    expect(screen.getByTestId("invite-single-use")).not.toHaveTextContent(/Hyperfeed Chat only/);
   });
 });

@@ -248,6 +248,7 @@ export default function AdminPanel({
               actionLoading={admin.actionLoading}
               onRemoveMember={admin.removeMember}
               onUpdateRole={admin.updateMemberRole}
+              onSetOrgAdmin={admin.setOrgAdmin}
               onSetCapabilities={admin.setMemberCapabilities}
               onGetCapabilities={admin.getMemberCapabilities}
               onRefresh={handleRefresh}
@@ -260,7 +261,6 @@ export default function AdminPanel({
               subgroupCount={admin.subgroupCount}
               teeMembers={admin.teeMembers}
               actionLoading={admin.actionLoading}
-              onSetDefaultCapabilities={admin.setDefaultCapabilities}
               onSetSubgroupVisibility={admin.setSubgroupVisibility}
             />
           )}

@@ -11,10 +11,8 @@ vi.mock("./createChannel", () => ({ GENERAL_CHANNEL: "general", createChannel: h
 vi.mock("./enterWorkspace", () => ({ enterWorkspace: h.enterWorkspace }));
 
 import { finishWorkspace } from "./finishWorkspace";
-import { DEFAULT_MEMBER_CAPABILITIES } from "./groupCapabilities";
 
 const api = () => ({
-  setGroupMetadata: vi.fn().mockResolvedValue({ data: null, error: null }),
   resolveCurrentMemberIdentity: vi.fn().mockResolvedValue({ data: { memberIdentity: "me" }, error: null }),
   setMemberMetadata: vi.fn(),
 });
@@ -26,18 +24,11 @@ beforeEach(() => {
 });
 
 describe("finishWorkspace", () => {
-  it("finishes the org with Chat's defaults, makes #general under your name, and enters it", async () => {
-    let nameAtGeneral = "";
-    h.createChannel.mockImplementation(async () => {
-      nameAtGeneral = localStorage.getItem("chat-username:org-9") ?? "";
-      return { contextId: "ctx", memberKey: "k" };
-    });
+  it("finishes the org, makes #general, and enters it", async () => {
     const a = api();
     await finishWorkspace(a, "org-9", "Acme", "Ada", vi.fn());
-    expect(h.finishOrg).toHaveBeenCalledWith("org-9", DEFAULT_MEMBER_CAPABILITIES);
+    expect(h.finishOrg).toHaveBeenCalledWith("org-9");
     expect(h.createChannel).toHaveBeenCalledWith("org-9", "general", true);
-    expect(nameAtGeneral).toBe("Ada");
-    expect(a.setGroupMetadata).toHaveBeenCalledWith("org-9", "Acme");
     expect(h.enterWorkspace).toHaveBeenCalledWith(a, "org-9", "Ada", "me");
   });
 

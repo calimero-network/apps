@@ -10,6 +10,7 @@ import {
   type MemberRole,
 } from "@calimero-apps/members";
 import {
+  TOGGLED_CAPABILITIES,
   buildGroupCapabilitiesMask,
   readGroupCapabilitiesMask,
   type GroupCapabilityToggles,
@@ -21,10 +22,14 @@ const List = styled.div`
   gap: 2px;
 `;
 
+// Wraps rather than squeezes: with a role select and three buttons the
+// actions are wider than a narrow dialog, and the name must stay readable.
 const MemberRow = styled.div`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 0.375rem 0.75rem;
   padding: 0.5rem 0.625rem;
   border-radius: 10px;
   transition: background 0.12s ease;
@@ -37,7 +42,8 @@ const MemberInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-width: 0;
+  flex: 1 1 140px;
+  min-width: 140px;
 `;
 
 const Identity = styled.span`
@@ -72,9 +78,11 @@ const RoleBadge = styled.span<{ $admin: boolean }>`
 
 const Actions = styled.div`
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.375rem;
-  flex-shrink: 0;
+  margin-left: auto;
 `;
 
 const SmallButton = styled.button`
@@ -224,6 +232,15 @@ interface MembersTabProps {
     identity: string,
     role: MemberRole,
   ) => Promise<boolean>;
+  /**
+   * Makes someone an admin of the workspace's organization, or takes it back.
+   * Organization-wide: on Chat's frontend, approved on the node's consent page.
+   */
+  onSetOrgAdmin?: (
+    groupId: string,
+    identity: string,
+    admin: boolean,
+  ) => Promise<boolean>;
   onSetCapabilities: (
     groupId: string,
     identity: string,
@@ -244,11 +261,14 @@ export default function MembersTab({
   actionLoading,
   onRemoveMember,
   onUpdateRole,
+  onSetOrgAdmin,
   onSetCapabilities,
   onGetCapabilities,
   onRefresh,
 }: MembersTabProps) {
   const [capEditIdentity, setCapEditIdentity] = useState<string | null>(null);
+  // The row's capabilities as read: the bits no toggle shows are saved back as they were.
+  const [capBase, setCapBase] = useState(0);
   const [capToggles, setCapToggles] = useState<GroupCapabilityToggles>({
     canCreateContext: false,
     canInviteMembers: false,
@@ -262,6 +282,7 @@ export default function MembersTab({
 
   const openCapabilities = async (identity: string) => {
     const caps = await onGetCapabilities(groupId, identity);
+    setCapBase(caps?.capabilities ?? 0);
     setCapToggles(readGroupCapabilitiesMask(caps?.capabilities));
     setCapEditIdentity(identity);
   };
@@ -271,7 +292,7 @@ export default function MembersTab({
     const ok = await onSetCapabilities(
       groupId,
       capEditIdentity,
-      buildGroupCapabilitiesMask(capToggles),
+      (capBase & ~TOGGLED_CAPABILITIES) | buildGroupCapabilitiesMask(capToggles),
     );
     if (ok) setCapEditIdentity(null);
   };
@@ -320,8 +341,17 @@ export default function MembersTab({
           role: member.role,
           adminCount,
         });
+        // Admin here is a lead of Chat's team. An organization owner or admin
+        // is one everywhere, which is the organization's to change, not Chat's.
         const choosable =
-          canManage && !!onUpdateRole && (member.role === "Admin" || member.role === "Member");
+          canManage &&
+          !!onUpdateRole &&
+          !member.orgAdmin &&
+          (member.role === "Admin" || member.role === "Member");
+        // The organization's own role, apart from Chat's: an owner stays one,
+        // and your own is changed by someone else.
+        const orgAdminToggle =
+          canManage && !!onSetOrgAdmin && !self && (member.orgRole === "admin" || member.orgRole === "member");
         return (
         <React.Fragment key={member.identity}>
           <MemberRow>
@@ -333,7 +363,10 @@ export default function MembersTab({
                 </Identity>
               </IdentityStack>
               {!choosable && (
-                <RoleBadge $admin={member.role === "Admin"}>
+                <RoleBadge
+                  $admin={member.role === "Admin"}
+                  title={member.orgAdmin ? "Organization admin" : undefined}
+                >
                   {member.role}
                 </RoleBadge>
               )}
@@ -353,6 +386,15 @@ export default function MembersTab({
                   <option value="Admin">Admin</option>
                   <option value="Member">Member</option>
                 </RoleSelect>
+              )}
+              {orgAdminToggle && (
+                <SmallButton
+                  onClick={() => void onSetOrgAdmin?.(groupId, member.identity, member.orgRole !== "admin")}
+                  disabled={actionLoading}
+                  title="Organization-wide: every app in this organization. Your node asks you to approve it."
+                >
+                  {member.orgRole === "admin" ? "Remove organization admin" : "Make organization admin"}
+                </SmallButton>
               )}
               {canManage && member.role !== "Admin" && (
                 <SmallButton
@@ -397,17 +439,14 @@ export default function MembersTab({
                   <CapabilityInfo>
                     <CapabilityTitle>Create channels</CapabilityTitle>
                     <CapabilityDescription>
-                      Allow this member to create new channels (root-level
-                      subgroups) in the workspace.
+                      Allow this member to create channels and direct
+                      messages in the workspace.
                     </CapabilityDescription>
                   </CapabilityInfo>
-                  {/* A channel = root-level subgroup + a context inside it.
-                      Creating a subgroup requires CAN_CREATE_SUBGROUP;
-                      registering the context requires CAN_CREATE_CONTEXT
-                      (the creator becomes the subgroup's admin, but
-                      flipping both keeps the cap mask coherent if the
-                      member ever has to create a context they don't own).
-                      We toggle both together so the label matches reality. */}
+                  {/* A channel or DM is a team below Chat's app team:
+                      CREATE_CHILD_TEAM on this person's row there. Without
+                      Chat's team (an older workspace) it is CREATE_APP
+                      org-wide; the data source keeps what each needs. */}
                   <CapabilityToggle
                     type="checkbox"
                     checked={capToggles.canCreateSubgroup}

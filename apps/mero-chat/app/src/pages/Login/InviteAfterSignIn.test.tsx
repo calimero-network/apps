@@ -43,7 +43,7 @@ const h = vi.hoisted(() => {
 
 vi.mock("../../api/calimero", () => ({
   LISTING: {
-    name: "Mero Chat",
+    name: "Hyperfeed Chat",
     description: "",
     package: "p",
     dir: "mero-chat",
@@ -134,7 +134,7 @@ function Harness() {
 /** The picker in any of its screens. */
 function picker() {
   return (
-    screen.queryByText("Welcome to MeroChat") ??
+    screen.queryByText("Welcome to Hyperfeed Chat") ??
     screen.queryByText("Create workspace") ??
     screen.queryByText("Select workspace")
   );
@@ -157,14 +157,14 @@ describe("an invitation link, then signing in with an account that has no worksp
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(
-      await screen.findByRole("button", { name: /join workspace/i }),
+      await screen.findByRole("button", { name: /^join$/i }),
     ).toBeInTheDocument();
     // Let the picker's load settle, if it was (wrongly) mounted.
     await act(async () => {});
     expect(picker()).toBeNull();
   });
 
-  it("Join redeems the invite and enters the inviting workspace, asking your name in it once", async () => {
+  it("Join redeems the invite and enters the inviting workspace under the name chosen beside it", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok-1");
     h.joinGroup.mockResolvedValue({
       data: { groupId: "org-inviter", memberIdentity: "acct-me" },
@@ -172,17 +172,16 @@ describe("an invitation link, then signing in with an account that has no worksp
     });
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: /join workspace/i }),
-    );
+    fireEvent.change(await screen.findByLabelText(/your name/i), { target: { value: "Ann" } });
+    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
     await vi.waitFor(() =>
       expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok-1" }),
     );
-    // Your name is per workspace: a new one has none for you yet.
     await vi.waitFor(() =>
-      expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-inviter"),
+      expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-inviter", "Ann", "acct-me"),
     );
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
+    // Asked once, here: not again on the picker.
+    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
     expect(picker()).toBeNull();
   });
 
@@ -194,19 +193,18 @@ describe("an invitation link, then signing in with an account that has no worksp
     });
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: /join workspace/i }),
-    );
+    fireEvent.change(await screen.findByLabelText(/your name/i), { target: { value: "Ann" } });
+    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(SPENT_INVITE);
     expect(picker()).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
   });
 
   it("without an invitation, the picker offers Create workspace", async () => {
     h.set({ status: "signed-in", accountId: "acct-me" });
     render(<Harness />);
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
   });
 });
 

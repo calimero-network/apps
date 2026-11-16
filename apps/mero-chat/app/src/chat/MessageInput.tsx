@@ -478,7 +478,8 @@ export default function MessageInput({
     typing: typingNames,
     noteTyping,
     clearTyping,
-  } = useEphemeralPresence(contextId ?? null);
+  // One presence per conversation: the thread composer beside it does not add a second.
+  } = useEphemeralPresence(isThread ? null : (contextId ?? null));
   // Which kind of attachment is currently uploading, for the status bar. Two
   // independent UploadComponents report in, so each clears only its own kind —
   // a finishing file upload must not silently cancel an in-flight image one.

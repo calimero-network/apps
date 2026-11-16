@@ -23,7 +23,6 @@ describe("SettingsTab", () => {
         group={baseGroup}
         subgroupCount={7}
         actionLoading={false}
-        onSetDefaultCapabilities={vi.fn()}
         onSetSubgroupVisibility={vi.fn()}
       />,
     );
@@ -44,7 +43,6 @@ describe("SettingsTab", () => {
         group={baseGroup}
         subgroupCount={null}
         actionLoading={false}
-        onSetDefaultCapabilities={vi.fn()}
         onSetSubgroupVisibility={vi.fn()}
       />,
     );
@@ -59,7 +57,6 @@ describe("SettingsTab", () => {
         group={null}
         subgroupCount={null}
         actionLoading={false}
-        onSetDefaultCapabilities={vi.fn()}
         onSetSubgroupVisibility={vi.fn()}
       />,
     );
@@ -79,7 +76,6 @@ describe("SettingsTab", () => {
           subgroupCount={7}
           teeMembers={teeMembers}
           actionLoading={false}
-          onSetDefaultCapabilities={vi.fn()}
           onSetSubgroupVisibility={vi.fn()}
         />,
       );

@@ -1,24 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEphemeral } from "../api/presence";
+import { useWorkspacePresence } from "./usePresence";
 
 import { getMessengerDisplayName } from "../utils/messengerName";
+import { nameRepository } from "../repositories/names/useNames";
 
 /**
- * One ephemeral slice per author per context, carrying both presence signals.
+ * One ephemeral slice per account per context, carrying both presence signals.
  *
- * The slice is SELF-DESCRIBING: it carries the publisher's display name rather
- * than an id the reader is expected to resolve. That is not a shortcut — the
- * `author` key the node stamps on a presence entry is the per-context
- * identity, which is neither the account id the admin member lists use nor the
- * base58 account `get_profiles` is keyed by (verified: an author decoding to
- * `48cc94aa…` for a node whose account is `e8b65145…` and device is
- * `a30341fa…`). There is no client-side join from author to member, so a name
- * the reader has to look up is a name it can never render.
- *
- * `name` is self-asserted, unlike a message's sender, which is an account
- * resolved against namespace member metadata. This comment used to point at
- * `sender_username` on the
- * message path. Presence is advisory; nothing is authorised off it.
+ * Peers are keyed by account (the node stamps each entry with its publisher),
+ * so a peer is named like a message's sender: from the workspace's member
+ * metadata. The `name` a slice carries is the publisher's own copy of that
+ * same name, read only until the workspace's member list has loaded.
+ * Presence is advisory; nothing is authorised off it.
  */
 export interface PresenceSlice {
   name: string;
@@ -28,8 +22,10 @@ export interface PresenceSlice {
 /** Shown for a peer who is present but has not set a display name. */
 const ANONYMOUS_LABEL = "Someone";
 
-function displayName(slice: PresenceSlice | undefined): string {
-  return slice?.name?.trim() || ANONYMOUS_LABEL;
+function displayName(account: string, slice: PresenceSlice | undefined): string {
+  // `displayName` schedules the fetch that `peek` does not.
+  nameRepository.displayName(account);
+  return nameRepository.peek(account) || slice?.name?.trim() || ANONYMOUS_LABEL;
 }
 
 /** How long after the last keystroke we stop claiming to be typing. */
@@ -64,7 +60,21 @@ export interface UseEphemeralPresenceResult {
 }
 
 export function useEphemeralPresence(contextId: string | null): UseEphemeralPresenceResult {
-  const { peers, setPresence, error } = useEphemeral<PresenceSlice>(contextId);
+  // #general is the workspace's presence channel: its typing goes through that
+  // entry, not a second one (same account and device, they would overwrite).
+  const workspace = useWorkspacePresence();
+  const shared = contextId !== null && contextId === workspace.app;
+  const own = useEphemeral<PresenceSlice>(shared ? null : contextId);
+  const setShared = workspace.setSlice;
+  const sharedSet = useCallback((slice: PresenceSlice) => setShared({ ...slice }), [setShared]);
+  const sharedClear = useCallback(() => setShared(null), [setShared]);
+  const peers = shared ? (workspace.peers as unknown as Map<string, PresenceSlice>) : own.peers;
+  const setPresence = shared ? sharedSet : own.setPresence;
+  const clearPresence = shared ? sharedClear : own.clearPresence;
+  const error = shared ? null : own.error;
+  // Recompute the labels when names load.
+  const [namesVersion, setNamesVersion] = useState(0);
+  useEffect(() => nameRepository.subscribe(() => setNamesVersion((n) => n + 1)), []);
 
   // Whether we are currently CLAIMING to be typing, so `noteTyping` only
   // publishes on the false→true edge instead of once per keystroke. The node
@@ -73,39 +83,31 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
   const claimingTyping = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // `setPresence` is rebound when the context changes, so the cleanup below
-  // must capture the publisher belonging to the context being LEFT — reading
-  // the current one would send the retraction to the context just entered.
-  const publishRef = useRef(setPresence);
-  publishRef.current = setPresence;
+  // `clearPresence` is rebound when the context changes, so the cleanup below
+  // must capture the one belonging to the context being LEFT — reading the
+  // current one would retract in the context just entered.
+  const clearRef = useRef(clearPresence);
+  clearRef.current = clearPresence;
 
-  // Announce ourselves on entering a context, and retract typing on the way
-  // out.
-  //
-  // Leaving needs an explicit retraction: the node re-publishes every
-  // locally-set slice on its own heartbeat (~2.5s) with a bumped seq, so a
-  // slice left saying `typing: true` is kept alive indefinitely rather than
-  // ageing out of the TTL. Walking away mid-word would otherwise show peers
-  // "X is typing…" forever.
+  // Nothing is published until the person types: an idle composer sends
+  // nothing (an entry is refreshed every few seconds while it stands, so
+  // announcing on entry cost a call every few seconds per open composer).
+  // Leaving mid-word takes the entry back.
   useEffect(() => {
     if (!contextId) return undefined;
-    const publish = publishRef.current;
+    const clear = clearRef.current;
     claimingTyping.current = false;
-    publish({ name: getMessengerDisplayName(), typing: false });
-
     return () => {
       if (idleTimer.current) {
         clearTimeout(idleTimer.current);
         idleTimer.current = null;
       }
-      // Only if we were mid-claim; an unconditional publish would resurrect a
-      // slice in a context we are no longer in.
       if (claimingTyping.current) {
         claimingTyping.current = false;
-        publish({ name: getMessengerDisplayName(), typing: false });
+        clear();
       }
     };
-  }, [contextId, setPresence]);
+  }, [contextId]);
 
   const clearTyping = useCallback(() => {
     if (idleTimer.current) {
@@ -114,8 +116,8 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
     }
     if (!claimingTyping.current) return;
     claimingTyping.current = false;
-    setPresence({ name: getMessengerDisplayName(), typing: false });
-  }, [setPresence]);
+    clearPresence();
+  }, [clearPresence]);
 
   const noteTyping = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);
@@ -134,8 +136,10 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
   // and make presence look one-directional — the named side sees the unnamed
   // one, never the reverse. Fall back to a label instead of discarding.
   const online = useMemo(
-    () => [...peers.values()].map((slice) => displayName(slice)),
-    [peers],
+    () =>
+      [...peers.entries()].map(([account, slice]) => displayName(account, slice)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `namesVersion`: names loaded
+    [peers, namesVersion],
   );
 
   // Last time each peer's slice was observed to CHANGE. Not the last time it
@@ -177,10 +181,11 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
           const seen = lastChangeRef.current.get(author);
           return !seen || Date.now() - seen.at < TYPING_STALE_MS;
         })
-        .map(([, slice]) => displayName(slice)),
+        .map(([account, slice]) => displayName(account, slice)),
     // `staleTick` is the dependency that matters: it fires when a claim ages
     // out with no new slice to trigger a recompute.
-    [peers, staleTick],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `namesVersion`: names loaded
+    [peers, staleTick, namesVersion],
   );
 
   return { online, typing, noteTyping, clearTyping, error };

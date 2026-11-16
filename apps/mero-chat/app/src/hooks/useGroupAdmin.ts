@@ -163,6 +163,34 @@ export function useGroupAdmin() {
     [],
   );
 
+  /** An organization admin, or a member again (on Chat's frontend, approved on the node's consent page). */
+  const setOrgAdmin = useCallback(
+    async (groupId: string, identity: string, admin: boolean): Promise<boolean> => {
+      setActionLoading(true);
+      setError(null);
+      try {
+        const resp = await api.setOrgAdmin(groupId, identity, admin);
+        if (resp.error) {
+          setError(resp.error.message);
+          return false;
+        }
+        const membersResp = await api.listMembers(groupId);
+        if (membersResp.data) {
+          setMembers(membersResp.data.members);
+          setTeeMembers(membersResp.data.teeMembers);
+        }
+        return true;
+      } catch (err) {
+        log.error("useGroupAdmin", "Failed to change the organization role", err);
+        setError("Failed to change the organization role");
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [],
+  );
+
   const setMemberCapabilities = useCallback(
     async (
       groupId: string,
@@ -322,33 +350,6 @@ export function useGroupAdmin() {
     [],
   );
 
-  const setDefaultCapabilities = useCallback(
-    async (groupId: string, capabilities: number): Promise<boolean> => {
-      setActionLoading(true);
-      setError(null);
-      try {
-        const resp = await api.setDefaultCapabilities(groupId, {
-          defaultCapabilities: capabilities,
-        });
-        if (resp.error) {
-          setError(resp.error.message);
-          return false;
-        }
-        if (group) {
-          setGroup({ ...group, defaultCapabilities: capabilities });
-        }
-        return true;
-      } catch (err) {
-        log.error("useGroupAdmin", "Failed to set default capabilities", err);
-        setError("Failed to set default capabilities");
-        return false;
-      } finally {
-        setActionLoading(false);
-      }
-    },
-    [group],
-  );
-
   const setSubgroupVisibility = useCallback(
     async (groupId: string, mode: VisibilityMode): Promise<boolean> => {
       setActionLoading(true);
@@ -428,6 +429,7 @@ export function useGroupAdmin() {
     fetchAll,
     removeMember,
     updateMemberRole,
+    setOrgAdmin,
     setMemberCapabilities,
     setMemberMetadata,
     getMemberCapabilities,
@@ -435,7 +437,6 @@ export function useGroupAdmin() {
     setContextVisibility,
     getContextAllowlist,
     manageAllowlist,
-    setDefaultCapabilities,
     setSubgroupVisibility,
     triggerUpgrade,
     refreshUpgradeStatus,
