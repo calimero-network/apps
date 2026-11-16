@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useToast } from "../contexts/ToastContext";
@@ -10,11 +10,10 @@ import {
   createAudience,
   finishCompany,
   setCompanyName,
-  inviteLink,
+  inviteBase,
   listCompanies,
   leaveCompany,
   leaveCompanyOrg,
-  mintInvite,
   PRODUCT_NAME,
   type NamespaceRow,
 } from "../lib/companies";
@@ -22,7 +21,6 @@ import { getUsername } from "../lib/active";
 import { APP_PACKAGE } from "../lib/config";
 import { describeTarget } from "../lib/session";
 import { useSignedIn } from "../lib/sessionContext";
-import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import AppHeader from "../components/AppHeader";
 import LogoutButton from "../components/LogoutButton";
@@ -72,7 +70,7 @@ export default function CompaniesPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; code: string; appOnly?: boolean } | null>(null);
+  const [invite, setInvite] = useState<{ ns: NamespaceRow; teams: string[]; appOnly: boolean } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
@@ -162,16 +160,15 @@ export default function CompaniesPage() {
     [client, source, passkey, after, navigate],
   );
 
+  // The team is read as the dialog opens: an org that keeps its apps apart
+  // gives this app only, and one with no team for it is refused, not widened.
   const inviteTo = useCallback(
     (ns: NamespaceRow) => {
-      void run(`invite:${ns.namespaceId}`, async (onStatus) => {
-        onStatus("Approve the invitation with your passkey…");
-        const { token, appOnly } = await mintInvite(client, ns.namespaceId, passkey(), source);
-        setInvite({ id: ns.namespaceId, code: inviteLink(token, null, ns.namespaceId), appOnly });
-        showToast(`Invite ready for “${ns.name}”.`);
+      void run(`invite:${ns.namespaceId}`, async () => {
+        setInvite({ ns, ...(await appInviteTeams(client, ns.namespaceId, source)) });
       });
     },
-    [client, passkey, source, run, showToast],
+    [client, source, run],
   );
 
   const removeSpace = useCallback(
@@ -219,6 +216,8 @@ export default function CompaniesPage() {
       .then(() => showToast("Company ID copied."))
       .catch(() => showToast("Could not reach the clipboard.", "error"));
   };
+
+  const inviteOrg = invite?.ns ?? namespaces[0];
 
   return (
     <div className={styles.root}>
@@ -453,13 +452,25 @@ export default function CompaniesPage() {
         </div>
       </dialog>
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ""}
-        scope={`Whole company · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
-        appOnly={invite?.appOnly === true}
-        onClose={() => setInvite(null)}
-      />
+      {/* Mounted for the page's life: a full-page approval returns here and the dialog finishes it. */}
+      {inviteOrg && (
+        <InviteDialog
+          client={client}
+          passkey={passkey()}
+          open={!!invite}
+          onClose={() => setInvite(null)}
+          org={inviteOrg.namespaceId}
+          teams={invite?.teams}
+          appName={PRODUCT_NAME}
+          linkBase={inviteBase(inviteOrg.namespaceId)}
+          labels={{
+            noun: "company",
+            ...(invite?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+            title: `Invite people to ${inviteOrg.name}`,
+            subtitle: "Joining gives access to the company and every audience in it. Choose what they can do.",
+          }}
+        />
+      )}
 
       <CreateWorkspaceDialog
         client={client}

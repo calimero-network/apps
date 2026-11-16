@@ -78,53 +78,6 @@
   color: var(--text-dim);
 }
 
-.fieldLabel {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.linkField {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0 12px;
-  min-height: 38px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-}
-
-.linkIcon {
-  flex: none;
-  color: var(--text-faint);
-}
-
-/* ONE line, ellipsised: the link is ~380 characters of base58 and wrapping it
-   buried the Copy button. `data-full="true"` unwraps it for a blocked
-   clipboard, where selecting by hand is the only way left. */
-.link {
-  display: block;
-  flex: 1;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-dim);
-  padding: 9px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: all;
-}
-
-.link[data-full="true"] {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  color: var(--text);
-}
-
 .primary {
   display: inline-flex;
   align-items: center;
@@ -151,14 +104,4 @@
 .close:focus-visible {
   outline: none;
   box-shadow: var(--ring);
-}
-
-.hint {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-dim);
-  background: var(--bg-subtle);
-  border-radius: var(--radius);
 }

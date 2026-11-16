@@ -8,6 +8,7 @@ import App from "./App";
 import { APP_NAME } from "./lib/config";
 import { SessionProvider } from "./lib/sessionContext";
 import type { SessionDeps } from "./lib/session";
+import { getActiveNamespaceId, getContextId } from "./lib/active";
 import { dropInvite, migrateLegacyInvite, pendingInvite } from "./lib/companies";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
@@ -20,6 +21,27 @@ function hold(legacy: string) {
 // An invitation link, end to end on the real passkey session over a fake
 // client: the page a signed-out visitor sees, the join prompt the sign-in
 // leads to, and the cases where joining must not (or cannot) happen.
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    AcceptInviteDialog: (p: { open: boolean; token: string; org?: string; appName?: string; labels?: { noun?: string; body?: string }; onClose: () => void; onError?: (e: unknown) => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("p", { "data-testid": "accept-token" }, `${p.token} ${p.appName}`),
+            createElement("p", { "data-testid": "accept-extra" }, JSON.stringify({ org: p.org, noun: p.labels?.noun, body: p.labels?.body })),
+            createElement("button", { "data-testid": "accept-join", onClick: () => p.onJoined({ org: "org-2" }) }, "join"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
+            createElement("button", { "data-testid": "accept-spent", onClick: () => p.onError?.(new CalimeroError(400, "REJECTED", "unknown invite")) }, "spent"),
+            createElement("button", { "data-testid": "accept-offline", onClick: () => p.onError?.(new CalimeroError(503, "UNAVAILABLE", "node unreachable")) }, "offline"),
+          )
+        : null,
+  };
+});
 
 vi.mock("./pages/landing/LandingPage", () => ({ default: () => <p>landing</p> }));
 vi.mock("./pages/CompaniesPage", () => ({ default: () => <p>companies</p> }));
@@ -114,8 +136,8 @@ describe("an invitation link", () => {
     const client = fakeClient();
     boot(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1 Mero Updates");
+    fireEvent.click(screen.getByTestId("accept-join"));
     // Joined: the company has no name for you yet, so it asks, once.
     const input = (await screen.findByTestId("invitation-name-input")) as HTMLInputElement;
     expect(screen.queryByText("audiences")).toBeNull();
@@ -136,7 +158,7 @@ describe("an invitation link", () => {
     }) as never);
     boot(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
+    fireEvent.click(await screen.findByTestId("accept-join"));
     expect(await screen.findByText("audiences")).toBeInTheDocument();
     expect(screen.queryByTestId("invitation-name")).toBeNull();
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
@@ -152,46 +174,59 @@ describe("an invitation link", () => {
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
     expect(await screen.findByText("audiences")).toBeInTheDocument();
     expect(client.signIn).not.toHaveBeenCalled();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId("invitation-dialog")).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
     expect(pendingInvite()).toBeNull();
   });
 
-  it("does not redeem an invite into a company the account is already in", async () => {
+  it("hands the dialog the invite's company, so a member is told so; continuing opens the company", async () => {
     remember();
     hold(JSON.stringify({ token: "tok-1", audience: null, org: "org-1" }));
     const client = fakeClient();
+    client.getOrg.mockImplementation(async () => ({ name: "Acme", members: { [ME]: "owner" }, memberMetadata: { [ME]: { name: "Ana" } } }) as never);
     boot(client);
-    expect(await screen.findByTestId("invitation-member")).toBeInTheDocument();
-    expect(screen.getByText("You're already in this company")).toBeInTheDocument();
+    const extra = JSON.parse((await screen.findByTestId("accept-extra")).textContent ?? "null");
+    expect(extra).toMatchObject({ org: "org-1", noun: "company" });
     expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("accept-join"));
+    expect(await screen.findByText("audiences")).toBeInTheDocument();
     expect(pendingInvite()).toBeNull();
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
+  it("drops a stored token the node says is spent, and keeps it for a network failure", async () => {
     remember();
     hold(JSON.stringify({ token: "tok-1", audience: null }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
-    boot(client);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect(await screen.findByTestId("invitation-error")).toHaveTextContent(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
-    expect(pendingInvite()).toBeNull();
-  });
-
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
-    remember();
-    hold(JSON.stringify({ token: "tok-1", audience: null }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    boot(client);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    boot(fakeClient());
+    fireEvent.click(await screen.findByTestId("accept-offline"));
     expect(pendingInvite()?.token).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-spent"));
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it("Close on the join dialog drops the invite and joins nothing", async () => {
+    remember();
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
+    boot(fakeClient());
+    fireEvent.click(await screen.findByTestId("accept-close"));
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it("an audience link opens that audience once joined", async () => {
+    remember();
+    hold(JSON.stringify({ token: "tok-1", audience: "aud-9" }));
+    const client = fakeClient();
+    client.getOrg.mockImplementation(async () => ({ name: "Acme", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ana" } } }) as never);
+    boot(client);
+    fireEvent.click(await screen.findByTestId("accept-join"));
+    await waitFor(() => expect([getContextId(), getActiveNamespaceId()]).toEqual(["aud-9", "org-2"]));
+  });
+
+  it("takes an invitation link the shared dialog made (token in the fragment) off the address bar", async () => {
+    const { captureInvite } = await import("./lib/companies");
+    window.history.replaceState(null, "", "/?org=org-3&audience=aud-9#invite=tok-3");
+    captureInvite();
+    expect(pendingInvite()).toEqual({ token: "tok-3", audience: "aud-9", org: "org-3" });
+    expect(window.location.search + window.location.hash).toBe("");
   });
 });

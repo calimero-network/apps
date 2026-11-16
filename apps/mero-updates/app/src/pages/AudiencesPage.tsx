@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { InviteDialog } from "@calimero-network/mero-react";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/active";
 import {
   createAudience,
-  inviteLink,
+  inviteBase,
   isAdminRole,
   listAudiences,
-  mintInvite,
   PRODUCT_NAME,
   readCompany,
   removeFromCompany,
   type AudienceRow,
 } from "../lib/companies";
 import { useSignedIn } from "../lib/sessionContext";
-import InviteModal from "../components/InviteModal";
 import CompanyPeople, { type CompanyPerson } from "../components/CompanyPeople";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import AppHeader from "../components/AppHeader";
@@ -78,13 +77,8 @@ export default function AudiencesPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{
-    key: string;
-    code: string;
-    scope: string;
-    hint: React.ReactNode;
-    appOnly?: boolean;
-  } | null>(null);
+  /** The invite dialog's target: the audience its link lands in, `null` for the company list. */
+  const [invite, setInvite] = useState<{ audience: AudienceRow | null; teams: string[]; appOnly: boolean } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AudienceRow | null>(null);
@@ -165,51 +159,16 @@ export default function AudiencesPage() {
   /** Enter an audience: every member of the company reaches every audience in it. */
   const enter = useCallback((audience: AudienceRow) => open(audience.contextId, audience.name), [open]);
 
-  const inviteToAudience = useCallback(
-    (audience: AudienceRow) => {
-      void run(`invite:${audience.contextId}`, async (onStatus) => {
-        onStatus("Approve the invitation with your passkey…");
-        const { token, appOnly } = await mintInvite(client, namespaceId, passkey(), source);
-        setInvite({
-          appOnly,
-          key: `audience:${audience.contextId}`,
-          code: inviteLink(token, audience.contextId, namespaceId),
-          scope: `Opens ${audience.name}`,
-          hint: (
-            <>
-              Opening the link puts them straight into <strong>{audience.name}</strong>. Note what it
-              grants: joining <strong>{nsName}</strong>, which makes every audience in it reachable —
-              this is <em>not</em> narrower than the company link. It just lands them in this audience
-              instead of the list.
-            </>
-          ),
-        });
-        showToast(`Invite ready for “${audience.name}”.`);
+  // The team is read as the dialog opens: an org that keeps its apps apart
+  // gives this app only, and one with no team for it is refused, not widened.
+  const openInvite = useCallback(
+    (audience: AudienceRow | null) => {
+      void run(audience ? `invite:${audience.contextId}` : "invite:namespace", async () => {
+        setInvite({ audience, ...(await appInviteTeams(client, namespaceId, source)) });
       });
     },
-    [client, namespaceId, nsName, passkey, source, run, showToast],
+    [client, namespaceId, source, run],
   );
-
-  const inviteToNamespace = useCallback(() => {
-    void run("invite:namespace", async (onStatus) => {
-      onStatus("Approve the invitation with your passkey…");
-      const { token, appOnly } = await mintInvite(client, namespaceId, passkey(), source);
-      setInvite({
-        appOnly,
-        key: "namespace",
-        code: inviteLink(token, null, namespaceId),
-        scope: `Whole company · ${nsName}`,
-        hint: (
-          <>
-            This link joins <strong>{nsName}</strong> and every audience in it, including audiences
-            made later. It lands them on the audience list — to drop someone straight into one
-            audience, use <strong>Invite</strong> on that audience.
-          </>
-        ),
-      });
-      showToast(`Invite ready for “${nsName}”.`);
-    });
-  }, [client, namespaceId, nsName, passkey, source, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -292,7 +251,7 @@ export default function AudiencesPage() {
           </div>
           <button
             className={`${styles.btn} ${styles.btnSecondary}`}
-            onClick={inviteToNamespace}
+            onClick={() => openInvite(null)}
             disabled={pending === "invite:namespace"}
             data-testid="invite-space"
           >
@@ -432,7 +391,7 @@ export default function AudiencesPage() {
                       data-testid="invite-audience"
                       onClick={() => {
                         setMenuOpenId(null);
-                        inviteToAudience(audience);
+                        openInvite(audience);
                       }}
                     >
                       <UserPlusIcon size={15} />
@@ -530,13 +489,24 @@ export default function AudiencesPage() {
         </div>
       </dialog>
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ""}
-        scope={invite?.scope ?? ""}
-        appOnly={invite?.appOnly === true}
-        onClose={() => setInvite(null)}
-      />
+      {namespaceId && (
+        <InviteDialog
+          client={client}
+          passkey={passkey()}
+          open={!!invite}
+          onClose={() => setInvite(null)}
+          org={namespaceId}
+          teams={invite?.teams}
+          appName={PRODUCT_NAME}
+          linkBase={inviteBase(namespaceId, invite?.audience?.contextId)}
+          labels={{
+            noun: "company",
+            ...(invite?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+            title: invite?.audience ? `Invite to ${invite.audience.name}` : `Invite people to ${nsName}`,
+            subtitle: `Joining gives access to ${nsName} and every audience in it${invite?.audience ? ", and opens this audience" : ""}. Choose what they can do.`,
+          }}
+        />
+      )}
     </div>
   );
 }
