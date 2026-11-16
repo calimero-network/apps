@@ -4,10 +4,11 @@ import { ConsentPopupReturn, CreateWorkspaceDialog, type CreateWorkspaceDialogPr
 import { resolveSource, type AppSource } from "@calimero-apps/connect";
 import { reviewRelease } from "@calimero-apps/passkey";
 
-import { PACKAGE } from "../net/blocks";
+import { PACKAGE, toSeed } from "../net/blocks";
 import { knownName } from "../net/playerName";
 
 const LABELS = {
+  noun: "world",
   title: "Create world",
   subtitle: "Name your world, and choose the name other players see.",
   nameLabel: "World name",
@@ -32,12 +33,14 @@ export function mountCreateWorld(
   client: CalimeroClient & Parameters<typeof resolveSource>[0],
   passkey: PasskeyProvider,
   base: AppSource,
-  onCreated: CreateWorkspaceDialogProps["onCreated"],
+  defaultSeed: number,
+  onCreated: (created: Parameters<CreateWorkspaceDialogProps["onCreated"]>[0], seed: number) => void,
 ): CreateWorldDialog {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   let isOpen = false;
+  let seed = String(defaultSeed);
   let source = base;
   let pending = typeof base !== "string" && !base.version;
   let live = true;
@@ -56,9 +59,24 @@ export function mountCreateWorld(
         onCreated={(created) => {
           isOpen = false;
           render();
-          onCreated(created);
+          onCreated(created, toSeed(seed, defaultSeed));
         }}
         labels={LABELS}
+        fields={
+          <div className="mero-cw-field">
+            <label htmlFor="world-seed">Seed</label>
+            <input
+              id="world-seed"
+              inputMode="numeric"
+              value={seed}
+              onChange={(e) => {
+                seed = e.target.value;
+                render();
+              }}
+            />
+          </div>
+        }
+        fieldsValid={seed.trim() !== "" && Number.isFinite(Number(seed))}
       />,
     );
   render();

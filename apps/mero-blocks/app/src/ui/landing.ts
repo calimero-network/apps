@@ -617,10 +617,10 @@ export class Landing {
       });
     });
     // A refused create says so here, with the node's own words.
-    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) => {
+    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }, seed: number) => {
       errEl.textContent = "";
       try {
-        const made = await createWorld(phase.client, dialog.source(), name, defaults.seed, orgId);
+        const made = await createWorld(phase.client, dialog.source(), name, seed, orgId);
         phase.sessions.sync(phase.client);
         // The world's org holds the player's name from here on. Best effort:
         // a refused write leaves it unset, and the next entry adopts the name
@@ -632,7 +632,7 @@ export class Landing {
         errEl.textContent = `Could not create world: ${describeError(e)}`;
       }
     };
-    const dialog = mountCreateWorld(phase.client, this.deps.passkey(), source, (c) => void created(c));
+    const dialog = mountCreateWorld(phase.client, this.deps.passkey(), source, defaults.seed, (c, seed) => void created(c, seed));
     this.createDialog = dialog;
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () => dialog.open());
 

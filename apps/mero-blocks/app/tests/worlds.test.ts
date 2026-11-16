@@ -40,6 +40,18 @@ const app = (appId: string, name: string, org: string | null): AppInfo => ({
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 
+import { toSeed } from "../src/net/blocks";
+
+describe("toSeed", () => {
+  it("keeps a seed the contract takes (a u32), else the fallback", () => {
+    expect(toSeed("42", 1337)).toBe(42);
+    expect(toSeed("-42", 1337)).toBe(42);
+    expect(toSeed("abc", 1337)).toBe(1337);
+    expect(toSeed("0", 1337)).toBe(1337);
+    expect(toSeed(2 ** 32 + 5, 1)).toBe(5);
+  });
+});
+
 describe("worlds are app instances", () => {
   it("come from the dev bundle, else the package", () => {
     expect(worldSource({ VITE_CALIMERO_BUNDLE: "abc" })).toBe("abc");

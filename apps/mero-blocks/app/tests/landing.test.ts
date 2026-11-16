@@ -15,11 +15,11 @@ vi.mock("../src/ui/createWorld", async () => {
   const actual = await vi.importActual<typeof import("../src/ui/createWorld")>("../src/ui/createWorld");
   return {
     ...actual,
-    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, onCreated: (c: unknown) => void) => ({
+    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, _seed: number, onCreated: (c: unknown, seed: number) => void) => ({
       open: () => {
         const done = document.createElement("button");
         done.dataset.testid = "create-done";
-        done.onclick = () => onCreated({ orgId: "org-new", name: "castle", selfName: "Alex" });
+        done.onclick = () => onCreated({ orgId: "org-new", name: "castle", selfName: "Alex" }, 42);
         document.body.appendChild(done);
       },
       source: () => base,
@@ -310,7 +310,7 @@ describe("launcher", () => {
     expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("castle", "bundle-1", {
       org: "org-new",
-      initArgs: expect.objectContaining({ name: "castle", seed: "1337" }),
+      initArgs: expect.objectContaining({ name: "castle", seed: "42" }),
     });
     expect(entered.world).toEqual({ appId: "app-new", name: "castle", org: "org-new" });
   });
