@@ -65,27 +65,28 @@ describe('a new workspace gets Docs\' own app team', () => {
 });
 
 describe('invites name Docs\' team', () => {
-  it('standalone: the workspace invite names it, not app-only', async () => {
+  it('standalone: the workspace invite names it', async () => {
     const { cluster, admin, org } = await workspace();
-    expect((await admin.createNamespaceInvitation(org)).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
+    expect(await admin.inviteTarget(org)).toEqual({ org, team: null, teams: [cluster.teamOf(org, PKG)], appOnly: false });
   });
 
-  it('apps kept apart: Docs only; a folder invite names Docs\' team and the folder\'s', async () => {
+  it('a folder invite names Docs\' team and the folder\'s', async () => {
     const { cluster, admin, org } = await workspace();
     const { groupId } = await admin.createGroupInNamespace(org, { name: 'Eng', parentId: org, visibility: 'restricted' });
     cluster.keepAppsApart(org);
-    expect((await admin.createNamespaceInvitation(org)).appOnly).toBe(true);
-    const folder = await admin.createGroupInvitation(groupId);
-    expect(folder).toMatchObject({ namespaceId: org, appOnly: true });
-    expect(cluster.callsOf('invite')[1]![3]).toEqual([cluster.teamOf(org, PKG), groupId]);
+    expect(await admin.inviteTarget(groupId)).toEqual({ org, team: groupId, teams: [cluster.teamOf(org, PKG), groupId], appOnly: true });
   });
 
   it('a legacy org: the org-wide invite, as before', async () => {
     const { cluster, admin } = docs();
     const org = cluster.addOrg({ mode: 'legacy' });
-    expect(await admin.createNamespaceInvitation(org)).toEqual({ token: expect.any(String), appOnly: false });
-    expect(cluster.callsOf('invite')[0]![3]).toBeUndefined();
+    expect(await admin.inviteTarget(org)).toEqual({ org, team: null, teams: [], appOnly: false });
+  });
+
+  it('refuses an org that keeps its apps apart and has no team for Docs, rather than widening to the org', async () => {
+    const { cluster, admin } = docs();
+    const org = cluster.addOrg({ mode: 'shared' });
+    await expect(admin.inviteTarget(org)).rejects.toThrow(/has not set up/);
   });
 });
 

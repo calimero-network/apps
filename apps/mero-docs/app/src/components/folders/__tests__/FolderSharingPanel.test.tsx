@@ -89,8 +89,9 @@ vi.mock('@/hooks/useFolderRole', () => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock('@/hooks/useNamespaceInvitation', () => ({
-  useCreateFolderInvite: () => ({ create: vi.fn() }),
+vi.mock('@/components/workspace/InviteDialog', () => ({
+  InviteDialog: (p: { groupId: string; open: boolean; labels: { title?: string } }) =>
+    p.open ? <div role="dialog" aria-label={`${p.labels.title}: ${p.groupId}`} /> : null,
 }));
 vi.mock('@/hooks/useContextEvents', () => ({ useContextEvents: vi.fn() }));
 vi.mock('@/components/ui/confirm-dialog', () => ({
@@ -148,6 +149,15 @@ describe('FolderSharingPanel read-only rows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     expect(screen.getByText('Carol')).toBeTruthy();
     expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+});
+
+describe('FolderSharingPanel invite link', () => {
+  it('opens the shared invite dialog for this folder', () => {
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /invite to this folder only/i }));
+    expect(screen.getByRole('dialog', { name: 'Invite to folder: f1' })).toBeTruthy();
   });
 });
 

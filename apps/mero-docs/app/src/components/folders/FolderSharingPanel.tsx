@@ -32,7 +32,6 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useMemberName } from '@/hooks/useMemberName';
-import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
@@ -62,10 +61,10 @@ export function FolderSharingPanel({ folderId }: Props) {
     rootGroupId,
   } = useDriveWorkspace();
   const { admin } = useMero();
+  const { name: myName } = useMemberName(namespaceId, selfIdentity ?? '');
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, refetch } =
     useFolderMembership(folderId);
-  const { create: createFolderInvite } = useCreateFolderInvite();
   // Live-refresh members when remote admin ops land for this folder
   // (add/remove/role-change); roles are core's, read per row.
   const onFolderEvent = useCallback(() => {
@@ -449,22 +448,17 @@ export function FolderSharingPanel({ folderId }: Props) {
         </div>
       )}
 
-      {inviteLinkOpen && (
-        <InviteDialog
-          title="Invite to folder"
-          description={
-            <>
-              Share this link to add someone to{' '}
-              <span className="font-medium text-foreground">{folderAlias}</span>
-              {' '}only. They won't gain access to the rest of the
-              workspace.
-            </>
-          }
-          footnote="Scope: this folder only. Anyone with this link and a Calimero account can join."
-          onCreate={() => createFolderInvite(folderId)}
-          onClose={() => setInviteLinkOpen(false)}
-        />
-      )}
+      <InviteDialog
+        groupId={folderId}
+        inviterName={myName ?? undefined}
+        labels={{
+          noun: 'folder',
+          title: 'Invite to folder',
+          subtitle: `Choose what the people you invite can do in ${folderAlias}. They won't gain access to the rest of the workspace.`,
+        }}
+        open={inviteLinkOpen}
+        onClose={() => setInviteLinkOpen(false)}
+      />
     </section>
   );
 }

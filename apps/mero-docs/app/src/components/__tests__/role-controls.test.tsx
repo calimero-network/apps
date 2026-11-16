@@ -85,8 +85,9 @@ vi.mock('@/hooks/useFolderMembership', () => ({
 vi.mock('@/hooks/useFolderRole', () => ({
   useFolderRoles: () => ({ entries: [], refetch: vi.fn() }),
 }));
-vi.mock('@/hooks/useNamespaceInvitation', () => ({
-  useCreateFolderInvite: () => ({ create: vi.fn() }),
+vi.mock('@/components/workspace/InviteDialog', () => ({
+  InviteDialog: (p: { groupId: string; open: boolean; labels: { title?: string } }) =>
+    p.open ? <div role="dialog" aria-label={`${p.labels.title}: ${p.groupId}`} /> : null,
 }));
 
 beforeEach(() => {
