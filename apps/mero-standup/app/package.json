@@ -20,6 +20,7 @@
     "@calimero-apps/names": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-react": "catalog:component",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

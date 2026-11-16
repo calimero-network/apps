@@ -10,7 +10,7 @@ import {
   type KeyValueStorage,
 } from "@calimero-apps/connect";
 import { decideSelfName, lastUsedName, orgMemberName, setOrgName } from "@calimero-apps/names";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
@@ -242,6 +242,7 @@ export function App({
           client={session.client}
           accountId={session.accountId}
           source={source}
+          passkey={deps.passkey}
           onOpen={open}
           after={after}
         />
@@ -311,7 +312,10 @@ function Shell({ children, left, right }: { children: ReactNode; left?: ReactNod
           <span className="brand-name">Standup</span>
           {left}
         </div>
-        <div className="topbar-right">{right}</div>
+        <div className="topbar-right">
+          <NodeShield compactBelow={720} />
+          {right}
+        </div>
       </header>
       {children}
     </div>
