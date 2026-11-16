@@ -10,7 +10,7 @@ import {
 // The hook publishes through mero-react's `useEphemeral`. Record which context
 // each publish went to, so a slice published into the context being *left* is
 // distinguishable from one published into the context being entered.
-const publishes: Array<{ ctx: string | null; slice: Record<string, unknown> }> = [];
+const publishes: Array<{ ctx: string | null; slice: Record<string, unknown> | null }> = [];
 
 let peersFixture = new Map<string, Record<string, unknown>>();
 
@@ -22,6 +22,7 @@ vi.mock("../api/presence", async (importOriginal) => ({
     error: null,
     setPresence: (slice: Record<string, unknown>) =>
       publishes.push({ ctx: contextId, slice }),
+    clearPresence: () => publishes.push({ ctx: contextId, slice: null }),
   }),
 }));
 
@@ -63,7 +64,12 @@ describe("useEphemeralPresence — leaving a context while typing", () => {
   // switch cancelled the timer that would have published typing:false, and the
   // node re-publishes every locally-set slice every ~2.5s, so the TTL never
   // expires the stale one.
-  it("publishes typing:false into the context being left", () => {
+  it("publishes nothing on entering a context until the person types", () => {
+    renderHook(() => useEphemeralPresence("ctx-a"));
+    expect(publishes).toEqual([]);
+  });
+
+  it("takes its entry back in the context being left", () => {
     const { result, rerender } = renderHook(
       ({ ctx }: { ctx: string }) => useEphemeralPresence(ctx),
       { initialProps: { ctx: "ctx-a" } },
@@ -73,15 +79,13 @@ describe("useEphemeralPresence — leaving a context while typing", () => {
       result.current.noteTyping();
     });
     expect(
-      publishes.some((p) => p.ctx === "ctx-a" && p.slice.typing === true),
+      publishes.some((p) => p.ctx === "ctx-a" && p.slice?.typing === true),
     ).toBe(true);
 
     publishes.length = 0;
     rerender({ ctx: "ctx-b" });
 
-    expect(
-      publishes.some((p) => p.ctx === "ctx-a" && p.slice.typing === false),
-    ).toBe(true);
+    expect(publishes).toEqual([{ ctx: "ctx-a", slice: null }]);
   });
 
   it("does not announce typing into the context being entered", () => {
@@ -96,7 +100,7 @@ describe("useEphemeralPresence — leaving a context while typing", () => {
     rerender({ ctx: "ctx-b" });
 
     expect(
-      publishes.some((p) => p.ctx === "ctx-b" && p.slice.typing === true),
+      publishes.some((p) => p.ctx === "ctx-b" && p.slice?.typing === true),
     ).toBe(false);
   });
 });

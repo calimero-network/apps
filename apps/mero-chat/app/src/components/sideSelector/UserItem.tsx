@@ -6,7 +6,7 @@ import ConfirmPopup from "../popups/ConfirmPopup";
 import { getDmDisplayName } from "../../utils/dmContext";
 import { useResolvedName } from "../../repositories/names/useNames";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
-import { usePresence } from "../../hooks/usePresence";
+import { useWorkspaceOnline } from "../../hooks/usePresence";
 
 const UserListItem = styled.div<{
   $selected: boolean;
@@ -107,14 +107,8 @@ function UserItem({
   unread,
 }: UserItemProps) {
   const [isJoinOpen, setIsJoinOpen] = useState(false);
-  const myContextKey = dm.isJoined ? (dm.contextIdentity ?? "") : "";
-  const { isOnline, hasOtherOnline } = usePresence(
-    dm.isJoined ? dm.contextId : undefined,
-    dm.isJoined ? dm.contextIdentity : undefined,
-  );
-  // hasOtherOnline covers presence that has not named its sender yet.
-  const otherIsOnline =
-    isOnline(dm.otherIdentity) || (myContextKey ? hasOtherOnline(myContextKey) : false);
+  const online = useWorkspaceOnline();
+  const otherIsOnline = online.has(dm.otherIdentity);
 
   // Resolve from the account (the workspace's member metadata). Until the
   // repository has loaded, the name the DM list read with it.

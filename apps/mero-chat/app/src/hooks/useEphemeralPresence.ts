@@ -59,7 +59,7 @@ export interface UseEphemeralPresenceResult {
 }
 
 export function useEphemeralPresence(contextId: string | null): UseEphemeralPresenceResult {
-  const { peers, setPresence, error } = useEphemeral<PresenceSlice>(contextId);
+  const { peers, setPresence, clearPresence, error } = useEphemeral<PresenceSlice>(contextId);
   // Recompute the labels when names load.
   const [namesVersion, setNamesVersion] = useState(0);
   useEffect(() => nameRepository.subscribe(() => setNamesVersion((n) => n + 1)), []);
@@ -71,39 +71,31 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
   const claimingTyping = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // `setPresence` is rebound when the context changes, so the cleanup below
-  // must capture the publisher belonging to the context being LEFT — reading
-  // the current one would send the retraction to the context just entered.
-  const publishRef = useRef(setPresence);
-  publishRef.current = setPresence;
+  // `clearPresence` is rebound when the context changes, so the cleanup below
+  // must capture the one belonging to the context being LEFT — reading the
+  // current one would retract in the context just entered.
+  const clearRef = useRef(clearPresence);
+  clearRef.current = clearPresence;
 
-  // Announce ourselves on entering a context, and retract typing on the way
-  // out.
-  //
-  // Leaving needs an explicit retraction: the node re-publishes every
-  // locally-set slice on its own heartbeat (~2.5s) with a bumped seq, so a
-  // slice left saying `typing: true` is kept alive indefinitely rather than
-  // ageing out of the TTL. Walking away mid-word would otherwise show peers
-  // "X is typing…" forever.
+  // Nothing is published until the person types: an idle composer sends
+  // nothing (an entry is refreshed every few seconds while it stands, so
+  // announcing on entry cost a call every few seconds per open composer).
+  // Leaving mid-word takes the entry back.
   useEffect(() => {
     if (!contextId) return undefined;
-    const publish = publishRef.current;
+    const clear = clearRef.current;
     claimingTyping.current = false;
-    publish({ name: getMessengerDisplayName(), typing: false });
-
     return () => {
       if (idleTimer.current) {
         clearTimeout(idleTimer.current);
         idleTimer.current = null;
       }
-      // Only if we were mid-claim; an unconditional publish would resurrect a
-      // slice in a context we are no longer in.
       if (claimingTyping.current) {
         claimingTyping.current = false;
-        publish({ name: getMessengerDisplayName(), typing: false });
+        clear();
       }
     };
-  }, [contextId, setPresence]);
+  }, [contextId]);
 
   const clearTyping = useCallback(() => {
     if (idleTimer.current) {
@@ -112,8 +104,8 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
     }
     if (!claimingTyping.current) return;
     claimingTyping.current = false;
-    setPresence({ name: getMessengerDisplayName(), typing: false });
-  }, [setPresence]);
+    clearPresence();
+  }, [clearPresence]);
 
   const noteTyping = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);

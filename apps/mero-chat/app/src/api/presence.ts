@@ -6,14 +6,15 @@
  * `setPresence`.
  *
  * An entry the node has not had refreshed for 7 s is gone, so the current
- * slice is sent again every few seconds while the hook is mounted.
+ * slice is sent again every {@link HEARTBEAT_MS} while one is set, and not at
+ * all once it is cleared (`clearPresence`).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { presenceState, type CalimeroClient, type PresenceEntry } from "@calimero-network/mero-js";
 
 import { getAccountId, getClient } from "./calimero";
 
-const HEARTBEAT_MS = 3_000;
+export const HEARTBEAT_MS = 4_000;
 const RETRY_MS = 3_000;
 
 function encode(value: unknown): Uint8Array {
@@ -35,6 +36,8 @@ export function decodeState<T>(hex: string | null): T | null {
 export interface Ephemeral<T> {
   peers: Map<string, T>;
   setPresence: (value: T) => void;
+  /** Takes this client's entry back now and stops refreshing it. */
+  clearPresence: () => void;
   error: Error | null;
 }
 
@@ -73,7 +76,13 @@ export function useEphemeral<T>(app: string | null): Ephemeral<T> {
     [publish],
   );
 
-  // Heartbeat while mounted; retract on leave.
+  const clearPresence = useCallback(() => {
+    if (current.current === null) return;
+    current.current = null;
+    publish(null);
+  }, [publish]);
+
+  // Heartbeat while a slice is set; retract on leave.
   useEffect(() => {
     if (!app) return undefined;
     const timer = setInterval(() => {
@@ -127,5 +136,5 @@ export function useEphemeral<T>(app: string | null): Ephemeral<T> {
     return () => ctrl.abort();
   }, [app]);
 
-  return { peers, setPresence, error };
+  return { peers, setPresence, clearPresence, error };
 }

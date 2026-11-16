@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useEphemeral } from "../api/presence";
 
 interface UsePresenceResult {
@@ -61,4 +61,26 @@ export function usePresence(
   );
 
   return { isOnline, hasOtherOnline };
+}
+
+/**
+ * Who is online in the workspace: one presence channel for all of it, on the
+ * app every member is in (#general), instead of one per DM. This client
+ * announces itself there once and keeps the entry fresh; everyone else
+ * present is in `online` (accounts).
+ */
+const WorkspaceOnline = createContext<ReadonlySet<string>>(new Set());
+
+export function WorkspacePresenceProvider({ app, children }: { app: string | undefined; children: ReactNode }) {
+  const { peers, setPresence } = useEphemeral<Record<string, never>>(app ?? null);
+  useEffect(() => {
+    if (app) setPresence({});
+  }, [app, setPresence]);
+  const online = useMemo(() => new Set(peers.keys()), [peers]);
+  return createElement(WorkspaceOnline.Provider, { value: online }, children);
+}
+
+/** The accounts online in the workspace (not you). */
+export function useWorkspaceOnline(): ReadonlySet<string> {
+  return useContext(WorkspaceOnline);
 }

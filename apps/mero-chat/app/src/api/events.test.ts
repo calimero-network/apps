@@ -61,7 +61,7 @@ describe("useAppEvents", () => {
     const apps = ["open", "b", "c", "d", "e"];
     const { unmount } = renderHook(() => useAppEvents(apps, (e) => seen.push(e)));
     await waitFor(() => expect(events).toHaveBeenCalledTimes(MAX_STREAMS));
-    expect(events.mock.calls.map((c) => c[0])).toEqual(["open", "b", "c"]);
+    expect(events.mock.calls.map((c) => c[0])).toEqual(apps.slice(0, MAX_STREAMS));
     // The others are read once for their head (no event yet).
     await waitFor(() => expect(view.mock.calls.map((c) => c[0])).toContain("e"));
     expect(seen).toEqual([]);

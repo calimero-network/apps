@@ -12,7 +12,7 @@ vi.mock("@calimero-network/mero-ui", () => ({
 // contract-polling hook degraded silently without a provider, which is why
 // this mock wasn't needed before.)
 vi.mock("../../hooks/usePresence", () => ({
-  usePresence: () => ({ isOnline: () => false, hasOtherOnline: () => false }),
+  useWorkspaceOnline: () => new Set<string>(),
 }));
 
 vi.mock("../IdentityAvatar", () => ({

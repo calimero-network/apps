@@ -9,7 +9,7 @@
  * reports the reconnect (`connectEvents`), on which the screens re-read what
  * is on screen.
  *
- * At most {@link MAX_STREAMS} streams are open at once, for the first apps
+ * At most {@link MAX_STREAMS} event streams are open at once, for the first apps
  * in the list (the screens put the open conversation first). A browser keeps
  * six connections to a node over HTTP/1.1, as a local node is reached, and an
  * open stream holds one: past that, every other call waits behind them. The
@@ -36,8 +36,12 @@ export interface AppEvent {
 }
 
 const RETRY_MS = 2_000;
-/** Open streams at most: three of a browser's six connections to a node stay free for calls. */
-export const MAX_STREAMS = 3;
+/**
+ * Open event streams at most. With the workspace's presence stream and the open
+ * conversation's, at least two of a browser's six connections to a node stay
+ * free for calls.
+ */
+export const MAX_STREAMS = 2;
 /** How often a conversation without a stream is checked for new messages. */
 export const POLL_MS = 15_000;
 

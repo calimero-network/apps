@@ -78,6 +78,7 @@ import type { MessageLink } from "../../utils/permalink";
 import { nodeBasename } from "../../utils/servedByNode";
 import ChatAccessGate from "./ChatAccessGate";
 import { generalChannel, landed, wantsGeneral } from "../../utils/landing";
+import { WorkspacePresenceProvider } from "../../hooks/usePresence";
 import { GENERAL_CHANNEL } from "../../utils/createChannel";
 
 /**
@@ -1319,6 +1320,7 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
   );
 
   return (
+    <WorkspacePresenceProvider app={generalChannel(groupContextsHook.channels)?.contextId}>
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
       setIsOpenSearchChannel={setIsOpenSearchChannel}
@@ -1376,5 +1378,6 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
       onClearSearch={handleClearSearch}
       onSearchResultClick={handleResultClick}
     />
+    </WorkspacePresenceProvider>
   );
 }
