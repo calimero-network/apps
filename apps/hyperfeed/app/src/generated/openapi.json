@@ -8654,7 +8654,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "hyperfeed",
     "version": "0.0.0"
   },
@@ -8772,7 +8772,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every app's actions, newest first: what your agent learned for each\napp version, and whether you approved it. An app's newest approved set\nis the one in force."
       }
     },
     "/apps/{app}/methods/addAgentAccount": {
@@ -8838,7 +8839,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add an agent with an account of its own (a cloud agent, say) under\n`name`, the name it reports in with. From then on it works your feed as\nyour agent does, speaking only as `name`; what decides for you stays\nyours. Adding it again renames it. It must also be a member of this\nfeed's context: invite it there as you would anyone."
       }
     },
     "/apps/{app}/methods/addAgentRule": {
@@ -8904,7 +8906,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a rule for one agent only: it keeps it after your general rules,\nwhich every agent keeps. Only you add rules; the same rule twice for\nthe same agent is kept once."
       }
     },
     "/apps/{app}/methods/addLink": {
@@ -8970,7 +8973,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Link a thing in another app to the task in `chain`: `subject` as\n[`subject_key`] makes it, a `label` for its chip, `by` you or your\nagent. What teammates do there joins the task from now on. Adding one\nagain relabels it; you adding one you took off brings it back."
       }
     },
     "/apps/{app}/methods/addPushDevice": {
@@ -9036,7 +9040,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A phone (or any browser) to push to: its push subscription, a name,\nand `quiet` to say only \"Something needs you\". Owner only; adding one\nagain updates it. At most [`MAX_PUSH_DEVICES`]; the oldest makes room."
       }
     },
     "/apps/{app}/methods/addRule": {
@@ -9102,7 +9107,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a standing rule: one short line your agent keeps to on every turn.\nOnly you add rules; the same rule twice is kept once."
       }
     },
     "/apps/{app}/methods/addWatch": {
@@ -9168,7 +9174,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set a watch: when its condition is met (a PR's checks green or red, a\nPR merged, a branch's CI green or red), its action runs once (merge\nthe PR, start an agent turn with `text`, or tell you), reported in its\nchain. Your agent's runtime polls it; the same watch twice is kept once."
       }
     },
     "/apps/{app}/methods/agentAck": {
@@ -9234,7 +9241,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent takes up one of your messages (`thinking`), or gives up on it\n(`failed`, with why). Taking it up is how you know an agent is there."
       }
     },
     "/apps/{app}/methods/agentAsk": {
@@ -9300,7 +9308,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "[`Self::agent_say`] that leaves something to you: a question to\n`reply` to, or options to `choose` from. The message needs you, in To\ndo, until you say something in its chain; your words are its answer.\nUse it whenever the work is not finished without you, so a chain is\nonly done when it is.\n\nTakes a `headline` as [`Self::agent_say`] does."
       }
     },
     "/apps/{app}/methods/agentProgress": {
@@ -9366,7 +9375,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent says what it is doing on one of your messages it has taken\nup (`thinking`): \"Running the tests\", \"Editing ChatView.tsx\". Each call\nreplaces the last, so you see its latest step and nothing piles up."
       }
     },
     "/apps/{app}/methods/agentReach": {
@@ -9432,7 +9442,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "An agent saying what it can reach: one line per agent profile it runs.\nShown to you in Controls beside what you set with `set_access`."
       }
     },
     "/apps/{app}/methods/agentSay": {
@@ -9498,7 +9509,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent says something in a chain: an answer to one of your\nmessages (`reply_to`, which marks it answered), or, with `reply_to`\nempty, a note of its own in a chain that exists.\n\nA long answer takes a `headline`: one line of at most 80 characters,\nwhich the feed row shows, with `text` (up to 32 KB) behind \"more\" and\nin full in the chat. Without one, `text` keeps to 2000 bytes. Older\nagents omit it."
       }
     },
     "/apps/{app}/methods/agentSeen": {
@@ -9564,7 +9576,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "An agent saying it is running. The feed shows it as live while it\nkeeps reporting; mero-bot calls this every half minute."
       }
     },
     "/apps/{app}/methods/agentWork": {
@@ -9630,7 +9643,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent reports its turn on one of your messages: every step so far\n(each with its own `id`, a `title` in words, a `status` of `running`,\n`waiting`, `done` or `failed`, and when it started) and the answer it\nhas written so far as `draft`. Each call replaces the last, so the\nturn never adds rows: send it whenever a step starts or ends, and\nevery few seconds while the answer is being written. The steps stay\non the message after the turn; the draft shows only while it is\n`thinking`."
       }
     },
     "/apps/{app}/methods/answerAsk": {
@@ -9696,7 +9710,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Answer one question your agent asked, from its buttons: `text` is the\noption you picked, or your reply. It is your next message in the\nquestion's chain, and goes to your agent like any other.\n\nA question a newer one replaced can still be answered (a screen that\nhad not caught up yet, another device): it is marked answered, the\nnewer question stays open, and your message carries\n`answers_superseded`, so your agent confirms against where things\nstand now before acting on it."
       }
     },
     "/apps/{app}/methods/answerNotification": {
@@ -9762,7 +9777,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Answer a notification from the feed: the reply to send, the option you\npicked, or `\"\"` to confirm. Your agent carries it out in the source app\nand reports with [`Hyperfeed::complete_answer`]. A failed delivery can be\nanswered again."
       }
     },
     "/apps/{app}/methods/approveRule": {
@@ -9828,7 +9844,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approve a rule your agent suggested: it becomes one of your rules,\nadded by you."
       }
     },
     "/apps/{app}/methods/archive": {
@@ -9894,7 +9911,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Pause the agent: every write it wants to make becomes a proposal.\nPut chains away: each leaves the feed until something new happens in\nit, or until `until` (ms; 0 = no return time) for \"later\". Returns how\nmany were put away."
       }
     },
     "/apps/{app}/methods/autoruns": {
@@ -9960,7 +9978,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every proposal's default, soonest first."
       }
     },
     "/apps/{app}/methods/cancelWatch": {
@@ -10026,7 +10045,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Cancel a watch still watching, with an optional note why. A watch that\nalready fired cannot be called back."
       }
     },
     "/apps/{app}/methods/chain": {
@@ -10092,7 +10112,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every row in a chain, oldest first: the whole flow, muted apps included."
       }
     },
     "/apps/{app}/methods/chainLease": {
@@ -10158,7 +10179,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Who holds `chain` right now: a lease that has not run out, or none."
       }
     },
     "/apps/{app}/methods/checkAction": {
@@ -10224,7 +10246,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "What your rules say about an action before the agent takes it. Name\nthe app `method` it calls: once you approved the app's actions, they\ndecide what the call is, not `category` and `writes`. Older agents omit\nit and are judged by what they say."
       }
     },
     "/apps/{app}/methods/checkpoint": {
@@ -10290,7 +10313,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The latest checkpoint on `chain`, or none: read it before acting there."
       }
     },
     "/apps/{app}/methods/claimChain": {
@@ -10356,7 +10380,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "An agent session takes `chain` for `ttl_ms` before it starts a turn\nthere: one turn per chain at a time, across machines. Refused while\nanother session holds an unexpired lease; a lease that ran out (its\nsession died) can be taken. Claiming a chain the session already\nholds renews it. `agent` names it for the chat (\"mero-bot@studio\");\nolder agents omit it."
       }
     },
     "/apps/{app}/methods/clearMemos": {
@@ -10422,7 +10447,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Forget every cached read. Yours only. Returns how many were dropped."
       }
     },
     "/apps/{app}/methods/clearSituation": {
@@ -10488,7 +10514,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take a chain's situation off: the brief shows its rows again."
       }
     },
     "/apps/{app}/methods/completeAction": {
@@ -10554,7 +10581,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent reports what happened after you approved, asked for a retry,\nor asked for an undo. For a draft you send (one with a `reply_call`),\nyour client reports instead, once it sent it or the app refused."
       }
     },
     "/apps/{app}/methods/completeAnswer": {
@@ -10620,7 +10648,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent reports whether it carried out your answer to a notification:\nsent the reply, cast the vote, accepted the invite."
       }
     },
     "/apps/{app}/methods/decideActions": {
@@ -10686,7 +10715,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approve or turn down the actions your agent proposed for an app\nversion. Once approved they decide what each call in the app is, and\na method none of them names asks you every time."
       }
     },
     "/apps/{app}/methods/decideLens": {
@@ -10752,7 +10782,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approve or turn down a lens your agent proposed. Only an approved lens\nturns an app's events into feed items, and only for the app version it\nwas learned from."
       }
     },
     "/apps/{app}/methods/dismissRule": {
@@ -10818,7 +10849,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Turn down a rule your agent suggested."
       }
     },
     "/apps/{app}/methods/dropMemos": {
@@ -10884,7 +10916,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent's runtime drops cached reads it knows are wrong now (it\nwrote there, or the app changed). Returns how many it dropped."
       }
     },
     "/apps/{app}/methods/feed": {
@@ -10950,7 +10983,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The feed: one row per chain, newest activity first.\n\nA row is the chain's **lead**: the latest step that needs you if any\ndoes, otherwise the latest still underway (an action approved, retrying\nor being undone; your message waiting or being answered; your answer\nbeing delivered), otherwise the latest row. So a chain is settled only\nwhen everything in it is. Its `chain_len` says how many rows the chain\nholds and `needs_you` whether any of them needs you; read them all with\n[`Hyperfeed::chain`].\n\n`filter` keeps chains holding an action (`agent`), a notification\n(`notifications`), or something that needs you (`needs_you`); `app_key`\nkeeps chains that touch that app; `before` pages by `chain_at` (0 = from\nthe newest). The counts are over chains, for the whole feed."
       }
     },
     "/apps/{app}/methods/finishWatch": {
@@ -11016,7 +11050,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How the fired action went: `done` or `failed`, with a note."
       }
     },
     "/apps/{app}/methods/fireAutorun": {
@@ -11082,7 +11117,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent's runtime fires a default once its time came: the proposal\nis approved, with its draft as the answer, and your agent carries it out\nas any approval. Every check that let it be set is made again; if one\nfails now, it is refused and the proposal waits for you."
       }
     },
     "/apps/{app}/methods/fireWatch": {
@@ -11148,7 +11184,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The runtime takes a watch whose condition it saw met, before it acts:\n`watching → firing`, refused for any other status. Of every session\npolling, exactly one gets it, once."
       }
     },
     "/apps/{app}/methods/item": {
@@ -11214,7 +11251,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One row, by id, whichever kind it is."
       }
     },
     "/apps/{app}/methods/lenses": {
@@ -11280,7 +11318,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every lens, newest first: what your agent learned for each app version,\nand whether you approved it."
       }
     },
     "/apps/{app}/methods/links": {
@@ -11346,7 +11385,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The links of the task in `chain`, oldest first, each with how much\nteammates did there (its notifications in the task)."
       }
     },
     "/apps/{app}/methods/markAllSeen": {
@@ -11412,7 +11452,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Mark every notification seen."
       }
     },
     "/apps/{app}/methods/markSeen": {
@@ -11478,7 +11519,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Mark notifications seen. Unknown ids are skipped; returns how many\nchanged."
       }
     },
     "/apps/{app}/methods/memos": {
@@ -11544,7 +11586,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The cached reads written after `since` (the feed's clock, ms; 0 for\nall), oldest write first."
       }
     },
     "/apps/{app}/methods/openQuestions": {
@@ -11610,7 +11653,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your messages your agent has not answered yet, oldest first: what an\nagent that was away picks up when it starts."
       }
     },
     "/apps/{app}/methods/proposeActions": {
@@ -11676,7 +11720,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent proposes an app version's actions, learned from its ABI:\nwhich methods make up each thing you would recognise (\"Edit\ndocuments\"), whether it writes, and the guard that covers it. It waits\nfor you; the app's newest approved set stays in force meanwhile. The\nsame actions proposed again change nothing."
       }
     },
     "/apps/{app}/methods/proposeLens": {
@@ -11742,7 +11787,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agent proposes a lens for one app version, learned from its ABI.\nIt waits for you: an approved lens is replaced only by a new proposal,\nwhich waits again. The same spec proposed again changes nothing."
       }
     },
     "/apps/{app}/methods/proposeRule": {
@@ -11808,7 +11854,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent suggests a standing rule after you corrected it: `text` is\nthe rule, `why` the correction, `chain` where it happened. It waits\nfor you in Controls and in the chat; nothing changes until you approve\nit. A rule you already have, or one already waiting, is not suggested\ntwice."
       }
     },
     "/apps/{app}/methods/prs": {
@@ -11874,7 +11921,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The PRs the runtime recorded for `chain` (`\"\"`: every chain), the most\nrecently seen first."
       }
     },
     "/apps/{app}/methods/pushDevices": {
@@ -11940,7 +11988,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The devices to push to, newest first."
       }
     },
     "/apps/{app}/methods/pushKey": {
@@ -12006,7 +12055,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The key phones subscribe with; empty before a runtime set one."
       }
     },
     "/apps/{app}/methods/putMemos": {
@@ -12072,7 +12122,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent's runtime keeps reads worth keeping, as `agent` (an added\nagent only as itself): up to [`MAX_MEMO_BATCH`] a call, each replacing\nits row unless the row was fetched later, while every agent's hits are\nkept. The least used rows are dropped past [`MAX_MEMOS`] or\n[`MAX_MEMO_BYTES`]. Returns how many rows it wrote."
       }
     },
     "/apps/{app}/methods/recordAction": {
@@ -12138,7 +12189,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped, unless the app's\nmode alone asked for you and its `grant` is a session you allowed."
       }
     },
     "/apps/{app}/methods/recordNotification": {
@@ -12204,7 +12256,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record a notification your client saw.\n\nEvery device records what it sees, and the same event arrives under the\nsame key on each, so a key already recorded within\n[`DEDUPE_WINDOW_MS`] returns that row and records nothing. The same key\nlater is a new event — the source context came back to a state it had\nbeen in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting\nthat occurrence derive the same id, so their rows still merge."
       }
     },
     "/apps/{app}/methods/recordPr": {
@@ -12270,7 +12323,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent's runtime records a PR a task links to as GitHub shows it\nnow: state, base and default branch, conflicts, head commit, checks\n(the failing ones named) and the PR it is stacked on. Owner only; one\nrow per PR, the oldest of [`MAX_PRS`] dropped to make room."
       }
     },
     "/apps/{app}/methods/releaseChain": {
@@ -12336,7 +12390,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The session lets `chain` go at the end of its turn. Returns whether it\nheld it: letting go of a chain it does not hold changes nothing."
       }
     },
     "/apps/{app}/methods/removeAgentAccount": {
@@ -12402,7 +12457,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stop an agent account working your feed. Remove it from the context\ntoo, so it no longer reads it."
       }
     },
     "/apps/{app}/methods/removeAgentRule": {
@@ -12468,7 +12524,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove one of your rules for one agent."
       }
     },
     "/apps/{app}/methods/removeLink": {
@@ -12534,7 +12591,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take a link off the task in `chain`. Nothing new about it joins the\ntask, and your agent touching it again does not bring it back."
       }
     },
     "/apps/{app}/methods/removePushDevice": {
@@ -12600,7 +12658,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stop pushing to a device: you took it off, or its push service said\nit is gone."
       }
     },
     "/apps/{app}/methods/removeRule": {
@@ -12666,7 +12725,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove one of your standing rules."
       }
     },
     "/apps/{app}/methods/renewChain": {
@@ -12732,7 +12792,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The session holding `chain` keeps it for another `ttl_ms` while it\nworks. Refused once another session has it, or when this one never\ndid or released it: it should stop, not carry on beside the other."
       }
     },
     "/apps/{app}/methods/resolveAction": {
@@ -12798,7 +12859,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approve or decline a proposal, retry or drop a failure, ask for an\nundo, or keep an action the agent took without asking.\n\n`answer` goes with an approval when the proposal has an [`Ask`]: one of\nits options for `choose`, the text to send for `reply` (the agent's\ndraft, edited or not). Every other decision takes `\"\"`."
       }
     },
     "/apps/{app}/methods/say": {
@@ -12864,7 +12926,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.\n\nA long message takes a `headline`, as [`Self::agent_say`] does. Older\nclients omit it.\n\n`mode` says how private it is, and so which of your agents takes it:\n`private` or `public` (see [`MESSAGE_MODES`]). Omitted or empty, it\nhas none, and your agent's runtime decides. Older clients omit it."
       }
     },
     "/apps/{app}/methods/sayWith": {
@@ -12930,7 +12993,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "[`Self::say`] with images: up to four, each a blob you uploaded to your\nnode and announced to this context. With an image, `text` may be empty."
       }
     },
     "/apps/{app}/methods/scheduleAutorun": {
@@ -12996,7 +13060,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent sets a proposal to go ahead at `at` (ms) unless you stop it.\nAllowed only where nothing would be lost by it (see\n[`Self::autorun_answer`]), up to [`MAX_AUTORUN_AHEAD_MS`] ahead. Setting\nit again moves the time; once you stopped it, it stays stopped."
       }
     },
     "/apps/{app}/methods/setAccess": {
@@ -13062,7 +13127,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "What `agent` (its name, as it reports in) may reach on its computer\nbesides your Calimero apps: `folders` (each with or without writes),\na `shell`, and the `web`. It replaces what was set before. Your\nagent's runtime refuses this method to the agent, so only you widen\nor narrow it."
       }
     },
     "/apps/{app}/methods/setActionMode": {
@@ -13128,7 +13194,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set one action apart from its app's mode: `act` without asking, `ask`\nfirst, `off`, or empty to follow the app again. Your guards and the\npause still apply."
       }
     },
     "/apps/{app}/methods/setAssignment": {
@@ -13194,7 +13261,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Assign `app_key` to `agent` (its name, as it reports in): from then on\nonly that agent takes the app's work and calls it. An empty `agent`\ngives the app back to your default agent. Your agent's runtime refuses\nthis method to the agent, so only you move an app between agents."
       }
     },
     "/apps/{app}/methods/setCheckpoint": {
@@ -13260,7 +13328,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent writes where the task in `chain` stands: what is done, the\nnext step, its branches, worktrees and PRs, and what is still open. It\nreplaces the chain's last checkpoint, so a new session can pick the\ntask up from it. The limits are in `checkpoint.rs`."
       }
     },
     "/apps/{app}/methods/setGuard": {
@@ -13524,7 +13593,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent's runtime keeps its VAPID public key here, for phones to\nsubscribe with; `by` names the runtime that holds the private half.\nOwner only. A different key drops every device: each subscribes again."
       }
     },
     "/apps/{app}/methods/setSituation": {
@@ -13590,7 +13660,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent tells the task in `chain` as one card: a headline, what is\ngoing on, what it recommends, why it ranks where it does, and when it\nis due. It replaces the chain's last one. At most [`MAX_SITUATIONS`]\nare kept; one more drops the one written longest ago."
       }
     },
     "/apps/{app}/methods/settings": {
@@ -13656,7 +13727,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your rules: the pause switch, every app you set a policy for, every\nguard (defaults included), your standing rules, and the rules your\nagent suggested that wait for you."
       }
     },
     "/apps/{app}/methods/situations": {
@@ -13722,7 +13794,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every task your agent told as one card, most recently written first."
       }
     },
     "/apps/{app}/methods/startTask": {
@@ -13788,7 +13861,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Spin a task off the chat in `from`: `text` is your message that opens\nit, in a chain of its own, with its own post, workspace, checkpoint\nand PRs. The chat keeps a link to the task (`hyperfeed:task:<chain>`)\nand the task one back (`hyperfeed:from:<chain>`). Takes a `headline`\nas [`Self::say`] does, which names the task's link. Returns the\ntask's first message; its chain is the task."
       }
     },
     "/apps/{app}/methods/stop": {
@@ -13854,7 +13928,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "You ask your agent to stop working on one of your messages. One it has\nnot taken up yet is closed at once, \"Stopped by you\"; one it is working\non (`thinking`) keeps the request, and your agent ends its turn and\nmarks the message failed, \"Stopped by you\". Asking twice changes\nnothing."
       }
     },
     "/apps/{app}/methods/stopAutorun": {
@@ -13920,7 +13995,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "You stop a proposal's default: it waits for you as any proposal does,\nand never goes ahead on its own again."
       }
     },
     "/apps/{app}/methods/touchSubject": {
@@ -13986,7 +14062,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Your agent touched `subject` (see [`subject_key`]) for the task in\n`chain` with a write that has no row of its own: a step of its turn on\na message of yours. A notification about it then joins `chain`, as\nfor an action that names it."
       }
     },
     "/apps/{app}/methods/unarchive": {
@@ -14052,7 +14129,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Bring chains back into the feed."
       }
     },
     "/apps/{app}/methods/watchSeen": {
@@ -14118,7 +14196,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "What the runtime last saw of a watching watch's condition, as one line\n(\"3 of 5 checks passed, 2 running\"). Only a change is written."
       }
     },
     "/apps/{app}/methods/watches": {
@@ -14184,7 +14263,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The watches in `chain` (`\"\"`: every chain), oldest first, whatever\ntheir status."
       }
     }
   },

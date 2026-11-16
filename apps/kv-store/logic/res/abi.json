@@ -23,6 +23,7 @@
     "clear": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes every key, as any member may (no passkey confirmation, as in v1).\nEmits `Cleared` only when the store was not already empty.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -31,6 +32,7 @@
     "entries": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every key with its value, as a JSON object in key order; `{}` for an empty\nstore. At most the first 1,000 keys: one page of the map.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -39,6 +41,7 @@
     "get": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`, or `null` when it is absent.",
       "kind": "view",
       "params": [
         [
@@ -52,6 +55,7 @@
     "getOrInsert": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`, first storing `value` there if the key is absent.\nAn existing value is returned unchanged, NOT the argument (the entry API's\npoint). Emits `Inserted` only when it stores.",
       "kind": "call",
       "params": [
         [
@@ -69,6 +73,7 @@
     "getResult": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`; `NotFound { key }` when it is absent.",
       "kind": "view",
       "params": [
         [
@@ -82,6 +87,7 @@
     "getUnchecked": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`; an absent key aborts the run with a panic, which the\nnode reports as a trap (`422 TRAP`) and which commits nothing. Kept as the\ncounter-example: use `get` or `getResult`.",
       "kind": "view",
       "params": [
         [
@@ -95,6 +101,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty store. The node runs it once, when the app is created.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -103,6 +110,7 @@
     "len": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many keys the store holds (a stored count, not a scan). A `u64`, so a\ndecimal string on the wire: `\"0\"` for an empty store.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -111,6 +119,7 @@
     "remove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes `key` and returns the value it held, or `null` when it was absent.\nEmits `Removed` only when a value was removed: an event for an absent key\nwould announce a change that never happened.",
       "kind": "call",
       "params": [
         [
@@ -124,6 +133,7 @@
     "set": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores `value` under `key`, replacing any value already there. Emits\n`Inserted` for a new key and `Updated` for an existing one.",
       "kind": "call",
       "params": [
         [
@@ -141,6 +151,7 @@
     "updateIfExists": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the value under `key` only if the key exists, and says whether it\ndid. An absent key is left absent: `false`, nothing written, no event.\nEmits `Updated` when the value is replaced.",
       "kind": "call",
       "params": [
         [

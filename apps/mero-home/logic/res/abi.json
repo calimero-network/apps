@@ -6,6 +6,7 @@
     "about": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The app and this contract's version: \"Calimero Home 0.0.1\".",
       "kind": "view",
       "params": [],
       "public": false,
@@ -14,6 +15,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Nothing to set up. The node runs it once, when an instance is created.",
       "kind": "init",
       "params": [],
       "public": false,

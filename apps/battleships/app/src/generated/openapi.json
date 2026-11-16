@@ -2530,7 +2530,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "battleships",
     "version": "0.0.0"
   },
@@ -2648,7 +2648,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The defender's answer to the pending shot, as their client read it off\nthe board on their device: a signed statement, written once, that the\nreveal is replayed against. `shotId` is the pending shot's turn index\n(see `getMatchState`). Returns `\"hit\"` or `\"miss\"`. Emits `ShotFired`,\nand `RevealRequested` when the answers end the match."
       }
     },
     "/apps/{app}/methods/commitBoard": {
@@ -2714,7 +2715,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "File the caller's board commitment: `SHA256(borsh(board) || salt)` as\n64 hex characters, computed on the device that keeps the board and the\nsalt. Whether the board behind it is a legal fleet is settled at the\nreveal, by every reader: a commitment to nonsense is a loss, not a\nrefusal. Once per player. Emits `BoardCommitted` and `ShipsPlaced`."
       }
     },
     "/apps/{app}/methods/createMatch": {
@@ -2780,7 +2782,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Challenge `player2` (an account that has opened the lobby, still in\nthe app's org, and not the caller). Returns the new match id,\n`{creator}-{ms}-{nonce}`. Emits `MatchCreated` and `MatchListUpdated`."
       }
     },
     "/apps/{app}/methods/getActiveMatchId": {
@@ -2846,7 +2849,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's newest match that is not over yet (being played, or\nwaiting for a reveal), or `None`. v1 answered the one match its game\ncontext was for."
       }
     },
     "/apps/{app}/methods/getCurrentTurn": {
@@ -2912,7 +2916,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The player whose turn it is to shoot, or `None` once the match is over."
       }
     },
     "/apps/{app}/methods/getCurrentUser": {
@@ -2978,7 +2983,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account: the id they play as."
       }
     },
     "/apps/{app}/methods/getHistory": {
@@ -3044,7 +3050,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every finished match, in the order the results were recorded (oldest\nfirst)."
       }
     },
     "/apps/{app}/methods/getIncomingShots": {
@@ -3110,7 +3117,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The opponent's shots at the caller, as a grid: what the client lays\nover the board on the device to draw \"your waters\". Players only."
       }
     },
     "/apps/{app}/methods/getMatchState": {
@@ -3176,7 +3184,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everything a client needs about a match in one read. Players only."
       }
     },
     "/apps/{app}/methods/getMatches": {
@@ -3242,7 +3251,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every match, oldest id first."
       }
     },
     "/apps/{app}/methods/getPlayerStats": {
@@ -3308,7 +3318,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A player's record, or `None` before their first result."
       }
     },
     "/apps/{app}/methods/getPlayers": {
@@ -3374,7 +3385,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every registered player, by account."
       }
     },
     "/apps/{app}/methods/getShots": {
@@ -3440,7 +3452,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's shots at the opponent, as a grid. Players only."
       }
     },
     "/apps/{app}/methods/getWinner": {
@@ -3506,7 +3519,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The winner, once the match is over AND the winner's revealed board has\npassed the audit. `None` while playing, while waiting for a reveal, and\nfor a match both players cheated in."
       }
     },
     "/apps/{app}/methods/proposeShot": {
@@ -3572,7 +3586,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Fire at `(x, y)` on the opponent's board: the caller's turn, both\nboards committed, no shot waiting for an answer, a cell not shot\nbefore. Emits `ShotProposed`; the defender's CLIENT answers it."
       }
     },
     "/apps/{app}/methods/registerPlayer": {
@@ -3638,7 +3653,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Put the caller on the lobby's roster, so others can challenge them,\nand return the id they play as: their account. Idempotent, and cheap\nenough to call on every lobby open. Anyone the app reaches may,\nguests included. Emits `PlayersUpdated` when the caller is new."
       }
     },
     "/apps/{app}/methods/revealBoard": {
@@ -3704,7 +3720,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Publish the caller's `(board, salt)` for every reader to audit, once\nthe match is over (a board opened mid-game is a board handed to the\nopponent). `boardBytes` is `borsh(Vec<u8>)` of the 100 pristine cells,\nexactly what was hashed into the commitment; `salt` is its 16 bytes.\nA pair that does not hash to the commitment is refused\n(`CommitmentMismatch`), so the player can retry with the right board.\nA pair that does is on record for good, and if the answers the player\ngave do not fit it, they fail the audit and the game goes to the\nopponent. When this decides the match, the result is recorded in the\nlobby (history, stats) in the same call. Emits `BoardRevealed`,\n`AuditPassed`/`AuditFailed`, then `Winner` and `MatchEnded` (or only\n`MatchEnded` for a void match), `MatchListUpdated` and\n`PlayerStatsUpdated`."
       }
     }
   },

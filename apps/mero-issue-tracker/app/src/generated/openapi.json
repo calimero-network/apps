@@ -2273,7 +2273,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-issue-tracker",
     "version": "0.0.0"
   },
@@ -2391,7 +2391,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Posts a comment on an issue. The comment must not be blank. Returns its\nid, `comment-<ms>-<8 hex>`, with the caller as its author. `NotFound`\nfor an unknown issue. Emits `CommentAdded`."
       }
     },
     "/apps/{app}/methods/addLabel": {
@@ -2457,7 +2458,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a label to an issue. A label is 1 to 64 characters; adding it twice\nkeeps one. Emits `IssueLabelsChanged`."
       }
     },
     "/apps/{app}/methods/createIssue": {
@@ -2523,7 +2525,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Files a new issue on the board. Returns its id, `issue-<ms>-<8 hex>`. It\nstarts `Open`, filed by the caller. `title` and each label are 1 to 64\ncharacters, the four sections must not be blank, and `priority` is one\nof `low`, `medium`, `high`, `urgent`; anything else is `Invalid`. Emits\n`IssueCreated`."
       }
     },
     "/apps/{app}/methods/deleteComment": {
@@ -2589,7 +2592,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a comment. Only its author may: anyone else gets `Forbidden`.\nEmits `CommentDeleted`."
       }
     },
     "/apps/{app}/methods/deleteIssue": {
@@ -2655,7 +2659,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes an issue together with its labels and its whole comment thread.\nOnly its creator may: anyone else gets `Forbidden`. `NotFound` for an\nunknown issue. Emits `IssueDeleted`."
       }
     },
     "/apps/{app}/methods/editComment": {
@@ -2721,7 +2726,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes the text of a comment. It must not be blank, and `editedAt` is\nstamped. Only its author may: anyone else gets `Forbidden`. Emits\n`CommentEdited`."
       }
     },
     "/apps/{app}/methods/getIssue": {
@@ -2787,7 +2793,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Shows one issue with its comments, oldest first. At most the first 1,000\ncomments. `NotFound` for an unknown issue."
       }
     },
     "/apps/{app}/methods/getRepoInfo": {
@@ -2853,7 +2860,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Shows the repository this board tracks. Its URL is empty until\n`setRepoUrl`."
       }
     },
     "/apps/{app}/methods/getStatusCounts": {
@@ -2919,7 +2927,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Shows how many issues sit in each column of the board. Counts come in\ncolumn order: `Open`, `In progress`, `Blocked`, `Done`."
       }
     },
     "/apps/{app}/methods/listIssues": {
@@ -2985,7 +2994,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists the board's issues, oldest first, optionally narrowed by status,\nassignee or label. The filters are exact matches (`null` for no filter),\nand at most the first 1,000 matches come back."
       }
     },
     "/apps/{app}/methods/removeLabel": {
@@ -3051,7 +3061,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a label from an issue. Removing one it lacks succeeds. Emits\n`IssueLabelsChanged` either way."
       }
     },
     "/apps/{app}/methods/setAssignee": {
@@ -3117,7 +3128,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Assigns an issue to someone, or unassigns it. Pass `null` to clear the\nassignee; otherwise it is free text, conventionally an account id. Emits\n`IssueAssigneeChanged`."
       }
     },
     "/apps/{app}/methods/setImpact": {
@@ -3183,7 +3195,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rewrites the description of what an issue affects. It must not be blank.\nEmits `IssueEdited`."
       }
     },
     "/apps/{app}/methods/setPriority": {
@@ -3249,7 +3262,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes how urgent an issue is. Takes `low`, `medium`, `high` or\n`urgent` (else `Invalid`). Emits `IssuePriorityChanged`."
       }
     },
     "/apps/{app}/methods/setRepoUrl": {
@@ -3315,7 +3329,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets or changes the repository this board tracks. `Invalid` when `url`\nis empty or does not start with `http://` or `https://`. Emits\n`RepoUrlChanged`."
       }
     },
     "/apps/{app}/methods/setRepro": {
@@ -3381,7 +3396,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rewrites the steps that reproduce an issue. They must not be blank.\nEmits `IssueEdited`."
       }
     },
     "/apps/{app}/methods/setResolutionCriteria": {
@@ -3447,7 +3463,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rewrites what has to be true for an issue to count as resolved. It must\nnot be blank. Emits `IssueEdited`."
       }
     },
     "/apps/{app}/methods/setStatus": {
@@ -3513,7 +3530,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Moves an issue to another column of the board. `status` is exactly\n`Open`, `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound`\nfor an unknown issue. Emits `IssueStatusChanged`."
       }
     },
     "/apps/{app}/methods/setSummary": {
@@ -3579,7 +3597,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rewrites an issue's summary. It must not be blank. Emits `IssueEdited`."
       }
     }
   },

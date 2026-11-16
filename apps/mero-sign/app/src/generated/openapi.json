@@ -3055,7 +3055,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-sign",
     "version": "0.0.0"
   },
@@ -3173,7 +3173,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds an account of the organization (guests included) at `permission`.\nAdmins only (`Forbidden`); `Conflict` for a participant (use\n`setParticipantPermission`), `Invalid` for an account outside the\norganization. Clears an earlier removal. Emits `ParticipantJoined`."
       }
     },
     "/apps/{app}/methods/createSignature": {
@@ -3239,7 +3240,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Saves a signature image the caller uploaded as blob `blobIdStr` and\nreturns its id (below 2^53). Private library, owner only.\nEmits `SignatureCreated`."
       }
     },
     "/apps/{app}/methods/deleteDocument": {
@@ -3305,7 +3307,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a document with its search content, signatures and consents.\nAdmins only (`Forbidden`); `NotFound` for an unknown id. The blobs stay\nin the app until the owner deletes them. Emits `DocumentDeleted`."
       }
     },
     "/apps/{app}/methods/deleteSignature": {
@@ -3371,7 +3374,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a saved signature. Private library, owner only; `NotFound` for\nan unknown id. Emits `SignatureDeleted`."
       }
     },
     "/apps/{app}/methods/getContextDetails": {
@@ -3437,7 +3441,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The agreement's name, owner, participants (at most 1,000) and document\ncount. `contextIdStr` is echoed back as `contextId`."
       }
     },
     "/apps/{app}/methods/getContextId": {
@@ -3503,7 +3508,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "This instance's app id (v1's context id)."
       }
     },
     "/apps/{app}/methods/getDocumentSignatures": {
@@ -3569,7 +3575,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The signatures on a document, in the order they were applied; empty\nfor an unknown document."
       }
     },
     "/apps/{app}/methods/getIdentityMapping": {
@@ -3635,7 +3642,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The identity mapping recorded for a joined agreement. Private library,\nowner only; `NotFound` if none."
       }
     },
     "/apps/{app}/methods/getSharedIdentity": {
@@ -3701,7 +3709,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The shared identity recorded for a joined agreement. Private library,\nowner only; `NotFound` if none."
       }
     },
     "/apps/{app}/methods/getUserPermission": {
@@ -3767,7 +3776,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A participant's level; `NotFound` for someone who is not one."
       }
     },
     "/apps/{app}/methods/hasConsented": {
@@ -3833,7 +3843,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `userIdStr` consented to sign a document."
       }
     },
     "/apps/{app}/methods/isDefaultPrivateContext": {
@@ -3899,7 +3910,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether this is the account's default private library (set up private\nand named `\"default\"`). `false` before `setup`."
       }
     },
     "/apps/{app}/methods/joinSharedContext": {
@@ -3965,7 +3977,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records that the owner joined the agreement `contextIdStr` (its app id)\nas `sharedIdentityStr` (their account). Private library, owner only;\n`Conflict` if already recorded. Emits `ContextJoined`."
       }
     },
     "/apps/{app}/methods/leaveSharedContext": {
@@ -4031,7 +4044,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Forgets a joined agreement. Private library, owner only; `NotFound` if\nit was not recorded. Emits `ContextLeft`."
       }
     },
     "/apps/{app}/methods/listDocuments": {
@@ -4097,7 +4111,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every document (at most 1,000, in id order) with its current version\nand status, without its search content."
       }
     },
     "/apps/{app}/methods/listJoinedContexts": {
@@ -4163,7 +4178,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The joined agreements, at most 1,000, in app-id order. Private library,\nowner only."
       }
     },
     "/apps/{app}/methods/listParticipants": {
@@ -4229,7 +4245,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every participant's account, at most 1,000, in account order."
       }
     },
     "/apps/{app}/methods/listSignatures": {
@@ -4295,7 +4312,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The saved signatures, at most 1,000, in id order. Private library,\nowner only."
       }
     },
     "/apps/{app}/methods/markParticipantSigned": {
@@ -4361,7 +4379,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Confirms the CALLER's signature is on a document: `Forbidden` without\nconsent, `Invalid` if they have not signed it. Writes nothing."
       }
     },
     "/apps/{app}/methods/registerSelfAsParticipant": {
@@ -4427,7 +4446,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Joins the agreement as `Sign` (v1: after redeeming an open invitation).\nMembers of the organization only (a guest gets `Forbidden`), not after\nan admin removed you (`Forbidden`), and once (`Conflict`). Emits\n`ParticipantJoined`."
       }
     },
     "/apps/{app}/methods/removeParticipant": {
@@ -4493,7 +4513,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a participant, and keeps them from registering again. Admins\nonly (`Forbidden`); `NotFound` for someone who is not one; `Conflict`\nfor the last admin. Emits `ParticipantLeft`."
       }
     },
     "/apps/{app}/methods/resolvePrivateIdentity": {
@@ -4559,7 +4580,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The private identity behind a shared one, if recorded. Private library,\nowner only."
       }
     },
     "/apps/{app}/methods/searchDocumentByEmbedding": {
@@ -4625,7 +4647,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The most relevant passages of a document for a query embedding, as\ntext: by chunk when the document has chunks, else by its whole-document\nembedding. `NotFound` for an unknown document; `Invalid` for a document\nwith nothing to search or an embedding of another dimension."
       }
     },
     "/apps/{app}/methods/setConsent": {
@@ -4691,7 +4714,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records the CALLER's consent to sign a document. Nobody can consent for\nyou, so there is no account parameter."
       }
     },
     "/apps/{app}/methods/setParticipantPermission": {
@@ -4757,7 +4781,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes an existing participant's level, up or down. Admins only\n(`Forbidden`); `NotFound` for someone who is not one; `Conflict` for the\nlast admin stepping down. Setting the level they hold is a no-op.\nEmits `ParticipantPermissionChanged`."
       }
     },
     "/apps/{app}/methods/setup": {
@@ -4823,7 +4848,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Makes this instance a private library (`isPrivate`) or a shared\nagreement named `contextName` (v1's `init(is_private, context_name)`).\nThe app's owner only (`Forbidden`), once (`Conflict`). A shared\nagreement's owner is its first admin."
       }
     },
     "/apps/{app}/methods/signDocument": {
@@ -4889,7 +4915,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records the CALLER's signature: the PDF at the document's current\nversion (`baseHash`) with their mark on it, uploaded as blob\n`pdfBlobIdStr`, is the document's new version `newHash`. `Sign` or\nabove (`Forbidden`), after consenting (`Forbidden`); `Conflict` for a\nfully signed document, a second signature, or a `baseHash` that is no\nlonger current (someone signed in between: reopen and sign again).\nEmits `DocumentSigned`."
       }
     },
     "/apps/{app}/methods/uploadDocument": {
@@ -4955,7 +4982,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a document the caller uploaded as blob `pdfBlobIdStr` and returns\nits id. `Sign` or above (`Forbidden`). Its required signers are every\nparticipant at `Sign` or above now (at most 1,000). Emits\n`DocumentUploaded`."
       }
     },
     "/apps/{app}/methods/whoami": {
@@ -5021,7 +5049,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account, as this contract sees it."
       }
     }
   },

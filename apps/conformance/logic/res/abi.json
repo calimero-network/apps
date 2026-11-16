@@ -71,6 +71,7 @@
     "addFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores `value` and returns its hash (hex); the same value again writes\nnothing and returns the same hash. Emits `FrozenAdded` when it is new.",
       "kind": "call",
       "params": [
         [
@@ -84,6 +85,7 @@
     "authoredGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key` of its first author (by account id), or `null`.",
       "kind": "view",
       "params": [
         [
@@ -97,6 +99,7 @@
     "authoredGetOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The first author (by account id) of an entry under `key`, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -110,6 +113,7 @@
     "authoredInsert": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds (or replaces) the caller's own entry under `key`: keys are per\nauthor, so another author's entry under the same key is untouched.\nEmits `AuthoredInserted` for a new entry, `AuthoredUpdated` otherwise.",
       "kind": "call",
       "params": [
         [
@@ -127,6 +131,7 @@
     "authoredRemove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes the caller's own entry under `key`, returning its value, or\n`null` when it has none. Emits `AuthoredRemoved` only when one went.",
       "kind": "call",
       "params": [
         [
@@ -140,6 +145,7 @@
     "authoredUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the caller's own entry under `key`; `NotAuthor` when it has\nnone (another author's entry is never changed). Emits `AuthoredUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -157,6 +163,7 @@
     "authoredVecGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value at `index`, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -170,6 +177,7 @@
     "authoredVecGetOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Who pushed the item at `index`, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -183,6 +191,7 @@
     "authoredVecLen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many items were pushed: a decimal string.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -191,6 +200,7 @@
     "authoredVecPush": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Appends `value`, authored by the caller, and returns its index (a decimal\nstring). Emits `AuthoredVecPushed`.",
       "kind": "call",
       "params": [
         [
@@ -204,6 +214,7 @@
     "authoredVecUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the item at `index`; `NotItemOwner` unless the caller pushed it.\nEmits `AuthoredVecUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -221,6 +232,7 @@
     "confirmedSet": {
       "allowSystem": false,
       "confirm": true,
+      "doc": "`set`, approved with the caller's passkey (`412 CONFIRM_REQUIRED` without it).",
       "kind": "call",
       "params": [
         [
@@ -238,6 +250,7 @@
     "get": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -251,6 +264,7 @@
     "getFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value with this hash; `FrozenNotFound` when there is none or\n`hash_hex` is not a 64-digit hex hash.",
       "kind": "view",
       "params": [
         [
@@ -264,6 +278,7 @@
     "getResult": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`; `NotFound { key }` when it is absent.",
       "kind": "view",
       "params": [
         [
@@ -277,6 +292,7 @@
     "getUnchecked": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`; an absent key panics, which the node reports as\na trap (`422 TRAP`) and which commits nothing.",
       "kind": "view",
       "params": [
         [
@@ -290,6 +306,7 @@
     "getUserSimple": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's own value, or `null`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -298,6 +315,7 @@
     "getUserSimpleFor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`account`'s value, or `null`: anyone the app reaches may read it.",
       "kind": "view",
       "params": [
         [
@@ -311,6 +329,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty state, with the app's owner as the shared value's one writer\n(v1: the context's creator). The node runs it once, as the owner.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -319,6 +338,7 @@
     "len": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many public keys there are (a stored count): a decimal string.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -327,6 +347,7 @@
     "myAccount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's account id: what the platform names it, the id the\nauthored and shared methods record.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -335,6 +356,7 @@
     "publicGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`, readable by anyone once the app's access is public.",
       "kind": "view",
       "params": [
         [
@@ -348,6 +370,7 @@
     "remove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes `key`, returning what it held; emits `Removed` only when it held something.",
       "kind": "call",
       "params": [
         [
@@ -361,6 +384,7 @@
     "set": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores `value` under `key`. Emits `Inserted` for a new key, `Updated` otherwise.",
       "kind": "call",
       "params": [
         [
@@ -378,6 +402,7 @@
     "setUserSimple": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores the caller's own value. Emits `UserSimpleSet`.",
       "kind": "call",
       "params": [
         [
@@ -391,6 +416,7 @@
     "sharedAddWriter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds `account` to the writer set; `NotAWriter` unless the caller is a\nwriter. Emits `SharedWriterAdded` when the account was not one yet.",
       "kind": "call",
       "params": [
         [
@@ -404,6 +430,7 @@
     "sharedGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The shared value, or `null` before any writer set it.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -412,6 +439,7 @@
     "sharedGetWriters": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The writer set, in account order (at most 1,000: one page).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -420,6 +448,7 @@
     "sharedSet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets the shared value; `NotAWriter` unless the caller is in the writer\nset (the app's owner, and whoever a writer added). Emits `SharedSet`.",
       "kind": "call",
       "params": [
         [

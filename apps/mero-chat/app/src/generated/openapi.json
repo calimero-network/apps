@@ -2907,7 +2907,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-chat",
     "version": "0.0.0"
   },
@@ -3025,7 +3025,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes the caller's draft for `channel`."
       }
     },
     "/apps/{app}/methods/deleteMessage": {
@@ -3091,7 +3092,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a message. Its sender blanks it in place (the slot and its\nindex stay). The staff remove anyone's: a reply is removed from its\nthread, a top-level message is hidden and read back blank. Anyone else\nis `Forbidden`. Emits `MessageSentThread` for a reply, `MessageSent` for\na top-level message (as v1)."
       }
     },
     "/apps/{app}/methods/editMessage": {
@@ -3157,7 +3159,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the text of the caller's own message (`parentId` names a\nreply's parent). `NotFound` for an unknown message, `Forbidden` for\nsomeone else's. Emits `MessageEdited`."
       }
     },
     "/apps/{app}/methods/getChannelInfo": {
@@ -3223,7 +3226,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Alias for `getInfo`; `channel` is accepted and ignored."
       }
     },
     "/apps/{app}/methods/getDraft": {
@@ -3289,7 +3293,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's draft for `channel`, or \"\"."
       }
     },
     "/apps/{app}/methods/getInfo": {
@@ -3421,7 +3426,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`identity`'s role; `User` when it has none."
       }
     },
     "/apps/{app}/methods/getMessageCount": {
@@ -3487,7 +3493,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many top-level messages the channel holds (one stored count)."
       }
     },
     "/apps/{app}/methods/getMessages": {
@@ -3553,7 +3560,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A page of the channel, or of one thread (`parentMessage`), counted back\nfrom the END: offset 0 is the newest page. `limit` defaults to, and is\ncapped at, 1,000. `searchTerm` keeps only messages whose text contains it\n(as `searchMessages` compares), and `totalCount` is then the number of\nmatches. A search here, and a thread, read the whole collection."
       }
     },
     "/apps/{app}/methods/getMessagesFrom": {
@@ -3619,7 +3627,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Top-level messages by ABSOLUTE position, ascending, from `start`: the\nresumable read. `limit` defaults to, and is capped at, 1,000.\n`totalCount` is the channel's length."
       }
     },
     "/apps/{app}/methods/getProfiles": {
@@ -3685,7 +3694,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member's profile, in account order; at most 1,000."
       }
     },
     "/apps/{app}/methods/getUnreadCount": {
@@ -3751,7 +3761,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Top-level messages newer than the caller's last read, not their own and\nnot deleted, among the newest `MAX_UNREAD_SCAN` (the count saturates there)."
       }
     },
     "/apps/{app}/methods/getUnreadMentions": {
@@ -3817,7 +3828,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "As `getUnreadCount`, counting only messages that mention the caller or\n`@everyone` / `@here`."
       }
     },
     "/apps/{app}/methods/listRoles": {
@@ -3883,7 +3895,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every account with a role other than `User`, as `[account, role]`; at\nmost 1,000 of each kind."
       }
     },
     "/apps/{app}/methods/markAsRead": {
@@ -3949,7 +3962,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records the caller's last-read timestamp (seconds). Emits nothing."
       }
     },
     "/apps/{app}/methods/markMessagesAsRead": {
@@ -4015,7 +4029,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A no-op kept for clients that call it. Read state is `markAsRead`."
       }
     },
     "/apps/{app}/methods/messagePosition": {
@@ -4081,7 +4096,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The position of the top-level message `messageId`, for opening a search\nhit where it was said (`getMessagesFrom`). A reply, or an unknown id,\nhas none."
       }
     },
     "/apps/{app}/methods/saveDraft": {
@@ -4147,7 +4163,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Saves the caller's draft for `channel`; an empty text deletes it. At\nmost `MAX_MESSAGE_LEN` bytes (`Invalid`)."
       }
     },
     "/apps/{app}/methods/searchMessages": {
@@ -4213,7 +4230,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Messages whose text contains `query`, newest first by position, each\ntop-level message followed by its replies. The node's full-text index is\nnot available to components at `1.0.0-rc.7`, so this is the bounded walk\n`searchMessagesScan` makes; see there."
       }
     },
     "/apps/{app}/methods/searchMessagesScan": {
@@ -4279,7 +4297,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Messages whose text contains `query` (markup dropped, folded for case,\naccents and width), walking the channel by position from the newest\nmessage down, each followed by its replies. Deleted and staff-removed\nmessages are never returned. A call stops at `limit` hits (default 20,\nat most 50) or once it read `MAX_SEARCH_ROWS` messages or\n`MAX_SEARCH_BYTES` of text, and returns `nextCursor` to continue."
       }
     },
     "/apps/{app}/methods/sendMessage": {
@@ -4345,7 +4364,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sends a message as the caller: top-level, or a reply to the top-level\nmessage `parentMessage`. `timestamp` is the client's clock in seconds, at\nmost `MAX_CLOCK_SKEW_SECS` ahead of the log's. Attachments name blobs\nuploaded to this app. Emits `MessageSent` or `MessageSentThread`."
       }
     },
     "/apps/{app}/methods/setMemberRole": {
@@ -4411,7 +4431,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes `target`'s role. An admin may set any role; a moderator may only\nflip a `User` to `Banned` and back; anyone else is `Forbidden`. An admin\ncannot demote themselves (`Forbidden`). Emits `RoleUpdated` when the role\nchanged."
       }
     },
     "/apps/{app}/methods/setProfile": {
@@ -4477,7 +4498,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets the caller's profile. The username is kept from the first call on\n(only the avatar changes after that); it must not be blank and is at\nmost 50 bytes (`Invalid`). `avatar` is a blob id; `null` keeps the\ncurrent one. Emits `ProfileUpdated`."
       }
     },
     "/apps/{app}/methods/updateInfo": {
@@ -4543,7 +4565,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Renames the conversation or changes its description. Admins only\n(`Forbidden`). Emits `InfoUpdated`."
       }
     },
     "/apps/{app}/methods/updateReaction": {
@@ -4609,7 +4632,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds or removes the CALLER's reaction to a message. `emoji` must be\n1-64 bytes (`Invalid`); `NotFound` for an unknown message. Emits\n`ReactionUpdated`."
       }
     }
   },

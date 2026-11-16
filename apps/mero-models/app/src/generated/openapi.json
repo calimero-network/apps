@@ -2622,7 +2622,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-models",
     "version": "0.0.0"
   },
@@ -2740,7 +2740,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Check assets back in. Editors may check in their own; an admin may release\nanyone's (breaking a lock left by someone who is away). Ids not checked out\nare fine. Fails, releasing nothing, when the batch is over 200 or a\nnon-admin names someone else's check-out (`Forbidden`). Emits `LocksChanged`."
       }
     },
     "/apps/{app}/methods/checkOut": {
@@ -2806,7 +2807,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Check assets out, so nobody else can change them until the caller checks\nthem in or the check-out lapses. Editors only. Checking out something the\ncaller already holds extends it. `ids` are object or texture ids (at most\n200, each 1 to 64 characters), `hours` 1 to 168 (clamped), `now` the\ncaller's clock. Fails, checking out nothing, when one of them is checked\nout, live, by someone else (`Locked`). Emits `LocksChanged`."
       }
     },
     "/apps/{app}/methods/clearScene": {
@@ -2872,7 +2874,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove every object, mesh, texture, version and check-out. Admins only. The\nblobs are no longer referenced, so a node that tracks references collects\nthem an hour later."
       }
     },
     "/apps/{app}/methods/deleteObjects": {
@@ -2938,7 +2941,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete objects and their meshes. Editors only. Ids already gone are fine.\nChildren of a deleted object are not deleted — they read as root objects —\nso delete them in the same call to remove a whole branch. A deleted mesh's\nhistory is kept, so an undo can bring it back. Fails, deleting nothing, when\nthe batch is over 200 or one of the objects is checked out by someone else.\nEmits one `ObjectsDeleted` event."
       }
     },
     "/apps/{app}/methods/deleteTextures": {
@@ -3004,7 +3008,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete textures. Editors only. Materials that name a deleted texture simply\ndraw without it. Their history is kept. Fails, deleting nothing, when the\nbatch is over 200 or one of them is checked out by someone else. Emits\n`TexturesDeleted`."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -3070,7 +3075,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone who has joined, with their effective role, oldest first."
       }
     },
     "/apps/{app}/methods/getObjects": {
@@ -3136,7 +3142,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every object in the scene (at most 2,000), with each `parent` resolved: a\nmissing parent or a loop reads as `\"\"`. Ordered by creation, then id."
       }
     },
     "/apps/{app}/methods/getObjectsByIds": {
@@ -3202,7 +3209,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Several objects by id, in the order asked; unknown ids are left out. Parents\nare returned as stored — resolve them against `getObjects`. At most 200 ids."
       }
     },
     "/apps/{app}/methods/getScene": {
@@ -3268,7 +3276,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The scene's name and environment, its size, and the caller's id and role."
       }
     },
     "/apps/{app}/methods/grantEditor": {
@@ -3334,7 +3343,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Let an account change the scene. Admins only. `member` is their account id;\nthey need not have joined yet, but must be in the instance's org (`Invalid`\notherwise). Emits `RoleChanged`."
       }
     },
     "/apps/{app}/methods/join": {
@@ -3400,7 +3410,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Introduce the caller to the scene, or change the name they are shown by.\nAnyone the instance reaches may, guests included; it grants no editing\nrights. `name` is at most 80 characters; empty becomes `\"Guest\"`. Emits\n`MemberChanged` when something changed."
       }
     },
     "/apps/{app}/methods/listHistory": {
@@ -3466,7 +3477,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every saved version of one mesh or texture, oldest first and numbered from\n1, with the one in use marked `current`. At most the newest 500."
       }
     },
     "/apps/{app}/methods/listLocks": {
@@ -3532,7 +3544,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every check-out still live at `now` (the caller's clock), ordered by asset id."
       }
     },
     "/apps/{app}/methods/listMeshes": {
@@ -3598,7 +3611,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every mesh's current reference, ordered by id. A client compares each\n`blob_id` with what it holds and downloads only the blobs it lacks."
       }
     },
     "/apps/{app}/methods/listTextures": {
@@ -3664,7 +3678,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every texture's current reference, ordered by name, then id."
       }
     },
     "/apps/{app}/methods/myRole": {
@@ -3730,7 +3745,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's effective role: `admin`, `editor` or `viewer`."
       }
     },
     "/apps/{app}/methods/putMesh": {
@@ -3796,7 +3812,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Point a `mesh` object at a new blob of vertices, and record it as a new\nversion. Editors only. Upload the blob to the app first\n(`POST /apps/{app}/blobs`); write the object before or with it — a mesh with\nno object is stored but drawn by nobody. To restore an earlier version, write\nits `blob_id` (from `listHistory`) again.\n\n`mesh.author` and `mesh.updated_at` are set by the contract. At most\n4,000,000 vertices, 8,000,000 triangles and 47.25 MiB (`Invalid`);\n`Locked` when the mesh is checked out by someone else. Emits `MeshChanged`."
       }
     },
     "/apps/{app}/methods/putObjects": {
@@ -3862,7 +3879,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add objects, or replace the objects with the same ids. Editors only. Emits\none `ObjectsChanged` event and answers the ids written, in the order given.\n\nEach object's `created_by` and `created_at` are kept from the first write;\n`updated_at` is the caller's `now`, moved past the stored value.\n\nFails, writing nothing, when the batch is over 200, the scene would exceed\n2,000 objects or an object is malformed (`Invalid`: unknown kind, a\nnon-finite number, a bad colour, a texture id that is too long, an object\nparented to itself), or an object is checked out by someone else\n(`Locked`)."
       }
     },
     "/apps/{app}/methods/putTexture": {
@@ -3928,7 +3946,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a texture, or point an existing one at a new image, and record it as a\nnew version. Editors only. Upload the image blob first. `texture.author` and\n`texture.updated_at` are set by the contract.\n\n`Invalid` when the scene already holds 1,000 textures, the blob id is not 64\nlowercase hex characters, the mime type or colour space is not one this app\nknows, a side is over 16,384 pixels or the blob over 47.25 MiB; `Locked`\nwhen the texture is checked out by someone else. Emits `TextureChanged`."
       }
     },
     "/apps/{app}/methods/revokeEditor": {
@@ -3994,7 +4013,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Make a member a viewer again. Admins only; an admin's own role is\nunaffected. Emits `RoleChanged`."
       }
     },
     "/apps/{app}/methods/setEnvironment": {
@@ -4060,7 +4080,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename the scene, or change its background or ambient light. Editors only.\n`environment` is the whole environment (`updated_at` is set by the\ncontract); `now` is the caller's clock, unix milliseconds. `Invalid` when a\ncolour is not `#rrggbb`. Emits `EnvironmentChanged`."
       }
     }
   },

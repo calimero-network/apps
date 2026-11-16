@@ -1566,7 +1566,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-blocks",
     "version": "0.0.0"
   },
@@ -1684,7 +1684,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of the edited coordinates, each `{\"k\": \"x,y,z\", \"b\": <block\nid>}`, in key order, and the cursor of the next page.\n\nA key never disappears: a broken block stays listed with `b: 0`. Any\ncoordinate not listed holds generated terrain. The map only grows (up\nto 128 x 64 x 128 coordinates), so it is answered a page at a time:\ncall again with `cursor` set to `next` until `next` is `null`.\n\n# Arguments\n* `cursor` - optional: the `next` of the previous page; from the start\n  without it.\n* `limit` - optional: entries per page, at most (and by default) 1,000."
       }
     },
     "/apps/{app}/methods/getPlayers": {
@@ -1750,7 +1751,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of avatar rows with an `online` flag, in (account, device)\norder, and the cursor of the next page.\n\nA player is online when they have not left and wrote within the last\n10 s, measured on room time. A player who vanished without calling\n`leave` simply ages out here; nobody writes to another account's row.\nRows are kept for everyone who ever played, so they are answered a page\nat a time: call again with `cursor` set to `next` until `next` is\n`null`.\n\n# Arguments\n* `now` - the caller's unix seconds (a decimal string).\n* `cursor` - optional: the `next` of the previous page.\n* `limit` - optional: rows per page, at most (and by default) 1,000."
       }
     },
     "/apps/{app}/methods/heartbeat": {
@@ -1816,7 +1818,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Report the caller's position and keep the avatar online.\n\nSend every 0.5 s while moving and every 2 s while idle; a player silent\nfor more than 10 s shows as offline. Creates the row if needed. Emits\n`PlayerJoined` only when this creates the row or brings a left player\nback; otherwise no event (peers poll `getPlayers`, so a routine\nheartbeat must not spam an event on every call).\n\n# Arguments\n* `t` - position in blocks, `yaw` and `pitch` in radians, `sel` the\n  hotbar slot (0 to 8).\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: the device label the caller joined with.\n\n# Errors\n`BadDevice`, `TooManyDevices { max }`."
       }
     },
     "/apps/{app}/methods/join": {
@@ -1882,7 +1885,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Join or rejoin the world as the caller's avatar (the account, plus\n`device` when given) and return the player row.\n\nA rejoin keeps the player's position and join time and updates the\nname; a new avatar starts at the origin. Emits `PlayerJoined { id }`.\n\n# Arguments\n* `name` - display name shown to other players.\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: a label for this device (1-64 of `A-Za-z0-9_-`),\n  so one account on two devices is two avatars. At most 8 per account.\n\n# Errors\n`BadDevice`, `TooManyDevices { max }`."
       }
     },
     "/apps/{app}/methods/leave": {
@@ -1948,7 +1952,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Mark the caller's avatar as having left. The row is kept, and a later\n`join` or `heartbeat` brings the player back. An avatar that never\njoined is a no-op (no event). Emits `PlayerLeft { id }`.\n\n# Arguments\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: the device label the caller joined with."
       }
     },
     "/apps/{app}/methods/myAccount": {
@@ -2014,7 +2019,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account, as `PlayerView.account` and the `id` of an avatar\njoined without a device show it. New: the frontend's \"me\"."
       }
     },
     "/apps/{app}/methods/overrideCount": {
@@ -2080,7 +2086,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many distinct coordinates have ever been edited, breaks included (a\nstored count, not a scan). A number, as in v1."
       }
     },
     "/apps/{app}/methods/setBlocks": {
@@ -2146,7 +2153,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Apply a batch of block edits and return how many were applied.\n\nOut-of-bounds edits are skipped, not rejected, so one stale edit cannot\npoison a batch. Each applied edit overwrites the block at its\ncoordinate (one log orders every call: the later edit wins). When any\nedit lands, the caller's avatar is touched (kept online) and\n`BlocksChanged { id }` is emitted with the avatar's id.\n\n# Arguments\n* `edits` - at most 512 per call; `b` is a block id, 0 to 15 for ids the\n  client defines (`b: 0` breaks the block); any 0-255 value is stored\n  without checking it, so never send an id outside 0 to 15.\n* `now` - the caller's unix seconds (a decimal string); moves room time.\n* `device` - optional: the device label the caller joined with.\n\n# Errors\n`TooManyEdits { max, got }`, applying nothing, past 512 edits;\n`BadDevice` for a malformed label."
       }
     },
     "/apps/{app}/methods/worldMeta": {
@@ -2212,7 +2220,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The world's name, terrain seed and creation time (`createdAt`, unix\nseconds). `seed` and `createdAt` are decimal strings.\n\nTerrain is not stored: regenerate it from `seed`, then apply\n`getOverrides`."
       }
     },
     "/apps/{app}/methods/worldStats": {
@@ -2278,7 +2287,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many overrides and avatar rows the world holds (stored counts). New:\n`u64`s, so decimal strings."
       }
     }
   },

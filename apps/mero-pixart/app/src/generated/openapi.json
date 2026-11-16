@@ -3639,7 +3639,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-pixart",
     "version": "0.0.0"
   },
@@ -3757,7 +3757,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a layer (or replace the one with its id). `createdBy` is the\ncaller, whatever the argument says. Answers the id."
       }
     },
     "/apps/{app}/methods/bringToFront": {
@@ -3823,7 +3824,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Put a layer above every other one."
       }
     },
     "/apps/{app}/methods/canEdit": {
@@ -3955,7 +3957,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete every layer. Owner only."
       }
     },
     "/apps/{app}/methods/deleteLayer": {
@@ -4021,7 +4024,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a layer. A group's children move to the top level."
       }
     },
     "/apps/{app}/methods/getCursors": {
@@ -4087,7 +4091,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every pointer (at most 1,000)."
       }
     },
     "/apps/{app}/methods/getDocument": {
@@ -4285,7 +4290,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every layer, bottom to top (`layerIndex`, then id). At most\n`MAX_LAYERS`, which `addLayer` enforces."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -4351,7 +4357,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member (at most 1,000), `id` from the row's account."
       }
     },
     "/apps/{app}/methods/getRole": {
@@ -4417,7 +4424,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "\"admin\" (the owner), \"editor\" or \"viewer\"."
       }
     },
     "/apps/{app}/methods/grantEditor": {
@@ -4483,7 +4491,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Let a member of the team edit. Owner only."
       }
     },
     "/apps/{app}/methods/join": {
@@ -4549,7 +4558,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Put the caller on the roster. Idempotent: a member already on it is\nleft as is."
       }
     },
     "/apps/{app}/methods/listRoles": {
@@ -4615,7 +4625,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member on the roster with their role (at most 1,000)."
       }
     },
     "/apps/{app}/methods/moveLayer": {
@@ -4681,7 +4692,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move a layer into or out of a group and set its index in one call."
       }
     },
     "/apps/{app}/methods/moveLayers": {
@@ -4747,7 +4759,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Re-parent several layers in one call (`[[id, parentId | null], ..]`).\nA move that would make a layer its own ancestor is skipped, as are\nunknown ids."
       }
     },
     "/apps/{app}/methods/myRole": {
@@ -4879,7 +4892,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Apply an explicit ordering: `[[id, index], ..]`."
       }
     },
     "/apps/{app}/methods/revokeEditor": {
@@ -4945,7 +4959,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Make a member view-only again. Owner only. The org's owner and\nadmins keep editing whatever this says."
       }
     },
     "/apps/{app}/methods/sendToBack": {
@@ -5011,7 +5026,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Put a layer below every other one. With room below the bottom one\n(its index above 0) only this layer moves; a stack starting at 0\nshifts the others up by one."
       }
     },
     "/apps/{app}/methods/transferOwnership": {
@@ -5077,7 +5093,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Hand the document to another member of the team. Owner only. The\nprevious owner keeps editing (they become an editor)."
       }
     },
     "/apps/{app}/methods/updateAdjustments": {
@@ -5143,7 +5160,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Patch a layer's adjustments."
       }
     },
     "/apps/{app}/methods/updateCursor": {
@@ -5209,7 +5227,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move the caller's pointer. Open to everyone who reaches the\ndocument, viewers included."
       }
     },
     "/apps/{app}/methods/updateDocument": {
@@ -5275,7 +5294,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename, re-describe, resize or recolour the document. Owner only\n(`OwnerOnly`)."
       }
     },
     "/apps/{app}/methods/updateLayer": {
@@ -5341,7 +5361,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Patch a layer's metadata, transform and compositing. Each argument\nis optional; an unknown id changes nothing."
       }
     },
     "/apps/{app}/methods/updateLayerContent": {
@@ -5407,7 +5428,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replace a raster layer's pixels with a freshly uploaded blob."
       }
     },
     "/apps/{app}/methods/updateLayerMask": {
@@ -5473,7 +5495,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set or clear (`null`) a layer's mask blob."
       }
     },
     "/apps/{app}/methods/updateMemberUsername": {
@@ -5539,7 +5562,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename the caller on the roster. Nothing for someone not on it."
       }
     },
     "/apps/{app}/methods/updateText": {
@@ -5605,7 +5629,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Patch a text layer's properties."
       }
     },
     "/apps/{app}/methods/updateTransform": {
@@ -5671,7 +5696,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Patch the free-transform params: rotation, scale, shear (clamped to\n-80..=80), mirror and corner-pin warp (an empty warp clears it)."
       }
     }
   },

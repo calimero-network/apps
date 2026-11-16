@@ -2162,7 +2162,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-stream",
     "version": "0.0.0"
   },
@@ -2280,7 +2280,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Encode one raw luma frame in the component, split it into fragments of\nat most [`MAX_CHUNK_BYTES`], store them, prune the caller's frames\nolder than [`FRAME_WINDOW`], and emit `FramePosted { seq }`. Returns the\nframe's seq.\n\n`raw` is `width * height` luma bytes (base64url on the wire). `now` is\nthe capture time in unix milliseconds. `NotJoined` before `join`;\n`ZeroDimension`, `DimensionTooLarge`, `RawTooLarge`, `RawLengthMismatch`\nfor a frame the codec does not take (a refused frame takes no seq)."
       }
     },
     "/apps/{app}/methods/frameChecksum": {
@@ -2346,7 +2347,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "FNV-1a 64 of frame `seq`'s decoded pixels, or `null` when no live,\ncomplete frame has that seq. Equal checksums mean equal pixels (C1)."
       }
     },
     "/apps/{app}/methods/getChunks": {
@@ -2412,7 +2414,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every live chunk past the caller's per-sender cursors, grouped by\nsender (account order), ascending within each. A sender missing from\n`cursors` starts at their newest live keyframe, and is left out while\nthey have none."
       }
     },
     "/apps/{app}/methods/getFrame": {
@@ -2478,7 +2481,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every frame with `seq > afterSeq`, decoded in the component, oldest\nfirst (by seq, then sender). A frame missing a fragment is skipped."
       }
     },
     "/apps/{app}/methods/getLiveStats": {
@@ -2544,7 +2548,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approach-2 instrumentation, per sender in account order."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -2610,7 +2615,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member, in account order."
       }
     },
     "/apps/{app}/methods/getStats": {
@@ -2676,7 +2682,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Approach-3 instrumentation."
       }
     },
     "/apps/{app}/methods/isMemberAdmin": {
@@ -2742,7 +2749,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `member` (an account) is the stream's admin: its owner."
       }
     },
     "/apps/{app}/methods/join": {
@@ -2808,7 +2816,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Join the stream, or change your display name. Idempotent: `joinedAt`\nstays the first join's. Emits `MemberJoined { account }` every time."
       }
     },
     "/apps/{app}/methods/keyframeCursors": {
@@ -2874,7 +2883,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Each sender's newest live keyframe, in account order."
       }
     },
     "/apps/{app}/methods/postChunk": {
@@ -2940,7 +2950,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Store one WebCodecs chunk (`dataB64`, standard base64) as the caller's\nnext seq, reap the caller's chunks older than [`LIVE_WINDOW_MS`] (never\ntheir newest keyframe), and, for the stream's owner, sweep senders\nsilent for [`STALE_SENDER_MS`]. Emits `ChunkPosted { seq }`; returns the\nseq. `now` is unix milliseconds.\n\n`NotJoined`, `BadBase64`, `EmptyChunk`, `ChunkTooLarge`,\n`CodecRequired`."
       }
     },
     "/apps/{app}/methods/pruneChunks": {
@@ -3006,7 +3017,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Prune the caller's own chunks below `beforeSeq`, never past their\nnewest keyframe, at most [`MAX_PRUNE_PER_CALL`]. `NotJoined`."
       }
     },
     "/apps/{app}/methods/pruneFrames": {
@@ -3072,7 +3084,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove the caller's own fragments of frames with `seq < beforeSeq`, at\nmost [`MAX_PRUNE_PER_CALL`]. `NotJoined` before `join`."
       }
     },
     "/apps/{app}/methods/renameStream": {
@@ -3138,7 +3151,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename the stream. The stream's owner only (`NotOwner`)."
       }
     }
   },

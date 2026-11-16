@@ -3576,7 +3576,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-crm",
     "version": "0.0.0"
   },
@@ -3694,7 +3694,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Schedules a call, meeting, task, email or deadline, on a deal, a person,\nboth or neither. Returns its id. `kind` is one of `call`, `meeting`,\n`task`, `email`, `deadline`. Emits `ActivityChanged`."
       }
     },
     "/apps/{app}/methods/addAutomation": {
@@ -3760,7 +3761,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a rule that schedules a follow-up activity whenever a deal enters a\nstage. In full: \"When a deal enters `stageId`, schedule a `kind`\nactivity called `subject`, due in `dueInDays` days (at most 365).\" At\nmost 10 per stage. Returns the rule's id. Emits `AutomationsChanged`."
       }
     },
     "/apps/{app}/methods/addNote": {
@@ -3826,7 +3828,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a note to a deal. The caller is recorded as its author, and its id\nis returned. The note must not be blank and is at most 10,000\ncharacters. Emits `NoteChanged`."
       }
     },
     "/apps/{app}/methods/addStage": {
@@ -3892,7 +3895,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a stage at the end of the pipeline. Returns its id. Takes a name of\n1 to 120 characters and a win probability of 0 to 100; a pipeline holds\nat most 12 stages. Emits `StagesChanged`."
       }
     },
     "/apps/{app}/methods/createContact": {
@@ -3958,7 +3962,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a person to the address book. The caller is recorded as their\ncreator, and their id is returned. A name of 1 to 120 characters, the\nother fields at most 120, an email that looks like one (or empty). Emits\n`ContactChanged`."
       }
     },
     "/apps/{app}/methods/createDeal": {
@@ -4024,7 +4029,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a new deal to a stage of the pipeline. The caller is recorded as\nits creator, and its id is returned. Runs the stage's automations.\n`NotFound` for an unknown stage or contact; `Invalid` for a blank title\nor a field over 120 characters. Emits `DealCreated`, then\n`AutomationFired` per rule that ran."
       }
     },
     "/apps/{app}/methods/deleteActivity": {
@@ -4090,7 +4096,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes an activity. Emits `ActivityChanged`."
       }
     },
     "/apps/{app}/methods/deleteAutomation": {
@@ -4156,7 +4163,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a follow-up rule. Emits `AutomationsChanged`."
       }
     },
     "/apps/{app}/methods/deleteContact": {
@@ -4222,7 +4230,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a person from the address book. Only their creator may: anyone\nelse gets `Forbidden`. Deals keep their history but lose the link. Emits\n`ContactChanged`."
       }
     },
     "/apps/{app}/methods/deleteDeal": {
@@ -4288,7 +4297,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a deal together with its activities and notes. Only its creator\nmay: anyone else gets `Forbidden`. Emits `DealDeleted`."
       }
     },
     "/apps/{app}/methods/deleteNote": {
@@ -4354,7 +4364,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a note from a deal. Only its author may: anyone else gets\n`Forbidden`. Emits `NoteChanged`."
       }
     },
     "/apps/{app}/methods/deleteStage": {
@@ -4420,7 +4431,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a stage and its automations from the pipeline. Refused\n(`Invalid`) while any open deal sits in it, and for the last remaining\nstage: a pipeline always has somewhere to put a deal. A closed deal that\nclosed from it and is reopened later is shown in the first stage. Emits\n`StagesChanged`."
       }
     },
     "/apps/{app}/methods/getDeal": {
@@ -4486,7 +4498,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Shows one deal with its person, activities and notes. Activities come by\ndue date and notes newest first, at most 1,000 of each. `NotFound` for\nan unknown deal."
       }
     },
     "/apps/{app}/methods/getSettings": {
@@ -4552,7 +4565,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Shows the currency and the number of idle days after which an open deal\ncounts as rotting."
       }
     },
     "/apps/{app}/methods/listActivities": {
@@ -4618,7 +4632,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists scheduled activities by due date. Can be narrowed to one deal\nand/or by whether they are done. At most the first 1,000."
       }
     },
     "/apps/{app}/methods/listAutomations": {
@@ -4684,7 +4699,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists the follow-up rules that run when a deal enters a stage. Oldest\nfirst (at most 12 stages × 10 rules)."
       }
     },
     "/apps/{app}/methods/listContacts": {
@@ -4750,7 +4766,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists everyone in the address book with their deal totals. By name, at\nmost the first 1,000."
       }
     },
     "/apps/{app}/methods/listDeals": {
@@ -4816,7 +4833,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists deals, newest first, optionally narrowed by status, stage or\nowner. The filters are exact matches on `status`, `stageId` and `owner`\n(`null` for no filter), and at most the newest 1,000 matches come back."
       }
     },
     "/apps/{app}/methods/listStages": {
@@ -4882,7 +4900,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lists the stages of the pipeline, in order."
       }
     },
     "/apps/{app}/methods/markLost": {
@@ -4948,7 +4967,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Closes a deal as lost and records why. The reason is at most 120\ncharacters. Emits `DealStatusChanged`."
       }
     },
     "/apps/{app}/methods/markWon": {
@@ -5014,7 +5034,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Closes a deal as won. Emits `DealStatusChanged`."
       }
     },
     "/apps/{app}/methods/moveDeal": {
@@ -5080,7 +5101,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Moves an open deal to another stage. Runs that stage's automations.\nMoving to the stage it is already in is a no-op; a closed deal is\n`Invalid`. Emits `DealMoved`, then `AutomationFired` per rule that ran."
       }
     },
     "/apps/{app}/methods/reopenDeal": {
@@ -5146,7 +5168,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Puts a closed deal back on the board, in the stage it closed from, or in\nthe first stage if that one was deleted. An open deal is left as it is.\nEmits `DealStatusChanged`."
       }
     },
     "/apps/{app}/methods/reorderStages": {
@@ -5212,7 +5235,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Puts the stages of the pipeline in a new order. `stageIds` must name\nevery stage exactly once (else `Invalid`). Emits `StagesChanged`."
       }
     },
     "/apps/{app}/methods/rescheduleActivity": {
@@ -5278,7 +5302,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Moves an activity to a new due time. Emits `ActivityChanged`."
       }
     },
     "/apps/{app}/methods/setActivityDone": {
@@ -5344,7 +5369,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Marks an activity as done, or as not done again. Emits\n`ActivityChanged`."
       }
     },
     "/apps/{app}/methods/setAutomationEnabled": {
@@ -5410,7 +5436,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Turns a follow-up rule on or off. Emits `AutomationsChanged`."
       }
     },
     "/apps/{app}/methods/setCurrency": {
@@ -5476,7 +5503,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes the currency deal values are shown in. Takes a three-letter ISO\n4217 code such as `EUR` (any case; stored upper case), else `Invalid`.\nEmits `SettingsChanged`."
       }
     },
     "/apps/{app}/methods/setRottingDays": {
@@ -5542,7 +5570,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets how many days without activity make an open deal count as rotting.\nTakes 1 to 365, else `Invalid`. Emits `SettingsChanged`."
       }
     },
     "/apps/{app}/methods/updateContact": {
@@ -5608,7 +5637,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes a person's details. Follows the same rules as `createContact`.\n`NotFound` for an unknown contact. Emits `ContactChanged`."
       }
     },
     "/apps/{app}/methods/updateDeal": {
@@ -5674,7 +5704,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Changes a deal's details. Every field is written. `NotFound` for an\nunknown deal or contact. Emits `DealUpdated`."
       }
     },
     "/apps/{app}/methods/updateStage": {
@@ -5740,7 +5771,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Renames a stage and changes its chance of winning. `NotFound` for an\nunknown stage. Emits `StagesChanged`."
       }
     }
   },

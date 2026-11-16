@@ -2445,7 +2445,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-calendar",
     "version": "0.0.0"
   },
@@ -2563,7 +2563,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Book the slot starting at `startMs`. A link books once: after this it\ncan only reschedule or cancel. The meeting goes into the owner's\ncalendar as a private event."
       }
     },
     "/apps/{app}/methods/cancelBooking": {
@@ -2629,7 +2630,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Cancel the link's meeting. The link is spent afterwards."
       }
     },
     "/apps/{app}/methods/createBookingLink": {
@@ -2695,7 +2697,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A booking link for the API key whose SHA-256 is `link.tokenHash`. The\nowner's client created the key first; the key itself never reaches the\ncontract from the owner."
       }
     },
     "/apps/{app}/methods/createEvent": {
@@ -2761,7 +2764,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Create an event, routed BY WHETHER ANYONE ELSE IS IN IT: with no peers\nit is the caller's private event (`createPrivateEvent`), with peers a\nshared one. The contract decides, not the client. Answers the id."
       }
     },
     "/apps/{app}/methods/createPrivateEvent": {
@@ -2827,7 +2831,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A private event of the caller's; `peers` on the request is ignored.\nNo event is emitted: nobody else is in it. Answers the id."
       }
     },
     "/apps/{app}/methods/deleteBookingLink": {
@@ -2893,7 +2898,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete one of the caller's links. A meeting it booked stays in the\ncalendar. The client revokes the link's API key too. Answers the id."
       }
     },
     "/apps/{app}/methods/deleteEvent": {
@@ -2959,7 +2965,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a shared event; only its owner may. Answers the id."
       }
     },
     "/apps/{app}/methods/deletePrivateEvent": {
@@ -3025,7 +3032,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete one of the caller's private events. Answers the id."
       }
     },
     "/apps/{app}/methods/getAvailableSlots": {
@@ -3091,7 +3099,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The start times, in Unix milliseconds (decimal strings), the link behind\n`token` offers in `[fromMs, toMs)`.\n\nThe window is clamped, never refused: it starts no earlier than now and\nspans at most `MAX_SLOT_RANGE_DAYS`. A view's clock is the time of the\napp's last write, so \"now\" here can lag; pass your own now as `fromMs`.\n`bookSlot` checks the slot again at the time of booking."
       }
     },
     "/apps/{app}/methods/getBookingPage": {
@@ -3157,7 +3166,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "What the link behind `token` offers, and its booking if it has one."
       }
     },
     "/apps/{app}/methods/getEvents": {
@@ -3223,7 +3233,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The shared events the caller owns or is invited to, in id order (at\nmost 1,000 of each). Nobody else's: this is the access rule now, not\nonly a filter."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -3289,7 +3300,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member who set a name, in account order (at most 1,000)."
       }
     },
     "/apps/{app}/methods/getPrivateEvents": {
@@ -3355,7 +3367,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's private events, in id order (at most 1,000)."
       }
     },
     "/apps/{app}/methods/listBookingLinks": {
@@ -3421,7 +3434,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's booking links, newest first (at most 1,000)."
       }
     },
     "/apps/{app}/methods/rescheduleBooking": {
@@ -3487,7 +3501,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move the link's meeting to the slot starting at `startMs`."
       }
     },
     "/apps/{app}/methods/setUsername": {
@@ -3553,7 +3568,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Register or refresh the caller's display name. Idempotent: the first\ncall joins (`MemberJoined`), later calls rename (`MemberUsernameUpdated`).\nA member can only ever name themselves."
       }
     },
     "/apps/{app}/methods/updateEvent": {
@@ -3619,7 +3635,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Update a shared event; only its owner may (`Forbidden` for anyone else,\n`NotFound` when there is none). Emptying `peers` does NOT make it\nprivate again: sharing is one-way, as in v1. Removed peers no longer\nsee it. Answers the id."
       }
     },
     "/apps/{app}/methods/updatePrivateEvent": {
@@ -3685,7 +3702,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Update one of the caller's private events, and PROMOTE it to a shared\nevent (same id) when the update names its first peers. Answers the id."
       }
     }
   },

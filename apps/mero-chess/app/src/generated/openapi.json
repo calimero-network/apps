@@ -2325,7 +2325,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-chess",
     "version": "0.0.0"
   },
@@ -2443,7 +2443,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Accept the opponent's standing offer. `GameOver`, `NotSeated`,\n`NoDrawOffer`."
       }
     },
     "/apps/{app}/methods/claimDraw": {
@@ -2509,7 +2510,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Claim the draw the position allows: threefold repetition or the\nfifty-move rule. Both are claims under the rules of chess, so neither\nends a game on its own. `GameOver`, `NotSeated`, `NoDrawToClaim`."
       }
     },
     "/apps/{app}/methods/declineDraw": {
@@ -2575,7 +2577,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Refuse the opponent's standing offer (a move refuses it too).\n`NotSeated`, `NoDrawOffer`."
       }
     },
     "/apps/{app}/methods/heartbeat": {
@@ -2641,7 +2644,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Presence only: no event, so a heartbeat does not wake every client."
       }
     },
     "/apps/{app}/methods/history": {
@@ -2707,7 +2711,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every game this table has played, oldest first (at most 1,000)."
       }
     },
     "/apps/{app}/methods/join": {
@@ -2773,7 +2778,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Announce yourself at the table, or refresh your presence and name.\nEmits `PlayerJoined` the first time."
       }
     },
     "/apps/{app}/methods/offerDraw": {
@@ -2839,7 +2845,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Offer a draw in the current position. The offer stands until the\nposition changes. `GameOver`, `NotSeated`."
       }
     },
     "/apps/{app}/methods/play": {
@@ -2905,7 +2912,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Play a move, in UCI (`e2e4`, `e7e8q`; a promotion with no piece named\nis a queening). Returns its SAN. Emits `Moved`, then `GameEnded` when\nthe move ended the game on the board.\n\n`GameOver`, `MoveLimit`, `WaitingForOpponent` (a chair is empty),\n`NotYourMove`, `BadMove` (not UCI), `IllegalMove`."
       }
     },
     "/apps/{app}/methods/rematch": {
@@ -2971,7 +2979,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Start the next game, colours swapped. Returns its index.\n`GameNotFinished`, `NotSeated`, `GameLimit`."
       }
     },
     "/apps/{app}/methods/resign": {
@@ -3037,7 +3046,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Resign the current game. `GameOver`, `NotSeated`."
       }
     },
     "/apps/{app}/methods/sit": {
@@ -3103,7 +3113,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take the `white` or `black` chair, if it is free. Sitting in your own\nchair again does nothing.\n\nThe seat name is the colour you hold in the FIRST game; colours swap\non every rematch. Taking BOTH chairs is allowed on purpose: one person\nmoving for each side in turn is how chess is played when the other\nperson is in the room. `UnknownSeat`, `SeatTaken`."
       }
     },
     "/apps/{app}/methods/stand": {
@@ -3169,7 +3180,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Give up your chair: only before you have played at this table, and\nonly before the current game has a move. A chair you have played from\nis the table's record of who played; the way out of a game is\n`resign`. `NotSeated`, `AlreadyPlayed`."
       }
     },
     "/apps/{app}/methods/table": {
@@ -3235,7 +3247,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The whole table in one call, as the caller sees it at `now` (their\nclock, for who is `online`). See [`TableView`]."
       }
     }
   },

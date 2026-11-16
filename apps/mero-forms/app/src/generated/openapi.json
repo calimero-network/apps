@@ -3197,7 +3197,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-forms",
     "version": "0.0.0"
   },
@@ -3315,7 +3315,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds `who` to the team. Admin only."
       }
     },
     "/apps/{app}/methods/amIAdmin": {
@@ -3381,7 +3382,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether the caller is an admin."
       }
     },
     "/apps/{app}/methods/amITeam": {
@@ -3447,7 +3449,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether the caller is on the team."
       }
     },
     "/apps/{app}/methods/captchaSettings": {
@@ -3513,7 +3516,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The team's Turnstile setup. Team only. No TEE can keep a secret here."
       }
     },
     "/apps/{app}/methods/clearCaptchaSecret": {
@@ -3579,7 +3583,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes the team's Turnstile keys, if any. Admin only."
       }
     },
     "/apps/{app}/methods/createForm": {
@@ -3645,7 +3650,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Creates a form with no fields, open, and returns its id. Team only."
       }
     },
     "/apps/{app}/methods/createLink": {
@@ -3711,7 +3717,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records a public link for `formId`: `link` is the SHA-256 (hex) of the\nAPI key's token, `grantId` the key's id. Team only."
       }
     },
     "/apps/{app}/methods/deleteForm": {
@@ -3777,7 +3784,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nTeam only."
       }
     },
     "/apps/{app}/methods/deleteLink": {
@@ -3843,7 +3851,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stops a public link and returns what it was, so the app can revoke its\nAPI key. Team only."
       }
     },
     "/apps/{app}/methods/fieldKinds": {
@@ -3909,7 +3918,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The kinds of field a form can ask for."
       }
     },
     "/apps/{app}/methods/forgetFormKey": {
@@ -3975,7 +3985,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Drops `account` from the register. Admin only. Revoking the API key is\nwhat stops it calling; the app does both."
       }
     },
     "/apps/{app}/methods/getForm": {
@@ -4041,7 +4052,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One form. Any account that reaches the app, and a website's form key:\na website may read the questions it is about to answer."
       }
     },
     "/apps/{app}/methods/getResponse": {
@@ -4107,7 +4119,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One response. Team only."
       }
     },
     "/apps/{app}/methods/linkForm": {
@@ -4173,7 +4186,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The form a public link is for, as its visitor sees it. One of the two\nmethods a link's API key names."
       }
     },
     "/apps/{app}/methods/listFormKeys": {
@@ -4239,7 +4253,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The registered form keys, newest first, with what each has sent (at\nmost 1,000). Admin only."
       }
     },
     "/apps/{app}/methods/listForms": {
@@ -4305,7 +4320,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every form, newest first, with its response counts. Team only."
       }
     },
     "/apps/{app}/methods/listLinks": {
@@ -4371,7 +4387,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The form's public links, newest first, with what each has sent (at most\n1,000). Team only."
       }
     },
     "/apps/{app}/methods/listResponses": {
@@ -4437,7 +4454,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A form's responses, newest first (at most 1,000). Team only."
       }
     },
     "/apps/{app}/methods/listTeam": {
@@ -4503,7 +4521,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The team: the admins and the accounts they added (at most 1,000 of\neach), in account order. Team only."
       }
     },
     "/apps/{app}/methods/myAccount": {
@@ -4569,7 +4588,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account (for an API key, the account it acts for)."
       }
     },
     "/apps/{app}/methods/recordCrmDeal": {
@@ -4635,7 +4655,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records the CRM deal a response became, after the app created it in\nthat CRM instance. Team only. Refuses a response already sent: the log\norders two teammates' records, so the second is refused."
       }
     },
     "/apps/{app}/methods/registerFormKey": {
@@ -4701,7 +4722,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records `account` (an API key's id) as a website form key for\n`formId`, called `label`. Admin only.\n\nThe app calls this right after creating the key, limited to this app\nand to `submitResponse` and `getForm`; the register is what binds it\nto one form, labels it and keeps it off the team."
       }
     },
     "/apps/{app}/methods/removeTeamMember": {
@@ -4767,7 +4789,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes `who` from the team. Admin only. An admin stays an admin."
       }
     },
     "/apps/{app}/methods/setArchived": {
@@ -4833,7 +4856,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Archives a response, or brings it back. Team only."
       }
     },
     "/apps/{app}/methods/setCaptchaKey": {
@@ -4899,7 +4923,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Requires a captcha on every response through the form's links: a pass\nsigned by `key` (an ed25519 public key, hex). Empty requires none.\n`turnstile` (the node checks the token) is `Unsupported` on this\nruntime. Team only."
       }
     },
     "/apps/{app}/methods/setCaptchaSecret": {
@@ -4965,7 +4990,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "v1 stored the team's own Turnstile keys, the secret sealed to the\nnamespace's TEE. The component SDK cannot seal a secret or send it, so\nthis is refused (`Unsupported`), as v1 refused it without a TEE. Admin\nonly."
       }
     },
     "/apps/{app}/methods/setCrmLink": {
@@ -5031,7 +5057,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Where the form's responses go in Mero CRM, or `contextId` empty for\nnowhere. The mapped fields must be on the form. Team only."
       }
     },
     "/apps/{app}/methods/setFormOpen": {
@@ -5097,7 +5124,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Opens or closes a form to new responses. Team only."
       }
     },
     "/apps/{app}/methods/setFormPublic": {
@@ -5163,7 +5191,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Lets the form's public links take responses, or stops them all.\nTeam only. Links are kept either way."
       }
     },
     "/apps/{app}/methods/setLinkCap": {
@@ -5229,7 +5258,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many responses each of the form's links may send per hour. Team only."
       }
     },
     "/apps/{app}/methods/setWorkspaceName": {
@@ -5295,7 +5325,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Names the workspace. Team only."
       }
     },
     "/apps/{app}/methods/submitResponse": {
@@ -5361,7 +5392,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stores a response to an open form and returns its id. What a website's\nform key calls; a teammate may also enter one.\n\nEvery answer is checked against its field. Answers for fields the form\ndoes not have are refused, so a stale website fails loudly. A form key\nmay only answer the form it was registered for. Emits `Submitted` with\nids only."
       }
     },
     "/apps/{app}/methods/submitViaLink": {
@@ -5427,7 +5459,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stores a response that came through a public link and returns its id.\nThe other method a link's API key names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, `captcha` is a pass\nthe form's verifier signed for this form and link, unexpired and\nunused. `captchaToken` was v1's Turnstile token for a node-checked\nform; it is ignored."
       }
     },
     "/apps/{app}/methods/updateForm": {
@@ -5493,7 +5526,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces a form's title, description and fields. Team only.\n\nResponses already sent keep the fields as they were; a removed field\nstays readable on them."
       }
     },
     "/apps/{app}/methods/workspaceName": {
@@ -5559,7 +5593,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The workspace's display name, or empty. Anyone who reaches the app."
       }
     }
   },

@@ -29,6 +29,7 @@
     "getOverrides": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One page of the edited coordinates, each `{\"k\": \"x,y,z\", \"b\": <block\nid>}`, in key order, and the cursor of the next page.\n\nA key never disappears: a broken block stays listed with `b: 0`. Any\ncoordinate not listed holds generated terrain. The map only grows (up\nto 128 x 64 x 128 coordinates), so it is answered a page at a time:\ncall again with `cursor` set to `next` until `next` is `null`.\n\n# Arguments\n* `cursor` - optional: the `next` of the previous page; from the start\n  without it.\n* `limit` - optional: entries per page, at most (and by default) 1,000.",
       "kind": "view",
       "params": [
         [
@@ -46,6 +47,7 @@
     "getPlayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One page of avatar rows with an `online` flag, in (account, device)\norder, and the cursor of the next page.\n\nA player is online when they have not left and wrote within the last\n10 s, measured on room time. A player who vanished without calling\n`leave` simply ages out here; nobody writes to another account's row.\nRows are kept for everyone who ever played, so they are answered a page\nat a time: call again with `cursor` set to `next` until `next` is\n`null`.\n\n# Arguments\n* `now` - the caller's unix seconds (a decimal string).\n* `cursor` - optional: the `next` of the previous page.\n* `limit` - optional: rows per page, at most (and by default) 1,000.",
       "kind": "view",
       "params": [
         [
@@ -67,6 +69,7 @@
     "heartbeat": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Report the caller's position and keep the avatar online.\n\nSend every 0.5 s while moving and every 2 s while idle; a player silent\nfor more than 10 s shows as offline. Creates the row if needed. Emits\n`PlayerJoined` only when this creates the row or brings a left player\nback; otherwise no event (peers poll `getPlayers`, so a routine\nheartbeat must not spam an event on every call).\n\n# Arguments\n* `t` - position in blocks, `yaw` and `pitch` in radians, `sel` the\n  hotbar slot (0 to 8).\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: the device label the caller joined with.\n\n# Errors\n`BadDevice`, `TooManyDevices { max }`.",
       "kind": "call",
       "params": [
         [
@@ -88,6 +91,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Create the world. The node runs it once, when the app instance is\ncreated, with the instance's `initArgs`. Every argument may be left out\n(`merod local`'s scenario runner and the test harness create an\ninstance with none): the name defaults to `\"overworld\"`, the seed to a\nrandom value in [0, 2^32) drawn from the run's seed, and `now` to the\nleader's clock at the init entry. Emits `Initialized`.\n\n# Arguments\n* `name` - the world's display name.\n* `seed` - terrain seed; clients read it as an unsigned 32-bit integer,\n  so use a value in [0, 4294967296). A decimal string.\n* `now` - the creator's unix seconds; anchors the shared 600 s\n  day/night cycle. A decimal string.",
       "kind": "init",
       "params": [
         [
@@ -109,6 +113,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Join or rejoin the world as the caller's avatar (the account, plus\n`device` when given) and return the player row.\n\nA rejoin keeps the player's position and join time and updates the\nname; a new avatar starts at the origin. Emits `PlayerJoined { id }`.\n\n# Arguments\n* `name` - display name shown to other players.\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: a label for this device (1-64 of `A-Za-z0-9_-`),\n  so one account on two devices is two avatars. At most 8 per account.\n\n# Errors\n`BadDevice`, `TooManyDevices { max }`.",
       "kind": "call",
       "params": [
         [
@@ -130,6 +135,7 @@
     "leave": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Mark the caller's avatar as having left. The row is kept, and a later\n`join` or `heartbeat` brings the player back. An avatar that never\njoined is a no-op (no event). Emits `PlayerLeft { id }`.\n\n# Arguments\n* `now` - the caller's unix seconds (a decimal string).\n* `device` - optional: the device label the caller joined with.",
       "kind": "call",
       "params": [
         [
@@ -147,6 +153,7 @@
     "myAccount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's account, as `PlayerView.account` and the `id` of an avatar\njoined without a device show it. New: the frontend's \"me\".",
       "kind": "view",
       "params": [],
       "public": false,
@@ -155,6 +162,7 @@
     "overrideCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many distinct coordinates have ever been edited, breaks included (a\nstored count, not a scan). A number, as in v1.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -163,6 +171,7 @@
     "setBlocks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Apply a batch of block edits and return how many were applied.\n\nOut-of-bounds edits are skipped, not rejected, so one stale edit cannot\npoison a batch. Each applied edit overwrites the block at its\ncoordinate (one log orders every call: the later edit wins). When any\nedit lands, the caller's avatar is touched (kept online) and\n`BlocksChanged { id }` is emitted with the avatar's id.\n\n# Arguments\n* `edits` - at most 512 per call; `b` is a block id, 0 to 15 for ids the\n  client defines (`b: 0` breaks the block); any 0-255 value is stored\n  without checking it, so never send an id outside 0 to 15.\n* `now` - the caller's unix seconds (a decimal string); moves room time.\n* `device` - optional: the device label the caller joined with.\n\n# Errors\n`TooManyEdits { max, got }`, applying nothing, past 512 edits;\n`BadDevice` for a malformed label.",
       "kind": "call",
       "params": [
         [
@@ -184,6 +193,7 @@
     "worldMeta": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The world's name, terrain seed and creation time (`createdAt`, unix\nseconds). `seed` and `createdAt` are decimal strings.\n\nTerrain is not stored: regenerate it from `seed`, then apply\n`getOverrides`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -192,6 +202,7 @@
     "worldStats": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many overrides and avatar rows the world holds (stored counts). New:\n`u64`s, so decimal strings.",
       "kind": "view",
       "params": [],
       "public": false,

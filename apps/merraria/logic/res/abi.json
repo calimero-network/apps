@@ -26,6 +26,7 @@
     "createWorld": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Founds the world: its name, terrain seed and day-clock anchor (`now`,\nseconds). Only the app's owner may, and only once: `Forbidden` for any\nother account, `WorldExists` once founded. Emits `Initialized`.",
       "kind": "call",
       "params": [
         [
@@ -47,6 +48,7 @@
     "getOverrides": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One page of overrides, in key order (`\"x,y\"` as strings sort): at most\n`limit` (default and largest 1,000), from `cursor` (a previous page's\n`next`; absent for the first page). Read pages until `next` is `null`.",
       "kind": "view",
       "params": [
         [
@@ -64,6 +66,7 @@
     "getPlayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The roster with liveness at room time (`now` is the caller's clock), in\njoin order (then by account): every avatar the world keeps, at most\n1,000 (one page). A player who vanished without `leave`\nages out of the 10-second TTL here.",
       "kind": "view",
       "params": [
         [
@@ -77,6 +80,7 @@
     "heartbeat": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's presence and transform. Silent (no event) unless the caller\nhad no row or had left, which emits `PlayerJoined { account }`.\n`WorldFull` for a new account once the world keeps 1,000 avatars.",
       "kind": "call",
       "params": [
         [
@@ -94,6 +98,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty app. The node runs it once, when the instance is created; the\nworld itself is founded by `createWorld`.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -102,6 +107,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Joins (or rejoins) as `name`. A rejoin keeps the first `joinedAt` and the\nlast position; facing, slot and action reset. Answers the caller's\nroster row and emits `PlayerJoined { account }`. `WorldFull` for a new\naccount once the world keeps 1,000 avatars.",
       "kind": "call",
       "params": [
         [
@@ -119,6 +125,7 @@
     "leave": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Marks the caller as having left and emits `PlayerLeft { account }`; a\nno-op (no event) for a caller who never joined.",
       "kind": "call",
       "params": [
         [
@@ -132,6 +139,7 @@
     "setTiles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Applies up to 512 tile edits (dig = `t: 0`, stored, never a removal);\nedits outside the 400×200 world are skipped. Answers how many were\napplied. Refreshes the caller's presence stamp and, when anything was\napplied, emits `TilesChanged { account }`. `TooManyEdits` past 512,\n`NoWorld` before `createWorld`.",
       "kind": "call",
       "params": [
         [
@@ -149,6 +157,7 @@
     "worldMeta": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The world's name, seed and clock anchor; `NoWorld` before `createWorld`.",
       "kind": "view",
       "params": [],
       "public": false,

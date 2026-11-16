@@ -4200,7 +4200,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-updates",
     "version": "0.0.0"
   },
@@ -4318,7 +4318,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Reply on a post; returns the comment's id. Replying to a reply attaches\nto that reply's parent, so a thread is one level deep. Emits `Commented`."
       }
     },
     "/apps/{app}/methods/addTeammate": {
@@ -4384,7 +4385,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Make a member of the organization part of the team. Admin only.\n`Invalid` for an account the organization does not hold. Emits\n`TeamChanged`."
       }
     },
     "/apps/{app}/methods/archiveCategory": {
@@ -4450,7 +4452,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Archive, never remove: updates filed under it keep their label. Team\nonly. Emits `CategoryChanged`."
       }
     },
     "/apps/{app}/methods/askQuestion": {
@@ -4516,7 +4519,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Ask the team something; returns its id. Anyone in the audience may. The\nasker's own read is recorded. Emits `QuestionAsked`."
       }
     },
     "/apps/{app}/methods/createCategory": {
@@ -4582,7 +4586,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Team only; at most 50 live categories. Returns the new id. Emits\n`CategoryChanged`."
       }
     },
     "/apps/{app}/methods/deleteComment": {
@@ -4648,7 +4653,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The author may delete their comment; the team may remove any. Emits\n`Commented`."
       }
     },
     "/apps/{app}/methods/deleteDraft": {
@@ -4714,7 +4720,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete one of the caller's drafts (nothing happens for an unknown id)."
       }
     },
     "/apps/{app}/methods/deletePost": {
@@ -4780,7 +4787,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team. Emits `PostDeleted`."
       }
     },
     "/apps/{app}/methods/editCategory": {
@@ -4846,7 +4854,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Team only; an archived category cannot be edited. Emits `CategoryChanged`."
       }
     },
     "/apps/{app}/methods/editComment": {
@@ -4912,7 +4921,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Only the author edits a comment. Emits `Commented`."
       }
     },
     "/apps/{app}/methods/editUpdate": {
@@ -4978,7 +4988,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replace an update's content. Any teammate may. Asks listed with an `id`\nare edited, without one are created, and this update's asks not listed\nare removed. Emits `PostEdited`."
       }
     },
     "/apps/{app}/methods/getEngagement": {
@@ -5044,7 +5055,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Who read what: the team's follow-up list, newest update first. Team only."
       }
     },
     "/apps/{app}/methods/getMe": {
@@ -5110,7 +5122,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller: their account, name, roles and muted categories."
       }
     },
     "/apps/{app}/methods/getOverview": {
@@ -5176,7 +5189,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The home screen in one call."
       }
     },
     "/apps/{app}/methods/getPost": {
@@ -5242,7 +5256,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One post with its sections, metrics and asks."
       }
     },
     "/apps/{app}/methods/getSettings": {
@@ -5308,7 +5323,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The company name and cadence; empty and 0 until the team sets them."
       }
     },
     "/apps/{app}/methods/listAsks": {
@@ -5374,7 +5390,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every ask across every live update, newest first. `status` filters to\n`\"open\"` or `\"resolved\"`."
       }
     },
     "/apps/{app}/methods/listCategories": {
@@ -5440,7 +5457,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Live categories, oldest first, with the caller's unread counts."
       }
     },
     "/apps/{app}/methods/listComments": {
@@ -5506,7 +5524,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A post's whole thread, oldest first."
       }
     },
     "/apps/{app}/methods/listContributions": {
@@ -5572,7 +5591,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Accepted offers since `since` (unix ms, a decimal string; `\"0\"` for all),\noldest first: what the next update's \"Thank you\" section is written from."
       }
     },
     "/apps/{app}/methods/listDrafts": {
@@ -5638,7 +5658,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's drafts, most recently touched first."
       }
     },
     "/apps/{app}/methods/listMetrics": {
@@ -5704,7 +5725,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every KPI ever reported, one series per metric name (case-insensitive),\noldest point first."
       }
     },
     "/apps/{app}/methods/listPeople": {
@@ -5770,7 +5792,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone this audience knows about: the owner, every teammate, and every\nmember who has written anything (a profile, a read, a comment…). Team\nfirst, then by name, then by account."
       }
     },
     "/apps/{app}/methods/listPosts": {
@@ -5836,7 +5859,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of posts, newest first. `kind` is `\"update\"`, `\"question\"` or\n`null` for both; `categoryId` filters to one category; `limit` 0 means\n20, at most 100. The cursor names the last post seen."
       }
     },
     "/apps/{app}/methods/markRead": {
@@ -5902,7 +5926,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record that the caller opened a post. Emits `Read`."
       }
     },
     "/apps/{app}/methods/offerHelp": {
@@ -5968,7 +5993,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "\"I can help.\" One click, optional note. Offering again edits the note\n(and takes back a withdrawal); one offer per account per ask. Only on an\nopen ask. Emits `OfferChanged`."
       }
     },
     "/apps/{app}/methods/publishUpdate": {
@@ -6034,7 +6060,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Publish an update to this audience; returns its id. Team only. The\nauthor's own read is recorded. Emits `UpdatePublished`."
       }
     },
     "/apps/{app}/methods/react": {
@@ -6100,7 +6127,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Turn one of the six emoji on or off on a post, for the caller. Emits\n`Reacted`."
       }
     },
     "/apps/{app}/methods/removeTeammate": {
@@ -6166,7 +6194,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take a member off the team. Admin only. An admin stays team: their role\ncomes from the organization. Emits `TeamChanged`."
       }
     },
     "/apps/{app}/methods/saveDraft": {
@@ -6232,7 +6261,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Save a draft for the caller only; returns its id (a new one when\n`draftId` is `null` or empty). Nobody else can list or read it."
       }
     },
     "/apps/{app}/methods/setAskStatus": {
@@ -6298,7 +6328,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`open` or `resolved`. Team only. Emits `AskChanged`."
       }
     },
     "/apps/{app}/methods/setMutedCategories": {
@@ -6364,7 +6395,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Mute categories: their updates stop counting as unread for you. Replaces\nthe whole set. Emits `ProfileSet`."
       }
     },
     "/apps/{app}/methods/setOfferStatus": {
@@ -6430,7 +6462,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Accept or decline someone's offer (`offered`, `accepted`, `declined`).\nTeam only. Emits `OfferChanged`."
       }
     },
     "/apps/{app}/methods/setProfile": {
@@ -6496,7 +6529,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Name yourself. No `account` argument: you can only describe yourself.\nEmits `ProfileSet`."
       }
     },
     "/apps/{app}/methods/setQuestionStatus": {
@@ -6562,7 +6596,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Mark a question `answered` (or `open` again). Team only. Emits\n`StatusChanged`."
       }
     },
     "/apps/{app}/methods/setSettings": {
@@ -6628,7 +6663,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Team only. `cadenceDays` is at most 366 (0 = none). Emits\n`SettingsChanged`."
       }
     },
     "/apps/{app}/methods/withdrawOffer": {
@@ -6694,7 +6730,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Withdraw the caller's own offer. Emits `OfferChanged`."
       }
     }
   },

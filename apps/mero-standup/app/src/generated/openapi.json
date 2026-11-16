@@ -2566,7 +2566,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-standup",
     "version": "0.0.0"
   },
@@ -2684,7 +2684,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Withdraw the caller's standup for `day`; `NoUpdate` when the caller has\nnone. Never touches anyone else's. Emits `UpdateCleared`."
       }
     },
     "/apps/{app}/methods/currentBlockers": {
@@ -2750,7 +2751,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "What is blocking the team right now: each member's LATEST update, if\nit names a blocker. An old blocker someone has since posted past is\nnot current. Newest day first, then by author."
       }
     },
     "/apps/{app}/methods/getDay": {
@@ -2816,7 +2818,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone's standup for one day, ordered by author."
       }
     },
     "/apps/{app}/methods/getDecision": {
@@ -2882,7 +2885,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One decision by id; `NoSuchDecision` when there is none."
       }
     },
     "/apps/{app}/methods/getName": {
@@ -2948,7 +2952,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The name `account` chose, or \"\"."
       }
     },
     "/apps/{app}/methods/getWeek": {
@@ -3014,7 +3019,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Seven days of standups starting at `start`, oldest first: the weekly\ndigest in one call instead of seven."
       }
     },
     "/apps/{app}/methods/listDays": {
@@ -3080,7 +3086,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Days with at least one update, newest first, strictly before `before`\nwhen it is given (the previous page's `nextCursor`)."
       }
     },
     "/apps/{app}/methods/listDecisions": {
@@ -3146,7 +3153,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The log, newest first. `search` keeps decisions whose title, text,\nrationale or tags contain it (case-insensitive); `tag` keeps those\ncarrying exactly that tag; `fromDay` those logged from that standup\nday; `standingOnly` drops the superseded ones. `cursor` is the previous\npage's `nextCursor`. A tag or day filter reads only that slice of the\nlog; `search` and `standingOnly` read through the rest."
       }
     },
     "/apps/{app}/methods/logDecision": {
@@ -3212,7 +3220,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record a decision as the caller and return its id (32 hex characters).\n\n`supersedes` names the decision this one replaces: it must exist and\nstill stand (`NoSuchDecision`, `AlreadySuperseded`). `tags`, `with`\n(accounts involved) and `fromDay` (the standup day it came out of) are\nwritten with it. A decision is never changed afterwards: changing course\nis a new decision. Emits `DecisionLogged`."
       }
     },
     "/apps/{app}/methods/members": {
@@ -3278,7 +3287,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone who has an update or a chosen name, with the latest day they\nposted for, ordered by account. The UI uses it for \"still to post today\".\n\nNot the org's membership: a member who never touched the app is not in\nhere (the org lists them: `client.listMembers`)."
       }
     },
     "/apps/{app}/methods/offerHelp": {
@@ -3344,7 +3354,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Offer to help with `author`'s blocker on `day`, or change your note.\nThe update has to exist (`NoSuchUpdate`) and name a blocker\n(`NoBlocker`), and you cannot offer yourself help (`OwnBlocker`). The\noffer is the caller's own row. Emits `HelpOffered`."
       }
     },
     "/apps/{app}/methods/postUpdate": {
@@ -3410,7 +3421,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Post, or rewrite, the caller's standup for `day` (`YYYY-MM-DD`).\n\nThe day comes from the client because \"today\" is the member's local\ndate, which the contract cannot know. At least one field must say\nsomething; `blockers` may stay empty, and usually does. Only ever\nwrites the caller's own entry. Emits `UpdatePosted`."
       }
     },
     "/apps/{app}/methods/setName": {
@@ -3476,7 +3488,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Claim a display name for the calling account; an empty name clears it.\nNo `account` argument: you can only name yourself. Emits `ProfileSet`."
       }
     },
     "/apps/{app}/methods/setTeamName": {
@@ -3542,7 +3555,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Name the team. Any member may; an empty name clears it. Emits\n`TeamRenamed`."
       }
     },
     "/apps/{app}/methods/tags": {
@@ -3608,7 +3622,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every tag in the log with how many decisions carry it, most used first."
       }
     },
     "/apps/{app}/methods/teamName": {
@@ -3674,7 +3689,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The team's name, or \"\" if nobody has named it."
       }
     },
     "/apps/{app}/methods/whoami": {
@@ -3740,7 +3756,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The calling account, as the views render it. The frontend uses it to\nfind \"my\" update in a day without a second identity lookup."
       }
     },
     "/apps/{app}/methods/withdrawHelp": {
@@ -3806,7 +3823,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take back the caller's own offer on `author`'s update for `day`;\n`NoHelp` when the caller has made none there. Emits `HelpWithdrawn`."
       }
     }
   },

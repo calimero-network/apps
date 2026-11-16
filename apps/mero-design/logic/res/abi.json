@@ -58,6 +58,7 @@
     "addComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Pin a comment at a canvas point, or replace the comment with the same `id`\n(its replies are kept). Editors only; the author is the caller. Emits `CommentAdded`.",
       "kind": "call",
       "params": [
         [
@@ -87,6 +88,7 @@
     "addElement": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add an element, or replace the element with the same `id`. Editors only\n(`Forbidden`). `createdBy` is set by the contract. For an `image` or `svg`,\n`blobId` names a blob uploaded to this app. Answers the id. Emits `ElementAdded`.",
       "kind": "call",
       "params": [
         [
@@ -100,6 +102,7 @@
     "addElements": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`addElement` for many elements in one call (a paste, an import): at most\n200, else `Invalid` and nothing is added. Editors only. Answers the ids in\norder. Emits one `ElementsAdded`.",
       "kind": "call",
       "params": [
         [
@@ -113,6 +116,7 @@
     "addReply": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Reply to a comment. Editors only; the author is the caller. Does nothing if\nthe comment does not exist. Emits `CommentUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -138,6 +142,7 @@
     "bringToFront": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Paint an element above every other one. Editors only. Does nothing for an\nunknown id. Emits `LayerReordered`.",
       "kind": "call",
       "params": [
         [
@@ -151,6 +156,7 @@
     "canEdit": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether the caller may change the canvas and comments.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -159,6 +165,7 @@
     "clearComments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete every comment and reply, for every member. Board admin only\n(`Forbidden`). Emits no event, as in v1.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -167,6 +174,7 @@
     "clearElements": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete every element, for every member. Board admin only (`Forbidden`).\nEmits `LayerReordered`.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -175,6 +183,7 @@
     "deleteComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a comment and its replies. Editors only. An unknown id is not an\nerror, and still emits `CommentDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -188,6 +197,7 @@
     "deleteElement": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete an element. Editors only. An unknown id is not an error, and still\nemits `ElementDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -201,6 +211,7 @@
     "deleteElements": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`deleteElement` for many elements in one call: at most 200 ids, else\n`Invalid`. Editors only. Ids already gone are fine. Emits one `ElementsDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -214,6 +225,7 @@
     "deleteReply": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete one reply. Editors only. Does nothing, and emits nothing, if the\nreply is not there. Emits `CommentUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -231,6 +243,7 @@
     "getBoard": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The board's name, description, element and member counts, and owner.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -239,6 +252,7 @@
     "getComments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The comments, each with its replies oldest first: at most a page of\ncomments (1,000), each with at most a page of replies.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -247,6 +261,7 @@
     "getCursors": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every pointer's last reported position: at most a page (1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -255,6 +270,7 @@
     "getElement": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One element by id, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -268,6 +284,7 @@
     "getElements": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The canvas in paint order, lowest `layerIndex` first: at most a page\n(1,000 elements). `getElementsPage` reads a larger board page by page.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -276,6 +293,7 @@
     "getElementsByIds": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Several elements by id in one read (the ids a batch event named): those that\nexist, in the order asked. At most 1,000 ids, else `Invalid`.",
       "kind": "view",
       "params": [
         [
@@ -289,6 +307,7 @@
     "getElementsPage": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One page of the canvas in paint order. `cursor` is the previous page's\n`nextCursor` (`null` for the first page); `limit` 0 means 500, more than\n1,000 means 1,000. New: v1 returned the whole board from `getElements`.",
       "kind": "view",
       "params": [
         [
@@ -306,6 +325,7 @@
     "getMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member who has joined: at most a page (1,000), by account.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -314,6 +334,7 @@
     "getRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A member's effective role: `\"admin\"`, `\"editor\"` or `\"viewer\"`. Anything\nthat names nobody is a viewer.",
       "kind": "view",
       "params": [
         [
@@ -327,6 +348,7 @@
     "grantEditor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Let a member change the canvas and comments. Admin only (`Forbidden`);\n`Invalid` when `member` is not an account of the app's organization (they\nneed not have joined the board yet). Emits `RoleUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -340,6 +362,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty board. The node runs it once, when the app is created; the app's\nowner becomes the board's owner and only admin. v1's `name` and\n`description` init arguments are gone: the board's name is the app\ninstance's, and the creator sets it on the board with `updateBoard`.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -348,6 +371,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add the caller to the board's members, so others see their name. Anyone who\nreaches the app may join; joining grants no editing. Does nothing, and emits\nnothing, if the caller has already joined (`updateMemberUsername` renames).",
       "kind": "call",
       "params": [
         [
@@ -369,6 +393,7 @@
     "listRoles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member who has joined, with their effective role: at most a page (1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -377,6 +402,7 @@
     "myRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's effective role.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -385,6 +411,7 @@
     "revokeEditor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take the editor role away. Admin only (`Forbidden`). An admin's own admin\nrole, and an org admin's editing, are unaffected. Emits `RoleUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -398,6 +425,7 @@
     "sendToBack": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Paint an element below every other one. Editors only. Does nothing for an\nunknown id. Emits `LayerReordered`.",
       "kind": "call",
       "params": [
         [
@@ -411,6 +439,7 @@
     "setLayerIndex": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move one element to a position in the paint order (0 at the back; past the\nend is clamped to the front). Only the elements whose index must change are\nwritten. Editors only. Does nothing if `id` names no element. Emits\n`LayerReordered`.",
       "kind": "call",
       "params": [
         [
@@ -432,6 +461,7 @@
     "transferOwnership": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Hand the board to another account of the organization: it becomes owner and\nadmin, and the caller stops being admin (so loses editing unless also an\neditor). Owner only (`Forbidden`); `Invalid` when `newOwner` is not an\naccount of the app's organization. Emits `OwnerTransferred`.",
       "kind": "call",
       "params": [
         [
@@ -445,6 +475,7 @@
     "updateBoard": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename or re-describe the board; `null` keeps a field. Owner only\n(`Forbidden`). Emits `BoardUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -462,6 +493,7 @@
     "updateCursor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Report the caller's pointer position to the other members. Open to everyone\nwho reaches the board, viewers included. One pointer per account (v1: per\ndevice). Emits `CursorMoved`.",
       "kind": "call",
       "params": [
         [
@@ -483,6 +515,7 @@
     "updateElement": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move, resize or restyle an element; `null` leaves a field unchanged. Editors\nonly. Does nothing if `id` names no element. Emits `ElementUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -540,6 +573,7 @@
     "updateElementLabel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set or clear an element's label (its layer name and group). Editors only.\nDoes nothing if `id` names no element. Emits `ElementUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -561,6 +595,7 @@
     "updateElementLabels": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`updateElementLabel` for many elements in one call: at most 200, else\n`Invalid`. Editors only. Unknown ids are skipped. Emits one `ElementsUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -578,6 +613,7 @@
     "updateElements": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`updateElement` for many elements in one call (a multi-select drag): at most\n200 patches, else `Invalid`. Editors only. Unknown ids are skipped. Emits one\n`ElementsUpdated` naming the ids that existed.",
       "kind": "call",
       "params": [
         [
@@ -595,6 +631,7 @@
     "updateMemberUsername": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename the caller's own member entry. Does nothing if the caller has not\njoined. Emits `MemberUsernameUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -612,6 +649,7 @@
     "updateShadow": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set or remove an element's drop shadow: all four fields are replaced, all\n`null` removes it. Editors only. Does nothing if `id` names no element.\nEmits `ElementUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -645,6 +683,7 @@
     "updateTextStyle": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change a text element's content or style; `null` leaves a field unchanged.\nEditors only. Does nothing if `id` names no element; on an element that is\nnot text it changes only `updatedAt`. Emits `ElementUpdated`.",
       "kind": "call",
       "params": [
         [

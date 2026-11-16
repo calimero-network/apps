@@ -40,6 +40,7 @@
     "encodeFrame": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Encode one raw luma frame in the component, split it into fragments of\nat most [`MAX_CHUNK_BYTES`], store them, prune the caller's frames\nolder than [`FRAME_WINDOW`], and emit `FramePosted { seq }`. Returns the\nframe's seq.\n\n`raw` is `width * height` luma bytes (base64url on the wire). `now` is\nthe capture time in unix milliseconds. `NotJoined` before `join`;\n`ZeroDimension`, `DimensionTooLarge`, `RawTooLarge`, `RawLengthMismatch`\nfor a frame the codec does not take (a refused frame takes no seq).",
       "kind": "call",
       "params": [
         [
@@ -69,6 +70,7 @@
     "frameChecksum": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "FNV-1a 64 of frame `seq`'s decoded pixels, or `null` when no live,\ncomplete frame has that seq. Equal checksums mean equal pixels (C1).",
       "kind": "view",
       "params": [
         [
@@ -82,6 +84,7 @@
     "getChunks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every live chunk past the caller's per-sender cursors, grouped by\nsender (account order), ascending within each. A sender missing from\n`cursors` starts at their newest live keyframe, and is left out while\nthey have none.",
       "kind": "view",
       "params": [
         [
@@ -95,6 +98,7 @@
     "getFrame": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every frame with `seq > afterSeq`, decoded in the component, oldest\nfirst (by seq, then sender). A frame missing a fragment is skipped.",
       "kind": "view",
       "params": [
         [
@@ -108,6 +112,7 @@
     "getLiveStats": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Approach-2 instrumentation, per sender in account order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -116,6 +121,7 @@
     "getMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member, in account order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -124,6 +130,7 @@
     "getStats": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Approach-3 instrumentation.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -132,6 +139,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A new stream named `name` (`\"\"` when not given; `renameStream` sets it\nlater). The creator owns the app instance, which makes them the\nstream's owner.",
       "kind": "init",
       "params": [
         [
@@ -145,6 +153,7 @@
     "isMemberAdmin": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `member` (an account) is the stream's admin: its owner.",
       "kind": "view",
       "params": [
         [
@@ -158,6 +167,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Join the stream, or change your display name. Idempotent: `joinedAt`\nstays the first join's. Emits `MemberJoined { account }` every time.",
       "kind": "call",
       "params": [
         [
@@ -175,6 +185,7 @@
     "keyframeCursors": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Each sender's newest live keyframe, in account order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -183,6 +194,7 @@
     "postChunk": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Store one WebCodecs chunk (`dataB64`, standard base64) as the caller's\nnext seq, reap the caller's chunks older than [`LIVE_WINDOW_MS`] (never\ntheir newest keyframe), and, for the stream's owner, sweep senders\nsilent for [`STALE_SENDER_MS`]. Emits `ChunkPosted { seq }`; returns the\nseq. `now` is unix milliseconds.\n\n`NotJoined`, `BadBase64`, `EmptyChunk`, `ChunkTooLarge`,\n`CodecRequired`.",
       "kind": "call",
       "params": [
         [
@@ -224,6 +236,7 @@
     "pruneChunks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Prune the caller's own chunks below `beforeSeq`, never past their\nnewest keyframe, at most [`MAX_PRUNE_PER_CALL`]. `NotJoined`.",
       "kind": "call",
       "params": [
         [
@@ -237,6 +250,7 @@
     "pruneFrames": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove the caller's own fragments of frames with `seq < beforeSeq`, at\nmost [`MAX_PRUNE_PER_CALL`]. `NotJoined` before `join`.",
       "kind": "call",
       "params": [
         [
@@ -250,6 +264,7 @@
     "renameStream": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename the stream. The stream's owner only (`NotOwner`).",
       "kind": "call",
       "params": [
         [

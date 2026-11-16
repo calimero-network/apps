@@ -62,6 +62,7 @@
     "act": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Record one action (a punch, a kick, a jump) in round `round` of match\n`matchIndex`. `hit` says it connected, `blocked` that it was guarded.\n\nEvery call is one transaction. `matchIndex` and `round` are stated by\nthe client rather than assumed, so a blow thrown in the closing frame of\na round cannot silently land in the next one: it is refused instead\n(`RoundOver`). Emits `Acted`, then `RoundOver` and `MatchOver` when this\nblow decided them.",
       "kind": "call",
       "params": [
         [
@@ -99,6 +100,7 @@
     "arena": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The whole arena in one call, as the caller sees it at `now` (their\nclock, for who is `online`).",
       "kind": "view",
       "params": [
         [
@@ -112,6 +114,7 @@
     "history": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every match this arena has fought, oldest first (at most 512).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -120,6 +123,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A new arena with match 0 waiting for two fighters. `title` defaults to\n`\"Arena\"`; `now` (the creator's clock) is `createdAt`, `\"0\"` when not\ngiven.",
       "kind": "init",
       "params": [
         [
@@ -137,6 +141,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Announce yourself, or refresh your name and fighter. Emits\n`PlayerJoined` the first time.",
       "kind": "call",
       "params": [
         [
@@ -158,6 +163,7 @@
     "pick": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change fighter. Allowed any time: the look is yours, and the damage\ntable is the same for everybody. Emits `Seated` again when you hold a\ncorner, so the other screen redraws you.",
       "kind": "call",
       "params": [
         [
@@ -175,6 +181,7 @@
     "rematch": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Start the next match. Corners stay; health and rounds reset. Returns\nthe new match's index. `MatchNotFinished`, `NotInCorner`, and\n`MatchLimit` past 512 matches.",
       "kind": "call",
       "params": [
         [
@@ -188,6 +195,7 @@
     "sit": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take corner `p1` or `p2`, if it is free. Sitting again in your own\ncorner refreshes your name and fighter.\n\nOne person cannot hold both: this is a game between two people.\n`CornerTaken` when someone else holds it, `InOtherCorner` when you hold\nthe other one.",
       "kind": "call",
       "params": [
         [
@@ -213,6 +221,7 @@
     "stand": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Leave your corner, only before you have fought here: a corner someone\nhas fought from is the record of who fought. `NotInCorner`,\n`AlreadyFought`.",
       "kind": "call",
       "params": [
         [

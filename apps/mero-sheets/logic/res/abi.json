@@ -108,6 +108,7 @@
     "addAttachment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Record a file attached to a cell. Upload the bytes to the app's blob\nstore first; this stores what the cell shows. Returns its id.",
       "kind": "call",
       "params": [
         [
@@ -145,6 +146,7 @@
     "addChart": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Chart a range. Editors. Returns the chart's id.",
       "kind": "call",
       "params": [
         [
@@ -158,6 +160,7 @@
     "addComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Comment on a cell, or reply to a comment (`parent`). Commenters and up.\n`@nickname` mentions a member. Returns the comment id.",
       "kind": "call",
       "params": [
         [
@@ -187,6 +190,7 @@
     "addRule": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add a conditional format, colour scale, validation or alert. Editors.",
       "kind": "call",
       "params": [
         [
@@ -200,6 +204,7 @@
     "applyAxisOps": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Insert, delete or restore rows and columns; each op is one write.\nThe client picks ids (a letter first) and fractional positions.",
       "kind": "call",
       "params": [
         [
@@ -217,6 +222,7 @@
     "applyCellOps": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Apply up to [`MAX_OPS_PER_APPLY`] cell ops to one sheet in one call,\nwith one `CellsChanged` event.",
       "kind": "call",
       "params": [
         [
@@ -234,6 +240,7 @@
     "applyPrivateCellOps": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Write cells of one of the caller's private sheets: the same ops as\n`applyCellOps`, on implicit (position) row and column ids.",
       "kind": "call",
       "params": [
         [
@@ -251,6 +258,7 @@
     "applyStyleOps": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change cells' styles: bold, italic, underline, strike, wrap (`1`),\ncolor and fill (`#rrggbb`), align (`left`, `center`, `right`); an\nempty value clears the field.",
       "kind": "call",
       "params": [
         [
@@ -268,6 +276,7 @@
     "clearCell": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Blank a cell's value and format.",
       "kind": "call",
       "params": [
         [
@@ -289,6 +298,7 @@
     "createPrivateSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Make a private sheet. Returns its id.",
       "kind": "call",
       "params": [
         [
@@ -302,6 +312,7 @@
     "createSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add a sheet; a taken name gets ` (2)`, ` (3)`, …. Editors. Returns its id.",
       "kind": "call",
       "params": [
         [
@@ -315,6 +326,7 @@
     "deleteComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a comment. Its author or an owner may.",
       "kind": "call",
       "params": [
         [
@@ -328,6 +340,7 @@
     "deleteNamedRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a named range. Editors.",
       "kind": "call",
       "params": [
         [
@@ -341,6 +354,7 @@
     "deletePrivateSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete one of the caller's private sheets and its cells.",
       "kind": "call",
       "params": [
         [
@@ -354,6 +368,7 @@
     "deleteSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a sheet. Its cells stay stored and are never read again.",
       "kind": "call",
       "params": [
         [
@@ -367,6 +382,7 @@
     "dropLink": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The source withdrew a link: remove its sheet. Editors.",
       "kind": "call",
       "params": [
         [
@@ -384,6 +400,7 @@
     "editComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change a comment's text. Only its author may.",
       "kind": "call",
       "params": [
         [
@@ -401,6 +418,7 @@
     "editNote": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Edit a cell's note with one Quill-shaped delta (text and formatting).\nFormats: `bold`, `italic`, `underline`, `strike`, `code`, `highlight`,\n`link`. At most [`MAX_NOTE_CHARS`] characters.",
       "kind": "call",
       "params": [
         [
@@ -426,6 +444,7 @@
     "exportAll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "All sheets (as `listSheets`); the client assembles the file.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -434,6 +453,7 @@
     "getActivity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Activity since `since` (nanoseconds), newest first, at most `limit`\n(capped at 500) entries.",
       "kind": "view",
       "params": [
         [
@@ -451,6 +471,7 @@
     "getAllCells": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every non-blank cell across all sheets, raw and computed.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -459,6 +480,7 @@
     "getAttachments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every attachment, oldest first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -467,6 +489,7 @@
     "getCells": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One sheet's cells with computed values. Evaluates the sheet and the\nsheets it transitively references.",
       "kind": "view",
       "params": [
         [
@@ -480,6 +503,7 @@
     "getCharts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every chart.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -488,6 +512,7 @@
     "getComments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every comment, oldest first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -496,6 +521,7 @@
     "getFunctions": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every formula function, sorted by name.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -504,6 +530,7 @@
     "getLayouts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every sheet's explicit row and column entries.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -512,6 +539,7 @@
     "getLinks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every live link into this workbook.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -520,6 +548,7 @@
     "getMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Everyone who has announced themselves, oldest arrival first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -528,6 +557,7 @@
     "getNamedRanges": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every named range, sorted by name.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -536,6 +566,7 @@
     "getNote": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A cell's note as formatted runs; empty when it has none.",
       "kind": "view",
       "params": [
         [
@@ -557,6 +588,7 @@
     "getNotedCells": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every cell with a non-empty note, with the start of its text.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -565,6 +597,7 @@
     "getPrivateCells": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every cell of the caller's private sheets. `computed_value` is empty:\nthe client evaluates them, with the shared sheets they read.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -573,6 +606,7 @@
     "getPrivateSheets": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's private sheets, in the order they were made.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -581,6 +615,7 @@
     "getProject": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The project's id, name (empty until `initProject`) and creation time.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -589,6 +624,7 @@
     "getProtections": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every protected range.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -597,6 +633,7 @@
     "getPublications": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every live link from this workbook: those whose maker may still edit.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -605,6 +642,7 @@
     "getRules": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every rule.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -613,6 +651,7 @@
     "getSheetViews": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every sheet's frozen panes and resized rows and columns.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -621,6 +660,7 @@
     "getStyles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every styled cell, with its set fields.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -629,6 +669,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty workbook; the app's owner is its first owner.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -637,6 +678,7 @@
     "initProject": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Name the workbook, once. Owners only. Returns the workbook's id.",
       "kind": "call",
       "params": [
         [
@@ -650,6 +692,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Announce the caller under a nickname, or rename it. Idempotent;\n`joined_at` is kept across calls.",
       "kind": "call",
       "params": [
         [
@@ -663,6 +706,7 @@
     "listSheets": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The workbook's sheets in tab order, then the linked ones.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -671,6 +715,7 @@
     "protectRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Protect a range (corner row and column ids; all four empty for the\nwhole sheet): only owners and `editors` may then change its cells.\nOwners only. Returns the protection id.",
       "kind": "call",
       "params": [
         [
@@ -708,6 +753,7 @@
     "publishRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Link a range to another workbook (its app instance id), where it shows\nas a read-only sheet called `name`. Editors. Returns the link's id.",
       "kind": "call",
       "params": [
         [
@@ -745,6 +791,7 @@
     "pushPublication": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A link's current values, for the client to deliver to its workbook\nwith `receiveLink`. Editors.",
       "kind": "view",
       "params": [
         [
@@ -758,6 +805,7 @@
     "receiveLink": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Receive a linked range from another workbook (`fromContext`, its app\ninstance id). Editors of this workbook: the person relaying it.",
       "kind": "call",
       "params": [
         [
@@ -795,6 +843,7 @@
     "removeAttachment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove an attachment. Whoever attached it, or an owner, may.",
       "kind": "call",
       "params": [
         [
@@ -808,6 +857,7 @@
     "removeChart": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove a chart. Editors.",
       "kind": "call",
       "params": [
         [
@@ -821,6 +871,7 @@
     "removeProtection": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove a protection. Owners only.",
       "kind": "call",
       "params": [
         [
@@ -834,6 +885,7 @@
     "removeRule": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove a rule. Editors.",
       "kind": "call",
       "params": [
         [
@@ -847,6 +899,7 @@
     "renamePrivateSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename one of the caller's private sheets.",
       "kind": "call",
       "params": [
         [
@@ -864,6 +917,7 @@
     "renameSheet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename a sheet; a name another sheet has is refused.",
       "kind": "call",
       "params": [
         [
@@ -881,6 +935,7 @@
     "searchFunctions": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The functions whose name starts with `prefix` (case ignored).",
       "kind": "view",
       "params": [
         [
@@ -894,6 +949,7 @@
     "setCell": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set a cell's raw value (a literal or a formula). Returns the cell's key.",
       "kind": "call",
       "params": [
         [
@@ -919,6 +975,7 @@
     "setCellFormat": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set only a cell's display format (\"\" = Automatic), keeping its value.",
       "kind": "call",
       "params": [
         [
@@ -944,6 +1001,7 @@
     "setCommentResolved": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Resolve or reopen a comment thread. Commenters and up.",
       "kind": "call",
       "params": [
         [
@@ -961,6 +1019,7 @@
     "setFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Freeze the first `rows` rows and `cols` columns (0 unfreezes). Editors.",
       "kind": "call",
       "params": [
         [
@@ -982,6 +1041,7 @@
     "setNamedRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Define or redefine a named range (`target` in stored form). Editors.",
       "kind": "call",
       "params": [
         [
@@ -999,6 +1059,7 @@
     "setRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set a member's workbook role: `owner`, `editor`, `commenter` or\n`viewer`. Owners only; the last owner stays one.",
       "kind": "call",
       "params": [
         [
@@ -1016,6 +1077,7 @@
     "setSizes": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Resize rows and columns (`axis` `row` or `col`, size in pixels). Editors.",
       "kind": "call",
       "params": [
         [
@@ -1033,6 +1095,7 @@
     "unlink": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove a linked sheet here; later pushes of it are ignored. Editors.",
       "kind": "call",
       "params": [
         [
@@ -1046,6 +1109,7 @@
     "unpublish": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stop a link. Whoever linked it, or an owner, may. The client removes\nits sheet from the other workbook with `dropLink`.",
       "kind": "call",
       "params": [
         [
@@ -1059,6 +1123,7 @@
     "updateChart": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replace a chart's range, kind or title. Editors.",
       "kind": "call",
       "params": [
         [
@@ -1076,6 +1141,7 @@
     "updateProtection": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change who may edit a protected range, and its description. Owners only.",
       "kind": "call",
       "params": [
         [
@@ -1097,6 +1163,7 @@
     "updateRule": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replace a rule. Editors.",
       "kind": "call",
       "params": [
         [
@@ -1114,6 +1181,7 @@
     "whoami": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's account: the id its roster row, comments and cursor carry.",
       "kind": "view",
       "params": [],
       "public": false,

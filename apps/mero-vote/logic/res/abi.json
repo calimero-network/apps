@@ -63,6 +63,7 @@
     "anchorResult": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Record where the transcript digest was published; returns the digest.\nOnly the creator (`Forbidden`), only for a complete, verified result\n(`Phase`), with `network` 1..=64 and `reference` 1..=512 characters\n(`Invalid`). Emits `Anchored`.",
       "kind": "call",
       "params": [
         [
@@ -84,6 +85,7 @@
     "castBallot": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Submit a ballot the browser encrypted; returns its digest, the voter's\nreceipt. Only while voting (`Phase`), only an eligible voter\n(`Forbidden`: on the roll, or any member when there is none), and only\na ballot proven for the caller (`Crypto`). Voting again replaces the\nballot. Emits `BallotCast`.",
       "kind": "call",
       "params": [
         [
@@ -101,6 +103,7 @@
     "ceremony": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Transport keys, dealings and complaints as they stand.",
       "kind": "view",
       "params": [
         [
@@ -114,6 +117,7 @@
     "closePoll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Step one of closing: stop accepting ballots. Only the creator\n(`Forbidden`), only an open poll (`Phase`). Emits `PollClosing`.",
       "kind": "call",
       "params": [
         [
@@ -127,6 +131,7 @@
     "createPoll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Create a poll and return its id (the hex SHA-256 of its definition).\nMembers (not guests) may. A title is 1..=200 characters, the\ndescription at most 4000, options distinct and 1..=200 characters,\n2..=16 of them; `minChoices..=maxChoices` within them, and\n`2·options + maxChoices − minChoices + 1` at most 38 (what one call can\nverify). 1..=8 trustees\nand a voter roll of at most 1024, each an account in the app's org;\n`threshold` 1..=trustees. Anything else is `Invalid`. Emits\n`PollCreated`.",
       "kind": "call",
       "params": [
         [
@@ -172,6 +177,7 @@
     "fileComplaint": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A trustee proves `dealer` sent it a share that does not match the\ndealer's commitments. Refused unless the proof holds AND the share is\nreally bad — so a complaint can never frame an honest dealer. One per\n(recipient, dealer). Emits `ComplaintFiled`.",
       "kind": "call",
       "params": [
         [
@@ -197,6 +203,7 @@
     "getPoll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One poll: definition, lifecycle, trustees' progress, turnout and the\ncaller's own receipt. `NotFound` for an unknown id.",
       "kind": "view",
       "params": [
         [
@@ -210,6 +217,7 @@
     "getResult": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Re-verify everything and, once `t` trustees have published, the counts.",
       "kind": "view",
       "params": [
         [
@@ -223,6 +231,7 @@
     "getTranscript": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every input of the tally plus this node's audit of it.",
       "kind": "view",
       "params": [
         [
@@ -236,6 +245,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty app. The node runs it once, when the instance is created.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -244,6 +254,7 @@
     "listPolls": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every poll, newest first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -252,6 +263,7 @@
     "openVoting": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Freeze the election key and open voting; returns the key. Only the\ncreator (`Forbidden`), only once (`Phase`). The qualified set is every\nverified dealing with no valid complaint against it, and it must hold\nat least `t` dealers — otherwise fewer than `t` colluders could know\nthe whole key. Emits `VotingOpened`.",
       "kind": "call",
       "params": [
         [
@@ -265,6 +277,7 @@
     "publishDealing": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Round 2: a trustee deals shares of its polynomial to every trustee,\nonce every transport key is in. The contract checks the shape and the\nproof of knowledge; whether each encrypted share matches the\ncommitments only its recipient can tell, which is what complaints are\nfor. Written once. Emits `DealingPublished`.",
       "kind": "call",
       "params": [
         [
@@ -282,6 +295,7 @@
     "publishPartial": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A trustee publishes `Dⱼ = xⱼ·Aⱼ` for every option's aggregate, each\nwith a DLEQ proof against its verification key `hⱼ`, which anyone can\nderive from the qualified commitments. Only after the seal (`Phase`),\nonly a trustee (`Forbidden`), one proven partial per option\n(`Invalid` / `Crypto`). Publishing again replaces it. Emits\n`PartialPublished`.",
       "kind": "call",
       "params": [
         [
@@ -299,6 +313,7 @@
     "publishTransportKey": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Round 1: a trustee publishes the key dealers will encrypt its shares\nto. Only a named trustee (`Forbidden`), only during the ceremony and\nonly once (`Phase`), and only with a proof of knowledge bound to the\ncaller (`Crypto`). Emits `TransportKeyPublished`.",
       "kind": "call",
       "params": [
         [
@@ -320,6 +335,7 @@
     "roster": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every named account, by name then account.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -328,6 +344,7 @@
     "sealPoll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Step two: freeze the ballots to count — every eligible voter's\ncurrent ballot — and return how many. Only the creator (`Forbidden`),\nonly a closing poll (`Phase`). Emits `PollSealed`.\n\nThe proofs are not verified again here: `castBallot` verified each\nbefore storing it, nothing else stores one, and re-verifying every\nballot in one call would not fit a call's fuel (see the README).",
       "kind": "call",
       "params": [
         [
@@ -341,6 +358,7 @@
     "setName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Put a display name on your account (1..=64 characters, trimmed;\n`Invalid` otherwise). Doubles as \"I'm here\": the roster is how a\ncreator finds the accounts to name as trustees or voters. Anyone the\napp reaches may, guests included. Emits `MemberNamed`.",
       "kind": "call",
       "params": [
         [
@@ -354,6 +372,7 @@
     "tallyInputs": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The per-option aggregates a trustee decrypts. Recomputed from the\nsealed ballots every call. `Phase` before the seal.",
       "kind": "view",
       "params": [
         [
@@ -367,6 +386,7 @@
     "whoami": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's ACCOUNT — the id trustees and voter rolls are written in,\nand the id every proof binds.",
       "kind": "view",
       "params": [],
       "public": false,

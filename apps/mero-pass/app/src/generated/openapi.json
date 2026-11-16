@@ -2250,7 +2250,7 @@
     }
   },
   "info": {
-    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `mero-app-build codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
+    "description": "Generated from the app's ABI (its `calimero:abi` section). Every request and answer travels inside the node's sealed channel, after the client has verified the node's attestation: use mero-js or calimero-client-py as the transport (the typed clients `meroctl app codegen` writes do), not plain HTTP. `POST /apps/{app}/methods/{name}` runs exactly as `POST /apps/{app}/intents` (a call) or `POST /apps/{app}/views` (a view) with the same `method`: the same authentication, gating, passkey step-up and limits. Errors are `{ error, message, details }`.",
     "title": "mero-pass",
     "version": "0.0.0"
   },
@@ -2368,7 +2368,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Store wraps of a vault key and answer how many were stored. Any account\nthat reaches the vault may wrap a key to any registered, unrevoked device;\nthat is how a newcomer or a new device gets in without the creator being\nonline. Skipped, not refused: a wrap to an unknown or revoked device, a\n`keyId` with `:` in it or longer than 256 bytes, a repeat (one wrap per\nauthor, key, recipient and wrapper), and a non-admin's wrap to an agent's\nkey. `Invalid` for an envelope over 128 KiB. Emits `KeysChanged` when\nanything was stored."
       }
     },
     "/apps/{app}/methods/addSecret": {
@@ -2434,7 +2435,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a secret under an id the CLIENT chose, and answer the id. Editors and\nadmins (`Forbidden`).\n\nClient-chosen because the id is bound into every field's ciphertext as\nassociated data, which stops a member from pasting one secret's password\nenvelope into another secret: the id has to exist before the encryption\ndoes. It must be `secret_` and 32 hex characters (`Invalid`), and an id\nalready taken is `Conflict`, not an upsert. `kind` is one of the eight\nkinds, at most 64 fields with names up to 256 bytes, each envelope at\nmost 128 KiB (`Invalid`). Emits `SecretChanged`."
       }
     },
     "/apps/{app}/methods/getAuditLogs": {
@@ -2500,7 +2502,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The trail, newest first: at most the newest 1,000 lines. Each line's\naccount is the caller of the method that wrote it."
       }
     },
     "/apps/{app}/methods/getSecret": {
@@ -2566,7 +2569,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One secret, or `null` for an unknown id."
       }
     },
     "/apps/{app}/methods/keyWrapsFor": {
@@ -2632,7 +2636,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every wrap addressed to `recipient`, with the account that stored it."
       }
     },
     "/apps/{app}/methods/listDevices": {
@@ -2698,7 +2703,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every registered device, by fingerprint, with the account that\nregistered it. Clients decide whom to wrap the vault key to by this\naccount, so it is the registrant's own, never a value they wrote."
       }
     },
     "/apps/{app}/methods/listMembers": {
@@ -2764,7 +2770,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone this vault knows about, by account: each role holder, plus\nevery account that registered an unrevoked device without being given a\nrole (`pending`, or `removed` after an admin removed it)."
       }
     },
     "/apps/{app}/methods/listSecrets": {
@@ -2830,7 +2837,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every secret, trashed ones included (the client splits them), by id.\nSearch and filtering happen in the browser, after decryption: the\ncontract holds ciphertext and has nothing to match against."
       }
     },
     "/apps/{app}/methods/purgeSecret": {
@@ -2896,7 +2904,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a trashed secret, its fields and its history for good. Admin only\n(`Forbidden`); `NotFound` for an unknown id, `Invalid` for one not in the\ntrash. Emits `SecretChanged`."
       }
     },
     "/apps/{app}/methods/registerDevice": {
@@ -2962,7 +2971,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Register this browser's public key under the caller's account, so the\nvault key can be wrapped to it. Anyone the organization lets reach the\nvault may, including `pending` accounts. `fingerprint` must be 64 hex\ncharacters (the hex SHA-256 of the raw key; the contract checks the\nshape, not the hash: a wrong fingerprint only hurts the registrant) and\n`kind` `browser`, `recovery` or `agent`; else `Invalid`. A repeat of the\ncaller's own registration is a no-op. Emits `KeysChanged`."
       }
     },
     "/apps/{app}/methods/removeMember": {
@@ -3028,7 +3038,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove an account from the vault: drop its role and revoke every device\nit registered. Admin only (`Forbidden`); `Invalid` for the caller\nthemselves. The caller must then rotate the vault key (the client does,\nvia `rotateKey`) so nothing written afterwards is readable with the key\nthe removed account already holds. Emits `MembersChanged`."
       }
     },
     "/apps/{app}/methods/renameVault": {
@@ -3094,7 +3105,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename the vault. Editors and admins (`Forbidden` for anyone else).\nEmits `VaultRenamed`."
       }
     },
     "/apps/{app}/methods/restoreSecret": {
@@ -3160,7 +3172,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take a secret out of the trash. Editors and admins (`Forbidden`);\n`NotFound` for an unknown id. Emits `SecretChanged`."
       }
     },
     "/apps/{app}/methods/revokeDevice": {
@@ -3226,7 +3239,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Revoke a device. Your own device you may always revoke (its row is\nwithdrawn); anyone else's needs an admin (`Forbidden`), whose revocation\nmarks the fingerprint revoked for every account. `NotFound` for a\nfingerprint nobody registered. Follow with `rotateKey`. Emits\n`KeysChanged`."
       }
     },
     "/apps/{app}/methods/rotateKey": {
@@ -3292,7 +3306,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Make `keyId` the key new writes use. The first call bootstraps the\nvault (audited `key_created`); every later one is a rotation\n(`key_rotated`). Admin only (`Forbidden`). The caller must have stored a\nwrap of the new key first (`Invalid` otherwise), or members would be told\nto write with a key they cannot open. Emits `KeysChanged`."
       }
     },
     "/apps/{app}/methods/secretHistory": {
@@ -3358,7 +3373,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Superseded values of one secret, newest first; `[]` for an unknown id."
       }
     },
     "/apps/{app}/methods/setDefaultRole": {
@@ -3424,7 +3440,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The role newcomers are admitted with: `editor` or `viewer` (`Invalid`\notherwise). Admin only (`Forbidden`)."
       }
     },
     "/apps/{app}/methods/setRole": {
@@ -3490,7 +3507,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Give `account` a role: `admin`, `editor` or `viewer`. Admin only\n(`Forbidden`). `NotFound` for an account the organization does not hold;\n`Invalid` for another role; `Conflict` for the last Admin stepping down.\nAn explicit role re-admits a removed account. Emits `MembersChanged`."
       }
     },
     "/apps/{app}/methods/trashSecret": {
@@ -3556,7 +3574,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move a secret to the trash: recoverable until an admin purges it.\nEditors and admins (`Forbidden`); `NotFound` for an unknown id. Emits\n`SecretChanged`."
       }
     },
     "/apps/{app}/methods/updateSecret": {
@@ -3622,7 +3641,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change some of a secret's fields. Editors and admins (`Forbidden`);\n`NotFound` for an unknown id. Only what is passed is touched: `name` and\n`tags` when not null, and each field in `fields`; an empty string clears a\nfield. Every superseded non-empty value is kept in the history, still\nencrypted. `rekey` marks a re-encryption under a rotated key: the\nplaintext did not change, so nothing is added to the history. More than\n64 fields afterwards is `Invalid` and changes nothing. Emits\n`SecretChanged`."
       }
     },
     "/apps/{app}/methods/vaultInfo": {
@@ -3688,7 +3708,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The vault's name, key, default role, and the caller's account and role.\n`defaultRole` is `editor` until an admin sets it; `currentKey` is empty\nuntil the first `rotateKey`."
       }
     },
     "/apps/{app}/methods/vaultName": {
@@ -3754,7 +3775,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The vault's name; empty until the first `renameVault`."
       }
     },
     "/apps/{app}/methods/wrappedPairs": {
@@ -3820,7 +3842,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Which `keyId:recipient` pairs already have a wrap from a member who\nholds a role, sorted, so a key holder only wraps what is missing.\n\nClients also treat a device in this list as approved, so a wrap from\nanyone else (a pending or removed account, which never held the key,\nwriting a garbage wrap to its own device) does not count. Nor does a wrap\nto an agent's key from anyone but an admin."
       }
     }
   },

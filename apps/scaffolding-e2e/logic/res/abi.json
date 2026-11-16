@@ -196,6 +196,7 @@
     "aclAdmins": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every ACL admin, in key order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -204,6 +205,7 @@
     "aclCapabilities": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The projected map: account → the operations it may perform on `aclDoc`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -212,6 +214,7 @@
     "aclDocGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The guarded document; `\"\"` before the first write.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -220,6 +223,7 @@
     "aclDocSet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Writes the guarded document: the caller needs `write` in `aclCaps`.",
       "kind": "call",
       "params": [
         [
@@ -233,6 +237,7 @@
     "aclGrant": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Grants `role` (ACL admins only). Unknown roles are `Invalid`.",
       "kind": "call",
       "params": [
         [
@@ -250,6 +255,7 @@
     "aclGrantAdmin": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds an admin (ACL admins only; the account must be the app's owner or\nin its org) and projects, so the new admin holds the full mask at once.",
       "kind": "call",
       "params": [
         [
@@ -263,6 +269,7 @@
     "aclHasRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `accountHex` holds `role` in the registry.",
       "kind": "view",
       "params": [
         [
@@ -280,6 +287,7 @@
     "aclIsAdmin": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `accountHex` is an ACL admin.",
       "kind": "view",
       "params": [
         [
@@ -293,6 +301,7 @@
     "aclMembersOf": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The holders of `role`, in key order (at most 1,000).",
       "kind": "view",
       "params": [
         [
@@ -306,6 +315,7 @@
     "aclMyRoles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's roles.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -314,6 +324,7 @@
     "aclProject": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rewrites `aclCaps` from the registry (ACL admins only): each role\nholder gets its roles' operations, each admin the full mask. Returns\nhow many accounts the map now covers. Emits `CapabilitiesProjected`.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -322,6 +333,7 @@
     "aclRevoke": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Revokes `role` (ACL admins only).",
       "kind": "call",
       "params": [
         [
@@ -339,6 +351,7 @@
     "aclRevokeAdmin": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes an admin (ACL admins only), refusing the last one, then projects.",
       "kind": "call",
       "params": [
         [
@@ -352,6 +365,7 @@
     "aclRoles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The roles this app defines, and the operations each confers.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -360,6 +374,7 @@
     "addFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores `value` immutably and returns its address: the hex SHA-256 of the\nstored (CBOR) value. The same value twice is one entry. Emits `FrozenAdded`.",
       "kind": "call",
       "params": [
         [
@@ -373,6 +388,7 @@
     "addGuess": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `guess` is `gameId`'s secret. Emits `Guessed`; `NoHash` when the\ngame has no secret yet.",
       "kind": "call",
       "params": [
         [
@@ -390,6 +406,7 @@
     "addSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Keeps `secret` for the caller and publishes its SHA-256 for guesses.\nv1 kept the secret node-local; here it is the caller's entry in the\napp's state, which only `mySecrets` of the same account returns.",
       "kind": "call",
       "params": [
         [
@@ -407,6 +424,7 @@
     "addTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds `tag` to `key`'s set. Emits `TagAdded`.",
       "kind": "call",
       "params": [
         [
@@ -424,6 +442,7 @@
     "authoredEntries": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every key with its lowest holder's value (at most 1,000 entries read).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -432,6 +451,7 @@
     "authoredGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value at `key` of whoever holds it: the lowest account's when\nseveral do.",
       "kind": "view",
       "params": [
         [
@@ -445,6 +465,7 @@
     "authoredGetBy": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`owner`'s own value at `key`.",
       "kind": "view",
       "params": [
         [
@@ -462,6 +483,7 @@
     "authoredGetOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The account `authoredGet` reads `key` from.",
       "kind": "view",
       "params": [
         [
@@ -475,6 +497,7 @@
     "authoredInsert": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Creates the caller's own entry at `key`; `Invalid` when the caller\nalready holds one there (`authoredUpdate` edits it). Another account's\nentry at the same key is theirs and stays. Emits `AuthoredInserted`.",
       "kind": "call",
       "params": [
         [
@@ -492,6 +515,7 @@
     "authoredLen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many (key, owner) entries there are.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -500,6 +524,7 @@
     "authoredOwners": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every account holding an entry at `key`, ascending.",
       "kind": "view",
       "params": [
         [
@@ -513,6 +538,7 @@
     "authoredRemove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes the caller's own entry at `key` and returns its value.",
       "kind": "call",
       "params": [
         [
@@ -526,6 +552,7 @@
     "authoredUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the caller's own entry at `key`; `NotFound` when the caller\nholds none there (someone else's entry is not theirs to edit).",
       "kind": "call",
       "params": [
         [
@@ -543,6 +570,7 @@
     "authoredVecEntries": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The values still present, in index order (at most 1,000 slots read).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -551,6 +579,7 @@
     "authoredVecGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value at `index`; `null` past the end or once removed.",
       "kind": "view",
       "params": [
         [
@@ -564,6 +593,7 @@
     "authoredVecGetOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Who pushed the slot at `index`; `null` past the end.",
       "kind": "view",
       "params": [
         [
@@ -577,6 +607,7 @@
     "authoredVecLen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many slots there are, removed ones included.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -585,6 +616,7 @@
     "authoredVecPush": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Appends a slot owned by the caller and returns its index.",
       "kind": "call",
       "params": [
         [
@@ -598,6 +630,7 @@
     "authoredVecRemove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes the value at `index` (its owner only). The slot stays, so no\nother index moves.",
       "kind": "call",
       "params": [
         [
@@ -611,6 +644,7 @@
     "authoredVecUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the value at `index` (its owner only).",
       "kind": "call",
       "params": [
         [
@@ -628,6 +662,7 @@
     "clear": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes every key. Emits `Cleared` only when there was something to clear.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -636,6 +671,7 @@
     "clearHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts one handler run.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -644,6 +680,7 @@
     "clearWithHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`clear`, then `clearHandler` in the same call; always emits `Cleared`.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -652,6 +689,7 @@
     "decrementPnCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Takes one from the counter `key` (it may go below zero).",
       "kind": "call",
       "params": [
         [
@@ -665,6 +703,7 @@
     "deleteFile": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Forgets a file record. Emits `FileDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -678,6 +717,7 @@
     "entries": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every key with its value, in key order. At most 1,000 keys: one page.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -686,6 +726,7 @@
     "games": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every game's public hash (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -694,6 +735,7 @@
     "get": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -707,6 +749,7 @@
     "getBlobIdHex": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A file's blob id.",
       "kind": "view",
       "params": [
         [
@@ -720,6 +763,7 @@
     "getCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "v1's alias of `getGCounter`.",
       "kind": "view",
       "params": [
         [
@@ -733,6 +777,7 @@
     "getFile": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One file record; `NotFound` when absent.",
       "kind": "view",
       "params": [
         [
@@ -746,6 +791,7 @@
     "getFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value at `hashHex`. Not 64 hex characters: `NotFound { key: \"dehex\nerror\" }`; no such value: `FrozenNotFound`.",
       "kind": "view",
       "params": [
         [
@@ -759,6 +805,7 @@
     "getGCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The grow-only counter `key`; `NotFound` before its first increment.",
       "kind": "view",
       "params": [
         [
@@ -772,6 +819,7 @@
     "getHandlerExecutionCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many handler runs there have been.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -780,6 +828,7 @@
     "getMetadata": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`innerKey` under `outerKey`; `NotFound { key: outerKey }` when the outer\nkey holds nothing, `NotFound { key: innerKey }` when only the inner is missing.",
       "kind": "view",
       "params": [
         [
@@ -797,6 +846,7 @@
     "getMetric": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The metric at `index`; `NotFound` past the end.",
       "kind": "view",
       "params": [
         [
@@ -810,6 +860,7 @@
     "getPnCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The counter `key`; `NotFound` before its first change.",
       "kind": "view",
       "params": [
         [
@@ -823,6 +874,7 @@
     "getRegister": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Register `key`; `NotFound` when unset.",
       "kind": "view",
       "params": [
         [
@@ -836,6 +888,7 @@
     "getResult": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The value under `key`; `NotFound { key }` when absent.",
       "kind": "view",
       "params": [
         [
@@ -849,6 +902,7 @@
     "getTagCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many tags `key` holds; `NotFound` when it has none.",
       "kind": "view",
       "params": [
         [
@@ -862,6 +916,7 @@
     "getUserNested": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`key` in the caller's own map, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -875,6 +930,7 @@
     "getUserSimple": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's own value, or `null`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -883,6 +939,7 @@
     "getUserSimpleFor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`accountHex`'s value, or `null`. Any account id the node uses.",
       "kind": "view",
       "params": [
         [
@@ -896,6 +953,7 @@
     "hasTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `key`'s set holds `tag`; `NotFound` when `key` has no tags.",
       "kind": "view",
       "params": [
         [
@@ -913,6 +971,7 @@
     "incrementCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "v1's alias of `incrementGCounter`.",
       "kind": "call",
       "params": [
         [
@@ -926,6 +985,7 @@
     "incrementGCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds one to the grow-only counter `key` and returns its value.",
       "kind": "call",
       "params": [
         [
@@ -939,6 +999,7 @@
     "incrementPnCounter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds one to the counter `key` and returns its value.",
       "kind": "call",
       "params": [
         [
@@ -952,6 +1013,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty bench. The app's owner is the first ACL admin (with full\ncapabilities on `aclDoc`), the owner of the owned cell, the writer of\nthe shared cell, and the first workspace admin, as v1's context creator\nwas.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -960,6 +1022,7 @@
     "insertHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts one handler run. Callable directly too, as v1's handlers were.",
       "kind": "call",
       "params": [
         [
@@ -977,6 +1040,7 @@
     "len": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many keys are stored (a stored count).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -985,6 +1049,7 @@
     "listFiles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every file record, by id (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -993,6 +1058,7 @@
     "metricsLen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many metrics there are.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1001,6 +1067,7 @@
     "myAccount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's account on its own: the name core's copy of this scaffold\nuses, so a scenario runs against either.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1009,6 +1076,7 @@
     "mySecrets": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's own secrets, game id → secret (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1017,6 +1085,7 @@
     "ownedGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The owned cell; `\"\"` before the first write.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1025,6 +1094,7 @@
     "ownedIsOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `accountHex` owns the owned cell.",
       "kind": "view",
       "params": [
         [
@@ -1038,6 +1108,7 @@
     "ownedOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The owner of the owned cell.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1046,6 +1117,7 @@
     "ownedSet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Writes the owned cell (its owner only).",
       "kind": "call",
       "params": [
         [
@@ -1059,6 +1131,7 @@
     "ownedTransfer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Hands the cell to `accountHex` (its owner only; the app's owner or an\norg account). One way: the previous owner can no longer write.",
       "kind": "call",
       "params": [
         [
@@ -1072,6 +1145,7 @@
     "pushMetric": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Appends `value` and returns the new length.",
       "kind": "call",
       "params": [
         [
@@ -1085,6 +1159,7 @@
     "remove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes `key` and returns its value. Emits `Removed` only when a value\nwas removed.",
       "kind": "call",
       "params": [
         [
@@ -1098,6 +1173,7 @@
     "removeHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts one handler run.",
       "kind": "call",
       "params": [
         [
@@ -1111,6 +1187,7 @@
     "removeWithHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`remove`, then `removeHandler` in the same call. As in v1, `Removed` is\nemitted (and the handler runs) whether or not the key existed.",
       "kind": "call",
       "params": [
         [
@@ -1124,6 +1201,7 @@
     "rgaAppendText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Appends `text` at the end.",
       "kind": "call",
       "params": [
         [
@@ -1137,6 +1215,7 @@
     "rgaClear": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes everything (one `TextDeleted` when there was text).",
       "kind": "call",
       "params": [],
       "public": false,
@@ -1145,6 +1224,7 @@
     "rgaDeleteText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes the characters in `[start, end)`. Emits `TextDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -1162,6 +1242,7 @@
     "rgaGetLength": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The document's length in characters.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1170,6 +1251,7 @@
     "rgaGetText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The document's text.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1178,6 +1260,7 @@
     "rgaGetTitle": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The title; `\"Untitled Document\"` until one is set.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1186,6 +1269,7 @@
     "rgaInsertText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Inserts `text` at character `position` (0 ..= length). Emits `TextInserted`.",
       "kind": "call",
       "params": [
         [
@@ -1203,6 +1287,7 @@
     "rgaIsEmpty": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether the document is empty.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1211,6 +1296,7 @@
     "rgaSetTitle": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Renames the document; an empty title is `Invalid`. Emits `TitleChanged`.",
       "kind": "call",
       "params": [
         [
@@ -1224,6 +1310,7 @@
     "searchFiles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Files whose name contains `query`, case-insensitive (a scan of the\nfirst 1,000 records).",
       "kind": "view",
       "params": [
         [
@@ -1237,6 +1324,7 @@
     "set": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Stores `value` under `key`. Emits `Inserted` for a new key, `Updated`\nfor an existing one.",
       "kind": "call",
       "params": [
         [
@@ -1254,6 +1342,7 @@
     "setMetadata": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets `innerKey` under `outerKey`.",
       "kind": "call",
       "params": [
         [
@@ -1275,6 +1364,7 @@
     "setRegister": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets register `key`; a later write replaces an earlier one.",
       "kind": "call",
       "params": [
         [
@@ -1292,6 +1382,7 @@
     "setUserNested": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets `key` in the caller's own map. Emits `UserNestedSet`.",
       "kind": "call",
       "params": [
         [
@@ -1309,6 +1400,7 @@
     "setUserSimple": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets the caller's own value. Emits `UserSimpleSet`.",
       "kind": "call",
       "params": [
         [
@@ -1322,6 +1414,7 @@
     "setWithHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`set`, then the handler v1 named with the event (`insertHandler` or\n`updateHandler`), run in the same call. v1 ran it on every node that\nreceived the event; one log runs it once.",
       "kind": "call",
       "params": [
         [
@@ -1339,6 +1432,7 @@
     "sharedAddWriter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a writer (writers only; the app's owner or an org account).",
       "kind": "call",
       "params": [
         [
@@ -1352,6 +1446,7 @@
     "sharedGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The shared cell; `\"\"` before the first write.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1360,6 +1455,7 @@
     "sharedGetWriters": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The writer set, in key order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1368,6 +1464,7 @@
     "sharedIsFrozen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Always `false`: the cell is never frozen (v1 created it unfrozen too).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1376,6 +1473,7 @@
     "sharedIsWriter": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `accountHex` is a writer.",
       "kind": "view",
       "params": [
         [
@@ -1389,6 +1487,7 @@
     "sharedRotateWriters": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replaces the whole writer set (writers only). A set without the caller\nis allowed and takes them out; an empty set is `Invalid`.",
       "kind": "call",
       "params": [
         [
@@ -1402,6 +1501,7 @@
     "sharedSet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Writes the shared cell (its writers only). Emits `SharedSet`.",
       "kind": "call",
       "params": [
         [
@@ -1415,6 +1515,7 @@
     "sortedGet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`key` in the ordered map, or `null`.",
       "kind": "view",
       "params": [
         [
@@ -1428,6 +1529,7 @@
     "sortedKeys": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every key in ascending order (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1436,6 +1538,7 @@
     "sortedLastKey": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The largest key, or `null`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1444,6 +1547,7 @@
     "sortedLen": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "How many keys the ordered map holds.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1452,6 +1556,7 @@
     "sortedRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Entries with keys in `[start, end)`, ascending (at most 1,000). An\nempty or inverted range is `{}`.",
       "kind": "view",
       "params": [
         [
@@ -1469,6 +1574,7 @@
     "sortedRemove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes `key`; `true` if it was there.",
       "kind": "call",
       "params": [
         [
@@ -1482,6 +1588,7 @@
     "sortedSet": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets `key` in the ordered map.",
       "kind": "call",
       "params": [
         [
@@ -1499,6 +1606,7 @@
     "sortedTagAdd": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds `tag` to the ordered set; `true` if it was new.",
       "kind": "call",
       "params": [
         [
@@ -1512,6 +1620,7 @@
     "sortedTagContains": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether the ordered set holds `tag`.",
       "kind": "view",
       "params": [
         [
@@ -1525,6 +1634,7 @@
     "sortedTagRemove": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes `tag`; `true` if it was there.",
       "kind": "call",
       "params": [
         [
@@ -1538,6 +1648,7 @@
     "sortedTagsAll": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every tag in ascending order (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1546,6 +1657,7 @@
     "sortedTagsLast": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The largest tag, or `null`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1554,6 +1666,7 @@
     "sortedTagsRange": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Tags in `[start, end)`, ascending (at most 1,000).",
       "kind": "view",
       "params": [
         [
@@ -1571,6 +1684,7 @@
     "tracingProbe": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Writes to the run's log, and stores `probe_key` so the run has a write.\n\nv1 drove the SDK's `tracing` subscriber with `set_log_level`. The\ncomponent SDK has `env::log` only (the host keeps 64 KiB a run), so the\nlevel filter is done here: the warn line always, the info and debug\nlines only with `debug`. The lines go to the node's log, never into the\ncall's answer.",
       "kind": "call",
       "params": [
         [
@@ -1584,6 +1698,7 @@
     "updateHandler": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts one handler run.",
       "kind": "call",
       "params": [
         [
@@ -1601,6 +1716,7 @@
     "uploadFile": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Records a file whose bytes the caller uploaded to this app's blob store\n(`blobIdStr`, 64 hex), and returns the record's id. Emits `FileUploaded`.",
       "kind": "call",
       "params": [
         [
@@ -1626,6 +1742,7 @@
     "whoami": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's identity. `deviceId` is the account too (an API key's id\nfor an API-key caller): 1.0 runs a method for the account, not for an\ninstallation.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1634,6 +1751,7 @@
     "wsGetInfo": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Name, admin and the three counts; `Invalid` while unclaimed.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1642,6 +1760,7 @@
     "wsGetMemberRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`identity`'s role, or `\"\"`.",
       "kind": "view",
       "params": [
         [
@@ -1655,6 +1774,7 @@
     "wsInit": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Names the workspace and makes the caller its admin. Workspace admins\nonly (the app's owner first); once only.",
       "kind": "call",
       "params": [
         [
@@ -1668,6 +1788,7 @@
     "wsListChannels": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The channel directory, by id (at most 1,000). Readable by anyone the\napp admits.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1676,6 +1797,7 @@
     "wsListGroups": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The group directory, by id (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1684,6 +1806,7 @@
     "wsListMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member and role, by identity (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1692,6 +1815,7 @@
     "wsMyRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's role, or `\"\"`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1700,6 +1824,7 @@
     "wsPingChannel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Records a ping to another app instance in the directory and emits\n`ChannelPinged`. v1 queued an `xcall` to the target's `ws_pong`; core\n`1.0.0-rc.7` components cannot send one, so nothing is sent and the\ntarget's `wsPingCount` does not move.",
       "kind": "call",
       "params": [
         [
@@ -1713,6 +1838,7 @@
     "wsPingCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Pongs received.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -1724,6 +1850,7 @@
       ],
       "allowSystem": false,
       "confirm": false,
+      "doc": "Receives a ping from another app (`allow(app = \"*\")`). A direct call by\nan account is refused, and so is a caller whose `fromContext` is not\nthe app id the node reports. Emits `PongReceived`.",
       "kind": "call",
       "params": [
         [
@@ -1737,6 +1864,7 @@
     "wsRegisterChannel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Registers a channel, or updates one the caller registered. A member\nthat is not `read-only` may; a channel someone else registered is theirs.",
       "kind": "call",
       "params": [
         [
@@ -1758,6 +1886,7 @@
     "wsRegisterGroup": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Registers or updates a group; ownership as `wsRegisterChannel`.",
       "kind": "call",
       "params": [
         [
@@ -1779,6 +1908,7 @@
     "wsSetMemberRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Grants `identity` a workspace role (workspace admins only). Granting or\ntaking away `admin` also changes who may claim, set roles and moderate.\nAn admin cannot demote themselves.",
       "kind": "call",
       "params": [
         [
@@ -1796,6 +1926,7 @@
     "wsUnregisterChannel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a channel: its registrant or a workspace admin.",
       "kind": "call",
       "params": [
         [
@@ -1809,6 +1940,7 @@
     "wsUnregisterGroup": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a group: its registrant or a workspace admin.",
       "kind": "call",
       "params": [
         [

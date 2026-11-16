@@ -26,6 +26,7 @@
     "addKeyWraps": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Store wraps of a vault key and answer how many were stored. Any account\nthat reaches the vault may wrap a key to any registered, unrevoked device;\nthat is how a newcomer or a new device gets in without the creator being\nonline. Skipped, not refused: a wrap to an unknown or revoked device, a\n`keyId` with `:` in it or longer than 256 bytes, a repeat (one wrap per\nauthor, key, recipient and wrapper), and a non-admin's wrap to an agent's\nkey. `Invalid` for an envelope over 128 KiB. Emits `KeysChanged` when\nanything was stored.",
       "kind": "call",
       "params": [
         [
@@ -39,6 +40,7 @@
     "addSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add a secret under an id the CLIENT chose, and answer the id. Editors and\nadmins (`Forbidden`).\n\nClient-chosen because the id is bound into every field's ciphertext as\nassociated data, which stops a member from pasting one secret's password\nenvelope into another secret: the id has to exist before the encryption\ndoes. It must be `secret_` and 32 hex characters (`Invalid`), and an id\nalready taken is `Conflict`, not an upsert. `kind` is one of the eight\nkinds, at most 64 fields with names up to 256 bytes, each envelope at\nmost 128 KiB (`Invalid`). Emits `SecretChanged`.",
       "kind": "call",
       "params": [
         [
@@ -68,6 +70,7 @@
     "getAuditLogs": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The trail, newest first: at most the newest 1,000 lines. Each line's\naccount is the caller of the method that wrote it.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -76,6 +79,7 @@
     "getSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One secret, or `null` for an unknown id.",
       "kind": "view",
       "params": [
         [
@@ -89,6 +93,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty vault, with the account that creates the app instance as its\nfirst Admin. It takes no arguments: the creator names the vault with\n`renameVault` (v1 took the name as `init`'s argument).",
       "kind": "init",
       "params": [],
       "public": false,
@@ -97,6 +102,7 @@
     "keyWrapsFor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every wrap addressed to `recipient`, with the account that stored it.",
       "kind": "view",
       "params": [
         [
@@ -110,6 +116,7 @@
     "listDevices": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every registered device, by fingerprint, with the account that\nregistered it. Clients decide whom to wrap the vault key to by this\naccount, so it is the registrant's own, never a value they wrote.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -118,6 +125,7 @@
     "listMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Everyone this vault knows about, by account: each role holder, plus\nevery account that registered an unrevoked device without being given a\nrole (`pending`, or `removed` after an admin removed it).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -126,6 +134,7 @@
     "listSecrets": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every secret, trashed ones included (the client splits them), by id.\nSearch and filtering happen in the browser, after decryption: the\ncontract holds ciphertext and has nothing to match against.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -134,6 +143,7 @@
     "purgeSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a trashed secret, its fields and its history for good. Admin only\n(`Forbidden`); `NotFound` for an unknown id, `Invalid` for one not in the\ntrash. Emits `SecretChanged`.",
       "kind": "call",
       "params": [
         [
@@ -147,6 +157,7 @@
     "registerDevice": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Register this browser's public key under the caller's account, so the\nvault key can be wrapped to it. Anyone the organization lets reach the\nvault may, including `pending` accounts. `fingerprint` must be 64 hex\ncharacters (the hex SHA-256 of the raw key; the contract checks the\nshape, not the hash: a wrong fingerprint only hurts the registrant) and\n`kind` `browser`, `recovery` or `agent`; else `Invalid`. A repeat of the\ncaller's own registration is a no-op. Emits `KeysChanged`.",
       "kind": "call",
       "params": [
         [
@@ -172,6 +183,7 @@
     "removeMember": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Remove an account from the vault: drop its role and revoke every device\nit registered. Admin only (`Forbidden`); `Invalid` for the caller\nthemselves. The caller must then rotate the vault key (the client does,\nvia `rotateKey`) so nothing written afterwards is readable with the key\nthe removed account already holds. Emits `MembersChanged`.",
       "kind": "call",
       "params": [
         [
@@ -185,6 +197,7 @@
     "renameVault": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename the vault. Editors and admins (`Forbidden` for anyone else).\nEmits `VaultRenamed`.",
       "kind": "call",
       "params": [
         [
@@ -198,6 +211,7 @@
     "restoreSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take a secret out of the trash. Editors and admins (`Forbidden`);\n`NotFound` for an unknown id. Emits `SecretChanged`.",
       "kind": "call",
       "params": [
         [
@@ -211,6 +225,7 @@
     "revokeDevice": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Revoke a device. Your own device you may always revoke (its row is\nwithdrawn); anyone else's needs an admin (`Forbidden`), whose revocation\nmarks the fingerprint revoked for every account. `NotFound` for a\nfingerprint nobody registered. Follow with `rotateKey`. Emits\n`KeysChanged`.",
       "kind": "call",
       "params": [
         [
@@ -224,6 +239,7 @@
     "rotateKey": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Make `keyId` the key new writes use. The first call bootstraps the\nvault (audited `key_created`); every later one is a rotation\n(`key_rotated`). Admin only (`Forbidden`). The caller must have stored a\nwrap of the new key first (`Invalid` otherwise), or members would be told\nto write with a key they cannot open. Emits `KeysChanged`.",
       "kind": "call",
       "params": [
         [
@@ -237,6 +253,7 @@
     "secretHistory": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Superseded values of one secret, newest first; `[]` for an unknown id.",
       "kind": "view",
       "params": [
         [
@@ -250,6 +267,7 @@
     "setDefaultRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The role newcomers are admitted with: `editor` or `viewer` (`Invalid`\notherwise). Admin only (`Forbidden`).",
       "kind": "call",
       "params": [
         [
@@ -263,6 +281,7 @@
     "setRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Give `account` a role: `admin`, `editor` or `viewer`. Admin only\n(`Forbidden`). `NotFound` for an account the organization does not hold;\n`Invalid` for another role; `Conflict` for the last Admin stepping down.\nAn explicit role re-admits a removed account. Emits `MembersChanged`.",
       "kind": "call",
       "params": [
         [
@@ -280,6 +299,7 @@
     "trashSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move a secret to the trash: recoverable until an admin purges it.\nEditors and admins (`Forbidden`); `NotFound` for an unknown id. Emits\n`SecretChanged`.",
       "kind": "call",
       "params": [
         [
@@ -293,6 +313,7 @@
     "updateSecret": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Change some of a secret's fields. Editors and admins (`Forbidden`);\n`NotFound` for an unknown id. Only what is passed is touched: `name` and\n`tags` when not null, and each field in `fields`; an empty string clears a\nfield. Every superseded non-empty value is kept in the history, still\nencrypted. `rekey` marks a re-encryption under a rotated key: the\nplaintext did not change, so nothing is added to the history. More than\n64 fields afterwards is `Invalid` and changes nothing. Emits\n`SecretChanged`.",
       "kind": "call",
       "params": [
         [
@@ -322,6 +343,7 @@
     "vaultInfo": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The vault's name, key, default role, and the caller's account and role.\n`defaultRole` is `editor` until an admin sets it; `currentKey` is empty\nuntil the first `rotateKey`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -330,6 +352,7 @@
     "vaultName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The vault's name; empty until the first `renameVault`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -338,6 +361,7 @@
     "wrappedPairs": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Which `keyId:recipient` pairs already have a wrap from a member who\nholds a role, sorted, so a key holder only wraps what is missing.\n\nClients also treat a device in this list as approved, so a wrap from\nanyone else (a pending or removed account, which never held the key,\nwriting a garbage wrap to its own device) does not count. Nor does a wrap\nto an agent's key from anyone but an admin.",
       "kind": "view",
       "params": [],
       "public": false,
