@@ -178,6 +178,16 @@ afterEach(cleanup);
 // testing-library's 1 s default.
 const SLOW = { timeout: 10_000 };
 
+/** Clicks the landing's current sign-in CTA until the passkey popup is open: a CTA found before the session settles is detached. */
+async function openSignIn() {
+  await waitFor(() => {
+    if (!screen.queryByTestId('signin-passkey')) {
+      fireEvent.click(screen.getAllByRole('button', { name: /sign in|connect|get started|open/i })[0]!);
+    }
+    expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+  }, SLOW);
+}
+
 function storeSession() {
   new SessionStore(APP, resolveTarget(DEV_ENV), localStorage).save(SESSION);
 }
@@ -227,16 +237,7 @@ describe('App', () => {
   it('signs in with a passkey from the landing page', async () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    // The landing re-renders once the session settles (the sign-up policy read
-    // lands after `signed-out`), and its CTA is a component made in render, so
-    // a button found before that is detached and a click on it does nothing.
-    // Click the current one until the sign-in popup is open.
-    await waitFor(() => {
-      if (!screen.queryByTestId('signin-passkey')) {
-        fireEvent.click(screen.getAllByRole('button', { name: /sign in|connect|get started|open/i })[0]!);
-      }
-      expect(screen.getByTestId('signin-passkey')).toBeTruthy();
-    }, SLOW);
+    await openSignIn();
     fireEvent.click(screen.getByTestId('signin-passkey'));
     await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
   });
@@ -374,7 +375,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
     await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
     // Sign in from the landing page: the join prompt follows with no extra click.
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    await openSignIn();
     fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
     fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
@@ -407,7 +408,7 @@ describe('App', () => {
     // "Not now", then create the account from the landing page: the sign-up joins.
     fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
     await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    await openSignIn();
     fireEvent.click(await screen.findByTestId('signup-passkey', {}, SLOW));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-xyz' }), SLOW);
     await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
