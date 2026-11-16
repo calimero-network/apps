@@ -1,5 +1,5 @@
 /**
- * Mero Chat on its served origin, as on Calimero Cloud: node 1 serves Chat's
+ * Hyperfeed Chat on its served origin, as on Calimero Cloud: node 1 serves Chat's
  * frontend from its bundle at `http://{label}.localhost:2501/`, so a passkey
  * session opened there is bound to Chat's package (`/auth/me`'s `app`). Such a
  * session may run Chat's own apps and teams; anything organization-wide goes
@@ -128,7 +128,7 @@ test("1. Ann signs in on Chat's served origin, and the session is bound to Chat"
 
 test("2. Ann creates a workspace through the consent page and lands in #general", async () => {
   const page = annBrowser.page;
-  await expect(page.getByText("You have no Mero Chat workspace yet")).toBeVisible();
+  await expect(page.getByText("You have no Hyperfeed Chat workspace yet")).toBeVisible();
   await page.getByRole("button", { name: "Create workspace" }).click();
   await page.getByPlaceholder("e.g. My Team").fill(WORKSPACE);
   await page.getByPlaceholder("e.g. Alice").fill("Ann");
@@ -230,7 +230,7 @@ test.fixme("9. Bob leaves the workspace", async () => {
   await page.getByRole("button", { name: "Leave workspace" }).click();
   await page.getByRole("button", { name: "Confirm leave" }).click();
   await approveOnConsentPage(page);
-  await expect(page.getByText("You have no Mero Chat workspace yet")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("You have no Hyperfeed Chat workspace yet")).toBeVisible({ timeout: 60_000 });
   const me = (await bob.client.auth.me()) as { orgs?: Array<{ orgId: string }> };
   expect(me.orgs?.map((o) => o.orgId)).not.toContain(org);
 });

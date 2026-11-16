@@ -1,6 +1,6 @@
 /**
  * One organization, three apps, no state but core's: Alice makes a workspace
- * in Mero Chat on its own, then runs it from Calimero Home (adds KV Store,
+ * in Hyperfeed Chat on its own, then runs it from Calimero Home (adds KV Store,
  * invites Bob to both, takes him out of Chat only), and Chat reads the same
  * org Home changed. Each person has their own browser context and passkey.
  */
@@ -101,7 +101,7 @@ test("1. Alice makes a workspace in Chat, on its own", async ({ browser }) => {
   const page = aliceBrowser.page;
 
   await signInToChat(page);
-  await expect(page.getByText("You have no Mero Chat workspace yet")).toBeVisible();
+  await expect(page.getByText("You have no Hyperfeed Chat workspace yet")).toBeVisible();
   await page.getByRole("button", { name: "Create workspace" }).click();
   // mero-react's shared dialog: names, then the review, from which it creates.
   const dialog = page.locator(".mero-cw-card");
@@ -123,7 +123,7 @@ test("2. Home shows the org Chat made, with Chat for everyone in it", async () =
   // Chat made its own open app team: the org is standalone, Chat everyone's.
   await expect(page.getByTestId("org-mode")).toContainText("Owner");
   await expect(page.getByTestId("org-mode")).toContainText("Standalone");
-  await expect(page.getByTestId(`app-${CHAT}`)).toContainText("Mero Chat");
+  await expect(page.getByTestId(`app-${CHAT}`)).toContainText("Hyperfeed Chat");
   await expect(page.getByTestId(`app-${CHAT}`)).toContainText("Everyone in the organization");
   await expect(page.getByTestId(`open-${CHAT}`)).toBeVisible();
 });
@@ -136,7 +136,7 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   await expect(page.getByTestId("apart-state")).toContainText("Everyone in the organization has every app");
   // A controlled switch: the click opens the confirm, the state changes once it is applied.
   await page.getByTestId("apart-switch").click();
-  await expect(page.getByTestId("apart-keeps")).toContainText("Mero Chat");
+  await expect(page.getByTestId("apart-keeps")).toContainText("Hyperfeed Chat");
   await page.getByTestId("apart-confirm-yes").click();
   await expect(page.getByTestId("apart-state")).toContainText("Each app lists who is in it");
   await expect(page.getByTestId("org-mode")).toContainText("Shared");
@@ -211,7 +211,7 @@ test("5. People: Alice sets Bob to No for Chat; he loses Chat, keeps KV Store an
   const chatSeat = row.locator(`[data-testid^="seat-${CHAT}-"]`);
   await expect(chatSeat).toHaveValue("member");
   await chatSeat.selectOption("none");
-  await expect(page.getByTestId("people-notice")).toContainText("Bob was taken out of Mero Chat");
+  await expect(page.getByTestId("people-notice")).toContainText("Bob was taken out of Hyperfeed Chat");
   await expect(chatSeat).toHaveValue("none");
   await expect(row.locator(`[data-testid^="seat-${KV}-"]`)).toHaveValue("member");
   await expect(row.getByRole("button", { name: "Remove from organization…" })).toBeVisible();
@@ -220,7 +220,7 @@ test("5. People: Alice sets Bob to No for Chat; he loses Chat, keeps KV Store an
   // Chat there, instead of an empty workspace; from there he picks another.
   await expect(bob.page.getByText(`You no longer have access to Chat in ${WORKSPACE}`)).toBeVisible({ timeout: 120_000 });
   await bob.page.getByRole("button", { name: "Choose another workspace" }).click();
-  await expect(bob.page.getByText("You have no Mero Chat workspace yet")).toBeVisible({ timeout: 60_000 });
+  await expect(bob.page.getByText("You have no Hyperfeed Chat workspace yet")).toBeVisible({ timeout: 60_000 });
 
   // Still in the org in Home, with KV Store and without Chat.
   const home = await bob.context.newPage();
