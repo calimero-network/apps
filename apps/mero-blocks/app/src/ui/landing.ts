@@ -701,14 +701,14 @@ export class Landing {
         org: pending.org ?? undefined,
         from: inviter(pending),
         onError: () => this.invites.drop(),
-        onJoined: ({ org }) => {
+        onJoined: ({ org, alreadyMember }) => {
           this.invites.drop();
           void (async () => {
             const worlds = await listWorlds(phase.client, worldSource(this.deps.env)).catch(() => []);
             phase.sessions.sync(phase.client);
             const world = worldIn(worlds, org, invitedWorld(pending));
             dialog.unmount();
-            resolve({ world, note: world ? "" : "Invitation accepted — pick the world below." });
+            resolve({ world, note: world ? "" : alreadyMember ? "You're already in this world" : "Invitation accepted — pick the world below." });
           })();
         },
         onClose: () => {

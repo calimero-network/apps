@@ -33,6 +33,7 @@ const dialogs = vi.hoisted(() => ({
   invite: [] as { org: string; world: string; opened: boolean; inviterName?: string }[],
   accept: [] as { org?: string; from: string | null }[],
   joinOrg: "org-2",
+  joinMember: false,
   beforeJoin: () => {},
 }));
 vi.mock("../src/ui/inviteDialogs", () => ({
@@ -48,7 +49,7 @@ vi.mock("../src/ui/inviteDialogs", () => ({
       token: string;
       org?: string;
       from: string | null;
-      onJoined: (j: { org: string }) => void;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
       onClose: () => void;
       onError: () => void;
     },
@@ -58,7 +59,7 @@ vi.mock("../src/ui/inviteDialogs", () => ({
     el.dataset.testid = "accept-dialog";
     el.dataset.token = props.token;
     for (const [id, run] of [
-      ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg }))],
+      ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg, alreadyMember: dialogs.joinMember }))],
       ["accept-close", () => props.onClose()],
       ["accept-fail", () => props.onError()],
     ] as const) {
@@ -154,6 +155,7 @@ beforeEach(() => {
   dialogs.invite.length = 0;
   dialogs.accept.length = 0;
   dialogs.joinOrg = "org-2";
+  dialogs.joinMember = false;
   dialogs.beforeJoin = () => {};
   localStorage.clear();
   invites = createInviteStore("mero-blocks", { storage: localStorage, keep: ["world"] });
@@ -488,6 +490,18 @@ describe("launcher", () => {
       await until(listed);
       expect(q("[data-testid=account-note]")?.textContent).toContain("Invitation accepted");
       expect(invites.token()).toBeNull();
+    });
+
+    it("continuing as an existing member of an org holding no world claims no acceptance", async () => {
+      invited("tok-1");
+      dialogs.joinOrg = "org-empty";
+      dialogs.joinMember = true;
+      await launcher([world("app-1", "mine", "org-1")]);
+      click(q("[data-testid=sign-in-btn]"));
+      await until(asked);
+      click(q("[data-testid=accept-join]"));
+      await until(listed);
+      expect(q("[data-testid=account-note]")?.textContent).toBe("You're already in this world");
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {
