@@ -4,13 +4,13 @@ import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { ManageInHomeLink } from "@calimero-apps/passkey";
 import { useSessionApi, useSignedIn } from "../api/sessionContext";
-import { askAnOwnerCopy, canCreateIn, appOnlyInviteNote } from "@calimero-apps/connect";
-import { PRODUCT_NAME, createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
+import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
+import { createProject as createInstance, isAdmin, listProjects } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
+import TeamInviteDialog from "../components/TeamInviteDialog";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
-import { truncateMiddle } from "../utils/format";
 import { teamLabel } from "../utils/teamName";
 import { clearLastVisit, forgetProject, pickRemembered, readLastVisit, rememberTeam, resumeRequested } from "../utils/lastVisit";
 import { SHOWCASE_PROJECTS } from "../showcase";
@@ -79,12 +79,7 @@ export default function ProjectsPage() {
   const [starter, setStarter] = useState("");
 
   // Invitation state
-  const [invitation, setInvitation] = useState("");
-  const [inviteAppOnly, setInviteAppOnly] = useState(false);
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteCopying, setInviteCopying] = useState(false);
-  const [inviteError, setInviteError] = useState("");
-  const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [inviting, setInviting] = useState(false);
 
   async function handleLogout() {
     clearLastVisit(targetKey);
@@ -167,11 +162,6 @@ export default function ProjectsPage() {
     }
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
-  }, []);
-
-  // Clear any pending invitation-reset timer on unmount.
-  useEffect(() => () => {
-    if (inviteResetRef.current) clearTimeout(inviteResetRef.current);
   }, []);
 
   function resolveDimensions(): { width: number; height: number } | null {
@@ -269,39 +259,6 @@ export default function ProjectsPage() {
     if (opts?.replace) navigate(to, { replace: true });
     else navigate(to);
     setOpening(null);
-  }
-
-  async function generateInvite() {
-    if (!teamId) return;
-    setInviteError("");
-    setInviteLoading(true);
-    try {
-      // An org invite, approved with this account's passkey. The link is all
-      // there is to share: opening it (and signing in) joins the team.
-      const { token, appOnly } = await inviteToken(client, teamId, passkey(), source);
-      setInvitation(inviteLink(token, teamId));
-      setInviteAppOnly(appOnly);
-    } catch (err) {
-      const msg = `Failed to generate invitation: ${messageOf(err)}`;
-      setInviteError(msg);
-      showToast(msg);
-    } finally {
-      setInviteLoading(false);
-      after();
-    }
-  }
-
-  async function copyInvite() {
-    if (!invitation || inviteCopying) return;
-    await navigator.clipboard.writeText(invitation);
-    showToast("Invitation link copied to clipboard.", "success");
-    // Brief loader, then reset to the "generate" state so each share is fresh.
-    setInviteCopying(true);
-    if (inviteResetRef.current) clearTimeout(inviteResetRef.current);
-    inviteResetRef.current = setTimeout(() => {
-      setInviteCopying(false);
-      setInvitation("");
-    }, 5000);
   }
 
   return (
@@ -420,48 +377,21 @@ export default function ProjectsPage() {
         {tab === "invitations" && (
           <div className={styles.inviteSection}>
             <p className={styles.inviteDesc}>
-              Generate an invitation link and share it with teammates. Opening it and
-              signing in with a passkey joins the team. Single use: one person can join with this link; generate another for each person you invite.
+              Create an invitation link and share it with teammates. Opening it and
+              signing in with a passkey joins the team. Single use: one person can join with this link; create another for each person you invite.
             </p>
-            {invitation && inviteAppOnly && (
-              <p className={styles.inviteDesc} data-testid="invite-app-only">
-                {appOnlyInviteNote(PRODUCT_NAME)}
-              </p>
-            )}
-            {invitation ? (
-              inviteCopying ? (
-                <div className={styles.tokenBox} data-testid="invite-copying">
-                  <span className={styles.inviteSpinner} aria-hidden="true" />
-                  <span className={styles.copiedMsg}>Copied! Resetting invitation…</span>
-                </div>
-              ) : (
-                <div className={styles.tokenBox}>
-                  <code
-                    className={styles.token}
-                    data-testid="invite-token"
-                    title={invitation}
-                  >
-                    {truncateMiddle(invitation, 28, 10)}
-                  </code>
-                  <button className="mp-btn" onClick={copyInvite} data-testid="copy-invite">
-                    Copy
-                  </button>
-                </div>
-              )
-            ) : (
-              <button
-                className="mp-btn mp-btn--primary"
-                onClick={generateInvite}
-                disabled={inviteLoading}
-                data-testid="generate-invite"
-              >
-                {inviteLoading ? "Generating…" : "Generate invitation"}
-              </button>
-            )}
-            {inviteError && <p className={styles.inviteError}>{inviteError}</p>}
+            <button
+              className="mp-btn mp-btn--primary"
+              onClick={() => setInviting(true)}
+              data-testid="generate-invite"
+            >
+              Create invitation
+            </button>
           </div>
         )}
       </main>
+
+      {teamId && <TeamInviteDialog teamId={teamId} open={inviting} onClose={() => setInviting(false)} />}
 
       {showCreate && (
         <div className="mp-overlay" onClick={() => !creating && setShowCreate(false)}>

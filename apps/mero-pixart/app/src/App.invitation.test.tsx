@@ -1,7 +1,7 @@
 /**
  * An invite link: the invitation page for a signed-out visitor, "Join the
- * team?" right after signing in, and the two ends that spend nothing (already
- * a member) or cannot (a spent invite). Runs the real App, router and passkey
+ * team?" right after signing in, and the end that spends nothing (already a
+ * member). Runs the real App, router and passkey
  * session on a mocked CalimeroClient.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -15,6 +15,46 @@ import { SessionProvider } from "./api/sessionContext";
 import { APP, type SessionDeps } from "./api/session";
 import { invites } from "./api/teams";
 import { withRoutes } from "@calimero-apps/connect/testing";
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      labels?: { noun?: string };
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("p", { "data-testid": "accept-token" }, `${p.token}|${p.appName}|${p.org}|${p.labels?.noun}`),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-2" }) }, "join"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "not now"),
+            createElement(
+              "button",
+              {
+                "data-testid": "accept-spent",
+                onClick: () => p.onError?.(new CalimeroError(400, "REJECTED", "this invite was used up, revoked or never existed")),
+              },
+              "spent",
+            ),
+            createElement(
+              "button",
+              { "data-testid": "accept-lapsed", onClick: () => p.onError?.(new CalimeroError(401, "UNAUTHORIZED", "session ended")) },
+              "lapsed",
+            ),
+          )
+        : null,
+  };
+});
 
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
@@ -122,8 +162,8 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
     // No second click to reach the prompt, and nothing redeemed before it.
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-xyz"), SLOW);
+    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Mero Pixart|undefined|team");
+    fireEvent.click(screen.getByTestId("accept-done"));
     // The team has no name for you: asked once, here, then on to the team.
     fireEvent.change(await screen.findByTestId("username-input", {}, SLOW), { target: { value: "Sandi" } });
     fireEvent.click(screen.getByTestId("username-submit"));
@@ -144,41 +184,70 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     hold("tok-xyz");
     renderApp(client);
 
-    fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
+    fireEvent.click(await screen.findByTestId("accept-done", {}, SLOW));
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-2/projects"), SLOW);
     expect(screen.queryByTestId("username-input")).toBeNull();
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
-  it("tells a member of the invited team they are already in it, without spending the invite", async () => {
+  it("hands the link's team to the dialog, which tells a member without spending the invite", async () => {
     const client = fakeClient({ signedIn: true });
     storeSession();
     hold("tok-xyz", "org-1");
     renderApp(client);
 
-    expect(await screen.findByText("You're already in this team", {}, SLOW)).toBeTruthy();
+    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Mero Pixart|org-1|team");
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId("invitation-continue"));
-    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"), SLOW);
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
+  it("a member who continues drops the invite and opens the team", async () => {
     const client = fakeClient({ signedIn: true });
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+    client.getOrg.mockResolvedValue({
+      members: { "acct-me": "owner" },
+      memberMetadata: { "acct-me": { name: "Sandi" } },
+      capabilities: {},
+      defaultCapabilities: 3,
+    });
     storeSession();
-    hold("tok-used");
+    hold("tok-xyz", "org-1");
     renderApp(client);
 
-    fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
-    expect(
-      await screen.findByText(
-        "This invite was already used or has expired. Ask the person who invited you for a new link.",
-        {},
-        SLOW,
-      ),
-    ).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("accept-done", {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-2/projects"), SLOW);
     expect(invites.token()).toBeNull();
+  });
+
+  it("a spent invite is dropped from storage but stays on screen until Not now", async () => {
+    storeSession();
+    hold("tok-xyz", "org-1");
+    renderApp(fakeClient({ signedIn: true }));
+
+    fireEvent.click(await screen.findByTestId("accept-spent", {}, SLOW));
+    expect(invites.token()).toBeNull();
+    expect(screen.getByTestId("accept-token").textContent).toBe("tok-xyz|Mero Pixart|org-1|team");
+    fireEvent.click(screen.getByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull(), SLOW);
+  });
+
+  it("keeps the invite when the failure is a lapsed session, not the invite", async () => {
+    storeSession();
+    hold("tok-xyz");
+    renderApp(fakeClient({ signedIn: true }));
+
+    fireEvent.click(await screen.findByTestId("accept-lapsed", {}, SLOW));
+    expect(invites.token()).toBe("tok-xyz");
+  });
+
+  it("drops the invitation on Not now and shows the app", async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    hold("tok-xyz");
+    renderApp(client);
+
+    fireEvent.click(await screen.findByTestId("accept-close", {}, SLOW));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull(), SLOW);
+    expect(invites.token()).toBeNull();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 
   it("an invited newcomer who creates the account lands on the page the link named (B10)", async () => {
@@ -198,20 +267,5 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     expect(window.location.pathname).toBe("/teams/org-3/projects");
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
-  });
-
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
-    const client = fakeClient({ signedIn: true });
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    storeSession();
-    hold("tok-xyz");
-    renderApp(client);
-
-    fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
-    expect((await screen.findByTestId("invitation-error", {}, SLOW)).textContent).toMatch(says);
-    expect(invites.token()).toBe("tok-xyz");
   });
 });

@@ -65,6 +65,26 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      linkBase?: string;
+      appName?: string;
+      labels?: { title?: string };
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog" },
+            createElement("p", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement(
+              "pre",
+              { "data-testid": "invite-props" },
+              JSON.stringify({ org: p.org, teams: p.teams, linkBase: p.linkBase, appName: p.appName }),
+            ),
+          )
+        : null,
   };
 });
 
@@ -234,15 +254,16 @@ describe("ProjectsPage", () => {
     );
   });
 
-  it("makes an invitation link carrying an org invite", async () => {
+  it("opens the shared invite dialog for the team, naming its link and app", async () => {
     client.getOrg.mockResolvedValue({ name: "Alpha", members: { [ME]: "owner" }, memberMetadata: {} });
     client.listApps.mockResolvedValue([]);
-    client.invite.mockResolvedValue("tok-123");
     renderAt("/teams/org-a/projects");
     fireEvent.click(await screen.findByText("Invitations"));
+    expect(screen.queryByTestId("invite-dialog")).toBeNull();
     fireEvent.click(screen.getByTestId("generate-invite"));
-    await waitFor(() => expect(client.invite).toHaveBeenCalledWith("org-a", "member", expect.anything()));
-    expect((await screen.findByTestId("invite-token")).getAttribute("title")).toMatch(/[?&]invite=tok-123/);
+    const props = JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "null");
+    expect(props).toMatchObject({ org: "org-a", teams: [], appName: "Mero Pixart" });
+    expect(props.linkBase).toMatch(/\?org=org-a$/);
   });
 
   it("tells a member who may not add a project to ask an owner, instead of offering New project (B8)", async () => {

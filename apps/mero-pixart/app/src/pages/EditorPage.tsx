@@ -46,7 +46,7 @@ import TopBar from "../components/TopBar";
 import Ruler from "../components/Rulers";
 import StatusBar from "../components/StatusBar";
 import CursorsOverlay from "../components/CursorsOverlay";
-import InviteModal from "../components/InviteModal";
+import TeamInviteDialog from "../components/TeamInviteDialog";
 import SettingsModal from "../components/SettingsModal";
 import ShowcasePicker from "../components/ShowcasePicker";
 import UsernameModal from "../components/UsernameModal";
@@ -1519,7 +1519,7 @@ export default function EditorPage() {
         />
       )}
       {needName && <UsernameModal onSubmit={(n) => void handleTeamName(n)} initialValue={nameSuggestion} />}
-      {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
+      {teamId && <TeamInviteDialog teamId={teamId} open={showInvite} onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal
           type="project"

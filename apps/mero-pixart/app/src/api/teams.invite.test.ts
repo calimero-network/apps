@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { APP } from "./session";
-import { inviteLink, inviteRoute, invites, migrateLegacyInvite } from "./teams";
+import { inviteLinkBase, inviteRoute, invites, migrateLegacyInvite } from "./teams";
 
 beforeEach(() => {
   localStorage.clear();
@@ -10,12 +10,21 @@ beforeEach(() => {
 });
 
 describe("invitation links", () => {
-  it("name the team beside the token, under the served version root", () => {
+  it("name the team, under the served version root, for the dialog to put its token on", () => {
     const served = `https://${"a".repeat(52)}.apps.calimero.network`;
-    const link = new URL(inviteLink("inv_1", "org-1", { href: `${served}/1.2.0/teams/org-1/projects` }));
+    const link = new URL(inviteLinkBase("org-1", { href: `${served}/1.2.0/teams/org-1/projects` }));
     expect(link.pathname).toBe("/1.2.0/");
-    expect(link.searchParams.get("invite")).toBe("inv_1");
     expect(link.searchParams.get("org")).toBe("org-1");
+    expect(link.hash).toBe("");
+  });
+
+  it("capture a dialog link opened as is, and leave the address bar clean", () => {
+    window.history.replaceState(null, "", "/?org=org-1#invite=tok");
+    invites.capture(window.location);
+    expect(invites.token()).toBe("tok");
+    expect(invites.pending()?.org).toBe("org-1");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
   });
 
   it("keep the token, the team and the route under the node basename, and leave the address bar clean", () => {
