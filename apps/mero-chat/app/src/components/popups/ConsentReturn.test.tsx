@@ -1,18 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   returnFromConsent: vi.fn(),
-  consentIntent: vi.fn(() => ({ kind: "createInvite", org: "org-1" })),
-  enterWorkspace: vi.fn(),
-  enterJoinedWorkspaceForName: vi.fn(),
-  getGroupMetadata: vi.fn(),
+  consentIntent: vi.fn(() => ({ kind: "leaveOrg", org: "org-1" })),
   addToast: vi.fn(),
   invalidate: vi.fn(),
   clearWorkspaceSelection: vi.fn(),
   clearNamespaceReady: vi.fn(),
   current: "org-1",
-  name: "Ann",
 }));
 
 vi.mock("../../api/consent", () => ({ returnFromConsent: h.returnFromConsent, consentIntent: h.consentIntent }));
@@ -25,28 +21,9 @@ vi.mock("../../constants/config", async (importOriginal) => ({
 vi.mock("../../utils/session", () => ({ clearNamespaceReady: h.clearNamespaceReady }));
 // A hash, so jsdom follows the move to the picker.
 vi.mock("../../utils/servedByNode", () => ({ nodeBasename: () => "#/" }));
-vi.mock("../../api/calimero", () => ({ getAccountId: () => "acct-me" }));
-vi.mock("../../api/dataSource/groupApiDataSource", () => ({
-  GroupApiDataSource: class {
-    getGroupMetadata = h.getGroupMetadata;
-  },
-}));
 vi.mock("../../contexts/ToastContext", () => ({ useToast: () => ({ addToast: h.addToast }) }));
-vi.mock("../../utils/enterWorkspace", () => ({
-  enterWorkspace: h.enterWorkspace,
-  enterJoinedWorkspaceForName: h.enterJoinedWorkspaceForName,
-}));
-vi.mock("../../utils/messengerName", () => ({ getMessengerDisplayName: () => h.name }));
-vi.mock("./GroupInviteModal", () => ({
-  default: ({ groupId, initialInvitationPayload }: { groupId: string; initialInvitationPayload: string }) => (
-    <div data-testid="invite-modal">
-      {groupId}:{initialInvitationPayload}
-    </div>
-  ),
-}));
 
 import ConsentReturn from "./ConsentReturn";
-import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 
 function back() {
   window.history.replaceState(null, "", "/?request_id=r1&result=approved");
@@ -55,10 +32,8 @@ function back() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  h.name = "Ann";
-  h.consentIntent.mockReturnValue({ kind: "createInvite", org: "org-1" });
+  h.consentIntent.mockReturnValue({ kind: "leaveOrg", org: "org-1" });
   h.current = "org-1";
-  h.getGroupMetadata.mockResolvedValue({ data: { name: "Acme" }, error: null });
   window.history.replaceState(null, "", "/");
 });
 
@@ -81,51 +56,6 @@ describe("ConsentReturn", () => {
     h.consentIntent.mockReturnValue(null as never);
     render(<ConsentReturn enabled />);
     expect(h.returnFromConsent).not.toHaveBeenCalled();
-  });
-
-  it("shows the link of the invite the page minted", async () => {
-    back();
-    h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "createInvite", org: "org-1" },
-      result: approved("createInvite", { token: "inv-tok" }),
-    });
-    render(<ConsentReturn enabled />);
-    expect(await screen.findByTestId("invite-modal")).toHaveTextContent("org-1:inv-tok");
-  });
-
-  it("enters the workspace the page joined, and drops the spent invitation", async () => {
-    back();
-    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
-    h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "acceptInvite", org: "org-1" },
-      result: approved("acceptInvite", { org: "org-1" }),
-    });
-    render(<ConsentReturn enabled />);
-    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Ann", "acct-me"));
-    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
-  });
-
-  it("enters under the name chosen beside Join, not an older one", async () => {
-    back();
-    h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "acceptInvite", org: "org-1", selfName: "Bea" },
-      result: approved("acceptInvite", { org: "org-1" }),
-    });
-    render(<ConsentReturn enabled />);
-    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Bea", "acct-me"));
-    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
-  });
-
-  it("asks for a name in the joined workspace only when none was chosen", async () => {
-    back();
-    h.name = "";
-    h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "acceptInvite", org: "org-1" },
-      result: approved("acceptInvite", { org: "org-1" }),
-    });
-    render(<ConsentReturn enabled />);
-    await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
   });
 
   it("says a decline changed nothing, and a return that is not this tab's request too", async () => {

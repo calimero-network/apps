@@ -24,7 +24,7 @@ import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useMemberCaps } from '@/hooks/useMemberCaps';
 import { countAdmins, parseGroupRole, teeMode } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
-import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
+import { useMemberName } from '@/hooks/useMemberName';
 import { useWorkspacePresence } from '@/hooks/useWorkspacePresence';
 
 export function NamespaceMembersPanel() {
@@ -38,6 +38,7 @@ export function NamespaceMembersPanel() {
     folders,
   } = useDriveWorkspace();
   const { admin } = useMero();
+  const { name: myName } = useMemberName(namespaceId, selfIdentity ?? '');
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
   const memberIds = useMemo(
@@ -67,7 +68,6 @@ export function NamespaceMembersPanel() {
   // safe, so treat "not loaded yet" as "at least this many" by counting only
   // once there are rows to count.
   const adminCount = countAdmins(membership.members);
-  const { create: createInvite } = useCreateNamespaceInvite();
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
@@ -193,19 +193,15 @@ export function NamespaceMembersPanel() {
         ))}
       </ul>
 
-      {inviteOpen && namespaceId && (
+      {namespaceId && (
         <InviteDialog
-          title="Invite to workspace"
-          description={
-            <>
-              Share this link with people you want to give access to{' '}
-              <span className="font-medium text-foreground">{aliasLabel}</span>
-              . They'll join the workspace and see every folder that is open
-              to all workspace members.
-            </>
-          }
-          footnote="Anyone with this link and a Calimero account can join the workspace."
-          onCreate={() => createInvite(namespaceId)}
+          groupId={namespaceId}
+          inviterName={myName ?? undefined}
+          labels={{
+            title: 'Invite to workspace',
+            subtitle: `Choose what the people you invite can do in ${aliasLabel}.`,
+          }}
+          open={inviteOpen}
           onClose={() => setInviteOpen(false)}
         />
       )}

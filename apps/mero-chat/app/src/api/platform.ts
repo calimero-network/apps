@@ -35,7 +35,6 @@ import {
 } from "@calimero-network/mero-js";
 import {
   adoptAppTeam,
-  appInvite,
   appPeople,
   appTarget,
   appTeamIdIn,
@@ -52,7 +51,6 @@ import {
   removeFromApp,
   removeFromAppTeam,
   removeFromPrivateTeam,
-  type AppInviteToken,
   type AppOrgView,
   type OrgTeamView,
   type OtherOrg,
@@ -982,27 +980,6 @@ export async function renameOrg(org: string, name: string): Promise<void> {
 export async function chatOnlyIn(org: string): Promise<boolean> {
   const record = await getOrgRecord(org);
   return isAppOnly(record as AppOrgView, chatPackage());
-}
-
-/**
- * An invite into `org` as a member, naming chat's app team, so it gives Chat
- * and no other app of a shared org (`appInvite`, `appOnly`): a passkey step-up
- * for the inviter. An org-wide invite where the org has no app teams (legacy,
- * an older node) or under a dev bundle.
- */
-export function inviteToken(org: string): Promise<AppInviteToken> {
-  return run((c) => appInvite(c, org, chatSource(), passkey));
-}
-
-/** Redeems an invite token; answers the org it joined. */
-export async function redeemInvite(token: string): Promise<string | null> {
-  const redeemed = (await run((c) => c.orgs.inviteRedeem({ token }))) as Record<string, unknown>;
-  invalidate();
-  for (const key of ["org", "orgId"]) {
-    const v = redeemed[key];
-    if (typeof v === "string" && v) return v;
-  }
-  return null;
 }
 
 export function me(): string {

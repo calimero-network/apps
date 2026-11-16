@@ -9,14 +9,14 @@ import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { CalimeroProvider } from './calimero';
 import { basename } from './lib/basename';
-import { invites, migrateLegacyInvite } from './lib/inviteLink';
+import { captureInvite, migrateLegacyInvite } from './lib/inviteLink';
 
 // Before React mounts: a person opening an invitation link is usually not
 // signed in yet, and the token has to survive the passkey sign-up.
 // An invite an earlier build stored under its own keys moves over first, so a
 // fresh link wins.
 migrateLegacyInvite();
-invites.capture(window.location, { basename: basename() });
+captureInvite();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,

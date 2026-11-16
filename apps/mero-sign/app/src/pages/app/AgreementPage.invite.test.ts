@@ -39,3 +39,9 @@ describe('inviting one person', () => {
     expect(page).toMatch(/signer cannot be made a viewer/);
   });
 });
+
+describe('the shareable link', () => {
+  it('goes through the shared invite dialog, with the agreement in the link it shares', () => {
+    expect(page).toMatch(/<InviteDialog[\s\S]{0,600}?linkBase=\{inviteBase\(workspaceId, contextId\)\}/);
+  });
+});

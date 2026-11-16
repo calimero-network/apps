@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { passkeyConfirm, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, inviteLink, inviteToApp, type ClientRoutes } from "@calimero-apps/connect";
+import { passkeyConfirm, type CalimeroClient, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
+import { InviteDialog } from "@calimero-network/mero-react";
+import { describeError, inviteLinkBase } from "@calimero-apps/connect";
 
 import { inviteRoot } from "../invites";
-import { TTL_CHOICES, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
+import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, inviteApps, inviteExpiry, inviteTerms, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
 
-type Pending = { kind: "loading" } | { kind: "ready"; invites: OrgInvite[] } | { kind: "failed"; error: string };
+type Pending = { kind: "loading" } | { kind: "ready"; invites: Array<OrgInvite & { allApps?: boolean }> } | { kind: "failed"; error: string };
 
 export interface InvitationsProps {
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" | "inviteList" | "inviteRevoke" }>;
+  client: CalimeroClient;
   view: OrgView;
   account: string;
   passkey: () => PasskeyProvider;
@@ -19,8 +20,9 @@ export interface InvitationsProps {
 
 /**
  * Invite people to one app or several (an invite naming those app teams:
- * the person gets those apps and no other), and the pending invites the
- * caller may see, each with Revoke. Admins invite to any app and as any role
+ * the person gets those apps and no other; an admin choosing every app also
+ * covers the ones added later), and the pending invites the caller may see,
+ * each with Revoke. Admins invite to any app and as any role
  * up to admin; leads and members allowed by an app's switch invite to those
  * apps (decision 1, `invitableApps`).
  */
@@ -29,18 +31,17 @@ export function Invitations({ client, view, account, passkey, after, root = invi
   const admin = isAdmin(view.role);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(apps.length === 1 ? [apps[0]!.package] : []));
   const [role, setRole] = useState<"member" | "guest" | "admin">("member");
+  const [later, setLater] = useState(false);
   const [uses, setUses] = useState(1);
-  const [ttl, setTtl] = useState(TTL_CHOICES[1]!.secs);
-  const [busy, setBusy] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>({ kind: "loading" });
   const [revoking, setRevoking] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      // The document lets an invite carry the `owner` role; mero-js's `OrgInvite` does not.
-      const list = (await client.orgs.inviteList({ org: view.org })).invites as OrgInvite[];
+      // The document lets an invite carry the `owner` role and `allApps`; mero-js's `OrgInvite` does not.
+      const list = (await client.orgs.inviteList({ org: view.org })).invites as Array<OrgInvite & { allApps?: boolean }>;
       setPending({ kind: "ready", invites: [...list].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)) });
     } catch (e) {
       setPending({ kind: "failed", error: describeError(e) });
@@ -53,10 +54,9 @@ export function Invitations({ client, view, account, passkey, after, root = invi
     void refresh();
   }, [refresh]);
 
-  // Every app the caller may name now. Core has no standing invite to "every
-  // app, and those added later" (an invite names its teams when it is made),
-  // so apps added after it are not in it.
   const allChosen = apps.length > 0 && apps.every((a) => chosen.has(a.package));
+  // Core refuses "every app, and those added later" to anyone below admin.
+  const terms = inviteTerms(apps, chosen, admin && later);
 
   const toggle = (pkg: string) =>
     setChosen((s) => {
@@ -65,27 +65,6 @@ export function Invitations({ client, view, account, passkey, after, root = invi
       else next.add(pkg);
       return next;
     });
-
-  async function create() {
-    setBusy(true);
-    setError(null);
-    setLink(null);
-    try {
-      const made = await inviteToApp(client, view.org, [...chosen], {
-        role,
-        passkey: passkey(),
-        uses,
-        ttlSecs: ttl,
-      });
-      setLink(inviteLink(made.token, { org: view.org, root: root() }));
-      await refresh();
-    } catch (e) {
-      setError(describeError(e));
-    } finally {
-      setBusy(false);
-      after();
-    }
-  }
 
   async function revoke(key: string) {
     setRevoking(key);
@@ -115,7 +94,7 @@ export function Invitations({ client, view, account, passkey, after, root = invi
           className="home-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void create();
+            setInviting(true);
           }}
         >
           <fieldset>
@@ -145,11 +124,17 @@ export function Invitations({ client, view, account, passkey, after, root = invi
                 {a.name}
               </label>
             ))}
-            {allChosen && view.mode === "shared" && (
-              <p className="home-muted" data-testid="invite-all-later">
-                Apps added to the organization later are not part of this invitation.
-              </p>
-            )}
+            {allChosen && view.mode === "shared" &&
+              (admin ? (
+                <label className="home-check" data-testid="invite-all-later">
+                  <input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} data-testid="invite-later" />
+                  Also the apps added to the organization later
+                </label>
+              ) : (
+                <p className="home-muted" data-testid="invite-all-later">
+                  Apps added to the organization later are not part of this invitation.
+                </p>
+              ))}
           </fieldset>
           <div className="home-row">
             <label className="home-field">
@@ -171,38 +156,43 @@ export function Invitations({ client, view, account, passkey, after, root = invi
                 data-testid="invite-uses"
               />
             </label>
-            <label className="home-field">
-              <span>Valid for</span>
-              <select value={ttl} onChange={(e) => setTtl(Number(e.target.value))}>
-                {TTL_CHOICES.map((c) => (
-                  <option key={c.secs} value={c.secs}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
           <button
             type="submit"
             className="glass-btn glass-btn--primary"
-            disabled={busy || chosen.size === 0}
+            disabled={chosen.size === 0}
             data-testid="invite-create"
           >
-            {busy ? "Creating…" : "Create invitation link"}
+            Create invitation link
           </button>
         </form>
-      )}
-      {link && (
-        <div className="home-link" data-testid="invite-link">
-          <p className="home-muted">Send this link. It opens Calimero Home, which joins them and shows their apps.</p>
-          <pre aria-label="invitation link">{link}</pre>
-        </div>
       )}
       {error && (
         <p className="home-error" role="alert" data-testid="invite-error">
           {error}
         </p>
       )}
+
+      <InviteDialog
+        open={inviting}
+        onClose={() => setInviting(false)}
+        client={client}
+        passkey={passkey()}
+        org={view.org}
+        role={role}
+        teams={terms.teams}
+        allApps={terms.allApps}
+        uses={uses}
+        ttlSecs={DEFAULT_EXPIRY}
+        expiryOptions={EXPIRY_OPTIONS}
+        linkBase={inviteLinkBase({ org: view.org, root: root() })}
+        labels={{
+          noun: "organization",
+          note: "The link opens Calimero Home, which joins them and shows their apps.",
+          title: "Invite people",
+        }}
+        onInvited={() => void refresh()}
+      />
 
       <h2>Pending invitations</h2>
       {pending.kind === "loading" && <p className="home-muted">Loading…</p>}

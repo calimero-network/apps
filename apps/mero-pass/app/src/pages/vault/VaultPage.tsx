@@ -15,7 +15,7 @@ import AppShell, { InRail } from '../../components/AppShell';
 import DeviceApprovals from '../../components/DeviceApprovals';
 import HealthPanel from '../../components/HealthPanel';
 import ImportExport from '../../components/ImportExport';
-import InviteModal from '../../components/InviteModal';
+import PassInviteDialog, { type PassInvite } from '../../components/PassInviteDialog';
 import LockGate from '../../components/LockGate';
 import ConnectService from '../../components/ConnectService';
 import SecretForm from '../../components/SecretForm';
@@ -49,7 +49,7 @@ import { rememberVault } from '../../lib/lastVisit';
 import {
   findVaultByContext,
   listTeams,
-  mintVaultInvite,
+  inviteTeams,
 } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import ItemDetail from './ItemDetail';
@@ -118,7 +118,7 @@ export default function VaultPage() {
 function VaultBody() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const contextId = vaultId ?? null;
-  const { client: calimero, source, passkey, after, where } = useCalimero();
+  const { client: calimero, source, after, where } = useCalimero();
   const nodeUrl = where;
   const { closeNav } = useShellNav();
   const client = useVaultClient(contextId);
@@ -157,13 +157,7 @@ function VaultBody() {
   const [connecting, setConnecting] = useState(false);
   const [sharing, setSharing] = useState<Secret | null>(null);
   const [minting, setMinting] = useState(false);
-  const [invite, setInvite] = useState<{
-    code: string;
-    appOnly?: boolean;
-    scope: string;
-    hint: string;
-    org?: string;
-  } | null>(null);
+  const [invite, setInvite] = useState<PassInvite | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -308,24 +302,22 @@ function VaultBody() {
     setMinting(true);
     try {
       const restricted = found.restricted;
-      const { token: code, appOnly } = await mintVaultInvite(
-        { client: calimero, source, passkey, after },
-        { namespaceId: found.namespaceId, team: found.team },
-      );
       setInvite({
-        code,
-        appOnly,
-        scope: `Opens ${found.vaultName}`,
+        ...(await inviteTeams({ client: calimero, source }, found.namespaceId, found.team)),
         // See TeamPage: only an open vault's link names its org.
-        org: found.team ? undefined : found.namespaceId,
-        hint: restricted
-          ? `This vault is invite-only: the link admits them to “${found.vaultName}” and makes them a member of ${found.teamName}, but no other invite-only vault there. It expires in 24 hours.`
-          : `This link lands them in “${found.vaultName}”, but the access it grants is the whole of ${found.teamName} — every open vault in the team, including ones added later. It expires in 24 hours.`,
+        linkOrg: found.team ? undefined : found.namespaceId,
+        title: `Invite to ${found.vaultName}`,
+        subtitle: `${
+          restricted
+            ? `This vault is invite-only: the link admits them to “${found.vaultName}” and makes them a member of ${found.teamName}, but no other invite-only vault there.`
+            : `This link lands them in “${found.vaultName}”, but the access it grants is the whole of ${found.teamName} — every open vault in the team, including ones added later.`
+        } Choose what they can do.`,
       });
     } catch (e) {
       setError(describeError(e));
     } finally {
       setMinting(false);
+      after();
     }
   };
 
@@ -700,15 +692,9 @@ function VaultBody() {
 
       <ShareModal secret={sharing} onClose={() => setSharing(null)} />
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ''}
-        org={invite?.org}
-        scope={invite?.scope ?? ''}
-        appOnly={invite?.appOnly === true}
-        hint={invite?.hint}
-        onClose={() => setInvite(null)}
-      />
+      {found && (
+        <PassInviteDialog org={found.namespaceId} invite={invite} onClose={() => setInvite(null)} />
+      )}
 
       {toast && (
         <div className={styles.toast} role="status" data-testid="toast">

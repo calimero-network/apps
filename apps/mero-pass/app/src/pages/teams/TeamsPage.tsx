@@ -18,7 +18,7 @@ import {
 import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';
-import InviteModal from '../../components/InviteModal';
+import PassInviteDialog, { type PassInvite } from '../../components/PassInviteDialog';
 import { ChevronIcon, PlusIcon } from '../../components/icons';
 import { useCalimero } from '../../calimero';
 import {
@@ -28,7 +28,7 @@ import {
   finishTeam,
   listTeams,
   listVaults,
-  mintTeamInvite,
+  inviteTeams,
 } from '../../lib/vaults';
 import type { TeamRow } from '../../lib/vaults';
 import { hueOf, monogramOf } from '../../lib/itemView';
@@ -98,12 +98,7 @@ export default function TeamsPage() {
   const [creating, setCreating] = useState<'team' | 'private' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{
-    code: string;
-    appOnly?: boolean;
-    scope: string;
-    org?: string;
-  } | null>(null);
+  const [invite, setInvite] = useState<{ org: string; invite: PassInvite } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -259,21 +254,19 @@ export default function TeamsPage() {
       setMenuOpenId(null);
       setError(null);
       try {
-        const { token: code, appOnly } = await mintTeamInvite(
-          conn,
-          { namespaceId: team.namespaceId },
-          setBusy,
-        );
         setInvite({
-          code,
-          appOnly,
-          scope: `Whole team · ${team.name}`,
           org: team.namespaceId,
+          invite: {
+            ...(await inviteTeams(conn, team.namespaceId)),
+            linkOrg: team.namespaceId,
+            title: `Invite to ${team.name}`,
+            subtitle: 'Whoever opens this link can join the team and read every vault in it. Choose what they can do.',
+          },
         });
       } catch (e) {
         setError(describeError(e));
       } finally {
-        setBusy(null);
+        conn.after?.();
       }
     },
     [conn],
@@ -513,15 +506,13 @@ export default function TeamsPage() {
         </div>
       </main>
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ''}
-        org={invite?.org}
-        scope={invite?.scope ?? ''}
-        appOnly={invite?.appOnly === true}
-        hint="Whoever opens this link can join the team and read every vault in it."
-        onClose={() => setInvite(null)}
-      />
+      {(invite?.org ?? teams[0]?.namespaceId) && (
+        <PassInviteDialog
+          org={(invite?.org ?? teams[0]?.namespaceId)!}
+          invite={invite?.invite ?? null}
+          onClose={() => setInvite(null)}
+        />
+      )}
 
       {client && (
         <CreateWorkspaceDialog

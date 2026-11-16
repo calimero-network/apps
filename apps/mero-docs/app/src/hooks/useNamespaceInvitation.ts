@@ -2,38 +2,24 @@
 //
 // v1 minted a signed group invitation, carried it in the link as a base64 JSON
 // payload, and the joiner's node joined the namespace or the subgroup with it.
-// Here an invitation is an org invite token (`client.invite`, a passkey
-// step-up for the inviter): a workspace invite makes the joiner a member of
-// the org, a folder invite does that and gives them a row in the folder's
-// team, so they reach the folder whether or not it is Restricted. The link is
-// this frontend's own URL with `?invite=<token>`; the token is redeemed after
-// sign-in, once the person says yes (InvitationPrompt).
+// Here an invitation is an org invite token, made and redeemed through the
+// shared dialogs: a workspace invite makes the joiner a member of the org, a
+// folder invite does that and gives them a row in the folder's team, so they
+// reach the folder whether or not it is Restricted. The link is this
+// frontend's own URL with the token in its fragment; the token is redeemed
+// after sign-in, once the person says yes (InvitationPrompt).
 
-import { useCallback } from 'react';
 import {
   createInviteStore,
   describeRedeemFailure,
-  inviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
 } from '@calimero-apps/connect';
-import { useMero } from '@/calimero/react';
 import { nodeBasename, nodeUrl } from '@/lib/servedByNode';
 
 export type InviteKind = 'namespace' | 'group';
-
-export interface InviteCreation {
-  kind: InviteKind;
-  /** The workspace (org) id, or the folder (team) id. */
-  targetId: string;
-  token: string;
-  /** The target's name, shown to the person invited. */
-  name?: string;
-  url: string;
-  /** The link gives Mero Docs only: it names Docs' team in an org that keeps its apps apart (core#4890). */
-  appOnly?: boolean;
-}
 
 /** A link opened with an invitation in it. */
 export interface PendingInvite {
@@ -59,23 +45,23 @@ const DEFERRED_KEY = 'mero-docs:invite-deferred';
 export const invites = createInviteStore('mero-docs', { keep: ['kind', 'name', 'ws', 'folder'] });
 
 /**
- * The link that opens this frontend with `token` to redeem. It stays under
- * the served `/{version}/` root until every cluster's served-host redirect
- * keeps the query string (core's served-redirect fix).
+ * The page an invite link opens, naming what it points at; the shared dialog
+ * adds the token in the fragment. It stays under the served `/{version}/`
+ * root until every cluster's served-host redirect keeps the query string
+ * (core's served-redirect fix).
  */
-export function buildInviteUrl(
+export function inviteLinkBase(
   kind: InviteKind,
-  token: string,
   ids: { workspace: string; folder?: string },
   name?: string,
 ): string {
   const root = new URL(nodeUrl('/'));
-  return inviteLink(token, {
+  return sharedInviteLinkBase({
     org: ids.workspace,
     team: ids.folder,
     extra: { kind, name },
-    origin: root.origin,
     root: root.pathname,
+    origin: root.origin,
   });
 }
 
@@ -207,46 +193,4 @@ export const inviteScope = (invite: Pick<PendingInvite, 'kind'>): 'workspace' | 
  */
 export function inviteFailure(cause: unknown): string {
   return describeRedeemFailure(cause);
-}
-
-/** A workspace invitation link (an org invite, as a member). */
-export function useCreateNamespaceInvite() {
-  const { admin } = useMero();
-  const create = useCallback(
-    async (namespaceId: string, name?: string): Promise<InviteCreation> => {
-      if (!admin) throw new Error('Not signed in');
-      const { token, appOnly } = await admin.createNamespaceInvitation(namespaceId);
-      return {
-        ...(appOnly ? { appOnly } : {}),
-        kind: 'namespace',
-        targetId: namespaceId,
-        token,
-        name,
-        url: buildInviteUrl('namespace', token, { workspace: namespaceId }, name),
-      };
-    },
-    [admin],
-  );
-  return { create };
-}
-
-/** A folder invitation link (an org invite naming the folder's team). */
-export function useCreateFolderInvite() {
-  const { admin } = useMero();
-  const create = useCallback(
-    async (folderId: string, name?: string): Promise<InviteCreation> => {
-      if (!admin) throw new Error('Not signed in');
-      const { token, namespaceId, appOnly } = await admin.createGroupInvitation(folderId);
-      return {
-        ...(appOnly ? { appOnly } : {}),
-        kind: 'group',
-        targetId: folderId,
-        token,
-        name,
-        url: buildInviteUrl('group', token, { workspace: namespaceId, folder: folderId }, name),
-      };
-    },
-    [admin],
-  );
-  return { create };
 }

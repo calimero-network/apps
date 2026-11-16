@@ -11,8 +11,8 @@ import {
   listTeamMembers,
   listTeams,
   listVaults,
-  mintVaultInvite,
-  redeemInvite,
+  inviteTeams,
+  joinedTeam,
   vaultAudience,
 } from './vaults';
 import type { Conn } from './vaults';
@@ -305,37 +305,15 @@ describe('teams and vaults on orgs and app instances', () => {
 
   it('invites to an invite-only vault through its team', async () => {
     const client = fakeClient();
-    await mintVaultInvite(
-      { client, source: 'b', passkey },
-      { namespaceId: 'org1', team: 't1', validForSecs: 60 },
-    );
-    expect(client.invite).toHaveBeenCalledWith('org1', 'member', expect.objectContaining({ confirm: expect.any(Function) }), ['t1'], {
-      ttlSecs: 60,
-    });
-    await mintVaultInvite(
-      { client, source: 'b', passkey },
-      { namespaceId: 'org1', team: null },
-    );
-    expect(client.invite).toHaveBeenLastCalledWith(
-      'org1',
-      'member',
-      expect.objectContaining({ confirm: expect.any(Function) }),
-      undefined,
-      { ttlSecs: 86400 },
-    );
+    const conn = { client, source: 'b' as const };
+    expect((await inviteTeams(conn, 'org1', 't1')).teams).toEqual(['t1']);
+    expect((await inviteTeams(conn, 'org1')).teams).toEqual([]);
   });
 
-  it('redeems an invite into the team it names', async () => {
+  it('publishes the joiner’s name in the team it joined', async () => {
     const client = fakeClient();
-    expect(await redeemInvite({ client }, ' token ')).toEqual({
-      kind: 'team',
-      namespaceId: 'org1',
-    });
-    expect(client.redeemInvite).toHaveBeenCalledWith('token');
-    const vague = fakeClient({ redeemInvite: vi.fn(async () => ({})) });
-    expect(await redeemInvite({ client: vague }, 't')).toEqual({
-      kind: 'joined',
-    });
+    await joinedTeam({ client }, 'org1');
+    expect(client.setMemberMetadata).toHaveBeenCalledWith('org1', 'me', { name: 'Me' });
   });
 
   it('lists the team’s people by name, owners and admins as Admin', async () => {

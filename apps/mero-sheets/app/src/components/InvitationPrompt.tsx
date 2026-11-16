@@ -5,18 +5,18 @@
  * Mounted at the APP level because a link can land on any route, and it asks
  * rather than joins: joining puts you in someone's organization, and a
  * forwarded link or a refreshing background tab should not do that silently.
+ * The asking is the shared `AcceptInviteDialog`, which goes through the node's
+ * consent page and says the node's own refusal.
  *
  * Signed out, `InvitationPage` stands in for the app and offers the sign-in;
  * the token survives a sign-in, and this asks the moment a session exists. A
  * sign-up from that page already joined with it (`api.joinedInvite`): this
  * only opens what the link named, with nothing redeemed again.
- * Someone already in the workspace (the inviter opening their own link) is
- * told so and the token dropped: redeeming it would spend its single use, and
- * the person it was meant for could no longer join. Join redeems the org
- * invite and reports what to open: the spreadsheet the link names, or the
- * workspace's list. A refused invite (unknown, used, expired, revoked) is said
- * plainly. There is no "Syncing…" stage any more: nothing has to replicate
- * before a new member can read.
+ * The dialog is given the link's org: someone already in the workspace (the
+ * inviter opening their own link) is told so and nothing is redeemed, which
+ * would spend the single use. A spent invite is dropped from storage but its
+ * refusal stays on screen until "Not now". Joining reports what to open: the
+ * spreadsheet the link names, or the workspace's list.
  *
  * Joining is also where the workspace asks your name, once: when it has none
  * for you yet, the name question (`NicknameModal`) comes up before the
@@ -26,21 +26,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { APP_DISPLAY_NAME } from '../config';
 import { lastUsedName } from '@calimero-apps/names';
 import { describeError } from '../utils/errors';
-import { describeRedeemFailure } from '@calimero-apps/connect';
+import { isSpentInvite } from '@calimero-apps/connect';
+import { AcceptInviteDialog } from '@calimero-network/mero-react';
 import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import {
-  INVITE_REFUSED,
-  alreadyMember,
   dropInvite,
-  inviteRefused,
-  joinedOrg,
   pendingInvite,
   publishWorkspaceName,
   readMembers,
   type AcceptedInvite,
   type PendingInvite,
 } from '../lib/workspaces';
-import { Dialog, Err, Hint, Overlay, Primary, Secondary } from './SignInModal';
 import NicknameModal from './NicknameModal';
 import { rememberedName, skipWorkspaceName } from '../lib/displayName';
 
@@ -49,11 +45,7 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
   const { api } = useSessionApi();
   const joinedInvite = api.joinedInvite ?? null;
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
-  // `null` until the membership check answers; `false` too when it cannot.
-  const [member, setMember] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refused, setRefused] = useState(false);
   const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
   /** Joined a workspace that has no name for you: where to go once it has one. */
   const [naming, setNaming] = useState<AcceptedInvite | null>(null);
@@ -81,67 +73,28 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
     onJoined({ namespaceId: joinedAtSignUp.org, contextId: joinedAtSignUp.sheet });
   }, [joinedAtSignUp, onJoined]);
 
-  useEffect(() => {
-    if (!client || !invite || invite.token === joinedInvite) return undefined;
-    let live = true;
-    setMember(null);
-    void alreadyMember(client, invite).then((known) => {
-      if (!live) return;
-      if (known) dropInvite();
-      setMember(known ?? false);
-    });
-    return () => {
-      live = false;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, not per re-read
-  }, [client, invite?.token]);
-
   const dismiss = useCallback(() => {
     dropInvite();
     setInvite(null);
-    setError(null);
   }, []);
 
-  const open = useCallback(() => {
-    if (!invite) return;
-    dismiss();
-    onJoined({ namespaceId: invite.org, contextId: invite.sheet });
-  }, [invite, dismiss, onJoined]);
-
-  const join = useCallback(async () => {
-    if (!signedIn || !invite) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token }));
+  const joined = useCallback(
+    async ({ org }: { org: string }) => {
+      if (!signedIn || !invite) return;
       dropInvite();
       setInvite(null);
       const landed = { namespaceId: org, contextId: invite.sheet };
-      if (org) {
-        // A read that fails leaves the question to the first spreadsheet opened.
-        const members = await readMembers(signedIn.client, org).catch(() => null);
-        if (members && !members.names.get(signedIn.accountId)) {
-          setNaming(landed);
-          return;
-        }
+      // A read that fails leaves the question to the first spreadsheet opened.
+      const members = await readMembers(signedIn.client, org).catch(() => null);
+      signedIn.after();
+      if (members && !members.names.get(signedIn.accountId)) {
+        setNaming(landed);
+        return;
       }
       onJoined(landed);
-    } catch (e) {
-      // A refusal (unknown, used, expired, revoked) can never succeed: drop it.
-      // Anything else (a lapsed session, a rate limit, the cluster
-      // unreachable) is kept for another try.
-      if (inviteRefused(e)) {
-        dropInvite();
-        setRefused(true);
-        setError(INVITE_REFUSED);
-      } else {
-        setError(describeRedeemFailure(e));
-      }
-    } finally {
-      setBusy(false);
-      signedIn.after();
-    }
-  }, [signedIn, invite, onJoined]);
+    },
+    [signedIn, invite, onJoined],
+  );
 
   if (signedIn && naming?.namespaceId) {
     const org = naming.namespaceId;
@@ -173,58 +126,29 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
     );
   }
 
-  if (!signedIn || !invite || member === null) return null;
-
-  if (member) {
-    return (
-      <Overlay>
-        <Dialog role="dialog" aria-modal="true" aria-labelledby="invitation-title" data-testid="invitation-dialog">
-          <h3 id="invitation-title">You&apos;re already in this workspace</h3>
-          <Hint data-testid="invitation-member">
-            This invitation is for a workspace you are already a member of, so there is nothing to join. The link was
-            left unused for whoever it was meant for.
-          </Hint>
-          <Primary type="button" onClick={open} data-testid="invitation-open">
-            Open it
-          </Primary>
-        </Dialog>
-      </Overlay>
-    );
-  }
+  if (!signedIn || !invite) return null;
 
   return (
-    <Overlay>
-      <Dialog role="dialog" aria-modal="true" aria-labelledby="invitation-title" data-testid="invitation-dialog">
-        <h3 id="invitation-title">Join the workspace?</h3>
-        <Hint>
-          {invite.sheet
-            ? `You were invited to a workspace in ${APP_DISPLAY_NAME}. Joining gives you the workspace and takes you straight into the spreadsheet you were invited to.`
-            : `You were invited to a workspace in ${APP_DISPLAY_NAME}. Joining gives you the workspace and every spreadsheet in it.`}
-        </Hint>
-        {error && (
-          <Err role="alert" data-testid="invitation-error">
-            {error}
-          </Err>
-        )}
-        {!refused && (
-          <Primary type="button" onClick={() => void join()} disabled={busy} data-testid="invitation-join">
-            {busy ? 'Joining…' : 'Join'}
-          </Primary>
-        )}
-        <Secondary type="button" onClick={dismiss} disabled={busy} data-testid="invitation-dismiss">
-          {refused ? 'Close' : 'Not now'}
-        </Secondary>
-      </Dialog>
-    </Overlay>
+    <AcceptInviteDialog
+      open
+      client={signedIn.client}
+      passkey={signedIn.passkey()}
+      token={invite.token}
+      org={invite.org ?? undefined}
+      appName={APP_DISPLAY_NAME}
+      onClose={dismiss}
+      onError={(e) => {
+        if (isSpentInvite(e)) dropInvite();
+      }}
+      onJoined={(j) => void joined(j)}
+    />
   );
 }
 
 /**
  * The invitation to ask about once there is a session: the one already held,
- * or the stored one. Never a fresh copy of the one held: that would re-run the
- * membership check and close and reopen the dialog (closing it is "Not now"),
- * and after the check has dropped an already-member's token it would lose the
- * "You're already in" answer before anyone read it.
+ * or the stored one. Never a fresh copy of the one held: a spent invite is
+ * dropped from storage while its refusal is still on screen.
  */
 function reread(prev: PendingInvite | null): PendingInvite | null {
   return prev ?? pendingInvite();

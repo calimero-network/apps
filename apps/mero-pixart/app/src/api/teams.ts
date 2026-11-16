@@ -1,11 +1,10 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  appInvite,
+  inviteLinkBase as sharedInviteLinkBase,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -14,7 +13,6 @@ import {
   orgsWithApp,
   removeFromApp,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -265,31 +263,16 @@ export function setMyTeamName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming this app's team (`appInvite`): `appOnly` when it gives
- * Mero Pixart only (an org that keeps its apps apart). Org-wide in a legacy org.
- */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/**
- * The link that opens this frontend with `token` to redeem. It also names
- * `org`: the token does not say which team it is for until it is redeemed, and
- * redeeming spends it, so the link carries the team for the app to tell an
- * existing member "you are already in" without spending a use.
+ * The page the shared invite dialog puts its token on (in the fragment): this
+ * frontend's root, naming `org` so the app can tell an existing member "you are
+ * already in" without spending a use.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(token: string, org?: string, location: Pick<Location, "href"> = window.location): string {
+export function inviteLinkBase(org: string, location: Pick<Location, "href"> = window.location): string {
   const url = new URL(location.href);
-  return sharedInviteLink(token, { org, root: nodeBasename(url, "/"), origin: url.origin });
+  return sharedInviteLinkBase({ org, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), captured in `main.tsx` before React mounts. */

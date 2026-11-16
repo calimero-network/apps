@@ -1,174 +1,74 @@
-// Shared invite-link dialog. Parameterised by scope so the same
-// component serves both namespace-wide invites (from the Workspace
-// settings panel) and folder-scoped invites (from the folder's
-// Sharing panel). The only things that differ between the two are
-// the title/body copy and the create-function handed in; everything
-// else - the generate → display → copy interaction - is identical.
+// Invite people to a workspace, or to one folder of it, on the shared dialog:
+// it asks the node's consent page, offers Default or Custom permissions and
+// shows the link. This resolves where the invite lands (the org and the teams
+// it names) each time it opens.
 
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Copy, Check, Link2 } from 'lucide-react';
-import { appOnlyInviteNote } from '@calimero-apps/connect';
-import type { InviteCreation } from '@/hooks/useNamespaceInvitation';
+import React, { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { InviteDialog as SharedInviteDialog, type InviteLabels } from '@calimero-network/mero-react';
+import { appOnlyInviteNote, describeError } from '@calimero-apps/connect';
+import { useLive } from '@/calimero/react';
+import { useSession } from '@/calimero/session';
+import { inviteLinkBase } from '@/hooks/useNamespaceInvitation';
+
+const APP_NAME = 'Mero Docs';
 
 interface Props {
-  title: string;
-  /** Short sentence shown under the title explaining what the invite
-   *  grants. E.g. "Share this link with people you want to give
-   *  access to workspace X." */
-  description: React.ReactNode;
-  /** Returns a resolved InviteCreation with a ready-to-copy URL. */
-  onCreate: () => Promise<InviteCreation>;
+  /** The workspace (org) or the folder (team) people are invited to. */
+  groupId: string;
+  labels: InviteLabels;
+  inviterName?: string;
+  open: boolean;
   onClose: () => void;
-  /** Optional free-text shown under the link, e.g. scope clarification. */
-  footnote?: string;
 }
 
-export function InviteDialog({
-  title,
-  description,
-  onCreate,
-  onClose,
-  footnote,
-}: Props) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [appOnly, setAppOnly] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
-  // Distinct from `copied`: the clipboard write failed but we selected
-  // the input as a fallback. Surfaces a banner so the user knows to
-  // hit Cmd/Ctrl+C themselves.
-  const [copyFallback, setCopyFallback] = useState(false);
+interface Target {
+  groupId: string;
+  org: string;
+  teams: string[];
+  appOnly: boolean;
+  linkBase: string;
+}
 
-  const onGenerate = async () => {
-    setCreating(true);
-    setError(null);
-    try {
-      const result = await onCreate();
-      setUrl(result.url);
-      setAppOnly(result.appOnly === true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCreating(false);
-    }
-  };
+export function InviteDialog({ groupId, labels, inviterName, open, onClose }: Props) {
+  const live = useLive();
+  const { passkey } = useSession();
+  const [target, setTarget] = useState<Target | null>(null);
 
-  const onCopy = async () => {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setCopyFallback(false);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API can fail on http:// or with no user gesture.
-      // Fall back to selecting the link so users can Cmd+C manually
-      // - and surface the failure so they know to actually do it.
-      const el = document.getElementById('invite-url-text');
-      if (el instanceof HTMLInputElement) el.select();
-      setCopyFallback(true);
-      setTimeout(() => setCopyFallback(false), 5000);
-    }
-  };
+  useEffect(() => {
+    if (!open || !live) return;
+    let current = true;
+    live.admin.inviteTarget(groupId).then(
+      ({ org, team, teams, appOnly }) => {
+        const ids = { workspace: org, ...(team ? { folder: team } : {}) };
+        if (current) setTarget({ groupId, org, teams, appOnly, linkBase: inviteLinkBase(team ? 'group' : 'namespace', ids) });
+      },
+      (e) => {
+        if (!current) return;
+        toast.error(describeError(e));
+        onClose();
+      },
+    );
+    return () => {
+      current = false;
+    };
+    // `onClose` is read when the target resolves; only opening matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, groupId, live]);
 
+  if (!live || target?.groupId !== groupId) return null;
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent aria-describedby={undefined} className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <p className="mb-4 text-sm text-muted-foreground">{description}</p>
-
-        {!url && (
-          <Button
-            onClick={onGenerate}
-            disabled={creating}
-            className="w-full"
-            size="sm"
-          >
-            <Link2 className="mr-2 h-3.5 w-3.5" />
-            {creating
-              ? 'Generating…'
-              : error
-                ? 'Try again'
-                : 'Generate invite link'}
-          </Button>
-        )}
-
-        {url && (
-          <div className="space-y-2">
-            <label className="block text-xs text-muted-foreground">
-              Invite link
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="invite-url-text"
-                readOnly
-                value={url}
-                className="flex-1 rounded-md border border-input bg-background px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onCopy}
-                aria-label="Copy invite link"
-              >
-                {copied ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground" data-testid="invite-single-use">
-              Single use: one person can join with this link. Generate another for each person you invite.
-            </p>
-            {footnote && (
-              <p className="text-xs text-muted-foreground">{footnote}</p>
-            )}
-            {appOnly && (
-              <p className="text-xs text-muted-foreground" data-testid="invite-app-only">
-                {appOnlyInviteNote('Mero Docs')}
-              </p>
-            )}
-            {copyFallback && (
-              <p
-                className="text-xs text-amber-600 dark:text-amber-400"
-                role="status"
-              >
-                Couldn't copy automatically. The link is selected
-                above; press <kbd className="rounded border px-1">⌘/Ctrl</kbd>
-                + <kbd className="rounded border px-1">C</kbd> to copy.
-              </p>
-            )}
-          </div>
-        )}
-
-        {error && (
-          <div
-            className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-            role="alert"
-          >
-            {error}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <SharedInviteDialog
+      client={live.client}
+      passkey={passkey()}
+      open={open}
+      onClose={onClose}
+      org={target.org}
+      teams={target.teams}
+      appName={APP_NAME}
+      inviterName={inviterName}
+      labels={target.appOnly ? { ...labels, note: appOnlyInviteNote(APP_NAME) } : labels}
+      linkBase={target.linkBase}
+    />
   );
 }

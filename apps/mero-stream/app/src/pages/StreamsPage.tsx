@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useConn } from "../hooks/useConn";
@@ -10,16 +10,15 @@ import {
   CONNECTED_ROOM_NAME,
   createRoom,
   finishStream,
-  inviteLink,
-  appInviteToken,
+  inviteBase,
   listStreams,
   publishMyName,
+  PRODUCT_NAME,
   type StreamRow,
 } from "../lib/streams";
 import { PACKAGE } from "../lib/meroStream";
 import { storedName } from "../lib/session";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
-import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import CopyId from "../components/CopyId";
 import {
@@ -72,9 +71,9 @@ export default function StreamsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; link: string; appOnly?: boolean } | null>(
-    null,
-  );
+  // Kept after the dialog closes: it stays mounted to finish an invite approved on a full-page trip to the node.
+  const [invite, setInvite] = useState<{ row: StreamRow; teams: string[]; appOnly: boolean } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   /**
    * Run one action under its own key, with step status wired to `onStatus`.
@@ -168,23 +167,20 @@ export default function StreamsPage() {
     [conn, load, navigate],
   );
 
-  const mintInvite = useCallback(
+  const openInvite = useCallback(
     (row: StreamRow) => {
       if (!conn) return;
-      void run(`invite:${row.orgId}`, async (onStatus) => {
-        onStatus("Approve the invitation with your passkey…");
-        const { token, appOnly } = await appInviteToken(conn.client, row.orgId, conn.passkey(), conn.source);
+      void run(`invite:${row.orgId}`, async () => {
+        const { teams, appOnly } = await appInviteTeams(conn.client, row.orgId, conn.source);
         conn.after();
-        setInvite({
-          id: row.orgId,
-          link: inviteLink(token, { stream: row.orgId, name: row.name }),
-          appOnly,
-        });
-        showToast(`Invite ready for “${row.name}”.`);
+        setInvite({ row, teams, appOnly });
+        setInviteOpen(true);
       });
     },
-    [conn, run, showToast],
+    [conn, run],
   );
+
+  const inviteOrg = invite?.row.orgId ?? streams[0]?.orgId;
 
   return (
     <div className={styles.page}>
@@ -255,23 +251,23 @@ export default function StreamsPage() {
           </StatusNote>
         )}
 
-        <InviteModal
-          open={!!invite}
-          link={invite?.link ?? ""}
-          appOnly={invite?.appOnly === true}
-          scope={`Whole stream · ${
-            streams.find((n) => n.orgId === invite?.id)?.name ?? "stream"
-          }`}
-          onClose={() => setInvite(null)}
-          hint={
-            <>
-              Whoever opens this link can join that stream and every room in it,
-              after signing in with a passkey (or creating an account). To
-              invite someone into one specific call, open the stream and use{" "}
-              <strong>Invite</strong> on that room.
-            </>
-          }
-        />
+        {conn && inviteOrg && (
+          <InviteDialog
+            client={conn.client}
+            passkey={conn.passkey()}
+            open={inviteOpen}
+            onClose={() => setInviteOpen(false)}
+            org={inviteOrg}
+            teams={invite?.teams}
+            appName={PRODUCT_NAME}
+            labels={{
+              noun: "stream",
+              ...(invite && { title: `Invite to \u201c${invite.row.name}\u201d` }),
+              ...(invite?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+            }}
+            linkBase={invite ? inviteBase({ stream: invite.row.orgId, name: invite.row.name }) : undefined}
+          />
+        )}
 
         <div className={styles.sectionHead}>
           <h3 className={styles.sectionTitle}>
@@ -344,13 +340,13 @@ export default function StreamsPage() {
                   {/* Outside any wrapping button: nested interactive elements are
                       invalid HTML and the inner click does not reliably fire. */}
                   <ActionButton
-                    onClick={() => mintInvite(row)}
+                    onClick={() => openInvite(row)}
                     pending={pending === `invite:${row.orgId}`}
-                    pendingLabel="Minting…"
+                    pendingLabel="Opening…"
                     variant="secondary"
                     size="small"
                     testId="invite-btn"
-                    title="Invite someone to this whole stream (a passkey approval)"
+                    title="Invite someone to this whole stream"
                   >
                     <UserPlusIcon size={16} />
                     Invite

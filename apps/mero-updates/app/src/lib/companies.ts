@@ -1,13 +1,11 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase,
   isAppOnly,
-  isSpentInvite,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -15,8 +13,6 @@ import {
   orgsWithApp,
   removeFromApp,
   sourcePackage,
-  SPENT_INVITE_COPY,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -67,10 +63,6 @@ export interface AudienceRow {
   name: string;
   /** The account that created it (the instance's owner, its first admin). */
   owner: string;
-}
-
-interface MeOrgs {
-  orgs?: Array<{ orgId: string; name: string; role: string }>;
 }
 
 function filterOf(source: AppSource): { bundle: string } | { package: string } {
@@ -273,37 +265,21 @@ export const isAdminRole = (role: string | undefined) => role === "owner" || rol
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming Mero Updates' team (`appInvite`): `appOnly` when it
- * gives Mero Updates only (an org that keeps its apps apart). Org-wide in a
- * legacy org.
- */
-export function mintInvite(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/**
- * The link that opens this frontend with `token` to redeem, and optionally an
- * audience to land in. `org` names the company the token admits to, so someone
- * already in it (the inviter opening their own link, say) is told so instead
- * of spending the token's single use.
+ * The page the invite link opens, before the token: this frontend's root, with
+ * `org` named so someone already in the company is told so instead of
+ * spending the token's single use, and optionally an audience to land in. The
+ * shared dialog adds the token.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
+export function inviteBase(
+  org: string,
   audience: string | null = null,
-  org: string | null = null,
   location: Pick<Location, "href"> = window.location,
 ): string {
   const url = new URL(location.href);
-  return sharedInviteLink(token, { org, extra: { audience }, root: nodeBasename(url, "/"), origin: url.origin });
+  return inviteLinkBase({ org, extra: { audience }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
 export interface PendingInvite {
@@ -319,7 +295,7 @@ export const invites = createInviteStore(APP_NAME, { keep: ["audience"] });
 const LEGACY_PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&audience=`, `&org=`) off the address bar into the
+ * Takes `invite=` (and `&audience=`, `&org=`) off the address bar into the
  * store, before anything renders: a person opening a link is usually not
  * signed in yet, and the token must survive the sign-up. An invite an earlier
  * build stored under its own key moves over first.
@@ -381,44 +357,4 @@ export function pendingInvite(): PendingInvite | null {
 export function dropInvite(): void {
   invites.drop();
   joinedAtSignUp = null;
-}
-
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const key of ["org", "orgId"]) {
-    const v = redeemed[key];
-    if (typeof v === "string" && v) return v;
-  }
-  return null;
-}
-
-/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
-export const INVITE_REFUSED = SPENT_INVITE_COPY;
-
-/**
- * True when `e` is the node refusing the invitation itself (see
- * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
- * limit or the cluster unreachable keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  return isSpentInvite(e);
-}
-
-/**
- * Whether this account is already in the company an invitation admits to:
- * `true` or `false` when the link names its org, `null` when it cannot be told
- * (an older link). Redeeming as an existing member spends the token's single
- * use, which then leaves the person it was meant for unable to join.
- */
-export async function alreadyMember(
-  client: ClientRoutes<{ auth: "me" }>,
-  invite: PendingInvite,
-): Promise<boolean | null> {
-  if (!invite.org) return null;
-  try {
-    const me = (await client.auth.me()) as MeOrgs;
-    return (me.orgs ?? []).some((o) => o.orgId === invite.org);
-  } catch {
-    return null;
-  }
 }

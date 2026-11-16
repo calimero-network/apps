@@ -295,31 +295,6 @@ describe("a new workspace gets chat's own app team", () => {
   });
 });
 
-describe("invites name chat's app team", () => {
-  it("standalone: the team is named, and the link is the workspace's", async () => {
-    const { org } = await workspace();
-    const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"]);
-    expect(res.data).toEqual({ invitation: "tok-1", groupAlias: "Acme" });
-  });
-
-  it("shared: the same call, and the link says it gives Chat only", async () => {
-    const { org } = await workspace();
-    h.state.orgs.get(org)!.teams["team-chat"]!.join = "invite";
-    invalidate();
-    const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything(), ["team-chat"]);
-    expect(res.data).toMatchObject({ invitation: "tok-1", chatOnly: true });
-  });
-
-  it("a legacy org: the org-wide invite, as before", async () => {
-    const org = otherOrg("legacy");
-    const res = await api.createInvitation(org);
-    expect(h.client.invite).toHaveBeenCalledWith(org, "member", expect.anything());
-    expect(res.data?.chatOnly).toBeUndefined();
-  });
-});
-
 describe("the workspace's people are Chat's", () => {
   const people = { "acct-bob": "member", "acct-cy": "member", "acct-gus": "guest" };
 

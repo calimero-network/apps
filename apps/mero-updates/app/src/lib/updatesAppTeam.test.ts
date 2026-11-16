@@ -16,7 +16,7 @@ import {
   finishCompany,
   leaveCompany,
   leaveCompanyOrg,
-  mintInvite,
+  inviteBase,
   readCompany,
   removeFromCompany,
 } from "./companies";
@@ -63,24 +63,27 @@ describe("invites and people", () => {
 
   it("standalone: the invite names the team; every member but a guest", async () => {
     const { cluster, org } = await company(people);
-    expect((await mintInvite(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
     expect((await readCompany(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
   it("apps kept apart: Mero Updates only, and only its people", async () => {
     const { cluster, org } = await company(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect((await mintInvite(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
     expect((await readCompany(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob"]);
   });
 
   it("a legacy org: the org-wide invite, every member", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "legacy", members: people });
-    expect((await mintInvite(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toBeUndefined();
     expect((await readCompany(cluster.client, org, SOURCE)).people).toHaveLength(4);
+  });
+});
+
+describe("invite link and team edge cases", () => {
+  it("the link opens the root, naming the company and the audience, with no token", () => {
+    const base = new URL(inviteBase("org-1", "aud-9", { href: "http://localhost:5173/companies?x=1#frag" }));
+    expect(base.origin + base.pathname).toBe("http://localhost:5173/");
+    expect(Object.fromEntries(base.searchParams)).toEqual({ org: "org-1", audience: "aud-9" });
   });
 });
 

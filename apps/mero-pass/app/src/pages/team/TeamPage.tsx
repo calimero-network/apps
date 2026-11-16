@@ -14,7 +14,7 @@ import {
 import { useCalimero } from '../../calimero';
 
 import AppShell from '../../components/AppShell';
-import InviteModal from '../../components/InviteModal';
+import PassInviteDialog, { type PassInvite } from '../../components/PassInviteDialog';
 import MembersPanel from '../../components/MembersPanel';
 import { PlusIcon } from '../../components/icons';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
@@ -26,14 +26,11 @@ import {
   canInvite,
 } from '../../lib/roles';
 import {
-  DEFAULT_INVITE_SECS,
-  INVITE_VALIDITY,
   createVault,
   displayName,
   listTeams,
+  inviteTeams,
   listVaults,
-  mintTeamInvite,
-  mintVaultInvite,
 } from '../../lib/vaults';
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
@@ -91,17 +88,8 @@ export default function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [restricted, setRestricted] = useState(false);
-  const [validFor, setValidFor] = useState<number>(DEFAULT_INVITE_SECS);
-  const validLabel =
-    INVITE_VALIDITY.find((v) => v.secs === validFor)?.label ?? '24 hours';
   const [busy, setBusy] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{
-    code: string;
-    appOnly?: boolean;
-    scope: string;
-    hint: string;
-    org?: string;
-  } | null>(null);
+  const [invite, setInvite] = useState<PassInvite | null>(null);
 
   const mayCreateVault = canCreateVault(capabilities);
   const mayInvite = canInvite(capabilities);
@@ -218,56 +206,47 @@ export default function TeamPage() {
     if (!conn || !teamId) return;
     setError(null);
     try {
-      const { token: code, appOnly } = await mintTeamInvite(
-        conn,
-        { namespaceId: teamId, validForSecs: validFor },
-        setBusy,
-      );
       setInvite({
-        code,
-        appOnly,
-        scope: `Whole team · ${heading}`,
-        org: teamId,
-        hint: `Whoever opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
+        ...(await inviteTeams(conn, teamId)),
+        linkOrg: teamId,
+        title: `Invite to ${heading}`,
+        subtitle:
+          "Whoever opens this link can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault. Choose what they can do.",
       });
     } catch (e) {
       setError(describeError(e));
     } finally {
-      setBusy(null);
+      conn.after?.();
     }
-  }, [conn, teamId, heading, validFor, validLabel]);
+  }, [conn, teamId, heading]);
 
   const inviteToVault = useCallback(
     async (vault: VaultRow) => {
       if (!conn || !teamId) return;
       setError(null);
       try {
-        const { token: code, appOnly } = await mintVaultInvite(
-          conn,
-          { namespaceId: teamId, team: vault.team, validForSecs: validFor },
-          setBusy,
-        );
         setInvite({
-          code,
-          appOnly,
-          scope: `Opens ${vault.name}`,
+          ...(await inviteTeams(conn, teamId, vault.team)),
           // An invite-only vault's link also admits to that vault's own team,
           // which a team member still needs: name the org only for open ones.
-          org: vault.team ? undefined : teamId,
+          linkOrg: vault.team ? undefined : teamId,
+          title: `Invite to ${vault.name}`,
           // Said plainly: an OPEN vault's access is inherited from the team,
           // so a link to it grants every open vault there. Only an invite-only
           // vault can be granted on its own.
-          hint: vault.restricted
-            ? `“${vault.name}” is invite-only: this link admits them to it and to ${heading}, but to no other invite-only vault. Valid for ${validLabel}.`
-            : `This link lands them in “${vault.name}”, but the access it grants is the whole of ${heading} — every open vault in the team, including ones added later. Valid for ${validLabel}.`,
+          subtitle: `${
+            vault.restricted
+              ? `“${vault.name}” is invite-only: this link admits them to it and to ${heading}, but to no other invite-only vault.`
+              : `This link lands them in “${vault.name}”, but the access it grants is the whole of ${heading} — every open vault in the team, including ones added later.`
+          } Choose what they can do.`,
         });
       } catch (e) {
         setError(describeError(e));
       } finally {
-        setBusy(null);
+        conn.after?.();
       }
     },
-    [conn, teamId, heading, validFor, validLabel],
+    [conn, teamId, heading],
   );
 
   return (
@@ -295,20 +274,6 @@ export default function TeamPage() {
           </div>
           {mayInvite && (
             <div className={styles.titleRowActions}>
-              <select
-                className={styles.input}
-                value={validFor}
-                onChange={(e) => setValidFor(Number(e.target.value))}
-                aria-label="Invitations expire after"
-                title="Invitations expire after"
-                data-testid="invite-validity"
-              >
-                {INVITE_VALIDITY.map((v) => (
-                  <option key={v.secs} value={v.secs}>
-                    Expires in {v.label}
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 className={styles.btn}
@@ -517,15 +482,9 @@ export default function TeamPage() {
         )}
       </main>
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ''}
-        org={invite?.org}
-        scope={invite?.scope ?? ''}
-        appOnly={invite?.appOnly === true}
-        hint={invite?.hint}
-        onClose={() => setInvite(null)}
-      />
+      {teamId && (
+        <PassInviteDialog org={teamId} invite={invite} onClose={() => setInvite(null)} />
+      )}
     </AppShell>
   );
 }

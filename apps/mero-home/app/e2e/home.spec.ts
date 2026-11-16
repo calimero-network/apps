@@ -62,6 +62,15 @@ async function signUpFromInvite(page: Page, name: string): Promise<void> {
     .toBe("done");
 }
 
+/** Creates an invite for the apps checked through the shared dialog, closes it and returns the link. */
+async function createInvite(page: Page): Promise<string> {
+  await page.getByTestId("invite-create").click();
+  await page.getByRole("button", { name: "Create invite" }).click();
+  const link = await page.getByLabel("Invite link").inputValue();
+  await page.getByRole("button", { name: "Done" }).click();
+  return link;
+}
+
 test.describe.configure({ mode: "serial" });
 
 let admin: Page;
@@ -96,17 +105,15 @@ test("Invitations: invite to the app, list it, revoke another", async () => {
   const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
   // One to revoke…
   await admin.getByTestId(`invite-app-${kvPackage}`).check();
-  await admin.getByTestId("invite-create").click();
-  await expect(admin.getByTestId("invite-link")).toBeVisible();
+  expect(await createInvite(admin)).toContain("invite=");
   await expect(pending).toHaveCount(1);
   // Told apart by key: the list is newest first, and two invites made in the
   // same second (createdAt is in seconds) can come in either order.
   const toRevoke = (await pending.getAttribute("data-testid"))!.replace(/^pending-/, "");
   // …and one to send.
-  await admin.getByTestId("invite-create").click();
-  await expect(pending).toHaveCount(2);
-  memberLink = (await admin.getByTestId("invite-link").locator("pre").textContent()) ?? "";
+  memberLink = await createInvite(admin);
   expect(memberLink).toContain("invite=");
+  await expect(pending).toHaveCount(2);
   await admin.getByTestId(`revoke-${toRevoke}`).click();
   await expect(pending).toHaveCount(1);
   await expect(admin.getByTestId(`pending-${toRevoke}`)).toHaveCount(0);
@@ -118,7 +125,7 @@ test("the invited member gets that app only, and sees it in Your apps", async ({
   const page = await context.newPage();
   await withPasskey(context, page);
   const url = new URL(memberLink);
-  await page.goto(`/${url.search}`);
+  await page.goto(`/${url.search}${url.hash}`);
   await signUpFromInvite(page, "Eve");
   await expect(page.getByTestId(`open-${kvPackage}`)).toBeVisible();
   await expect(page.getByRole("tab")).not.toContainText(["Admin"]);

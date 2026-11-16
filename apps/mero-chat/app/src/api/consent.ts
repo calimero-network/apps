@@ -8,8 +8,9 @@
  * invite and redeeming one (`403 FORBIDDEN: a session opened on an app's
  * frontend can use that app only; do this on the cluster's own page`). The
  * node's consent page does each of those for the person, with their passkey,
- * on the node's own origin (core#5014): `createInvite` and `acceptInvite`
- * (a workspace's `createOrg` is the shared create-workspace dialog's).
+ * on the node's own origin (core#5014). Chat's organization-wide changes go
+ * through here; creating a workspace, inviting and joining are the shared
+ * dialogs'.
  *
  * The page is a full-page redirect (`client.openConsentPage`), so what Chat
  * was doing is kept in `sessionStorage` ({@link ConsentIntent}) and finished
@@ -18,8 +19,6 @@
  * joined) is read from the node's sealed result, never from the return URL.
  */
 import {
-  acceptInviteConsent,
-  createInviteConsent,
   type CalimeroClient,
   type ConsentRequest,
   type ConsentResult,
@@ -34,13 +33,6 @@ export type OrgRoleName = "admin" | "member" | "guest";
 
 /** What Chat was doing when it sent the person to the consent page. */
 export type ConsentIntent =
-  /** "Invite" in the workspace `org`. */
-  | { kind: "createInvite"; org: string }
-  /**
-   * "Join" on the pending invitation (its token stays where `captureInvite`
-   * put it), with the name the person chose for the workspace.
-   */
-  | { kind: "acceptInvite"; org: string | null; selfName?: string }
   /** "Make organization admin" (or take it back) for `account`. */
   | { kind: "setMemberRole"; org: string; account: string; role: OrgRoleName }
   /** "Remove" `account` from the workspace's organization. */
@@ -164,23 +156,10 @@ export function consentReturnTo(location: Pick<Location, "origin"> = window.loca
   return new URL(nodeBasename(), location.origin).toString();
 }
 
-/** The consent request for `intent` (an invite's terms are given separately). */
-export function consentRequest(
-  intent: Extract<ConsentIntent, { kind: "createOrg" | "createInvite" | "acceptInvite" }>,
-  terms?: { inviteToken?: string; inviteTeams?: string[] },
-): ConsentRequest;
-export function consentRequest(intent: OrgConsentIntent): OrgConsentRequest;
-export function consentRequest(intent: ConsentIntent, terms?: { inviteToken?: string; inviteTeams?: string[] }): ChatConsentRequest;
-export function consentRequest(
-  intent: ConsentIntent,
-  terms: { inviteToken?: string; inviteTeams?: string[] } = {},
-): ChatConsentRequest {
+/** The consent request for `intent`. */
+export function consentRequest(intent: OrgConsentIntent): OrgConsentRequest {
   const returnTo = consentReturnTo();
   switch (intent.kind) {
-    case "createInvite":
-      return createInviteConsent({ org: intent.org, role: "member", teams: terms.inviteTeams ?? [] }, returnTo);
-    case "acceptInvite":
-      return acceptInviteConsent(terms.inviteToken ?? "", returnTo);
     case "setMemberRole":
       return { kind: "setMemberRole", subject: { org: intent.org, account: intent.account, role: intent.role }, returnTo };
     case "removeMember":
@@ -197,10 +176,6 @@ export function consentRequest(
 /** What `intent` asks the node to approve, in the words the person used. */
 export function consentAction(intent: ConsentIntent): string {
   switch (intent.kind) {
-    case "createInvite":
-      return "Create an invitation to this workspace";
-    case "acceptInvite":
-      return "Join the workspace you were invited to";
     case "setMemberRole":
       return intent.role === "admin" ? "Make them an admin of this organization" : "Change their role in this organization";
     case "removeMember":

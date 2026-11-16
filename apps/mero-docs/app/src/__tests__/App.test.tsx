@@ -17,7 +17,7 @@ import { SIGN_IN_HINT, SIGN_UP_NOT_FINISHED, accountHintKey, noAccountCopy } fro
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
-import { buildInviteUrl, invites, migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
+import { captureInvite, inviteLinkBase, invites, migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
 import { withRoutes } from '@calimero-apps/connect/testing';
 
 // `useInstanceRelease` as on a page a node serves from `release.href` (a
@@ -162,7 +162,7 @@ function fakeClient() {
     events: vi.fn((_app: string, _from: number, signal?: AbortSignal) => idle(signal)),
     presenceStream: vi.fn((_app: string, signal?: AbortSignal) => idle(signal)),
     publishPresence: vi.fn(async () => undefined),
-    redeemInvite: vi.fn(async () => ({ orgId: 'org-1' })),
+    redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
     setMemberMetadata: vi.fn(async () => undefined),
   });
 }
@@ -181,6 +181,13 @@ function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
  * has taken ~2s there, past testing-library's 1s default.
  */
 const BOOT = { timeout: 10_000 };
+
+/** Presses the shared dialog's Join once it has asked the node whether it is bound to the app. */
+async function join() {
+  const button = await screen.findByRole('button', { name: 'Join' }, BOOT);
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false), BOOT);
+  fireEvent.click(button);
+}
 
 /** A session an earlier visit left behind. */
 function remember() {
@@ -215,43 +222,42 @@ describe('App on Calimero 1.0', () => {
     );
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(await screen.findByTestId('invite-accept', {}, BOOT)).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Join' }, BOOT)).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('invite-accept'));
+    await join();
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('inv_abc'));
-    expect(invites.token()).toBeNull();
+    await waitFor(() => expect(invites.token()).toBeNull());
   });
 
-  it('does not offer Join to someone already in the workspace, and keeps the link unspent', async () => {
+  it('tells someone already in the workspace so, keeps the link unspent, and Continue opens it', async () => {
     remember();
     hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-1', workspaceId: 'org-1', targetName: 'Acme' }),
     );
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(await screen.findByTestId('invite-already-member', {}, BOOT)).toBeTruthy();
-    expect(screen.queryByTestId('invite-accept')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }, BOOT));
+    expect(screen.queryByRole('button', { name: 'Join' })).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
+    await waitFor(() => expect(invites.token()).toBeNull());
   });
 
-  it('says plainly when the invite was already used or has expired', async () => {
+  it('shows the node\'s refusal in the dialog and drops the spent invite', async () => {
     remember();
-    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }),
-    );
+    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }));
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invite-accept', {}, BOOT));
-    expect((await screen.findByTestId('invite-error')).textContent).toBe(
-      'This invite was already used or has expired. Ask the person who invited you for a new link.',
-    );
+    await join();
+    expect((await screen.findByRole('alert')).textContent).toMatch(/unknown invite/);
     expect(invites.token()).toBeNull();
+    expect(screen.getByRole('button', { name: 'Join' })).toBeTruthy();
   });
 
   it('an invited newcomer who creates the account lands in the folder the link names (B10)', async () => {
-    const link = new URL(buildInviteUrl('group', 'inv_f', { workspace: 'org-1', folder: 'eng' }, 'Engineering'));
-    window.history.replaceState(null, '', `${link.pathname}${link.search}`);
-    invites.capture(window.location);
+    // The shared dialog puts the token in the link's fragment.
+    const link = new URL(inviteLinkBase('group', { workspace: 'org-1', folder: 'eng' }, 'Engineering'));
+    window.history.replaceState(null, '', `${link.pathname}${link.search}#invite=inv_f`);
+    captureInvite();
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
@@ -261,21 +267,6 @@ describe('App on Calimero 1.0', () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   }, 20_000);
-
-  it.each([
-    [429, 'RATE_LIMITED', /invite is kept/],
-    [401, 'UNAUTHENTICATED', /invite is kept/],
-  ])('keeps the invite when redeeming answers %i, and says to try again (B6)', async (status, code, says) => {
-    remember();
-    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invite-accept', {}, BOOT));
-    expect((await screen.findByTestId('invite-error')).textContent).toMatch(says);
-    expect(invites.token()).toBe('inv_abc');
-    expect(screen.getByTestId('invite-accept')).toBeTruthy();
-  });
 
   describe("a sign-up's second prompt", () => {
     // Since core #4849 a sign-up takes two prompts. The second is asked right
@@ -388,7 +379,7 @@ describe('App on Calimero 1.0', () => {
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId('signin-passkey', {}, BOOT));
-      fireEvent.click(await screen.findByTestId('invite-accept', {}, BOOT));
+      await join();
       await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('inv_abc'));
       await waitFor(() => expect(window.location.pathname).toBe('/app/org-1'), BOOT);
     });

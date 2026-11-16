@@ -1,35 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { consentReturn } from "@calimero-network/mero-js";
 
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { consentIntent, returnFromConsent, type ConsentReturned } from "../../api/consent";
 import { invalidate } from "../../api/platform";
-import { getAccountId } from "../../api/calimero";
 import { clearWorkspaceSelection, getGroupId, setStoredGroupAlias } from "../../constants/config";
 import { useToast } from "../../contexts/ToastContext";
-import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
-import { dropInvite } from "../../utils/invitation";
 import { log } from "../../utils/logger";
-import { getMessengerDisplayName } from "../../utils/messengerName";
 import { nodeBasename } from "../../utils/servedByNode";
 import { clearNamespaceReady } from "../../utils/session";
-import GroupInviteModal from "./GroupInviteModal";
 
 /**
  * Finishes what Chat sent the person to the node's consent page for, when the
- * page sends them back (`?request_id=…&result=…`, see `api/consent.ts`): the
- * minted invite's link is shown; the joined workspace is entered; an
+ * page sends them back (`?request_id=…&result=…`, see `api/consent.ts`): an
  * organization role, a removal or a new name is said; a workspace left or
- * deleted is closed, back to the picker. A workspace's creation is the shared
- * dialog's (`ChatWorkspaceCreator`). What the approval made is read
+ * deleted is closed, back to the picker. A workspace's creation, invites and
+ * joins are the shared dialogs'. What the approval made is read
  * from the node's sealed result, never from the return URL, and a return that
  * does not match the request this tab started is refused by `resumeConsent`.
  */
 export default function ConsentReturn({ enabled }: { enabled: boolean }) {
-  const api = useRef(new GroupApiDataSource());
   const { addToast } = useToast();
   const started = useRef(false);
-  const [invite, setInvite] = useState<{ org: string; token: string } | null>(null);
 
   useEffect(() => {
     // Only a return this app kept an intent for: the shared dialog resumes its own.
@@ -57,26 +48,6 @@ export default function ConsentReturn({ enabled }: { enabled: boolean }) {
       }
       invalidate();
       switch (result.kind) {
-        case "createInvite": {
-          const token = result.outcome?.token;
-          if (token && intent?.kind === "createInvite") setInvite({ org: intent.org, token });
-          return;
-        }
-        case "acceptInvite": {
-          const org = result.outcome?.org;
-          dropInvite();
-          if (!org) return;
-          const meta = await api.current.getGroupMetadata(org).catch(() => null);
-          const alias = meta?.data?.name?.trim();
-          if (alias) setStoredGroupAlias(org, alias);
-          log.info("ConsentReturn", `joined workspace ${org}`);
-          // The name chosen beside Join, published as the member's name.
-          const chosen = intent?.kind === "acceptInvite" ? intent.selfName?.trim() : "";
-          const name = chosen || getMessengerDisplayName(org);
-          if (name) await enterWorkspace(api.current, org, name, getAccountId());
-          else enterJoinedWorkspaceForName(org);
-          return;
-        }
         case "setMemberRole": {
           if (intent?.kind !== "setMemberRole") return;
           invalidate(intent.org);
@@ -136,13 +107,5 @@ export default function ConsentReturn({ enabled }: { enabled: boolean }) {
     })();
   }, [enabled, addToast]);
 
-  if (!invite) return null;
-  return (
-    <GroupInviteModal
-      groupId={invite.org}
-      isOpen
-      onClose={() => setInvite(null)}
-      initialInvitationPayload={invite.token}
-    />
-  );
+  return null;
 }

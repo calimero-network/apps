@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -12,8 +12,7 @@ import {
   createForum,
   finishSpace,
   deleteSpace,
-  inviteLink,
-  inviteToken,
+  inviteLinkBase,
   isSpaceAdmin,
   leaveSpace,
   leaveSpaceOrg,
@@ -21,7 +20,6 @@ import {
   listSpaces,
   type NamespaceRow,
 } from "../lib/spaces";
-import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { Avatar, NavItem, Shell, SideCard } from "../components/chrome";
@@ -38,6 +36,12 @@ import {
   UsersIcon,
 } from "../components/icons";
 import styles from "./Picker.module.css";
+
+const INVITE_LABELS = {
+  noun: "space",
+  title: "Invite people to this space",
+  subtitle: "They can read every forum inside it. Choose what they can do.",
+};
 
 const CREATE_LABELS = {
   title: "New space",
@@ -79,9 +83,7 @@ export default function SpacesPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; code: string; appOnly?: boolean } | null>(
-    null,
-  );
+  const [invite, setInvite] = useState<{ org: string; teams: string[]; appOnly: boolean } | null>(null);
   // The space pending deletion. A confirm step rather than `confirm()`, because
   // this takes every forum in the space with it and the sentence has to say so.
   // Which card's menu is open. mero-design keys this by id and closes on an
@@ -195,14 +197,12 @@ export default function SpacesPage() {
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
-      void run(`invite:${ns.namespaceId}`, async (onStatus) => {
-        onStatus("Approve the invitation with your passkey…");
-        const { token, appOnly } = await inviteToken(client, ns.namespaceId, passkey(), source);
-        setInvite({ id: ns.namespaceId, code: inviteLink(token, undefined, window.location, ns.namespaceId), appOnly });
-        showToast(`Invite ready for “${ns.name}”.`);
+      void run(`invite:${ns.namespaceId}`, async () => {
+        const { teams, appOnly } = await appInviteTeams(client, ns.namespaceId, source);
+        setInvite({ org: ns.namespaceId, teams, appOnly });
       });
     },
-    [client, passkey, source, run, showToast],
+    [client, source, run],
   );
 
   const removeSpace = useCallback(
@@ -536,13 +536,19 @@ export default function SpacesPage() {
         </div>
       </dialog>
 
-      <InviteModal
-        open={!!invite}
-        code={invite?.code ?? ""}
-        scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
-        appOnly={invite?.appOnly === true}
-        onClose={() => setInvite(null)}
-      />
+      {invite && (
+        <InviteDialog
+          client={client}
+          passkey={passkey()}
+          open
+          onClose={() => setInvite(null)}
+          org={invite.org}
+          teams={invite.teams}
+          appName={PRODUCT_NAME}
+          labels={invite.appOnly ? { ...INVITE_LABELS, note: appOnlyInviteNote(PRODUCT_NAME) } : INVITE_LABELS}
+          linkBase={inviteLinkBase(invite.org)}
+        />
+      )}
 
       <CreateWorkspaceDialog
         client={client}

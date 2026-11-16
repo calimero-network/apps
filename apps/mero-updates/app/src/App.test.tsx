@@ -72,9 +72,9 @@ const h = await vi.hoisted(async () => {
     setMemberMetadata: vi.fn(async () => undefined),
     setCapabilities: vi.fn(async () => undefined),
     createApp: vi.fn(async () => "app-2"),
-    invite: vi.fn(async () => "token-1"),
+    listAppTeams: vi.fn(async (): Promise<{ mode: string; appTeams: { package: string; teamId: string }[] }> => ({ mode: "legacy", appTeams: [] })),
   });
-  return { wire, client };
+  return { wire, client, session: { source: "bundle-1" as string | { package: string } } };
 });
 
 vi.mock("./lib/sessionContext", () => {
@@ -82,7 +82,9 @@ vi.mock("./lib/sessionContext", () => {
     client: h.client,
     accountId: "ana",
     target: { kind: "local", nodes: ["http://127.0.0.1:2501"] },
-    source: "bundle-1",
+    get source() {
+      return h.session.source;
+    },
     passkey: () => ({}),
     after: () => {},
   };
@@ -98,6 +100,21 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
   const { createElement } = await import("react");
   return {
     ...(await importOriginal<object>()),
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      linkBase?: string;
+      appName?: string;
+      labels?: { noun?: string; note?: string; title?: string };
+    }) =>
+      p.open
+        ? createElement(
+            "pre",
+            { "data-testid": "invite-dialog" },
+            JSON.stringify({ org: p.org, teams: p.teams, linkBase: p.linkBase, appName: p.appName, title: p.labels?.title, noun: p.labels?.noun, note: p.labels?.note }),
+          )
+        : null,
     CreateWorkspaceDialog: (p: {
       open: boolean;
       defaultSelfName?: string;
@@ -275,6 +292,26 @@ describe("the company pages", () => {
     expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-2", "ana", { name: "Ana Lee" });
   });
 
+  it("Invite on a company opens the shared dialog for that company", async () => {
+    const { default: CompaniesPage } = await import("./pages/CompaniesPage");
+    const { ToastProvider } = await import("./contexts/ToastContext");
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/companies"]}>
+          <Routes>
+            <Route path="/companies" element={<CompaniesPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+    fireEvent.click(await screen.findByTestId("space-menu"));
+    fireEvent.click(screen.getByTestId("invite-btn"));
+    const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
+    expect(shown).toMatchObject({ org: "org-1", teams: [], appName: "Mero Updates", title: "Invite people to Acme", noun: "company" });
+    expect(shown.note).toBeUndefined();
+    expect(Object.fromEntries(new URL(shown.linkBase).searchParams)).toEqual({ org: "org-1" });
+  });
+
   it("creates an audience as an app instance in the company and opens it", async () => {
     const { default: AudiencesPage } = await import("./pages/AudiencesPage");
     const { ToastProvider } = await import("./contexts/ToastContext");
@@ -323,7 +360,7 @@ describe("the company pages", () => {
     }
   });
 
-  it("mints an audience invite: an org invite whose link lands in that audience", async () => {
+  async function openAudienceInvite() {
     const { default: AudiencesPage } = await import("./pages/AudiencesPage");
     const { ToastProvider } = await import("./contexts/ToastContext");
     render(
@@ -337,9 +374,42 @@ describe("the company pages", () => {
     );
     fireEvent.click(await screen.findByTestId("audience-menu"));
     fireEvent.click(screen.getByTestId("invite-audience"));
-    const link = await screen.findByTestId("invite-link");
-    expect(h.client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
-    expect(link.textContent).toContain("invite=token-1");
-    expect(link.textContent).toContain("audience=app-1");
+  }
+
+  it("opens the shared invite dialog for an audience: a link that lands in it, on the app team", async () => {
+    h.session.source = { package: "com.calimero.mero-updates" };
+    h.client.listAppTeams.mockResolvedValueOnce({ mode: "standalone", appTeams: [{ package: "com.calimero.mero-updates", teamId: "team-1" }] });
+    try {
+      await openAudienceInvite();
+      const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
+      expect(shown).toMatchObject({ org: "org-1", teams: ["team-1"], appName: "Mero Updates", title: "Invite to All investors" });
+      expect(Object.fromEntries(new URL(shown.linkBase).searchParams)).toEqual({ org: "org-1", audience: "app-1" });
+    } finally {
+      h.session.source = "bundle-1";
+    }
+  });
+
+  it("an app-only org gets the note on the audience invite dialog", async () => {
+    h.session.source = { package: "com.calimero.mero-updates" };
+    h.client.listAppTeams.mockResolvedValueOnce({ mode: "shared", appTeams: [{ package: "com.calimero.mero-updates", teamId: "team-1" }] });
+    try {
+      await openAudienceInvite();
+      const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
+      expect(shown.note).toMatch(/^Invites to Mero Updates only/);
+    } finally {
+      h.session.source = "bundle-1";
+    }
+  });
+
+  it("an org with app teams but none for this app: Invite says so and opens no dialog", async () => {
+    h.session.source = { package: "com.calimero.mero-updates" };
+    h.client.listAppTeams.mockResolvedValueOnce({ mode: "shared", appTeams: [{ package: "com.calimero.other", teamId: "team-9" }] });
+    try {
+      await openAudienceInvite();
+      expect(await screen.findByText(/not set up/)).toBeInTheDocument();
+      expect(screen.queryByTestId("invite-dialog")).toBeNull();
+    } finally {
+      h.session.source = "bundle-1";
+    }
   });
 });

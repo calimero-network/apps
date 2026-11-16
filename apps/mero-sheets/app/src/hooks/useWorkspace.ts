@@ -25,7 +25,6 @@ import {
   publishWorkspaceName,
   listInstances,
   listOrgs,
-  mintInvite,
   namespaceLabel,
   spreadsheetFallbackLabel,
   spreadsheetsIn,
@@ -84,10 +83,6 @@ export interface UseWorkspaceReturn {
   pendingInitName: string | null;
   clearPendingInit: () => void;
   leaveWorkspace: () => void;
-  /** Mint a shareable invitation link for this workspace (a passkey step-up). */
-  /** Mints an invitation link naming Mero Sheets' team; `appOnly` when it gives Mero Sheets only. */
-  invite: (opts?: { contextId?: string | null }) => Promise<{ link: string; appOnly: boolean }>;
-  inviteLoading: boolean;
   /** Land a join the invitation prompt completed: re-read and open what the link named. */
   landJoined: (landed: AcceptedInvite) => Promise<void>;
   /** Re-read orgs and instances from the cluster. */
@@ -120,7 +115,6 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [pendingInitName, setPendingInitName] = useState<string | null>(null);
-  const [inviteLoading, setInviteLoading] = useState(false);
   const [resumeSettled, setResumeSettled] = useState(() => !readLastWorkspace(memoryKey).contextId);
 
   const refresh = useCallback(async () => {
@@ -246,21 +240,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     return inst?.name?.trim() || spreadsheetFallbackLabel(contextId);
   }, [contextId, workspaces, instances]);
 
-  const invite = useCallback(
-    async (opts?: { contextId?: string | null }) => {
-      if (!namespaceId) throw new Error('No workspace yet — create a spreadsheet first.');
-      setInviteLoading(true);
-      try {
-        return await mintInvite(client, { org: namespaceId, sheet: opts?.contextId ?? null, passkey, source }, setStatus);
-      } finally {
-        setInviteLoading(false);
-        setStatus(null);
-        after();
-      }
-    },
-    [client, namespaceId, passkey, source, after],
-  );
-
   const landJoined = useCallback(
     async (landed: AcceptedInvite) => {
       if (landed.namespaceId) setJoinedNsId(landed.namespaceId);
@@ -314,8 +293,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     pendingInitName,
     clearPendingInit,
     leaveWorkspace,
-    invite,
-    inviteLoading,
     landJoined,
     refresh,
     loadOtherOrgs,

@@ -38,12 +38,17 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     refetch: vi.fn().mockResolvedValue(undefined),
   }),
 }));
+const perms = vi.hoisted(() => ({ canInviteMembers: false }));
 vi.mock('@/hooks/useNamespacePermissions', () => ({
-  useNamespacePermissions: () => ({ canManageMembers: true, canInviteMembers: false }),
+  useNamespacePermissions: () => ({ canManageMembers: true, canInviteMembers: perms.canInviteMembers }),
 }));
 vi.mock('@/hooks/useMemberCaps', () => ({ useMemberCaps: () => ({ caps: null, isAdmin: true }) }));
+vi.mock('@/hooks/useMemberName', () => ({ useMemberName: () => ({ name: 'Ada', settled: true }) }));
 vi.mock('@/hooks/useWorkspacePresence', () => ({ useWorkspacePresence: () => new Set() }));
-vi.mock('@/hooks/useNamespaceInvitation', () => ({ useCreateNamespaceInvite: () => ({ create: vi.fn() }) }));
+vi.mock('@/components/workspace/InviteDialog', () => ({
+  InviteDialog: (p: { groupId: string; open: boolean; inviterName?: string; labels: { title?: string } }) =>
+    p.open ? <div role="dialog" aria-label={`${p.labels.title}: ${p.groupId}`} data-inviter={p.inviterName} /> : null,
+}));
 vi.mock('@/components/admin/NamespaceMemberRow', () => ({
   NamespaceMemberRow: ({ identity, onRemove }: { identity: string; onRemove: (id: string, l: string) => void }) => (
     <li>
@@ -55,6 +60,7 @@ vi.mock('@/components/admin/NamespaceMemberRow', () => ({
 }));
 
 beforeEach(() => {
+  perms.canInviteMembers = false;
   membership.teeMembers = [];
   removeGroupMembers.mockReset().mockResolvedValue(undefined);
   listGroupMembers.mockReset().mockImplementation(async (g: string) => ({
@@ -91,6 +97,21 @@ describe('NamespaceMembersPanel removal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
     expect((await screen.findByRole('alert')).textContent).toBe("Couldn't remove Bob: not allowed");
     expect(listGroupMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('NamespaceMembersPanel invite', () => {
+  it('opens the shared invite dialog for the workspace', () => {
+    perms.canInviteMembers = true;
+    render(<NamespaceMembersPanel />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+    expect(screen.getByRole('dialog', { name: 'Invite to workspace: root' }).getAttribute('data-inviter')).toBe('Ada');
+  });
+
+  it('offers no Invite to someone who may not invite', () => {
+    render(<NamespaceMembersPanel />);
+    expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
   });
 });
 

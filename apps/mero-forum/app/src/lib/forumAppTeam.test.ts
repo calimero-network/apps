@@ -14,7 +14,6 @@ import { orgCluster } from "@calimero-apps/connect/testing";
 import {
   createForum,
   finishSpace,
-  inviteToken,
   leaveSpace,
   leaveSpaceOrg,
   readMembers,
@@ -61,23 +60,18 @@ describe("a new space gets Forum's own app team", () => {
 describe("invites and people", () => {
   it("standalone: the invite names the team; every member but a guest is counted", async () => {
     const { cluster, org } = await space({ "acct-bob": "member", "acct-gus": "guest" });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob"]);
   });
 
   it("apps kept apart: Forum only, and only its people", async () => {
     const { cluster, org } = await space({ "acct-bob": "member", "acct-cy": "member" });
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob"]);
   });
 
   it("a legacy org: the org-wide invite, every member counted", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "legacy", members: { "acct-gus": "guest" } });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toBeUndefined();
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-gus"]);
   });
 });

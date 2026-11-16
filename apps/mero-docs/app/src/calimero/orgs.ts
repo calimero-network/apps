@@ -44,7 +44,7 @@ import {
   type OrgMode,
 } from '@calimero-network/mero-js';
 import {
-  appInvite,
+  appInviteTeams,
   appPeople,
   appTarget,
   finishAppOrg,
@@ -659,21 +659,14 @@ export class OrgAdmin {
   // ---------------------------------------------------------------- invites
 
   /**
-   * A workspace invitation: an org invite token naming Docs' team
-   * (`appInvite`), approved with the passkey. `appOnly` when it gives Docs
-   * only (an org that keeps its apps apart).
+   * Where an invite from `groupId` (a workspace or a folder) lands: the org and
+   * the teams it names, Docs' own and the folder's. A legacy org has no app
+   * team: the invite is org-wide.
    */
-  async createNamespaceInvitation(orgId: string): Promise<{ token: string; appOnly: boolean }> {
-    return appInvite(this.client, orgId, this.source, this.passkey);
-  }
-
-  /** A folder invitation: an org invite naming Docs' team and the folder's. */
-  async createGroupInvitation(
-    groupId: string,
-  ): Promise<{ token: string; namespaceId: string; appOnly?: boolean }> {
+  async inviteTarget(groupId: string): Promise<{ org: string; team: string | null; teams: string[]; appOnly: boolean }> {
     const { org, team } = await this.locate(groupId);
-    const made = await appInvite(this.client, org, this.source, this.passkey, team ? { teams: [team] } : {});
-    return { token: made.token, namespaceId: org, ...(made.appOnly ? { appOnly: true } : {}) };
+    const { teams, appOnly } = await appInviteTeams(this.client, org, this.source);
+    return { org, team, teams: team ? [...teams, team] : teams, appOnly };
   }
 
   /** Whether this account is already a member of `orgId` (its `/me` org list). */
@@ -682,18 +675,10 @@ export class OrgAdmin {
     return ((me.orgs ?? []) as Array<{ orgId: string }>).some((o) => o.orgId === orgId);
   }
 
-  /** Redeems an invite token; answers the org it joined, when the node names it. */
-  async redeemInvite(token: string): Promise<string | null> {
-    const redeemed = record(await this.client.orgs.inviteRedeem({ token }));
+  /** Forgets what was cached before this account joined `orgId`. */
+  joined(orgId: string): void {
     this.orgList = null;
-    for (const key of ['org', 'orgId']) {
-      const v = redeemed[key];
-      if (typeof v === 'string' && v) {
-        this.changed(v);
-        return v;
-      }
-    }
-    return null;
+    this.changed(orgId);
   }
 
   // ---------------------------------------------------------------- blobs

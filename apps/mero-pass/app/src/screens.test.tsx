@@ -1,8 +1,8 @@
+import { CalimeroError } from '@calimero-network/mero-js';
 import type { ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CalimeroError } from '@calimero-network/mero-js';
 
 import { type Calimero, CalimeroContext } from './calimero';
 import InvitationPrompt from './components/InvitationPrompt';
@@ -12,6 +12,27 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
   const { createElement } = await import('react');
   return {
     ...(await importOriginal<object>()),
+    AcceptInviteDialog: (p: { open: boolean; token: string; org?: string; appName?: string; labels?: { noun?: string }; onClose: () => void; onError?: (e: unknown) => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'accept-dialog' },
+            createElement('p', { 'data-testid': 'accept-token' }, `${p.token} ${p.appName}`),
+            createElement('p', { 'data-testid': 'accept-extra' }, JSON.stringify({ org: p.org, noun: p.labels?.noun })),
+            createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org1' }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
+            createElement('button', { 'data-testid': 'accept-spent', onClick: () => p.onError?.(new CalimeroError(400, 'REJECTED', 'unknown invite')) }, 'spent'),
+            createElement('button', { 'data-testid': 'accept-offline', onClick: () => p.onError?.(new CalimeroError(503, 'UNAVAILABLE', 'node unreachable')) }, 'offline'),
+          )
+        : null,
+    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; linkBase?: string; appName?: string; uses?: number; ttlSecs?: number; expiryOptions?: number[]; labels?: { noun?: string; title?: string; note?: string } }) =>
+      p.open
+        ? createElement(
+            'pre',
+            { 'data-testid': 'invite-dialog' },
+            JSON.stringify({ org: p.org, teams: p.teams, linkBase: p.linkBase, appName: p.appName, title: p.labels?.title, noun: p.labels?.noun, note: p.labels?.note, uses: p.uses, ttlSecs: p.ttlSecs, expiryOptions: p.expiryOptions }),
+          )
+        : null,
     CreateWorkspaceDialog: (p: {
       open: boolean;
       defaultSelfName?: string;
@@ -101,7 +122,6 @@ function fakeClient() {
     setOrgMetadata: vi.fn(async () => {}),
     createApp: vi.fn(async () => 'app9'),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
-    redeemInvite: vi.fn(async () => ({ org: 'org1' })),
   });
 }
 
@@ -204,6 +224,25 @@ describe('TeamsPage', () => {
     expect(client.setOrgMetadata).toHaveBeenCalledWith('org9', PERSONAL);
     expect(client.createOrg).not.toHaveBeenCalled();
   });
+
+  it('Invite someone opens the shared dialog for that team, with a link naming it', async () => {
+    renderAt('/teams', calimero(fakeClient()), <TeamsPage />);
+    fireEvent.click((await screen.findAllByTestId('team-menu'))[0]!);
+    fireEvent.click(await screen.findByText('Invite someone'));
+    const shown = JSON.parse((await screen.findByTestId('invite-dialog')).textContent ?? '');
+    expect(shown).toMatchObject({
+      org: 'org1',
+      teams: [],
+      appName: 'Mero Pass',
+      title: 'Invite to Acme',
+      noun: 'team',
+      uses: 1,
+      ttlSecs: 86400,
+      expiryOptions: [3600, 86400, 604800],
+    });
+    expect(shown.note).toBeUndefined();
+    expect(Object.fromEntries(new URL(shown.linkBase).searchParams)).toEqual({ org: 'org1' });
+  });
 });
 
 const APP_BODY = <p data-testid="app-body">app</p>;
@@ -237,7 +276,7 @@ describe('InvitationPrompt', () => {
   it('asks to join as soon as the session exists, then joins the team the invite names', async () => {
     hold('tok');
     const { rerender } = promptAt('/', calimero(null));
-    expect(screen.queryByTestId('invitation-prompt')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('accept-dialog')).not.toBeInTheDocument();
 
     const client = fakeClient();
     rerender(
@@ -257,11 +296,11 @@ describe('InvitationPrompt', () => {
         </MemoryRouter>
       </CalimeroContext.Provider>,
     );
-    fireEvent.click(await screen.findByTestId('invitation-join'));
+    expect(await screen.findByTestId('accept-token')).toHaveTextContent('tok Mero Pass');
+    fireEvent.click(screen.getByTestId('accept-join'));
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1'),
     );
-    expect(client.redeemInvite).toHaveBeenCalledWith('tok');
     expect(invites.token()).toBeNull();
   });
 
@@ -269,57 +308,29 @@ describe('InvitationPrompt', () => {
     hold('tok');
     const client = fakeClient();
     promptAt('/', calimero(client));
-    fireEvent.click(await screen.findByTestId('invitation-dismiss'));
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('accept-close'));
     expect(invites.token()).toBeNull();
   });
 
-  it('tells a member of the invited team they are already in it, without spending the invite', async () => {
+  it('hands the dialog the invite\'s team, so a member is told so; continuing opens the team', async () => {
     hold('tok', 'org1');
     const client = fakeClient();
     promptAt('/', calimero(client));
-    expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
-      "You're already in this team",
-    );
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(JSON.parse((await screen.findByTestId('accept-extra')).textContent ?? 'null')).toEqual({ org: 'org1', noun: 'team' });
+    expect(screen.queryByTestId('invitation-outcome')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('accept-join'));
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1'));
     expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId('invitation-continue'));
-    expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1');
   });
 
-  it('says plainly when the invite was already used or has expired', async () => {
+  it('drops a stored token the node says is spent, and keeps it for a network failure', async () => {
     hold('tok');
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(
-      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'),
-    );
-    promptAt('/', calimero(client));
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
-      'This invite was already used or has expired. Ask the person who invited you for a new link.',
-    );
+    promptAt('/', calimero(fakeClient()));
+    fireEvent.click(await screen.findByTestId('accept-offline'));
+    expect(invites.token()).toBe('tok');
+    fireEvent.click(screen.getByTestId('accept-spent'));
     expect(invites.token()).toBeNull();
   });
-
-  it.each([
-    [429, 'RATE_LIMITED', /Too many tries/],
-    [401, 'UNAUTHENTICATED', /sign in again/],
-  ])(
-    'keeps the invite when redeeming answers %i, and says to try again (B6)',
-    async (status, code, says) => {
-      hold('tok');
-      const client = fakeClient();
-      client.redeemInvite.mockRejectedValueOnce(
-        new CalimeroError(status, code, 'not now'),
-      );
-      promptAt('/', calimero(client));
-      fireEvent.click(await screen.findByTestId('invitation-join'));
-      expect(await screen.findByTestId('invitation-error')).toHaveTextContent(
-        says,
-      );
-      expect(invites.token()).toBe('tok');
-    },
-  );
 });
 
 describe('SignInDialog', () => {

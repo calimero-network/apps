@@ -151,11 +151,17 @@ describe('OrgAdmin', () => {
     expect(client.setCapabilities).toHaveBeenCalledWith('org-1', 0, expect.objectContaining({ confirm: expect.any(Function) }), { account: 'bob' });
   });
 
-  it('invites to a folder with an org invite naming its team', async () => {
-    const { admin: a, client } = admin();
-    expect(await a.createGroupInvitation('secret')).toEqual({ token: 'inv_token', namespaceId: 'org-1' });
-    expect(client.invite).toHaveBeenCalledWith('org-1', 'member', expect.objectContaining({ confirm: expect.any(Function) }), ['secret']);
-    expect(await a.redeemInvite('inv_token')).toBe('org-1');
+  it('places a folder invite in its org, naming the folder\'s team', async () => {
+    const { admin: a } = admin();
+    expect(await a.inviteTarget('secret')).toEqual({ org: 'org-1', team: 'secret', teams: ['secret'], appOnly: false });
+  });
+
+  it('forgets the cached workspace list once joined', async () => {
+    const { admin: a } = admin();
+    const changed = vi.fn();
+    a.onChange(changed);
+    a.joined('org-2');
+    expect(changed).toHaveBeenCalledWith('org-2');
   });
 
   it('keeps an uploaded image by its hex id', async () => {

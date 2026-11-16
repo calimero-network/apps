@@ -1,11 +1,27 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OrgInvite } from "@calimero-network/mero-js";
 
 import { Home } from "./Home";
 import { BETA, BLOCKS, CHAT, CRM, ORG, fakeOrg, passkey, type FakeOrgOptions } from "./test/fakeOrg";
 
 afterEach(cleanup);
+
+// The shared dialog is mero-react's to test: here only what Home hands it and does after.
+const invited = vi.hoisted(() => ({ last: null as null | Record<string, unknown> }));
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-network/mero-react")>();
+  return {
+    ...actual,
+    InviteDialog: (p: Parameters<typeof actual.InviteDialog>[0]) => {
+      invited.last = p as unknown as Record<string, unknown>;
+      return p.open
+        ? createElement("button", { "data-testid": "invite-dialog", onClick: () => p.onInvited?.({ token: "t", link: "l" }) }, "dialog")
+        : null;
+    },
+  };
+});
 
 const noop = () => {};
 
@@ -147,24 +163,31 @@ describe("Invitations", () => {
     },
   ];
 
-  it("invites to the apps checked, naming their teams, and shows the link", async () => {
+  it("hands the dialog the app checked as its team, with role, uses and expiry", async () => {
     const fake = open({ as: "admin" });
     fireEvent.click(await screen.findByTestId("tab-invitations"));
     fireEvent.click(await screen.findByTestId(`invite-app-${CHAT}`));
-    fireEvent.click(screen.getByTestId(`invite-app-${BLOCKS}`));
     fireEvent.change(screen.getByTestId("invite-role"), { target: { value: "guest" } });
+    fireEvent.change(screen.getByTestId("invite-uses"), { target: { value: "3" } });
     fireEvent.click(screen.getByTestId("invite-create"));
-    await waitFor(() =>
-      expect(fake.client.invite).toHaveBeenCalledWith(ORG, "guest", expect.anything(), ["t-chat", "t-blocks"], {
-        uses: 1,
-        ttlSecs: 7 * 86_400,
-      }),
-    );
-    expect((await screen.findByTestId("invite-link")).textContent).toContain("invite=tok-new");
+    await screen.findByTestId("invite-dialog");
+    expect(invited.last).toMatchObject({
+      open: true,
+      org: ORG,
+      role: "guest",
+      teams: ["t-chat"],
+      allApps: false,
+      uses: 3,
+      ttlSecs: 7 * 86_400,
+      expiryOptions: [86_400, 7 * 86_400, 30 * 86_400],
+    });
+    expect(fake.client.listInvites).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("invite-dialog"));
+    await waitFor(() => expect(fake.client.listInvites).toHaveBeenCalledTimes(2));
   });
 
-  it("All apps checks every app the caller may name, and clears them again", async () => {
-    const fake = open({ as: "admin" });
+  it("All apps checks every app; the invite names their teams, and covers later apps only when the admin also says so", async () => {
+    open({ as: "admin" });
     fireEvent.click(await screen.findByTestId("tab-invitations"));
     const all = (await screen.findByTestId("invite-all-apps")) as HTMLInputElement;
     const box = (pkg: string) => screen.getByTestId(`invite-app-${pkg}`) as HTMLInputElement;
@@ -173,12 +196,22 @@ describe("Invitations", () => {
     expect(all.indeterminate).toBe(true);
     fireEvent.click(all);
     expect([box(CHAT).checked, box(BLOCKS).checked, all.checked]).toEqual([true, true, true]);
-    // Core has no standing invite to apps added later: said, not offered.
-    expect(screen.getByTestId("invite-all-later").textContent).toContain("added to the organization later are not part");
     fireEvent.click(screen.getByTestId("invite-create"));
-    await waitFor(() => expect(fake.client.invite).toHaveBeenCalledWith(ORG, "member", expect.anything(), ["t-blocks", "t-chat"], expect.anything()));
+    await screen.findByTestId("invite-dialog");
+    expect(invited.last).toMatchObject({ allApps: false, teams: ["t-blocks", "t-chat"] });
+    fireEvent.click(screen.getByTestId("invite-dialog"));
+    fireEvent.click(screen.getByTestId("invite-later"));
+    expect(invited.last).toMatchObject({ allApps: true, teams: ["t-blocks", "t-chat"] });
     fireEvent.click(all);
     expect([box(CHAT).checked, box(BLOCKS).checked]).toEqual([false, false]);
+  });
+
+  it("a lead's invite names their app's team and never asks for every app", async () => {
+    open({ as: "lead" });
+    fireEvent.click(await screen.findByTestId("tab-invitations"));
+    fireEvent.click(await screen.findByTestId("invite-create"));
+    await screen.findByTestId("invite-dialog");
+    expect(invited.last).toMatchObject({ allApps: false, teams: ["t-chat"], role: "member" });
   });
 
   it("offers no All apps for one app", async () => {

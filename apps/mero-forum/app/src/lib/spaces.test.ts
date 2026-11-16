@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { finishSpace, inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
+import { finishSpace, inviteForum, inviteLinkBase, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
 import { decideStoredForum } from "./storedForum";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
@@ -73,13 +73,20 @@ describe("spaces and forums", () => {
 describe("invitations", () => {
   afterEach(() => window.history.replaceState(null, "", "/"));
 
-  it("builds a space link, and a forum link that lands in the forum, under the served version root", () => {
+  it("builds the page the dialog puts its token on, under the served version root, naming the space and forum", () => {
     const loc = { href: `https://${"a".repeat(52)}.apps.calimero.network/0.1.0/spaces/org-1` };
     const root = `https://${"a".repeat(52)}.apps.calimero.network/0.1.0/`;
-    expect(inviteLink("tok", undefined, loc)).toBe(`${root}?invite=tok`);
-    expect(inviteLink("tok", "f1", loc)).toBe(`${root}?invite=tok&forum=f1`);
-    // The space it is for, so a member is not asked to spend it.
-    expect(inviteLink("tok", "f1", loc, "org-1")).toBe(`${root}?invite=tok&org=org-1&forum=f1`);
+    expect(inviteLinkBase("org-1", undefined, loc)).toBe(`${root}?org=org-1`);
+    expect(inviteLinkBase("org-1", "f1", loc)).toBe(`${root}?org=org-1&forum=f1`);
+  });
+
+  it("captures a dialog link opened as is", () => {
+    window.history.replaceState(null, "", "/?org=org-1&forum=f1#invite=tok");
+    invites.capture(window.location);
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
+    expect(invites.pending()).toMatchObject({ token: "tok", org: "org-1", extra: { forum: "f1" } });
+    invites.drop();
   });
 
   it("takes the token off the address bar and keeps it across the sign-up", () => {

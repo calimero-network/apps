@@ -22,8 +22,6 @@ import { toRepoInfo } from '../tracker';
 import {
   addRepo as addRepoTo,
   finishWorkspace,
-  inviteLink,
-  inviteToken,
   leaveWorkspace,
   leaveWorkspaceOrg,
   listRepos,
@@ -62,12 +60,8 @@ export interface UseWorkspaceReturn {
   workspaceCreated: (created: { orgId: string; selfName: string }) => Promise<string | null>;
   /** The newest release is still being read: creates (workspace, repository, connect) wait for it. */
   sourcePending: boolean;
-  /**
-   * Mints an invitation (a passkey step-up) naming this app's team, and
-   * answers the link to share; `appOnly` when it gives this app only (an org
-   * that keeps its apps apart).
-   */
-  invite: () => Promise<{ link: string; appOnly: boolean }>;
+  /** The teams an invite to the open workspace names: this app's, where it has one. */
+  inviteTeams: string[];
   /**
    * The signed-in account leaves the open workspace (a passkey step-up): in
    * an org that keeps its apps apart, Mero Issue Tracker only; when that was
@@ -313,16 +307,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     [client, activeNs, accountId, refetchMembers, after],
   );
 
-  const invite = useCallback(async () => {
-    if (!activeNs) throw new Error('No workspace is open.');
-    try {
-      const { token, appOnly } = await inviteToken(client, activeNs, passkey(), source);
-      return { link: inviteLink(token, activeNs), appOnly };
-    } finally {
-      after();
-    }
-  }, [client, activeNs, passkey, source, after]);
-
   // ── the active repo's URL ─────────────────────────────────────────────────
   const [repoUrl, setRepoUrlState] = useState('');
   const board = useMemo(
@@ -400,7 +384,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     selectNamespace,
     workspaceCreated,
     sourcePending,
-    invite,
+    inviteTeams: org?.appTeam ? [org.appTeam] : [],
     leaveWorkspace: leave,
     repos,
     activeRepo,

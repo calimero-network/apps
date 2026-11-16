@@ -7,20 +7,16 @@ import {
   type PasskeyProvider,
 } from "@calimero-network/mero-js";
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase,
   isAppOnly,
-  isSpentInvite,
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
-  SPENT_INVITE_COPY,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -36,7 +32,7 @@ import { nodeBasename } from "@calimero-apps/node-served";
  *
  *   v1 namespace ("stream")          -> an organization (`createOrg`)
  *   v1 subgroup + context ("room")   -> an app instance in it (`createApp(.., { org })`)
- *   v1 namespace invitation          -> an org invitation (`invite`, a passkey step-up)
+ *   v1 namespace invitation          -> an org invitation (mero-react's shared dialogs)
  *
  * Everyone in the organization reaches every room in it, which is what v1's
  * open subgroups gave invitees. There is no separate "join the room" step any
@@ -67,21 +63,6 @@ type Lister = ClientRoutes<{ apps: "list" }>;
 export async function listAllRooms(client: Lister, source: AppSource): Promise<AppInfo[]> {
   const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
   return listAppInfos(client, filter);
-}
-
-interface MeOrg {
-  orgId: string;
-  name: string;
-  role: string;
-}
-
-function orgsOf(me: Record<string, unknown>): MeOrg[] {
-  const orgs = me.orgs;
-  if (!Array.isArray(orgs)) return [];
-  return orgs.filter(
-    (o): o is MeOrg =>
-      !!o && typeof o === "object" && typeof (o as MeOrg).orgId === "string",
-  );
 }
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
@@ -274,50 +255,18 @@ export async function createRoom(
 // ── Invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming Mero Stream's team (`appInvite`): `appOnly` when it
- * gives Mero Stream only (an org that keeps its apps apart). Org-wide in a
- * legacy org.
+ * The page the shared invite dialog's link opens: this frontend's root (under
+ * the served `/{version}/` until every cluster's served-host redirect keeps
+ * the query string), naming the stream so a member is told "you're already
+ * in" without spending the token, and the room and name when it opens one.
  */
-export function appInviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/** {@link appInviteToken}'s token alone. */
-export async function inviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<string> {
-  return (await appInviteToken(client, org, passkey, source)).token;
-}
-
-/**
- * The link that opens this frontend with `token` to redeem, then the stream
- * (and, for a room invitation, the room) to open after. The stream is the
- * link's `org`, so a member is told "you're already in" without spending it.
- *
- * The link stays under the served `/{version}/` root until every cluster's
- * served-host redirect keeps the query string (core's served-redirect fix).
- */
-export function inviteLink(
-  token: string,
+export function inviteBase(
   target: { stream: string; room?: string; name?: string },
   location: Pick<Location, "href"> = window.location,
 ): string {
   const url = new URL(location.href);
-  return sharedInviteLink(token, {
-    org: target.stream,
-    extra: { room: target.room, name: target.name },
-    root: nodeBasename(url, "/"),
-    origin: url.origin,
-  });
+  const { room, name } = target;
+  return inviteLinkBase({ org: target.stream, extra: { room, name }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
 export interface PendingInvite {
@@ -409,34 +358,4 @@ export function pendingInvite(): PendingInvite | null {
 export function dropInvite(): void {
   invites.drop();
   joinedAtSignUp = null;
-}
-
-/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
-export const INVITE_REFUSED = SPENT_INVITE_COPY;
-
-/**
- * True when `e` is the node refusing the invitation itself (see
- * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
- * limit or the cluster unreachable keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  return isSpentInvite(e);
-}
-
-/**
- * Whether this account is already in the stream an invitation admits to:
- * `true` or `false` when the link names its stream (org), `null` when it
- * cannot be told. Redeeming as an existing member spends the token's single
- * use, which then leaves the person it was meant for unable to join.
- */
-export async function alreadyMember(
-  client: ClientRoutes<{ auth: "me" }>,
-  invite: PendingInvite,
-): Promise<boolean | null> {
-  if (!invite.stream) return null;
-  try {
-    return orgsOf(await client.auth.me()).some((o) => o.orgId === invite.stream);
-  } catch {
-    return null;
-  }
 }

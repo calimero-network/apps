@@ -128,6 +128,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     refetch: vi.fn(),
   }),
 }));
+vi.mock('@/components/workspace/InviteDialog', () => ({ InviteDialog: () => null }));
 vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useSubgroups: () => ({ subgroups: [], loading: false, error: null, refetch: vi.fn() }),
@@ -154,8 +155,6 @@ vi.mock('@/calimero/react', () => ({
   useMero: () => ({
     mero: {
       admin: {
-        createNamespaceInvitation: vi.fn(),
-        createGroupInvitation: vi.fn(),
         joinNamespace: vi.fn(),
         joinGroup: vi.fn(),
         listGroupMembers: vi.fn().mockResolvedValue({ members: [] }),

@@ -1,4 +1,5 @@
-import { appOnlyInviteNote, listAppInfos } from '@calimero-apps/connect';
+import { appInviteTeams, appOnlyInviteNote, listAppInfos } from '@calimero-apps/connect';
+import { InviteDialog } from '@calimero-network/mero-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useInstanceRelease } from '@calimero-apps/passkey';
@@ -38,7 +39,7 @@ import {
   integrityWarning,
   verifyDocumentBytes,
 } from '../../lib/documentIntegrity';
-import { appInviteToken, inviteLink as linkFor } from '../../lib/invites';
+import { inviteBase } from '../../lib/invites';
 import { PRODUCT_NAME, publishWorkspaceName, readMembers } from '../../lib/agreements';
 import {
   INVITABLE_LEVELS,
@@ -208,8 +209,8 @@ export default function AgreementPage() {
   }, [viewing, contextId]);
   const [roleBusyFor, setRoleBusyFor] = useState<string | null>(null);
 
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [inviteAppOnly, setInviteAppOnly] = useState(false);
+  // The workspace's app team, read when the invite dialog opens; `null` while it is closed.
+  const [invitePlan, setInvitePlan] = useState<{ teams: string[]; appOnly: boolean } | null>(null);
   const [mintingInvite, setMintingInvite] = useState(false);
   // ⚠️ An invitation is to the WORKSPACE (an organization), not to this
   // agreement. The workspace is the instance's own org, read from the cluster;
@@ -406,10 +407,10 @@ export default function AgreementPage() {
   }, [app, workspaceId, selfAccountId, myName, flash, loadNames]);
 
   // ── invitations ───────────────────────────────────────────────────────────
-  // An org invite to this agreement's workspace (a passkey step-up for the
-  // inviter), with `&agreement=` so the joiner lands here. The grant is the
-  // workspace: every agreement in it is reachable once they have joined.
-  const mintLink = useCallback(async () => {
+  // An org invite to this agreement's workspace, with `agreement=` in its
+  // link so the joiner lands here. The grant is the workspace: every
+  // agreement in it is reachable once they have joined.
+  const openInvite = useCallback(async () => {
     if (!app || !contextId) return;
     if (!workspaceId) {
       setError(
@@ -419,9 +420,7 @@ export default function AgreementPage() {
     }
     setMintingInvite(true);
     try {
-      const { token, appOnly } = await appInviteToken(app.client, workspaceId, app.passkey(), app.source);
-      setInviteLink(linkFor(token, contextId, window.location, workspaceId));
-      setInviteAppOnly(appOnly);
+      setInvitePlan(await appInviteTeams(app.client, workspaceId, app.source));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -810,45 +809,25 @@ export default function AgreementPage() {
                   <p className={styles.panelText}>
                     Single use: one person can join this agreement's workspace
                     and open the agreement with this link. Make a new one for
-                    each person you invite. Creating it asks for your passkey.
+                    each person you invite. You choose what they can do first.
                   </p>
-                  {inviteLink && inviteAppOnly && (
-                    <p className={styles.panelText} data-testid="invite-app-only">
-                      {appOnlyInviteNote(PRODUCT_NAME)}
-                    </p>
-                  )}
                 </div>
               </div>
-              {inviteLink ? (
-                <div className={styles.tokenBox}>
-                  <span className={styles.token} data-testid="invite-link">
-                    {inviteLink}
-                  </span>
-                  <button
-                    className={styles.copyBtn}
-                    onClick={() => copy(inviteLink, 'Invitation link')}
-                  >
-                    <Copy size={14} />
-                    Copy
-                  </button>
-                </div>
-              ) : (
-                <div className={styles.buttonRow}>
-                  <button
-                    className={styles.btn}
-                    onClick={() => void mintLink()}
-                    disabled={mintingInvite}
-                    data-testid="mint-invite"
-                  >
-                    {mintingInvite ? (
-                      <span className={styles.spinner} />
-                    ) : (
-                      <Link2 size={16} />
-                    )}
-                    {mintingInvite ? 'Creating…' : 'Create invitation link'}
-                  </button>
-                </div>
-              )}
+              <div className={styles.buttonRow}>
+                <button
+                  className={styles.btn}
+                  onClick={() => void openInvite()}
+                  disabled={mintingInvite}
+                  data-testid="mint-invite"
+                >
+                  {mintingInvite ? (
+                    <span className={styles.spinner} />
+                  ) : (
+                    <Link2 size={16} />
+                  )}
+                  {mintingInvite ? 'Opening…' : 'Create invitation link'}
+                </button>
+              </div>
             </section>
 
             <section className={styles.panel}>
@@ -1068,6 +1047,22 @@ export default function AgreementPage() {
             </button>
           </p>
         </main>
+      )}
+      {app && workspaceId && contextId && (
+        <InviteDialog
+          client={app.client}
+          passkey={app.passkey()}
+          open={invitePlan !== null}
+          onClose={() => setInvitePlan(null)}
+          org={workspaceId}
+          teams={invitePlan?.teams}
+          labels={{
+            noun: 'workspace',
+            ...(invitePlan?.appOnly && { note: appOnlyInviteNote(PRODUCT_NAME) }),
+          }}
+          appName={PRODUCT_NAME}
+          linkBase={inviteBase(workspaceId, contextId)}
+        />
       )}
     </AppShell>
   );

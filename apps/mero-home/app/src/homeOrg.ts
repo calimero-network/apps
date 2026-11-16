@@ -343,11 +343,27 @@ export async function setSeat(
 }
 
 /** An invite's teams by app name, for the pending list: "Chat, Blocks", or "Organization only". */
-export function inviteApps(invite: Pick<OrgInvite, "teams">, view: OrgView): string {
+export function inviteApps(invite: Pick<OrgInvite, "teams"> & { allApps?: boolean }, view: OrgView): string {
+  if (invite.allApps && invite.teams.length === 0) return "Every app, and those added later";
   if (invite.teams.length === 0) return "Organization only";
-  return invite.teams
+  const named = invite.teams
     .map((t) => view.apps.find((a) => a.team?.teamId === t)?.name ?? "a team you do not see")
     .join(", ");
+  return invite.allApps ? `${named}, and apps added later` : named;
+}
+
+/**
+ * The terms of an invite to the picked apps: always their teams (a redeemer
+ * joins those rows), and `allApps` (a standing grant of apps added later,
+ * which gives no row in the apps that exist) only when every app is picked and
+ * `later` says so.
+ */
+export function inviteTerms(apps: OrgApp[], chosen: ReadonlySet<string>, later: boolean) {
+  const picked = apps.filter((a) => chosen.has(a.package));
+  return {
+    teams: picked.flatMap((a) => (a.team ? [a.team.teamId] : [])),
+    allApps: later && apps.length > 0 && picked.length === apps.length,
+  };
 }
 
 /** When an invite ends, in words, relative to `now` (ms). */
@@ -360,12 +376,8 @@ export function inviteExpiry(invite: Pick<OrgInvite, "expiresAt" | "expired">, n
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
-/** The lifetimes the invite form offers, in seconds. */
-export const TTL_CHOICES: ReadonlyArray<{ label: string; secs: number }> = [
-  { label: "1 day", secs: 86_400 },
-  { label: "7 days", secs: 7 * 86_400 },
-  { label: "30 days", secs: 30 * 86_400 },
-];
+export const EXPIRY_OPTIONS = [86_400, 7 * 86_400, 30 * 86_400]; // seconds
+export const DEFAULT_EXPIRY = 7 * 86_400; // seconds
 
 /** Installed packages Home can set up in an org: those without an app team there yet, Home itself left out. */
 export function installable(packages: ReadonlyArray<{ package: string }>, view: OrgView): string[] {
