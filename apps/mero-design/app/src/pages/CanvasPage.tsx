@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { getBlob, getNodeIdentity, uploadBlob, design, i64, readElements, wireElement } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
+import { usePresenceCursors } from "../hooks/usePresenceCursors";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
@@ -11,7 +12,7 @@ import { decideBoardName, legacyUsername } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
-import type { CanvasComment, CursorState, Element, Member } from "../types";
+import type { CanvasComment, Element, Member } from "../types";
 import Toolbar from "../components/Toolbar";
 import FabricCanvas, { type FabricCanvasHandle } from "../components/FabricCanvas";
 import PropertiesPanel from "../components/PropertiesPanel";
@@ -23,13 +24,9 @@ import { listScreens, screenForSelection } from "../utils/screens";
 import { loadStarter, type StarterId } from "../starter/starters";
 import { exportProject, importProject, validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { savedMessage } from "../utils/saveFile";
-import { extractErrorMessage } from "../utils/errorMessage";
+import { accessLost, extractErrorMessage } from "../utils/errorMessage";
 import { useToast } from "../contexts/ToastContext";
 import styles from "./CanvasPage.module.css";
-
-function normalizeCursor(c: CursorState): CursorState {
-  return { ...c, updatedAt: c.updatedAt ?? c.updated_at ?? 0 };
-}
 
 export default function CanvasPage() {
   countRender("CanvasPage");
@@ -61,12 +58,24 @@ export default function CanvasPage() {
       })),
     );
   const { showToast } = useToast();
+  const navigate = useNavigate();
+
+  // The board is gone or no longer this account's (removed from the team, the
+  // board deleted): close it and go back to the team's boards, once.
+  const closedRef = useRef(false);
+  const closeLostBoard = useCallback(() => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    showToast("This board is no longer available to you.", "info");
+    navigate(teamId ? `/teams/${teamId}/projects` : "/teams", { replace: true });
+  }, [navigate, showToast, teamId]);
 
   const canvasRef = useRef<FabricCanvasHandle>(null);
 
   // Collaboration state
   const [comments, setComments] = useState<CanvasComment[]>([]);
-  const [cursors, setCursors] = useState<CursorState[]>([]);
+  // Live pointers: the node's presence channel, never the board's state.
+  const { cursors, move: moveCursor } = usePresenceCursors(projectId ?? null);
   const [members, setMembers] = useState<Member[]>([]);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [nameSuggestion, setNameSuggestion] = useState("");
@@ -90,7 +99,6 @@ export default function CanvasPage() {
   const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
   // ⌘G / ⇧⌘G. Same implementation the layers panel's buttons use.
   const { groupSelection, ungroupSelection } = useGroupActions(projectId ?? "", !canEdit);
-  const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // "loading" = first attempt; "syncing" = the board could not be read yet, retrying
   const [syncStatus, setSyncStatus] = useState<"loading" | "syncing" | "ready">("loading");
@@ -197,7 +205,6 @@ export default function CanvasPage() {
     // previous project's usernames until the new get_members resolves.
     setElements([]);
     setComments([]);
-    setCursors([]);
     setMembers([]);
     setMyIdentity("");
     // Drop the previous board's permission so it can't briefly authorize edits
@@ -222,12 +229,13 @@ export default function CanvasPage() {
           (design(projectId!).getComments() as Promise<CanvasComment[]>)
             .then((cs) => { if (!cancelled) setComments(Array.isArray(cs) ? cs : []); })
             .catch(() => {});
-          design(projectId!).getCursors()
-            .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
-            .catch(() => {});
         })
         .catch((err) => {
           if (cancelled) return;
+          if (accessLost(err)) {
+            closeLostBoard();
+            return;
+          }
           const msg: string = err?.message ?? String(err);
           // Every member of the team reaches its boards at once: there is no
           // context to join and nothing to sync first (v1 joined here). A
@@ -316,10 +324,8 @@ export default function CanvasPage() {
       avatar: null,
       timestamp: i64(Date.now()),
     }).catch(() => {});
+    // The roster change comes back on the event stream (`changes.members`).
     setBoardName(username);
-    design(projectId).getMembers()
-      .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
-      .catch(() => {});
   }
 
   // Only for a team made before names were asked on create/join: asked once,
@@ -372,41 +378,8 @@ export default function CanvasPage() {
     return () => { cancelled = true; };
   }, [projectId, myIdentity, members]);
 
-  // Poll cursors every 5 s so other members appear even without SSE
-  useEffect(() => {
-    if (!projectId) return;
-    // Guard against an in-flight poll response from the previous project landing
-    // after a switch and repopulating cursors (mislabeled via stale members) on the
-    // new canvas.
-    let cancelled = false;
-    const id = setInterval(() => {
-      design(projectId).getCursors()
-        .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
-        .catch(() => {});
-    }, 5000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [projectId]);
-
-  // Cursor broadcast (throttled to 2-3s)
-  const broadcastCursor = useCallback((x: number, y: number) => {
-    if (!projectId || !myIdentity) return;
-    if (cursorThrottleRef.current) return;
-    cursorThrottleRef.current = setTimeout(() => {
-      cursorThrottleRef.current = null;
-      const now = Date.now();
-      setCursors((prev) => {
-        const idx = prev.findIndex((c) => c.identity === myIdentity);
-        const updated = { identity: myIdentity, x, y, updatedAt: now };
-        if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n; }
-        return [...prev, updated];
-      });
-      // identity is derived server-side from the signer; not client-supplied.
-      design(projectId).updateCursor({ x: i64(x), y: i64(y), updatedAt: i64(now) }).catch(() => {});
-    }, 2500);
-  }, [projectId, myIdentity]);
-
   function handleCanvasMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    broadcastCursor(Math.round(e.clientX), Math.round(e.clientY));
+    if (myIdentity) moveCursor(Math.round(e.clientX), Math.round(e.clientY));
   }
 
   // SSE handler — the node sends StateMutation payloads:
@@ -439,11 +412,6 @@ export default function CanvasPage() {
         const gone = new Set(changes.removedComments);
         setComments((prev) => prev.filter((c) => !gone.has(c.id)));
       }
-      if (changes.cursors) {
-        design(projectId).getCursors()
-          .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
-          .catch(() => {});
-      }
       if (changes.role) {
         // A grant/revoke/transfer may flip our own role — re-resolve it
         // immediately instead of waiting for a reload.
@@ -475,15 +443,12 @@ export default function CanvasPage() {
     (design(projectId).getComments() as Promise<CanvasComment[]>)
       .then((cs) => setComments(Array.isArray(cs) ? cs : []))
       .catch(() => {});
-    design(projectId).getCursors()
-      .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
-      .catch(() => {});
     design(projectId).getMembers()
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }, [projectId, setElements]);
 
-  useSse(projectId ?? null, handleSseEvent, resyncBoard);
+  useSse(projectId ?? null, handleSseEvent, resyncBoard, closeLostBoard);
 
   async function handleSaveProject() {
     if (!projectId) return;

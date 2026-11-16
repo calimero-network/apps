@@ -10,6 +10,7 @@ import {
 import { getApi } from "../api/client";
 import { publishMyName } from "../api/names";
 import { setStoredTeamName } from "../utils/teamName";
+import { visibleInterval } from "../utils/visibleInterval";
 import type { Team } from "../types";
 
 export interface CreatedTeam {
@@ -44,8 +45,9 @@ export interface TeamList {
 }
 
 /**
- * This account's teams (organizations), polled every 30 s so a team joined or
- * created elsewhere shows up in the switcher without a reload.
+ * This account's teams (organizations), polled every 30 s while the tab is
+ * visible so a team joined or created elsewhere shows up in the switcher
+ * without a reload.
  */
 export function useTeamList(): TeamList {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -77,8 +79,7 @@ export function useTeamList(): TeamList {
 
   useEffect(() => {
     void reload();
-    const id = setInterval(() => void reload(), 30_000);
-    return () => clearInterval(id);
+    return visibleInterval(() => void reload(), 30_000);
   }, [reload]);
 
   const teamCreated = useCallback(async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }): Promise<CreatedTeam> => {

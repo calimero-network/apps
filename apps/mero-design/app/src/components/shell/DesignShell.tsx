@@ -18,6 +18,7 @@ import ThemeToggle from "../ThemeToggle";
 import InviteModal from "../InviteModal";
 import SettingsPanel from "../SettingsPanel";
 import ConfirmDialog from "../ConfirmDialog";
+import ConsentReturn from "../ConsentReturn";
 import { IconMenu, IconPanel, IconUserPlus } from "../HomeIcons";
 import BoardRail from "./BoardRail";
 import TeamSwitcher from "./TeamSwitcher";
@@ -332,6 +333,7 @@ export default function DesignShell() {
           )}
       </div>
 
+      <ConsentReturn onChanged={teams.reload} />
       {teamId && (
         <InviteModal teamId={teamId} teamName={teamName} {...inviteTeams} open={inviteOpen} onClose={() => setInviteOpen(false)} />
       )}

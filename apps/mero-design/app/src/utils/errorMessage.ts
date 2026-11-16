@@ -32,3 +32,13 @@ export function humanizeError(msg: string): string {
   }
   return msg;
 }
+
+/**
+ * Whether the node refused a board because this account no longer reaches it
+ * (`403`: taken out of the team; `404`: the board was deleted). Retrying
+ * cannot help: the board is closed instead.
+ */
+export function accessLost(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status;
+  return status === 403 || status === 404;
+}

@@ -2,6 +2,7 @@ import { passkeyConfirm, AppError, ORG_CAPABILITIES, TrapError, type AppInfo } f
 import {
   appInviteTeams,
   appPeople,
+  appTeamIdIn,
   appTarget,
   finishAppOrg,
   isAppOnly,
@@ -13,6 +14,7 @@ import {
   orgsWithApp,
   otherOrgs,
   removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -22,6 +24,7 @@ import {
 } from "@calimero-apps/connect";
 import { setOrgName } from "@calimero-apps/names";
 import { getApi, peekApi } from "./client";
+import { askOrgConsent } from "./consent";
 import { MeroDesignClient, type AppTransport, type Element as WireElement } from "../generated/client";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire as elementToWire } from "../utils/elementMeta";
@@ -287,8 +290,12 @@ export async function finishTeam(org: string): Promise<CreatedTeam> {
   }
 }
 
-/** Deletes the org and every board in it, for everyone. Its owner only; a passkey step-up. */
+/**
+ * Deletes the org and every board in it, for everyone. Its owner only; a
+ * passkey step-up, on the node's consent page from the app's frontend.
+ */
 export async function deleteTeam(org: string): Promise<void> {
+  if (await askOrgConsent({ kind: "deleteOrg", org })) return;
   const { client, passkey, after } = getApi();
   try {
     await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
@@ -297,22 +304,39 @@ export async function deleteTeam(org: string): Promise<void> {
   }
 }
 
+/** How `org` keeps Mero Design's people: apart (`shared`), on its app team, or org-wide (legacy). */
+async function teamKind(org: string): Promise<"apart" | "appTeam" | "org"> {
+  const team = await readTeam(org).catch(() => null);
+  if (!team) return "org";
+  if (team.appOnly) return "apart";
+  return team.appTeam ? "appTeam" : "org";
+}
+
 /**
  * Leave a team (a passkey step-up). In an org that keeps its apps apart that
  * is Mero Design only, with `lastApp` set when it was your last app there
- * (offer {@link leaveTeamOrg}); elsewhere the organization.
+ * (offer {@link leaveTeamOrg}). Where Mero Design has its app team, off that
+ * team, and `lastApp` offers the organization too. A legacy org: the
+ * organization, on the node's consent page from the app's frontend.
  */
 export async function leaveTeam(org: string): Promise<LeftApp> {
+  const kind = await teamKind(org);
   const { client, source, passkey, accountId, after } = getApi();
   try {
+    if (kind === "appTeam") {
+      await removeFromAppTeam(client, org, source, accountId, passkey);
+      return { left: "app", lastApp: true };
+    }
+    if (kind === "org" && (await askOrgConsent({ kind: "leaveOrg", org }))) return { left: "org", lastApp: false };
     return await leaveApp(client, org, source, passkey, { self: accountId });
   } finally {
     after();
   }
 }
 
-/** Leave the organization altogether, every app in it. A passkey step-up. */
+/** Leave the organization altogether, every app in it. A passkey step-up, on the node's consent page from the app's frontend. */
 export async function leaveTeamOrg(org: string): Promise<void> {
+  if (await askOrgConsent({ kind: "leaveOrg", org })) return;
   const { client, passkey, accountId, after } = getApi();
   try {
     await leaveOrg(client, org, passkey, accountId);
@@ -348,6 +372,8 @@ export interface TeamRecord {
   people: string[];
   /** The org keeps its apps apart and Mero Design has its team: invites, Remove and Leave are its only. */
   appOnly: boolean;
+  /** Mero Design's app team in the org, when it has one. */
+  appTeam: string | null;
 }
 
 export async function readTeam(org: string): Promise<TeamRecord> {
@@ -368,6 +394,7 @@ export async function readTeam(org: string): Promise<TeamRecord> {
       names,
       people: appPeople(o as AppOrgView, pkg),
       appOnly: isAppOnly(o as AppOrgView, pkg),
+      appTeam: appTeamIdIn(o as AppOrgView, pkg),
     };
   } finally {
     after();
@@ -409,27 +436,36 @@ export async function listGroupMembers(org: string): Promise<{ members: GroupMem
   return { members, appOnly: team.appOnly };
 }
 
-/** Promote to admin or demote to member. A passkey step-up. */
+/**
+ * Promote to admin or demote to member: an organization role. A passkey
+ * step-up, on the node's consent page from the app's frontend.
+ */
 export async function updateMemberRole(org: string, account: string, role: "Admin" | "Member"): Promise<void> {
+  const orgRole = role === "Admin" ? "admin" : "member";
+  if (await askOrgConsent({ kind: "setMemberRole", org, account, role: orgRole })) return;
   const { client, passkey, after } = getApi();
   try {
-    await client.orgs.setMember(
-      { org, account, role: role === "Admin" ? "admin" : "member" },
-      { confirm: passkeyConfirm(passkey()) },
-    );
+    await client.orgs.setMember({ org, account, role: orgRole }, { confirm: passkeyConfirm(passkey()) });
   } finally {
     after();
   }
 }
 
 /**
- * Take someone out of the team (`removeFromApp`, a passkey step-up): in an org
- * that keeps its apps apart, out of Mero Design only, never out of the org;
- * elsewhere out of the org, as before.
+ * Take someone out of the team (a passkey step-up): out of Mero Design only
+ * wherever it has its app team (in an org that keeps its apps apart, through
+ * `removeFromApp`), never out of the org. A legacy org: out of the
+ * organization, on the node's consent page from the app's frontend.
  */
 export async function removeTeamMember(org: string, account: string): Promise<"app" | "org"> {
+  const kind = await teamKind(org);
   const { client, source, passkey, after } = getApi();
   try {
+    if (kind === "appTeam") {
+      await removeFromAppTeam(client, org, source, account, passkey);
+      return "app";
+    }
+    if (kind === "org" && (await askOrgConsent({ kind: "removeMember", org, account }))) return "org";
     return await removeFromApp(client, org, source, account, passkey);
   } finally {
     after();

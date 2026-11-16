@@ -6,14 +6,17 @@
  * Leave in an org that keeps its apps apart keep the person in the org; a
  * legacy org works as before.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
 import { bindApi, getApi } from "./client";
+import { consentIntent } from "./consent";
 import {
   createBoard,
+  deleteTeam,
+  updateMemberRole,
   teamInviteTeams,
   finishTeam,
   leaveTeam,
@@ -22,6 +25,12 @@ import {
   readTeam,
   removeTeamMember,
 } from "./rpc";
+
+// The handoff dialog before the consent page: the person goes.
+vi.mock("@calimero-apps/passkey", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calimero-apps/passkey")>()),
+  confirmConsentHandoff: vi.fn(async () => true),
+}));
 
 const PKG = "com.calimero.mero-design";
 const SOURCE = { package: PKG };
@@ -115,12 +124,19 @@ describe("Remove and Leave", () => {
     expect(cluster.org(org).members["acct-bob"]).toBe("member");
   });
 
-  it("standalone and legacy: Remove is out of the organization, as before", async () => {
+  it("standalone: Remove takes the person off Mero Design's team, never out of the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
-    expect(await removeTeamMember(org, "acct-bob")).toBe("org");
-    expect(cluster.org(org).members["acct-bob"]).toBeUndefined();
+    expect(await removeTeamMember(org, "acct-bob")).toBe("app");
+    expect(cluster.org(org).members["acct-bob"]).toBe("member");
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-bob"]);
+  });
+
+  it("legacy: Remove is out of the organization, as before", async () => {
+    const cluster = signedIn();
     const legacy = cluster.addOrg({ mode: "legacy", members: { "acct-bob": "member" } });
     expect(await removeTeamMember(legacy, "acct-bob")).toBe("org");
+    expect(cluster.org(legacy).members["acct-bob"]).toBeUndefined();
   });
 
   it("apps kept apart: Leave is Mero Design only; lastApp, then the org on request", async () => {
@@ -133,10 +149,80 @@ describe("Remove and Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
   });
 
-  it("standalone: Leave is leaving the organization", async () => {
+  it("standalone: Leave is off Mero Design's team; the org is offered after", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
-    expect(await leaveTeam(org)).toEqual({ left: "org", lastApp: false });
+    expect(await leaveTeam(org)).toEqual({ left: "app", lastApp: true });
+    expect(cluster.org(org).members["acct-me"]).toBeDefined();
+    await leaveTeamOrg(org);
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
+  });
+
+  it("legacy: Leave is leaving the organization", async () => {
+    const cluster = signedIn();
+    const legacy = cluster.addOrg({ mode: "legacy", members: { "acct-ana": "owner" } });
+    expect(await leaveTeam(legacy)).toEqual({ left: "org", lastApp: false });
+    expect(cluster.org(legacy).members["acct-me"]).toBeUndefined();
+  });
+});
+
+describe("organization-wide changes from the app's frontend go through the consent page", () => {
+  /** A session bound to Mero Design's frontend, whose consent page is approved at once. */
+  function boundSession() {
+    const cluster = orgCluster();
+    const openConsentPage = vi.fn(async (_request: unknown, options: { confirm: (s: { code: string }) => Promise<boolean> }) => {
+      await options.confirm({ code: "K7Q2" });
+      return { requestId: "req-1", code: "K7Q2" };
+    });
+    const client = Object.assign(Object.create(cluster.client as object), {
+      auth: { me: async () => ({ accountId: cluster.state.me, app: PKG }) },
+      openConsentPage,
+    }) as typeof cluster.client;
+    bindApi({ client, accountId: cluster.state.me, source: SOURCE, passkey: () => ({}) as PasskeyProvider, after: () => {}, scope: "test" });
+    return { cluster, openConsentPage };
+  }
+
+  afterEach(() => sessionStorage.clear());
+
+  const cases = [
+    {
+      name: "a role",
+      run: (org: string) => updateMemberRole(org, "acct-bob", "Admin"),
+      request: { kind: "setMemberRole", subject: { account: "acct-bob", role: "admin" } },
+      direct: "setMember",
+    },
+    { name: "deleting the team", run: (org: string) => deleteTeam(org), request: { kind: "deleteOrg" }, direct: "deleteOrg" },
+    { name: "leaving the organization", run: (org: string) => leaveTeamOrg(org), request: { kind: "leaveOrg" }, direct: "removeMember" },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}: the consent page, never the route`, async () => {
+      const { cluster, openConsentPage } = boundSession();
+      const org = cluster.addOrg({ mode: "legacy", members: { "acct-me": "owner", "acct-bob": "member" } });
+      void c.run(org);
+      await vi.waitFor(() => expect(openConsentPage).toHaveBeenCalled());
+      expect(openConsentPage.mock.calls[0]![0]).toMatchObject({ ...c.request, subject: { org, ...(c.request.subject ?? {}) } });
+      expect(consentIntent()).toMatchObject({ kind: c.request.kind, org });
+      expect(cluster.callsOf(c.direct)).toEqual([]);
+    });
+  }
+
+  it("Remove in a legacy org: the consent page", async () => {
+    const { cluster, openConsentPage } = boundSession();
+    const org = cluster.addOrg({ mode: "legacy", members: { "acct-me": "owner", "acct-bob": "member" } });
+    void removeTeamMember(org, "acct-bob");
+    await vi.waitFor(() => expect(openConsentPage).toHaveBeenCalled());
+    expect(openConsentPage.mock.calls[0]![0]).toMatchObject({ kind: "removeMember", subject: { org, account: "acct-bob" } });
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+  });
+
+  it("Remove and Leave where Mero Design has its team: the team, no consent page", async () => {
+    const { cluster, openConsentPage } = boundSession();
+    const org = cluster.addOrg({ mode: "standalone", app: PKG, members: { "acct-ana": "owner", "acct-bob": "member" } });
+    expect(await removeTeamMember(org, "acct-bob")).toBe("app");
+    expect(await leaveTeam(org)).toEqual({ left: "app", lastApp: true });
+    expect(openConsentPage).not.toHaveBeenCalled();
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+    expect(cluster.org(org).members["acct-bob"]).toBe("member");
   });
 });
 
