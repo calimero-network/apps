@@ -84,7 +84,7 @@ import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById, withNamespaceNames } from '../../lib/people';
 import { normaliseName, selfNameStep, skipWorkspaceName } from '../../lib/displayName';
 import { forgetLastWorkspace } from '../../lib/lastWorkspace';
-import { passkeyConfirm } from '@calimero-network/mero-js';
+import { consentOutcomeCopy, returnFromConsent, setWorkspaceRole, type OrgRoleName } from '../../lib/orgConsent';
 
 
 const CREATE_LABELS = {
@@ -126,6 +126,43 @@ export default function AppPage() {
     void landJoined(joined);
     navigate(location.pathname, { replace: true, state: null });
   }, [joined, landJoined, navigate, location.pathname]);
+
+  // Back from the node's consent page (a role, a removal, leaving): say what
+  // it decided, and out of a workspace left, back to the picker.
+  const [consentNote, setConsentNote] = useState<string | null>(null);
+  const consentChecked = useRef(false);
+  const { leaveWorkspace: closeWorkspace, refresh: refreshWorkspaces } = ws;
+  useEffect(() => {
+    if (consentChecked.current) return;
+    consentChecked.current = true;
+    void (async () => {
+      try {
+        const back = await returnFromConsent(client);
+        if (!back) return;
+        setConsentNote(consentOutcomeCopy(back));
+        if (back.approved && back.kind === 'leaveOrg') {
+          closeWorkspace();
+          await refreshWorkspaces();
+        }
+      } catch {
+        setConsentNote('This approval did not come from a request made here. Nothing was changed.');
+      }
+    })();
+  }, [client, closeWorkspace, refreshWorkspaces]);
+  // Access to the open workbook lost (taken out of the app, the spreadsheet
+  // deleted): close it and go back to the picker rather than retrying.
+  useEffect(() => {
+    if (!ss.lost) return;
+    setConsentNote('You no longer have access to that spreadsheet.');
+    closeWorkspace();
+    void refreshWorkspaces();
+  }, [ss.lost, closeWorkspace, refreshWorkspaces]);
+  const consentToast = consentNote && (
+    <MentionToast role="status" data-testid="toast-consent">
+      <span>{consentNote}</span>
+      <button type="button" aria-label="Dismiss" onClick={() => setConsentNote(null)}>×</button>
+    </MentionToast>
+  );
 
   // Log out: the session ends on the cluster and in this browser, and the
   // front door is where a signed-out visitor belongs. The spreadsheet
@@ -1455,7 +1492,7 @@ export default function AppPage() {
             />
           </PickerGrid>
         </PickerMain>
-
+        {consentToast}
       </PickerShell>
     );
   }
@@ -2107,12 +2144,9 @@ export default function AppPage() {
           onSetRole={ss.setRole}
           onSetGroupRole={async (account, role) => {
             if (!ws.namespaceId) return;
-            // A passkey step-up: the cluster asks the admin to approve it.
+            // A passkey step-up; from the app's own frontend, on the node's consent page.
             try {
-              await client.orgs.setMember(
-                { org: ws.namespaceId, account, role: role as 'guest' | 'member' | 'admin' },
-                { confirm: passkeyConfirm(passkey()) },
-              );
+              await setWorkspaceRole(client, ws.namespaceId, account, role as OrgRoleName, passkey);
             } finally {
               after();
             }
@@ -2192,6 +2226,7 @@ export default function AppPage() {
           onClose={() => setShowNames(false)}
         />
       )}
+      {consentToast}
     </AppShell>
   );
 }

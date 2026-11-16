@@ -14,6 +14,7 @@ import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvid
 import {
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
   createInviteStore,
   inviteLinkBase,
@@ -23,6 +24,7 @@ import {
   listAppInfos,
   orgInstanceOptions,
   removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -157,28 +159,49 @@ export async function createSpreadsheet(
     .then((r) => r.appId);
 }
 
+/** `getOrg` for `org`, and Mero Sheets' own team there (`null` without one, or under a raw bundle). */
+async function sheetsTeam(
+  client: ClientRoutes<{ orgs: 'get' }>,
+  org: string,
+  source: AppSource | null,
+): Promise<{ view: AppOrgView; team: string | null } | null> {
+  const pkg = sourcePackage(source);
+  if (!pkg) return null;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  return { view, team: appTeamIdIn(view, pkg) };
+}
+
 /**
- * Takes `account` out of the workspace (`removeFromApp`, a passkey step-up):
- * in an org that keeps its apps apart, out of Mero Sheets only, never out of
- * the org; elsewhere out of the org, as before.
+ * Takes `account` out of the workspace, which is taking them out of Mero
+ * Sheets: off its app team wherever the org has one (a team call, which a
+ * session on the app's own frontend may make; a passkey step-up), and they
+ * stay in the organization. A workspace without that team (an older one)
+ * removes them from the organization (`removeFromApp`: on the node's consent
+ * page from the app's frontend).
  */
-export function removeFromWorkspace(
-  client: ClientRoutes<{ orgs: 'get' | 'teamRemoveMember' | 'removeMember' }>,
+export async function removeFromWorkspace(
+  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ orgs: 'get' | 'teamRemoveMember' | 'removeMember' }>,
   org: string,
   source: AppSource | null,
   account: string,
   passkey: () => PasskeyProvider,
 ): Promise<'app' | 'org'> {
+  if ((await sheetsTeam(client, org, source))?.team) {
+    await removeFromAppTeam(client, org, source, account, passkey);
+    return 'app';
+  }
   return removeFromApp(client, org, source, account, passkey);
 }
 
 /**
- * The signed-in account leaves the workspace (`leaveApp`, a passkey step-up):
- * in an org that keeps its apps apart, Mero Sheets only, with `lastApp` set
- * when it was their last app there (offer {@link leaveWorkspaceOrg});
- * elsewhere the organization, as before.
+ * The signed-in account leaves the workspace, which is leaving Mero Sheets.
+ * In an org that keeps its apps apart, its team only, with `lastApp` set when
+ * it was their last app there (offer {@link leaveWorkspaceOrg}). Elsewhere,
+ * where the org has Mero Sheets' team, off that team; Mero Sheets is the
+ * org's app there, so `lastApp` is set too. A workspace without that team
+ * leaves the organization (on the node's consent page from the app's frontend).
  */
-export function leaveWorkspace(
+export async function leaveWorkspace(
   client: Pick<CalimeroClient, 'session'> &
     ClientRoutes<{ orgs: 'get' | 'appTeamList' | 'teamRemoveMember' | 'removeMember' }>,
   org: string,
@@ -186,6 +209,13 @@ export function leaveWorkspace(
   passkey: () => PasskeyProvider,
   self?: string,
 ): Promise<LeftApp> {
+  const found = await sheetsTeam(client, org, source);
+  if (found?.team && !isAppOnly(found.view, sourcePackage(source))) {
+    const me = self ?? client.session?.accountId;
+    if (!me) throw new Error('Sign in to leave.');
+    await removeFromAppTeam(client, org, source, me, passkey);
+    return { left: 'app', lastApp: true };
+  }
   return leaveApp(client, org, source, passkey, self ? { self } : {});
 }
 

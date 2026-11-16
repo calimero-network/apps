@@ -9,6 +9,7 @@ import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { THEME } from './config';
 import { captureInvite } from './lib/workspaces';
+import { setupConsent } from './lib/orgConsent';
 import { applyTheme, getStoredTheme } from './theme';
 import { registerServiceWorker } from "@calimero-apps/install";
 
@@ -22,6 +23,10 @@ applyTheme(getStoredTheme());
 // usually not signed in yet, and the token has to survive the passkey sign-up.
 // `InvitationPrompt` asks before joining.
 captureInvite();
+
+// Organization-wide changes from this frontend go through the node's consent
+// page: the shared handoff dialog first, and back to the app page after.
+setupConsent();
 
 // Inject theme tokens as CSS vars so components can read them via
 // `var(--color-primary)` / `var(--color-accent)` regardless of selector scope.

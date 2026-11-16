@@ -8,6 +8,10 @@
  * (the cluster restarted, the laptop slept), the hook reports itself offline,
  * retries, and once the cluster answers again calls `onReconnect` so the page
  * re-reads what changed while it was away.
+ *
+ * When the node answers that this account may no longer reach the workbook (a
+ * 403 or 404: taken out of the app, the spreadsheet deleted), it stops instead
+ * of retrying, and says so (`lost`) for the page to close the workbook.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { CalimeroClient } from '@calimero-network/mero-js';
@@ -17,17 +21,25 @@ import { type ClientRoutes } from '@calimero-apps/connect';
 /** How long to wait before retrying a dropped stream. */
 const RETRY_MS = 2_000;
 
+/** Whether `error` is the node refusing this account the instance (403) or not knowing it (404). */
+export function accessLost(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return status === 403 || status === 404;
+}
+
 export function useAppEvents(
   client: (Pick<CalimeroClient, 'events'> & ClientRoutes<{ apps: 'view' }>) | null,
   appId: string | null,
   onEvent: (event: AppEvent) => void,
   onReconnect: () => void,
-): { connected: boolean } {
+): { connected: boolean; lost: boolean } {
   const [connected, setConnected] = useState(true);
+  const [lost, setLost] = useState(false);
   const handlers = useRef({ onEvent, onReconnect });
   handlers.current = { onEvent, onReconnect };
 
   useEffect(() => {
+    setLost(false);
     if (!client || !appId) return undefined;
     const abort = new AbortController();
     const sleep = (ms: number) =>
@@ -51,7 +63,11 @@ export function useAppEvents(
           for await (const event of client.events(appId, index + 1, abort.signal)) {
             handlers.current.onEvent({ kind: event.kind, data: event.data });
           }
-        } catch {
+        } catch (e) {
+          if (accessLost(e)) {
+            setLost(true);
+            return;
+          }
           // Dropped or unreachable: retried below.
         }
         if (abort.signal.aborted) return;
@@ -63,5 +79,5 @@ export function useAppEvents(
     return () => abort.abort();
   }, [client, appId]);
 
-  return { connected };
+  return { connected, lost };
 }
