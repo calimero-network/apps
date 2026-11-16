@@ -143,7 +143,7 @@ describe("the built-in floating shield", () => {
   it("shows up with no code in the app, and goes when the session does", async () => {
     const { client } = fakeClient(sealed);
     bind(client);
-    expect((await screen.findByTestId("node-shield")).textContent).toContain("Verified node");
+    await waitFor(() => expect(screen.getByTestId("node-shield").textContent).toContain("Verified node"));
     expect(screen.getAllByTestId("node-shield")).toHaveLength(1);
     unbind.forEach((u) => u());
     unbind = [];
@@ -172,7 +172,7 @@ describe("the built-in floating shield", () => {
     };
     const { result, unmount } = renderHook(() => usePasskeySession("test-app", deps));
     await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
-    expect((await screen.findByTestId("node-shield")).textContent).toContain("Verified node");
+    await waitFor(() => expect(screen.getByTestId("node-shield").textContent).toContain("Verified node"));
     unmount();
     await waitFor(() => expect(screen.queryByTestId("node-shield")).toBeNull());
   });
