@@ -1,6 +1,7 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import { setOrgName } from "@calimero-apps/names";
 import { appSource, targetKey, type AppSource, type Target } from "@calimero-apps/connect";
-import { createFeed, listFeeds, readFeedNames, suggestName } from "./feeds";
+import { createFeed } from "./feeds";
 import { PACKAGE, useSessionApi, type Session } from "./session";
 
 /** Where feeds come from: the dev bundle `dev:local` uploaded, or the package in production. */
@@ -63,44 +64,53 @@ export function useOpenFeed(session: Session): string | null {
   return picked && picked.key === key ? picked.id : remembered(key);
 }
 
+const creationListeners = new Set<() => void>();
+let creation = { open: false, busy: false, failed: null as string | null };
+
+function setCreation(patch: Partial<typeof creation>) {
+  creation = { ...creation, ...patch };
+  creationListeners.forEach((l) => l());
+}
+
+/** What the shared create dialog and the buttons that open it show. */
+export function useNewFeedState() {
+  return useSyncExternalStore(
+    (l) => {
+      creationListeners.add(l);
+      return () => creationListeners.delete(l);
+    },
+    () => creation,
+  );
+}
+
+export const closeNewFeed = () => setCreation({ open: false });
+
+/** What follows the organization the node approved for a feed: the feed in it, your name there, and open it. */
+export async function finishNewFeed(
+  session: Extract<Session, { status: "signed-in" }>,
+  { orgId, name, selfName }: { orgId: string; name: string; selfName: string },
+): Promise<void> {
+  setCreation({ open: false, busy: true, failed: null });
+  try {
+    const { client, accountId } = session;
+    openFeed(await createFeed(client, feedSource(), name, orgId));
+    // Best effort: the feed exists either way.
+    await setOrgName(client, orgId, accountId, selfName).catch(() => {});
+  } catch (e) {
+    setCreation({ failed: e instanceof Error ? e.message : String(e) });
+  } finally {
+    setCreation({ busy: false });
+  }
+}
+
 /**
  * Make a feed and open it: an app instance of Hyperfeed in an organization of
- * its own. Also how a feed made by an earlier Hyperfeed is replaced.
- *
- * Without a name, it gets the first free of "My feed", "My feed 2"…
+ * its own, which the shared create dialog (`NewFeedDialog`) gets the node to
+ * approve. Also how a feed made by an earlier Hyperfeed is replaced.
  */
 export function useNewFeed() {
   const { session } = useSessionApi();
-  const live = signedIn(session);
-  const client = live?.client ?? null;
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  /** True once the feed is made and open. */
-  const create = useCallback(
-    async (name?: string): Promise<boolean> => {
-      if (!client) return false;
-      setBusy(true);
-      setFailed(null);
-      try {
-        const source = feedSource();
-        let given = name?.trim() ?? "";
-        if (!given) {
-          const feeds = await listFeeds(client, source).catch(() => []);
-          const names = await readFeedNames(client, feeds).catch(() => ({}));
-          given = suggestName(Object.values(names));
-        }
-        openFeed(await createFeed(client, source, given));
-        return true;
-      } catch (e) {
-        setFailed(e instanceof Error ? e.message : String(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client],
-  );
-
-  return { create, busy, failed, ready: Boolean(client) };
+  const { busy, failed } = useNewFeedState();
+  const create = useCallback(async () => setCreation({ open: true, failed: null }), []);
+  return { create, busy, failed, ready: signedIn(session) !== null };
 }

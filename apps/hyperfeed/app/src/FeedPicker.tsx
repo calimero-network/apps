@@ -19,7 +19,6 @@ import {
   orderFeeds,
   readFeedNames,
   renameFeed,
-  suggestName,
   type FeedFacts,
 } from "./feeds";
 
@@ -214,7 +213,6 @@ export function FeedSwitcher({ current }: { current: string }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [naming, setNaming] = useState(false);
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameFailed, setRenameFailed] = useState<string | null>(null);
   const { feeds, loading, refetch } = useFeeds();
@@ -224,7 +222,6 @@ export function FeedSwitcher({ current }: { current: string }) {
 
   useEffect(() => {
     if (open) return;
-    setNaming(false);
     setRenaming(null);
     setRenameFailed(null);
   }, [open]);
@@ -365,29 +362,9 @@ export function FeedSwitcher({ current }: { current: string }) {
           )}
           {del.failed && <pre className="err">{del.failed}</pre>}
           <hr />
-          {naming ? (
-            <div className="switcher-rename" role="group" aria-label="Name your new feed">
-              <NameForm
-                label="Name"
-                initial={suggestName(Object.values(names ?? {}))}
-                submit="Create"
-                busyText="Creating…"
-                busy={busy}
-                onSubmit={(name) =>
-                  void create(name).then((made) => {
-                    if (!made) return;
-                    setNaming(false);
-                    reread();
-                  })
-                }
-                onCancel={() => setNaming(false)}
-              />
-            </div>
-          ) : (
-            <button type="button" role="menuitem" disabled={busy || !ready} onClick={() => setNaming(true)}>
-              Create a new feed
-            </button>
-          )}
+          <button type="button" role="menuitem" disabled={busy || !ready} onClick={() => void create()}>
+            Create a new feed
+          </button>
           {failed && <pre className="err">{failed}</pre>}
         </div>
       )}
@@ -428,16 +405,11 @@ export function FeedPicker() {
       )}
       {/* Always offered: a second feed, or one to replace an old one. */}
       {!loading && ready && (
-        <NameForm
-          // Remade once names are read, so the suggestion skips a taken one.
-          key={names ? "named" : "reading"}
-          label="Feed name"
-          initial={suggestName(Object.values(names ?? {}))}
-          submit={feeds.length === 0 ? "Create my feed" : "Create a new feed"}
-          busyText="Creating…"
-          busy={busy}
-          onSubmit={(name) => void create(name)}
-        />
+        <div className="row">
+          <button type="button" className="primary" disabled={busy} onClick={() => void create()}>
+            {busy ? "Creating…" : feeds.length === 0 ? "Create my feed" : "Create a new feed"}
+          </button>
+        </div>
       )}
       <div className="row">
         <button type="button" className="ghost" disabled={loading} onClick={() => void refetch()}>

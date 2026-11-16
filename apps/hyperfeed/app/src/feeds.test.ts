@@ -10,7 +10,6 @@ import {
   listFeeds,
   readFeedNames,
   renameFeed,
-  suggestName,
 } from "./feeds";
 import type { AppInfo } from "@calimero-network/mero-js";
 import { withRoutes } from "@calimero-apps/connect/testing";
@@ -32,18 +31,17 @@ describe("feeds on the cluster", () => {
     expect(asked).toEqual([{ bundle: "bundle-1" }, { package: "com.calimero.hyperfeed" }]);
   });
 
-  it("makes a feed in an organization of its own", async () => {
+  it("makes a feed in the organization the node approved for it", async () => {
     const calls: string[] = [];
     const client = {
-      createOrg: async (name: string) => (calls.push(`org ${name}`), "org-1"),
       createApp: async (name: string, source: unknown, options?: { org?: string }) => {
         calls.push(`app ${name} ${JSON.stringify(source)} ${options?.org}`);
         return "feed-1";
       },
     };
-    expect(await createFeed(withRoutes(client), "bundle-1", "  Work ")).toBe("feed-1");
-    expect(calls).toEqual(['org Work', 'app Work "bundle-1" org-1']);
-    await expect(createFeed(withRoutes(client), "bundle-1", " ")).rejects.toThrow("Give the feed a name.");
+    expect(await createFeed(withRoutes(client), "bundle-1", "  Work ", "org-1")).toBe("feed-1");
+    expect(calls).toEqual(['app Work "bundle-1" org-1']);
+    await expect(createFeed(withRoutes(client), "bundle-1", " ", "org-1")).rejects.toThrow("Give the feed a name.");
   });
 
   it("deletes a feed's app instance", async () => {
@@ -82,13 +80,6 @@ describe("feed names", () => {
     expect(nameProblem("   ")).toBe("Give the feed a name.");
     expect(nameProblem("x".repeat(64))).toBeNull();
     expect(nameProblem("x".repeat(65))).toBe("A name is at most 64 characters.");
-  });
-
-  it("suggests My feed, then the first free number", () => {
-    expect(suggestName([])).toBe("My feed");
-    expect(suggestName([null, "Work"])).toBe("My feed");
-    expect(suggestName(["my feed", "My feed 2"])).toBe("My feed 3");
-    expect(suggestName(["Work"], "Work")).toBe("Work 2");
   });
 
   it("labels an unnamed feed by its short id", () => {

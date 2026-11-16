@@ -6,6 +6,8 @@ import { ChatView } from "./ChatView";
 import { TeamView } from "./TeamView";
 import { BriefView } from "./BriefView";
 import { FeedPicker, FeedSwitcher } from "./FeedPicker";
+import { NodeShield } from "@calimero-apps/passkey";
+import { NewFeedDialog } from "./NewFeedDialog";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
@@ -54,6 +56,7 @@ export function App() {
         <Route path="/demo/controls" element={<Navigate to="/demo/settings/controls" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <NewFeedDialog />
     </BrowserRouter>
   );
 }
@@ -392,6 +395,7 @@ function Shell({
           </div>
         )}
         <div className="topbar-end">
+          <NodeShield compactBelow={1500} />
           {feed?.settings && (
             <span
               className={`pill ${paused ? "pill-wait" : agent ? "pill-good" : "pill-bad"}`}

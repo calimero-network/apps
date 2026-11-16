@@ -61,15 +61,6 @@ export function nameProblem(name: string): string | null {
   return null;
 }
 
-/** A name for a new feed: "My feed", or "My feed 2" when that is taken. */
-export function suggestName(taken: Iterable<string | null>, base = "My feed"): string {
-  const used = new Set([...taken].filter((n): n is string => Boolean(n)).map((n) => n.trim().toLowerCase()));
-  if (!used.has(base.toLowerCase())) return base;
-  let i = 2;
-  while (used.has(`${base} ${i}`.toLowerCase())) i++;
-  return `${base} ${i}`;
-}
-
 /** The short id shown beside a name: "c8c2844e". */
 export function hint(id: string): string {
   return id.slice(0, 8);
@@ -88,17 +79,17 @@ export async function listFeeds(client: ClientRoutes<{ apps: "list" }>, source: 
 }
 
 /**
- * Make a feed named `name`: an organization of its own first (where cloud
- * agents are invited), then the instance in it. Answers its app id.
+ * Make a feed named `name` in `org`, the organization the node approved for it
+ * (where cloud agents are invited). Answers its app id.
  */
 export async function createFeed(
-  client: ClientRoutes<{ apps: "create"; orgs: "create" }>,
+  client: ClientRoutes<{ apps: "create" }>,
   source: AppSource,
   name: string,
+  org: string,
 ): Promise<string> {
   const problem = nameProblem(name);
   if (problem) throw new Error(problem);
-  const org = (await client.orgs.create({ name: name.trim() })).orgId;
   return (await client.apps.create({ name: name.trim(), ...appTarget(source), org })).appId;
 }
 

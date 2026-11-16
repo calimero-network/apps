@@ -1,5 +1,6 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import { App } from "./App";
 import { SessionContext, useSession } from "./session";
 // Fonts are bundled, never fetched from Google: offline, and no viewer IPs to a third party.
@@ -29,7 +30,9 @@ function Session({ children }: { children: ReactNode }) {
 createRoot(root).render(
   <Wrapper>
     <Session>
-      <App />
+      <ConsentPopupReturn>
+        <App />
+      </ConsentPopupReturn>
     </Session>
   </Wrapper>,
 );
