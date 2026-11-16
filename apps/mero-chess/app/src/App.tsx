@@ -7,8 +7,9 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { appSource, memberOf, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -17,7 +18,6 @@ import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
   LISTING,
-  ONBOARDING,
   defaultDeps,
   describeTarget,
   useInviteState,
@@ -31,13 +31,11 @@ import {
   deferInvite,
   inviteDeferred,
   invitedTable,
-  inviter,
   invites as appInvites,
   listTables,
   selectionKey,
   tableIn,
 } from "./tables";
-import { shortAccount } from "./useSeatNames";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -204,41 +202,43 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // The token checked against the tables this account reaches already.
   const [checked, setChecked] = useState<string | null>(null);
 
-  // ⚠️ Not asked of someone who already reaches the table the link names:
-  // redeeming spends the link's single use, so the owner trying their own link
-  // used to leave the opponent it was meant for with "unknown invite". The
-  // table opens and the token is dropped unspent.
+  // ⚠️ Not asked of someone who already reaches the table the link names, or is
+  // in the org it names: redeeming spends the link's single use, so the owner
+  // trying their own link used to leave the opponent it was meant for with
+  // "unknown invite". The table opens and the token is dropped unspent.
   const pendingToken = pending?.token ?? null;
   const pendingTable = invitedTable(pending);
+  const pendingOrg = pending?.org ?? null;
   useEffect(() => {
     if (!client || !pendingToken) return;
-    if (!pendingTable) {
-      setChecked(pendingToken);
-      return;
-    }
     let live = true;
-    void client.apps.list({}).then((r) => r.apps)
-      .then(
-        (apps) => apps.find((a) => a.appId === pendingTable) ?? null,
-        () => null,
-      )
-      .then((table) => {
-        if (!live) return;
-        if (table) {
-          invites.drop();
-          closeInvite();
-          open({ appId: table.appId, name: table.name, org: table.org });
-          setNotice(
-            "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
-          );
-        }
-        setChecked(pendingToken);
-      })
-      .finally(after);
+    void (async () => {
+      const table = pendingTable
+        ? await client.apps
+            .list({})
+            .then((r) => r.apps.find((a) => a.appId === pendingTable) ?? null)
+            .catch(() => null)
+        : null;
+      const member = !table && pendingOrg ? await memberOf(client, pendingOrg) : null;
+      if (!live) return;
+      if (table) {
+        invites.drop();
+        closeInvite();
+        open({ appId: table.appId, name: table.name, org: table.org });
+        setNotice(
+          "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
+        );
+      } else if (member && pendingOrg) {
+        invites.drop();
+        closeInvite();
+        setLanding({ org: pendingOrg, table: pendingTable });
+      }
+      setChecked(pendingToken);
+    })().finally(after);
     return () => {
       live = false;
     };
-  }, [client, pendingToken, pendingTable, invites, open, after, closeInvite]);
+  }, [client, pendingToken, pendingTable, pendingOrg, invites, open, after, closeInvite, setLanding]);
 
   // Where an invite landed: the table its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
@@ -306,41 +306,34 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (invite) {
-    if (checked !== invite.token) {
-      return (
-        <div className="loading-state">
-          <span className="spinner" aria-hidden="true" />
-          <p className="empty">Reading the invitation…</p>
-        </div>
-      );
-    }
-    const from = inviter(invite);
+  if (invite && checked !== invite.token) {
     return (
-      <JoinInvitation
-        {...ONBOARDING}
-        key={invite.token}
-        joining={from ? `${from}'s game` : "the game"}
-        account={shortAccount(session.accountId)}
-        client={session.client}
-        token={invite.token}
-        org={invite.org}
-        drop={invites.drop}
-        after={after}
-        onJoined={({ org }) => {
-          closeInvite();
-          setLanding({ org, table: invitedTable(invite) });
-        }}
-        onClose={({ member }) => {
-          closeInvite();
-          if (member) setLanding({ org: member, table: invitedTable(invite) });
-        }}
-      />
+      <div className="loading-state">
+        <span className="spinner" aria-hidden="true" />
+        <p className="empty">Reading the invitation…</p>
+      </div>
     );
   }
 
   return (
     <>
+      <AcceptInviteDialog
+        open={invite !== null}
+        client={session.client}
+        passkey={deps.passkey()}
+        token={invite?.token ?? ""}
+        appName="Mero Chess"
+        onClose={() => {
+          invites.drop();
+          closeInvite();
+        }}
+        onJoined={({ org }) => {
+          invites.drop();
+          closeInvite();
+          setLanding({ org, table: invitedTable(invite) });
+          after();
+        }}
+      />
       {notice && (
         <div className="card alert" role="status">
           <p className="empty">{notice}</p>

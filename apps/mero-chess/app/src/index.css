@@ -717,25 +717,6 @@ body {
 
 /* ── invite ─────────────────────────────────────────────────────────────── */
 .invite-card .row { margin-top: 2px; }
-.link-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-/* `min-width: 0` is the load-bearing part: this sits in a flex row, and a flex
-   ITEM defaults to `min-width: auto`, which refuses to shrink below its content
-   — so `text-overflow: ellipsis` would never trigger. Truncation is purely
-   visual: textContent is still the whole link. */
-.invite-link {
-  display: block;
-  flex: 1;
-  padding: 8px 11px;
-  background: var(--glass-sunken);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text-dim);
-  font-size: 0.78rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 
 /* ── record ─────────────────────────────────────────────────────────────── */
 .record th { font-weight: 600; color: var(--text); }
