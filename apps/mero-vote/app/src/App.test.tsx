@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
+import { NotFound, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -251,11 +251,29 @@ describe("App", () => {
     await screen.findByText("Where is the offsite?");
     expect(client.useSession).toHaveBeenCalledWith(SESSION);
     expect(client.signIn).not.toHaveBeenCalled();
-    expect(client.events).toHaveBeenCalledWith("app-1", 0, expect.anything());
+    // From the log's head: what is committed is read, not replayed.
+    await waitFor(() => expect(client.events).toHaveBeenCalledWith("app-1", 2, expect.anything()));
 
     fireEvent.click(screen.getByLabelText("Change group"));
     await screen.findByText("Choose a voting group");
     await screen.findByText("Board");
+  });
+
+  it("closes a group that no longer admits the account, back to the picker", async () => {
+    const client = fakeClient([
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    client.events = vi.fn(() => ({
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new NotFound("not found")) }),
+    })) as unknown as typeof client.events;
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, ME), JSON.stringify({ appId: "app-1", name: "Board", org: "org-1" }));
+    render(<App deps={deps(client)} storage={storage} />);
+
+    await screen.findByText("You no longer have access to that voting group.");
+    await screen.findByText("Choose a voting group");
+    expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();
   });
 
   it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {

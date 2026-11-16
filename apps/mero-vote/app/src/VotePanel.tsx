@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { decode, type Identity, type Member, type PollSummary } from "./meroVote";
 import { CreatePoll } from "./CreatePoll";
 import { PollDetail } from "./PollDetail";
@@ -50,16 +50,19 @@ export function VotePanel({
   const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const meRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!client) return;
     try {
+      // Who you are does not change: read once, not on every refresh.
       const [who, r, p] = await Promise.all([
-        client.whoami().then((v) => decode<Identity>(v)),
+        meRef.current ?? client.whoami().then((v) => decode<Identity>(v).account),
         client.roster().then((v) => decode<Member[]>(v)),
         client.listPolls().then((v) => decode<PollSummary[]>(v)),
       ]);
-      setMe(who.account);
+      meRef.current = who;
+      setMe(who);
       setRoster(r);
       setPolls(p);
       setErr(null);

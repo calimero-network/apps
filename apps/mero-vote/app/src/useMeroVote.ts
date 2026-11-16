@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { AppError } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
+import { visibleInterval } from "./utils/visibleInterval";
 import type { MeroVoteClient } from "./generated/client";
 
 /**
@@ -32,8 +33,8 @@ const POLL_MS = 30_000;
 
 /**
  * Re-run `refresh` whenever the group changes — a write of yours or anyone
- * else's arrives on the instance's event stream — and every 30 s. Bursts are
- * coalesced into one read.
+ * else's arrives on the instance's event stream — and every 30 s while the
+ * tab is visible (once on return). Bursts are coalesced into one read.
  */
 export function useLiveRefresh(_groupId: string, refresh: () => void): void {
   const group = useContext(VoteGroupContext);
@@ -50,10 +51,10 @@ export function useLiveRefresh(_groupId: string, refresh: () => void): void {
         ref.current();
       }, COALESCE_MS);
     });
-    const poll = setInterval(() => ref.current(), POLL_MS);
+    const stopPoll = visibleInterval(() => ref.current(), POLL_MS);
     return () => {
       stop();
-      clearInterval(poll);
+      stopPoll();
       if (timer) clearTimeout(timer);
     };
   }, [group]);
