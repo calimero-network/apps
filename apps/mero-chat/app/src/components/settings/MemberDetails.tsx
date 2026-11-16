@@ -227,7 +227,9 @@ const AddMemberInput = ({ addMember, channelName, nonChannelMembers }: AddMember
   return (
     <AddMemberRow>
       <AddMemberField
-        onFocus={() => setShowSuggestions(true)}
+        // Opened by a click or by typing, never by the focus the popup gives
+        // its first field when it opens.
+        onMouseDown={() => setShowSuggestions(true)}
         onBlur={() => setShowSuggestions(false)}
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
