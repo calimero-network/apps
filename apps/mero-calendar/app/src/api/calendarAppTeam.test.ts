@@ -9,9 +9,10 @@
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
+import { appInviteTeams } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { createCalendar, finishTeam, inviteToken, leaveTeam, leaveTeamOrg, readOrg, removeTeamMember } from "./teams";
+import { createCalendar, finishTeam, leaveTeam, leaveTeamOrg, readOrg, removeTeamMember } from "./teams";
 
 const PKG = "com.calimero.mero-calendar";
 const SOURCE = { package: PKG };
@@ -62,15 +63,14 @@ describe("invites and people", () => {
 
   it("standalone: the invite names the team; every member but a guest is listed", async () => {
     const { cluster, org } = await team(people);
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
+    expect(await appInviteTeams(cluster.client, org, SOURCE)).toEqual({ teams: [cluster.teamOf(org, PKG)], appOnly: false });
     expect((await readOrg(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
   it("apps kept apart: Mero Calendar only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
+    expect((await appInviteTeams(cluster.client, org, SOURCE)).appOnly).toBe(true);
     const read = await readOrg(cluster.client, org, SOURCE);
     expect(read.people).toEqual(["acct-me", "acct-bob"]);
     expect(read.appOnly).toBe(true);
@@ -80,8 +80,7 @@ describe("invites and people", () => {
   it("a legacy org: the org-wide invite, every member listed", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "legacy", members: people });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toBeUndefined();
+    expect(await appInviteTeams(cluster.client, org, SOURCE)).toEqual({ teams: [], appOnly: false });
     expect((await readOrg(cluster.client, org, SOURCE)).people).toHaveLength(4);
   });
 });

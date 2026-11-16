@@ -3,7 +3,7 @@
  * page; signing in joins at once and opens the team.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type CalimeroSession } from "@calimero-network/mero-js";
+import type { CalimeroSession } from "@calimero-network/mero-js";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -29,6 +29,24 @@ vi.mock("./pages/teams/TeamsPage", () => ({ default: Where }));
 vi.mock("./pages/teams/TeamCalendarsPage", () => ({ default: Where }));
 vi.mock("./pages/calendar", () => ({ default: Where }));
 vi.mock("./pages/book/BookPage", () => ({ default: Where }));
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    AcceptInviteDialog: (p: { open: boolean; token: string; appName?: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("p", { "data-testid": "accept-props" }, `${p.token} ${p.appName}`),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "done"),
+          )
+        : null,
+  };
+});
 
 const ME = "acct-me";
 const SESSION: CalimeroSession = { accountId: ME, sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
@@ -102,25 +120,23 @@ describe("an invitation link opened while signed out", () => {
     expect(screen.queryByText("Landing sign in")).toBeNull();
   });
 
-  it("signing in asks before joining (B5): nothing is redeemed until Join, which asks your name in the team once and opens it", async () => {
+  it("signing in asks before joining (B5): the shared dialog is opened for the token, which asks your name in the team once and opens it", async () => {
     localStorage.setItem(PENDING, "tok-1");
     migrateLegacyInvite();
     localStorage.setItem("calimero-names:last", "Ada");
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect(await screen.findByTestId("invitation-prompt")).toBeTruthy();
-    expect(screen.getByText("Join the team?")).toBeTruthy();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(client.redeemInvite).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Mero Calendar");
+    expect(invites.token()).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-done"));
     const input = (await screen.findByTestId("username-input")) as HTMLInputElement;
     expect(input.value).toBe("Ada");
     fireEvent.change(input, { target: { value: "Ada L" } });
     fireEvent.click(screen.getByTestId("username-submit"));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
     expect(client.setMemberMetadata).toHaveBeenCalledWith("org-1", ME, { name: "Ada L" });
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   });
 
@@ -131,7 +147,7 @@ describe("an invitation link opened while signed out", () => {
     client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ada" } } });
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
     expect(screen.queryByTestId("username-modal")).toBeNull();
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
@@ -155,24 +171,11 @@ describe("an invitation link opened while signed out", () => {
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     expect(await screen.findByText("You're already in the team")).toBeTruthy();
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
     fireEvent.click(screen.getByTestId("invitation-continue"));
     expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
-  });
-
-  it("says plainly when the invite was already used or has expired", async () => {
-    localStorage.setItem(PENDING, "tok-1");
-    migrateLegacyInvite();
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
-    renderApp(client);
-    fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
-    expect(invites.token()).toBeNull();
   });
 
   it("creating the account joins in that step and opens the page the link named (B10)", async () => {
@@ -188,27 +191,13 @@ describe("an invitation link opened while signed out", () => {
     expect(invites.token()).toBeNull();
   });
 
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i (B6)", async (status, code, says) => {
-    invites.put({ token: "tok-1", org: null, team: null, doc: null, route: null, extra: {} });
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    renderApp(client);
-    fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
-    expect(invites.token()).toBe("tok-1");
-  });
-
   it("Not now at the join prompt drops the invite and joins nothing (B5)", async () => {
     invites.put({ token: "tok-1", org: null, team: null, doc: null, route: null, extra: {} });
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    fireEvent.click(await screen.findByTestId("invitation-dismiss"));
-    await waitFor(() => expect(screen.queryByTestId("invitation-prompt")).toBeNull());
+    fireEvent.click(await screen.findByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull());
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   });

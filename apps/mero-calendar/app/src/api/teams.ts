@@ -1,14 +1,11 @@
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  describeRedeemFailure,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   isAppOnly,
-  isSpentInvite,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -16,8 +13,6 @@ import {
   orgsWithApp,
   removeFromApp,
   sourcePackage,
-  SPENT_INVITE_COPY,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -262,20 +257,6 @@ export function setMyTeamName(
 
 // ── invitations ──────────────────────────────────────────────────────────────
 
-/**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming this app's team (`appInvite`): `appOnly` when it gives
- * Mero Calendar only (an org that keeps its apps apart). Org-wide in a legacy org.
- */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
 /** The landing page's own paths: a link to one of them names no destination. */
 const FRONT_DOOR = new Set(["/", "/docs", "/preview", "/login"]);
 
@@ -288,8 +269,8 @@ export function routeOf(pathname: string, base: string = nodeBasename(new URL(wi
 }
 
 /**
- * The link that opens this frontend with `token` to redeem, and the page it
- * was made on (a team, a calendar), which joining opens.
+ * The page an invitation link opens (the shared invite dialog adds the token),
+ * and the page it was made on (a team, a calendar), which joining opens.
  *
  * `org` names the team the token joins. The token itself does not say, and
  * without it the app cannot tell an invitation into a team the visitor is
@@ -298,14 +279,10 @@ export function routeOf(pathname: string, base: string = nodeBasename(new URL(wi
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
-  location: Pick<Location, "href"> = window.location,
-  org?: string | null,
-): string {
+export function inviteLinkBase(org: string, location: Pick<Location, "href"> = window.location): string {
   const url = new URL(location.href);
   const root = nodeBasename(url, "/");
-  return sharedInviteLink(token, { org, route: routeOf(url.pathname, root), root, origin: url.origin });
+  return sharedInviteLinkBase({ org, route: routeOf(url.pathname, root), root, origin: url.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), captured in `index.tsx` before React mounts. */
@@ -427,30 +404,4 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
   } catch {
     /* nothing stored */
   }
-}
-
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE = SPENT_INVITE_COPY;
-
-/**
- * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer: a lapsed session (401), a rate
- * limit (429) or the cluster unreachable keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  return isSpentInvite(e);
-}
-
-/** The plain sentence for a failed redemption. */
-export function inviteFailure(e: unknown): string {
-  return describeRedeemFailure(e);
-}
-
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const key of ["org", "orgId"]) {
-    const v = redeemed[key];
-    if (typeof v === "string" && v) return v;
-  }
-  return null;
 }
