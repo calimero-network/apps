@@ -9,6 +9,7 @@ import { BlobStore, clientTransport } from "./blobs";
 import { SceneSync, messageOf } from "./sync";
 import type { Peer } from "./viewport";
 import { type ClientRoutes } from "@calimero-apps/connect";
+import { visibleInterval } from "../utils/visibleInterval";
 
 /** How often to re-read the scene when no event arrived — one that landed while the stream reconnected. */
 const POLL_MS = 8_000;
@@ -63,7 +64,8 @@ function subscribeEvents(
     for (let attempt = 0; !abort.signal.aborted; attempt += 1) {
       try {
         const { index } = await client.apps.view({ app, method: "myRole", args: {} });
-        for await (const _event of client.events(app, index, abort.signal)) onEvent();
+        // Just past the entry that read reflected: its events are in the read already.
+        for await (const _event of client.events(app, index + 1, abort.signal)) onEvent();
       } catch {
         // Closed (sign-out, network): the poll covers the gap; retry a little later.
       }
@@ -93,12 +95,11 @@ export function useSceneSync(contextId: string): { sync: SceneSync | null; savin
     useEditor.getState().setOutbox(s);
     setSync(s);
     void s.refresh();
-    const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") void s.refresh();
-    }, POLL_MS);
+    // Skipped while the tab is hidden; runs once on return.
+    const stopPoll = visibleInterval(() => void s.refresh(), POLL_MS);
     const saver = window.setInterval(() => setSaving(s.saving), 300);
     return () => {
-      window.clearInterval(poll);
+      stopPoll();
       window.clearInterval(saver);
       s.dispose();
       useEditor.getState().setOutbox(null);
@@ -140,19 +141,29 @@ export function useSceneSync(contextId: string): { sync: SceneSync | null; savin
   return { sync, saving };
 }
 
-/** Tell the scene who this is. Re-sent when the name changes. */
+/**
+ * Tell the scene who this is, when it does not know yet: the members list is
+ * read first, and `join` sent only when this account is missing from it or
+ * listed under another name. Checked again when the name changes.
+ */
 export function useJoin(contextId: string, name: string): void {
   const client = useModelsClient(contextId);
+  const accountId = useMaybeScene()?.accountId ?? null;
   useEffect(() => {
     if (!client) return;
+    const want = name.trim() || GUEST;
     const t = window.setTimeout(() => {
-      void client.join({ name: name || GUEST, now: u64(Date.now()) }).catch((e) => {
+      void (async () => {
+        const members = await client.getMembers().catch(() => null);
+        if (members?.some((m) => m.id === accountId && m.name === want)) return;
+        await client.join({ name: want, now: u64(Date.now()) });
+      })().catch((e) => {
         // Presence in the members list is a nicety; editing works without it.
         console.warn("[mero-models] join failed:", messageOf(e));
       });
     }, 400);
     return () => window.clearTimeout(t);
-  }, [client, name]);
+  }, [client, accountId, name]);
 }
 
 /** What each open editor streams over presence. Never stored. */
