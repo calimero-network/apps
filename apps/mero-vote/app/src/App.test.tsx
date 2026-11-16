@@ -95,6 +95,35 @@ function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = D
   };
 }
 
+// The shared dialog is mero-react"s to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-1", name: "Offsite", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 const LOCAL: Target = resolveTarget(DEV_ENV);
 
 /** An invite store on `storage` holding `invite`, as `main.tsx` leaves it after capturing a link. */
@@ -129,10 +158,12 @@ describe("App", () => {
     // The picker lists groups in an effect, after its heading has rendered.
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
-    fireEvent.change(screen.getByLabelText("Group name"), { target: { value: "Offsite" } });
+    // The org, its name and yours come from the shared dialog.
     fireEvent.click(screen.getByText("Create voting group"));
+    expect(JSON.parse((await screen.findByTestId("create-release")).textContent ?? "null")).toEqual({ package: "com.calimero.mero-vote" });
+    fireEvent.click(screen.getByTestId("create-done"));
     await screen.findByText("Where is the offsite?");
-    expect(client.createOrg).toHaveBeenCalledWith("Offsite");
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("Offsite", "bundle-hash", { org: "org-1" });
     expect(client.view).toHaveBeenCalledWith("app-new", "listPolls", {});
     expect(screen.getByText("2 ballots")).toBeTruthy();

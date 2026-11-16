@@ -1,33 +1,52 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppInfo } from "@calimero-network/mero-js";
-import type { AppSource, ClientRoutes } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName, setOrgName } from "@calimero-apps/names";
+import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { createGroup, listGroups } from "./groups";
+import { PACKAGE } from "./meroVote";
 import { errText } from "./useMeroVote";
 import { BoxIcon, ChevronRightIcon, PlusIcon, RefreshIcon } from "./icons";
 import { IconTile, IdField } from "./ui";
 
 export type OpenedGroup = Pick<AppInfo, "appId" | "name" | "org">;
 
+const CREATE_LABELS = {
+  title: "New voting group",
+  subtitle: "Name your voting group. It lives in an organization of its own, whose members you invite.",
+  nameLabel: "Group name",
+  namePlaceholder: "e.g. Offsite committee",
+  selfLabel: "Your name in this group",
+  selfPlaceholder: "e.g. Ana",
+};
+
 /**
  * v1's context picker: the voting groups this account reaches (instances of
  * this app), and a new one. A new group is an organization with the app in
- * it, so its members can be invited (v1: a namespace with a context in it).
+ * it, so its members can be invited (v1: a namespace with a context in it). The
+ * organization comes from the shared dialog, which also asks your name in it.
  */
 export function GroupPicker({
   client,
+  accountId,
   source,
+  passkey,
   onOpen,
   after,
 }: {
-  client: ClientRoutes<{ apps: "list" | "create"; orgs: "create" }>;
+  client: CalimeroClient;
+  accountId: string;
   source: AppSource;
+  passkey: () => PasskeyProvider;
   onOpen: (group: OpenedGroup) => void;
   /** Runs after each request (keeps the stored session current). */
   after: () => void;
 }) {
   const [groups, setGroups] = useState<AppInfo[] | null>(null);
-  const [name, setName] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -45,14 +64,16 @@ export function GroupPicker({
     void refresh();
   }, [refresh]);
 
-  async function create() {
-    const groupName = name.trim();
+  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setShowCreate(false);
     setBusy(true);
     setError(null);
     try {
-      const { appId, org } = await createGroup(client, source, groupName);
+      const { appId, org } = await createGroup(client, source, name, orgId);
       after();
-      onOpen({ appId, name: groupName, org });
+      // Best effort: the group exists either way.
+      await setOrgName(client, org, accountId, selfName).catch(() => {});
+      onOpen({ appId, name, org });
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -78,25 +99,22 @@ export function GroupPicker({
         </div>
       </div>
 
-      <form
-        className="card row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) void create();
-        }}
-      >
-        <input
-          aria-label="Group name"
-          placeholder="Group name, e.g. Offsite committee"
-          maxLength={80}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit" disabled={busy || !name.trim()}>
+      <div className="card row">
+        <button type="button" onClick={() => setShowCreate(true)} disabled={busy}>
           <PlusIcon size={16} />
           {busy ? "Creating…" : "Create voting group"}
         </button>
-      </form>
+      </div>
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={created}
+        labels={CREATE_LABELS}
+      />
       {error && <pre className="err">{error}</pre>}
 
       <div className="section-head">

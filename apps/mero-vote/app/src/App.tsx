@@ -7,7 +7,7 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
@@ -198,6 +198,7 @@ export function App({
             </nav>
           )}
           <div className="topbar-right">
+            <NodeShield compactBelow={720} />
             <span className="status-pill" title={signedIn ? "Connected" : connecting ? "Connecting" : "Not connected"}>
               <span className={`dot ${signedIn ? "live" : connecting ? "wait" : ""}`} />
               <span className="label">{signedIn ? "Connected" : connecting ? "Connecting" : "Not connected"}</span>
@@ -288,7 +289,15 @@ export function App({
           />
         ) : !opened || !group ? (
           <>
-            <GroupPicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
+            <GroupPicker
+              key={pickerKey}
+              client={session.client}
+              accountId={session.accountId}
+              source={source}
+              passkey={deps.passkey}
+              onOpen={open}
+              after={after}
+            />
             <div className="section-head join-head">
               <h3>
                 <UserPlusIcon size={16} />
