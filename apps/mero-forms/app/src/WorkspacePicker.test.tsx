@@ -14,8 +14,37 @@ const client = withRoutes({
   call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
   view: vi.fn(),
 });
-const signedIn = { client, source: "bundle-hash", after: () => {} };
+const signedIn = { client, accountId: "acct-me", source: "bundle-hash", passkey: () => ({}), after: () => {} };
 vi.mock("./sessionContext", () => ({ useSignedIn: () => signedIn }));
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Sales", selfName: "Alice" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
 
 const { WorkspacePicker } = await import("./WorkspacePicker");
 
@@ -37,15 +66,31 @@ describe("the workspace picker", () => {
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
   });
 
-  it("starts a workspace in a new organization, names it, and opens it", async () => {
+  it("starts a workspace in a new organization through the shared dialog, names it, and opens it", async () => {
     const onOpen = vi.fn();
     render(<WorkspacePicker onOpen={onOpen} />);
     await screen.findByText("Marketing");
+    expect(screen.queryByLabelText("new workspace name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start a new workspace" }));
+    expect((await screen.findByTestId("create-title")).textContent).toBe("New workspace");
+    expect(JSON.parse(screen.getByTestId("create-release").textContent ?? "null")).toEqual({ package: "com.calimero.mero-forms" });
+    fireEvent.click(screen.getByTestId("create-done"));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith({ appId: "app-2", org: "org-new" }));
+    expect(client.createApp).toHaveBeenCalledWith("Sales", "bundle-hash", { org: "org-new" });
+    expect(client.call).toHaveBeenCalledWith("app-2", "setWorkspaceName", { name: "Sales" });
+    expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
+  it("starts a workspace in an org the account is in without the dialog", async () => {
+    const onOpen = vi.fn();
+    render(<WorkspacePicker onOpen={onOpen} />);
+    await screen.findByText("Marketing");
+    fireEvent.change(await screen.findByLabelText("organization"), { target: { value: "org-1" } });
     fireEvent.change(screen.getByLabelText("new workspace name"), { target: { value: "Sales" } });
     fireEvent.click(screen.getByRole("button", { name: "Start a new workspace" }));
-    await waitFor(() => expect(onOpen).toHaveBeenCalledWith({ appId: "app-2", org: "org-2" }));
-    expect(client.createApp).toHaveBeenCalledWith("Sales", "bundle-hash", { org: "org-2" });
-    expect(client.call).toHaveBeenCalledWith("app-2", "setWorkspaceName", { name: "Sales" });
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith({ appId: "app-2", org: "org-1" }));
+    expect(screen.queryByTestId("create-dialog")).toBeNull();
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 
   it("offers only the organizations this account may add a workspace in (B8)", async () => {

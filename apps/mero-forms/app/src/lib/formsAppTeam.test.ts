@@ -8,13 +8,21 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { createWorkspace, inviteToken, readMembers } from "./orgs";
+import { createWorkspace as createInOrg, createWorkspaceInNewOrg, inviteToken, readMembers } from "./orgs";
 
 const PKG = "com.calimero.mero-forms";
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
+
+/** A workspace in `org`, or in an org as the node's consent page makes it (then what the app does after). */
+async function createWorkspace(client: ReturnType<typeof orgCluster>["client"], source: AppSource, name: string, org: string | null, passkey: () => PasskeyProvider) {
+  if (org) return createInOrg(client, source, name, org, passkey);
+  const { orgId } = await client.orgs.create({ name });
+  return createWorkspaceInNewOrg(client, source, name, orgId, passkey);
+}
 
 describe("a new workspace in a new org", () => {
   it("gets Forms' open team (made with `shared: false`), and the workspace is on it", async () => {
