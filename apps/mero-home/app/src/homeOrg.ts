@@ -343,7 +343,8 @@ export async function setSeat(
 }
 
 /** An invite's teams by app name, for the pending list: "Chat, Blocks", or "Organization only". */
-export function inviteApps(invite: Pick<OrgInvite, "teams">, view: OrgView): string {
+export function inviteApps(invite: Pick<OrgInvite, "teams"> & { allApps?: boolean }, view: OrgView): string {
+  if (invite.allApps) return "Every app, and those added later";
   if (invite.teams.length === 0) return "Organization only";
   return invite.teams
     .map((t) => view.apps.find((a) => a.team?.teamId === t)?.name ?? "a team you do not see")

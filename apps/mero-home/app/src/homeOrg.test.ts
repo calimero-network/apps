@@ -145,6 +145,7 @@ describe("words and links", () => {
     expect(inviteApps({ teams: ["t-chat", "t-blocks"] }, v)).toBe("Chat, Blocks");
     expect(inviteApps({ teams: [] }, v)).toBe("Organization only");
     expect(inviteApps({ teams: ["t-x"] }, v)).toBe("a team you do not see");
+    expect(inviteApps({ teams: [], allApps: true }, v)).toBe("Every app, and those added later");
     const now = 1_700_000_000_000;
     expect(inviteExpiry({ expiresAt: now / 1000 + 3 * 86_400, expired: false }, now)).toBe("Expires in 3 days");
     expect(inviteExpiry({ expiresAt: now / 1000 + 7200, expired: false }, now)).toBe("Expires in 2 h");

@@ -167,13 +167,15 @@ test("4. Alice invites Bob to every app; he joins from Home and reaches the org 
   await page.getByTestId(`invite-app-${CHAT}`).check();
   await page.getByTestId(`invite-app-${KV}`).check();
   await page.getByTestId("invite-create").click();
-  await expect(page.getByTestId("invite-link")).toBeVisible();
-  const link = (await page.getByTestId("invite-link").locator("pre").textContent()) ?? "";
+  await page.getByRole("dialog").getByRole("button", { name: "Create invite", exact: true }).click();
+  const field = page.getByRole("dialog").getByLabel("Invite link");
+  await expect(field).toBeVisible({ timeout: 120_000 });
+  const link = await field.inputValue();
   expect(link).toContain("invite=");
 
   // Home: Bob signs up from the link and lands in the org, with both apps.
   bob = await browse(browser);
-  await bob.page.goto(`${ORIGINS.home}/${new URL(link).search}`);
+  await bob.page.goto(`${ORIGINS.home}/${new URL(link).search}${new URL(link).hash}`);
   await signUpFromInvite(bob.page, "Bob");
   await expect(bob.page.getByTestId("org-mode")).toContainText("Member");
   await expect(bob.page.getByTestId(`open-${CHAT}`)).toBeVisible();

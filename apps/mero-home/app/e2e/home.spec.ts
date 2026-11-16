@@ -101,8 +101,9 @@ test("Admin: a legacy app gets its own access list, everyone keeps it", async ()
 test("Invitations: invite to the app, list it, revoke another", async () => {
   const { kvPackage } = seed();
   await admin.getByTestId("tab-invitations").click();
-  // Listed by app (the seed's spent admin invite may be listed too).
-  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
+  // The admin's only app is every app, so the invite is for every app, and those added later
+  // (the seed's spent admin invite may be listed too).
+  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "Every app" });
   // One to revoke…
   await admin.getByTestId(`invite-app-${kvPackage}`).check();
   expect(await createInvite(admin)).toContain("invite=");

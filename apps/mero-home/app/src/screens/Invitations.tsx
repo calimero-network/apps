@@ -6,7 +6,7 @@ import { describeError, inviteLinkBase } from "@calimero-apps/connect";
 import { inviteRoot } from "../invites";
 import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
 
-type Pending = { kind: "loading" } | { kind: "ready"; invites: OrgInvite[] } | { kind: "failed"; error: string };
+type Pending = { kind: "loading" } | { kind: "ready"; invites: Array<OrgInvite & { allApps?: boolean }> } | { kind: "failed"; error: string };
 
 export interface InvitationsProps {
   client: CalimeroClient;
@@ -39,8 +39,8 @@ export function Invitations({ client, view, account, passkey, after, root = invi
 
   const refresh = useCallback(async () => {
     try {
-      // The document lets an invite carry the `owner` role; mero-js's `OrgInvite` does not.
-      const list = (await client.orgs.inviteList({ org: view.org })).invites as OrgInvite[];
+      // The document lets an invite carry the `owner` role and `allApps`; mero-js's `OrgInvite` does not.
+      const list = (await client.orgs.inviteList({ org: view.org })).invites as Array<OrgInvite & { allApps?: boolean }>;
       setPending({ kind: "ready", invites: [...list].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)) });
     } catch (e) {
       setPending({ kind: "failed", error: describeError(e) });
