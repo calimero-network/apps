@@ -223,7 +223,7 @@ describe("an invitation link opened while signed out", () => {
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("accept-done"));
-    expect((await screen.findByTestId("where")).textContent).toBe("/teams/org-1");
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   });

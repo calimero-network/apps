@@ -11,6 +11,7 @@ import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-app
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { AppListing, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
+import { InstallAppIconButton } from "@calimero-apps/install";
 
 import { PACKAGE } from "./chess";
 import { Lobby } from "./Lobby";
@@ -342,6 +343,7 @@ function AppShell({ children }: { children: ReactNode }) {
           {session.status === "signed-in" && (
             <div className="session">
               <NodeShield />
+              <InstallAppIconButton />
               <button className="ghost small" onClick={() => void signOut()}>
                 Log out
               </button>

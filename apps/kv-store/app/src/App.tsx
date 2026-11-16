@@ -10,6 +10,7 @@ import {
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { AppListing, InvitationSignIn, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
+import { InstallAppIconButton } from "@calimero-apps/install";
 
 import { KvStoreClient } from "./generated/client";
 import { InviteCard } from "./InviteCard";
@@ -255,9 +256,12 @@ export function App({
           <span className="empty row">
             <NodeShield /> account <code className="mono">{session.accountId}</code>
           </span>
-          <button className="ghost" onClick={() => void api.signOut()}>
-            Sign out
-          </button>
+          <span className="row">
+            <InstallAppIconButton />
+            <button className="ghost" onClick={() => void api.signOut()}>
+              Sign out
+            </button>
+          </span>
         </footer>
       )}
     </div>

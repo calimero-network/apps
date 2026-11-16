@@ -2,6 +2,8 @@
 // Options… / invite / leave — and Options… swaps the panel to the settings
 // screen (zoom = the 2D FOV, controls reference) with a Done button back.
 
+import { promptInstall } from "@calimero-apps/install";
+
 const css = `
 .mto-overlay { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center;
   justify-content: center; background: rgba(5,8,12,0.62); color: #fff;
@@ -24,6 +26,14 @@ const css = `
 .mto-btn:hover { filter: brightness(1.15); }
 .mto-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; }
 `;
+
+// The browser offers installing once (beforeinstallprompt, Chrome and Edge);
+// the package keeps the event, this tracks whether the menu shows the button.
+let canInstall = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", () => (canInstall = true));
+  window.addEventListener("appinstalled", () => (canInstall = false));
+}
 
 let styleInjected = false;
 function injectStyle(): void {
@@ -100,6 +110,7 @@ export class PauseMenu {
         <button class="mto-btn primary" data-testid="resume-btn">Back to game</button>
         <button class="mto-btn ghost" data-testid="options-btn">Options…</button>
         ${this.callbacks.onInvite ? `<button class="mto-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
+        ${canInstall ? `<button class="mto-btn ghost" data-testid="install-app">Install app</button>` : ""}
         <button class="mto-btn danger" data-testid="leave-btn">Save &amp; leave world</button>
       </div>`;
     this.root.querySelector("[data-testid=resume-btn]")!.addEventListener("click", () => this.hide());
@@ -111,6 +122,11 @@ export class PauseMenu {
       this.callbacks.onLeave(),
     );
     this.root.querySelector("[data-testid=invite-btn]")?.addEventListener("click", () => this.callbacks.onInvite?.());
+    this.root.querySelector("[data-testid=install-app]")?.addEventListener("click", () => {
+      canInstall = false;
+      this.render();
+      void promptInstall();
+    });
   }
 
   private renderOptions(): void {

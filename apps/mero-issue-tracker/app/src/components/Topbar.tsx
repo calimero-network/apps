@@ -6,6 +6,7 @@ import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { shortIssueId } from '../utils/display';
 import { IconExternal, IconMenu, IconPlus, IconRepo, IconSearch } from './icons';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import ThemeToggle from './ThemeToggle';
 
 /** Floating top bar: contextual view title, the active repo and its GitHub
@@ -102,6 +103,7 @@ export default function Topbar({
       </Search>
       <End>
         <NodeShield compactBelow={1100} />
+        <InstallAppIconButton />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue} title="New issue (C)">
           <IconPlus size={13} /> New issue

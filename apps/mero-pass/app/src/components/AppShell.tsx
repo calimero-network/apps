@@ -8,6 +8,7 @@ import {
 import { createPortal } from 'react-dom';
 import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import { useCalimero } from '../calimero';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
 
@@ -132,6 +133,7 @@ export default function AppShell({
             )}
             <div className={frame.topbarEnd}>
               <NodeShield compactBelow={720} />
+              <InstallAppIconButton className={frame.iconBtn} />
               <ThemeToggle className={frame.iconBtn} />
             </div>
           </header>

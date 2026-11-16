@@ -2,6 +2,7 @@ import { FC } from "react";
 
 import { IDirections, IModes } from "../../../types/date";
 import Select from "../select/Select";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import ThemeToggle from "../theme-toggle/ThemeToggle";
 import LogoutButton from "../logout-button/LogoutButton";
 import CalendarLogo from "../logo/CalendarLogo";
@@ -99,6 +100,7 @@ const Header: FC<IHeaderProps> = ({
             Booking links
           </button>
         )}
+        <InstallAppIconButton className="mc-theme-toggle" />
         <ThemeToggle />
         {/* ⚠️ Was a copy icon next to a truncated account id ("b627…f78a"),
             and clicking the ID logged you out — announced only by a `title`

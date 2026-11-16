@@ -23,9 +23,11 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import { useMero } from '@/calimero/react';
 import { LogoWithText } from '@/components/icons/Logo';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { SidebarDrawer, WorkspaceSidebar } from './WorkspaceSidebar';
@@ -323,6 +325,9 @@ export function WorkspaceLayout() {
               Offline
             </span>
           )}
+          <InstallAppIconButton
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-9 w-9')}
+          />
           <span className={namespaceId ? 'max-sm:hidden' : undefined}>
             <ThemeToggle />
           </span>

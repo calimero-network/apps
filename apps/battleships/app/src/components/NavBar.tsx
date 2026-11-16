@@ -1,5 +1,6 @@
 import { nodeBasename } from '@calimero-apps/node-served';
 import { NodeShield } from '@calimero-apps/passkey';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
@@ -70,6 +71,7 @@ export default function NavBar({
             from the library's dark theme. The button is its own control; it
             needs no wrapper. */}
         <NodeShield />
+        <InstallAppIconButton />
         <button type="button" className="nav-logout" onClick={onLogout}>
           Logout
         </button>

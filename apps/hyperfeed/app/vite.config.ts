@@ -2,13 +2,14 @@
 // `test` key, so a `test` block under the vite import fails `tsc -b`.
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the cluster's /{version}/,
   // where it serves the bundle's frontend.
   base: "./",
   resolve: { dedupe: ["react", "react-dom"] },
-  plugins: [react()],
+  plugins: [installableApp({ cacheId: "hyperfeed", importScripts: ["push-sw.js"] }), react()],
   server: {
     // `pnpm dev:local hyperfeed` runs the dev server on exactly this port: a
     // merod local cluster trusts passkey ceremonies from http://localhost:5173.

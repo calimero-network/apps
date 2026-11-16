@@ -10,6 +10,7 @@ import {
   type KeyValueStorage,
 } from "@calimero-apps/connect";
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { decideSelfName, lastUsedName, orgMemberName, setOrgName } from "@calimero-apps/names";
 import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
@@ -317,6 +318,7 @@ function Shell({ children, left, right }: { children: ReactNode; left?: ReactNod
         </div>
         <div className="topbar-right">
           <NodeShield compactBelow={720} />
+          {right && <InstallAppIconButton />}
           {right}
         </div>
       </header>

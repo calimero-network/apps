@@ -4,12 +4,13 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/,
   // where the cluster serves the bundle's frontend.
   base: "./",
-  plugins: [servedAssetsFallback(), react()],
+  plugins: [installableApp({ cacheId: "mero-kombat" }), servedAssetsFallback(), react()],
   test: {
     environment: "jsdom",
     // First, so it runs before anything imports Testing Library: CI's longer

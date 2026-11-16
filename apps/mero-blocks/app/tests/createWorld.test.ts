@@ -21,18 +21,19 @@ vi.mock("@calimero-apps/connect", async (importOriginal) => ({
 }));
 
 const props = () => seen.props as Props;
-const flush = () => new Promise((r) => setTimeout(r, 0));
+// Waits for the dialog to re-render with the typed value: one tick is not enough on a loaded CI runner.
 const typeSeed = async (value: string) => {
   props().fields.props.children[1]!.props.onChange({ target: { value } });
-  await flush();
+  await vi.waitFor(() => expect(renderToStaticMarkup(props().fields)).toContain(`value="${value}"`));
 };
 
 describe("the seed field", () => {
   let onCreated: ReturnType<typeof vi.fn<(c: unknown, seed: number) => void>>;
   beforeEach(async () => {
     onCreated = vi.fn<(c: unknown, seed: number) => void>();
+    seen.props = null;
     mountCreateWorld({} as never, {} as never, { package: "p" }, 1337, onCreated);
-    await flush();
+    await vi.waitFor(() => expect(seen.props).not.toBeNull());
   });
 
   it("starts at the launcher's default seed", () => {

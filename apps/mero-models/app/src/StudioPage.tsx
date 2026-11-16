@@ -13,6 +13,7 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { instanceIn, listScenes, readSelection, selectionKey, writeSelection } from "./scenes";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { AppListing, PasskeySignIn, InvitationSignIn, NodeShield, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
@@ -263,6 +264,7 @@ function TopBar({ onHome, onLogout }: { onHome: () => void; onLogout?: () => voi
         {onLogout && (
           <div className="session">
             <NodeShield />
+            <InstallAppIconButton />
             <button className="ghost small" onClick={onLogout}>
               Log out
             </button>

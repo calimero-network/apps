@@ -28,6 +28,13 @@ body {
   border-radius: var(--glass-radius-lg);
 }
 
+.home-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .home-header h1 {
   margin: 0;
   font-size: 1.5rem;

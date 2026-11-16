@@ -169,6 +169,13 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: "0"
         run: |
           set -euo pipefail
+          # The rig never opens merod's admin dashboard, and the release core
+          # pins it to (calimero-network/admin-dashboard) is gone: a local
+          # placeholder page stands in, so the build doesn't download it.
+          webui="$RUNNER_TEMP/webui"
+          mkdir -p "$webui"
+          echo '<!doctype html><title>merod</title>' > "$webui/index.html"
+          export CALIMERO_WEBUI_SRC="$webui"
           cargo build -p merod --features merod/mock-attestation
           cargo build -p mero-auth -p cargo-mero
           out="$HOME/.cache/conformance-core"

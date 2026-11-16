@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import { installableApp } from "@calimero-apps/install/vite";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
@@ -20,5 +21,5 @@ export default defineConfig({
     // findBy*/waitFor wait (packages/test-setup).
     setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
   },
-  plugins: [servedAssetsFallback(), react()],
+  plugins: [installableApp({ cacheId: "mero-design" }), servedAssetsFallback(), react()],
 });

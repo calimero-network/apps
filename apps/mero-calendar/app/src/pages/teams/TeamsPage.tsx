@@ -20,6 +20,7 @@ import {
   type Team,
 } from "../../api/teams";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import LogoutButton from "../../components/common/logout-button/LogoutButton";
 import { useToast } from "../../contexts/ToastContext";
@@ -244,6 +245,7 @@ export default function TeamsPage() {
           <CalendarLogo size={24} color="var(--accent)" /> Mero Calendar
         </span>
         <div className={styles.headerRight}>
+          <InstallAppIconButton className="mc-theme-toggle" />
           <ThemeToggle />
           <LogoutButton />
         </div>
