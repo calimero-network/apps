@@ -1,8 +1,8 @@
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appTarget,
   createInviteStore,
-  inviteLink,
+  INVITE_PARAMS,
   listAppInfos,
   targetKey,
   type AppSource,
@@ -54,17 +54,6 @@ export async function createArena(
   return { appId, org };
 }
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /**
  * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
  * A version-pinned invite link's route is read relative to it.
@@ -86,20 +75,20 @@ export function invitedArena(invite: PendingInvite | null): string | null {
 }
 
 /**
- * The link that opens this frontend with `token` to redeem and `arena` to open
- * after. It also names `org`: the token does not say which org it is for until
- * it is redeemed, and redeeming spends one of its uses even for someone already
- * in the org, so the link carries it for the app to tell a member "you are
- * already in" first.
+ * The page an invite link opens: this frontend, naming `arena` to open after
+ * joining and `org`: the token does not say which org it is for until it is
+ * redeemed, and redeeming spends one of its uses even for someone already in
+ * the org, so the link carries it for the app to tell a member first. The
+ * shared dialog adds the token.
  *
- * Pinned to the router's basename (the served `/{version}/`): `inviteLink`
- * defaults to the origin's root, which a cluster redirects to the newest
- * release only with core's served-redirect fix (it keeps the query); until
- * every cluster runs it, the link stays pinned. `/` sends an invited visitor on
- * to the play page.
+ * Pinned to the router's basename (the served `/{version}/`) until every
+ * cluster keeps the query on its root redirect (core's served-redirect fix).
  */
-export function arenaInviteLink(token: string, arena: string, org: string): string {
-  return inviteLink(token, { org, root: basename(), extra: { [ARENA_PARAM]: arena } });
+export function arenaInviteBase(arena: string, org: string): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  url.searchParams.set(ARENA_PARAM, arena);
+  return url.toString();
 }
 
 /** The key this app kept its pending invite under before the shared store: `{ token, arena, org }`. */

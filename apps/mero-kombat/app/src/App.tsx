@@ -12,10 +12,12 @@ import {
   appSource,
   askAnOwnerCopy,
   canCreateIn,
+  memberOf,
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, PasskeySignIn, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, InvitationSignIn, NodeShield, PasskeySignIn, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
@@ -157,6 +159,30 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the page away with it.
   const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
+  // The token checked against the account's orgs already.
+  const [checked, setChecked] = useState<string | null>(null);
+
+  // Not asked of a member of the org the link names: redeeming spends the
+  // link's single use, so it is left unused for the person it was meant for.
+  const inviteToken = invite?.token ?? null;
+  const inviteOrg = invite?.org ?? null;
+  const inviteArena = invitedArena(invite);
+  useEffect(() => {
+    if (!client || !inviteToken) return;
+    let live = true;
+    void (inviteOrg ? memberOf(client, inviteOrg) : Promise.resolve(null)).then((member) => {
+      if (!live) return;
+      if (member && inviteOrg) {
+        invites.drop();
+        closeInvite();
+        setLanding({ org: inviteOrg, arena: inviteArena });
+      }
+      setChecked(inviteToken);
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, inviteToken, inviteOrg, inviteArena, invites, closeInvite, setLanding]);
 
   // Where an invite landed: the arena its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
@@ -217,30 +243,25 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
-  if (invite) {
-    return (
-      <JoinInvitation
-        {...ONBOARDING}
-        key={invite.token}
-        client={session.client}
-        token={invite.token}
-        org={invite.org}
-        drop={invites.drop}
-        after={after}
-        onJoined={({ org }) => {
-          closeInvite();
-          setLanding({ org, arena: invitedArena(invite) });
-        }}
-        onClose={({ member }) => {
-          closeInvite();
-          if (member) setLanding({ org: member, arena: invitedArena(invite) });
-        }}
-      />
-    );
-  }
-
   return (
     <>
+      <AcceptInviteDialog
+        open={invite !== null && checked === invite.token}
+        client={session.client}
+        passkey={deps.passkey()}
+        token={invite?.token ?? ""}
+        appName="Mero Kombat"
+        onClose={() => {
+          invites.drop();
+          closeInvite();
+        }}
+        onJoined={({ org }) => {
+          invites.drop();
+          closeInvite();
+          setLanding({ org, arena: inviteArena });
+          after();
+        }}
+      />
       {notice && (
         <div className="card alert" role="status">
           <p className="empty">{notice}</p>

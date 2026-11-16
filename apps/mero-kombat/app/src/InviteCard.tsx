@@ -1,20 +1,19 @@
 import { useState } from "react";
-import type { PasskeyProvider } from "@calimero-network/mero-js";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { InviteDialog } from "@calimero-network/mero-react";
 
-import { arenaInviteLink, inviteToken } from "./arenas";
+import { arenaInviteBase } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
-import { messageOf } from "./kombat";
-import { type ClientRoutes } from "@calimero-apps/connect";
+
+const LABELS = { title: "Invite to this arena", subtitle: "Choose what your opponent can do." };
 
 /**
- * Mint a shareable invitation to this arena.
+ * Invite someone to this arena.
  *
- * An arena lives in an organization (v1: a namespace), and the invitation
- * makes whoever opens the link a member of it, so they reach this arena and
- * every other one in the same organization. Making it is approved with the
- * inviter's passkey (the node answers 412 CONFIRM_REQUIRED and mero-js asks for
- * the passkey); redeeming it is not. The link also names this arena, which
- * opens once the invitation is redeemed.
+ * An arena lives in an organization, and the invitation makes whoever opens the
+ * link a member of it, so they reach this arena and every other one in the same
+ * organization. The shared dialog asks the node to approve it; the link also
+ * names this arena, which opens once the invitation is accepted.
  */
 export function InviteCard({
   client,
@@ -22,42 +21,12 @@ export function InviteCard({
   passkey,
   after,
 }: {
-  client: ClientRoutes<{ orgs: "inviteCreate" }>;
+  client: CalimeroClient;
   arena: OpenArena;
   passkey: () => PasskeyProvider;
   after: () => void;
 }) {
-  const [link, setLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  async function mint(org: string) {
-    setBusy(true);
-    setFailed(null);
-    setCopied(false);
-    try {
-      setLink(arenaInviteLink(await inviteToken(client, org, passkey()), arena.appId, org));
-    } catch (e) {
-      setFailed(messageOf(e));
-    } finally {
-      setBusy(false);
-      after();
-    }
-  }
-
-  async function copy() {
-    if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      // Clipboard access can be denied; the link is on screen and selectable,
-      // so this is a convenience failing, not the feature failing.
-      setCopied(false);
-    }
-  }
-
+  const [open, setOpen] = useState(false);
   const org = arena.org;
 
   return (
@@ -76,38 +45,22 @@ export function InviteCard({
             One link, for one person: it is single use, so create another for each opponent. Whoever
             opens it joins this arena&apos;s organization, and can take the open corner or watch.
           </p>
-
-          {link && (
-            <div className="link-row">
-              {/*
-                ONE LINE, truncated, with Copy as the real affordance: nobody
-                transcribes an invite link by eye. CSS truncation is visual only,
-                so the line still selects and copies in full.
-              */}
-              <code className="invite-link mono" title={link} aria-label="invitation link">
-                {link}
-              </code>
-              <button className="small" onClick={copy}>
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          )}
-
           <div className="row">
-            <button className={link ? "ghost small" : ""} onClick={() => void mint(org)} disabled={busy}>
-              {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-            </button>
+            <button onClick={() => setOpen(true)}>Invite</button>
           </div>
-
-          {link && (
-            <p className="hint">
-              Send it to whoever you are inviting; they open it, sign in with a passkey, and land in
-              this arena.
-            </p>
-          )}
+          <InviteDialog
+            open={open}
+            onClose={() => setOpen(false)}
+            org={org}
+            appName="Mero Kombat"
+            labels={LABELS}
+            linkBase={arenaInviteBase(arena.appId, org)}
+            onInvited={after}
+            client={client}
+            passkey={passkey()}
+          />
         </>
       )}
-      {failed && <pre className="err">{failed}</pre>}
     </div>
   );
 }
