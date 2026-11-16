@@ -43,6 +43,8 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
+  removeFromAppTeam,
+  removeFromPrivateTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -57,6 +59,7 @@ import {
 import { MeroPassClient } from '../generated/client';
 import { vaultApiFor } from './vaultApi';
 import { type TeamRole, normaliseRole } from './roles';
+import { askRoleConsent, orgConsentOptions } from './orgConsent';
 
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
@@ -529,41 +532,71 @@ export async function myCapabilities(
   return capabilitiesOf(await readOrg(conn.client, namespaceId), accountId);
 }
 
-/** Make `account` an org admin or member (a passkey step-up). */
+/**
+ * Make `account` an org admin or member (a passkey step-up). On a session
+ * bound to Mero Pass's frontend the node refuses an org role, so it is the
+ * consent page's: answers `consent` once the page is opening.
+ */
 export async function setMemberRole(
   conn: Conn,
-  opts: { namespaceId: string; accountId: string; role: TeamRole },
-): Promise<void> {
+  opts: { namespaceId: string; accountId: string; role: TeamRole; name?: string },
+): Promise<'done' | 'consent'> {
   try {
+    const intent = {
+      kind: 'setMemberRole' as const,
+      org: opts.namespaceId,
+      account: opts.accountId,
+      role: opts.role,
+      name: opts.name ?? '',
+    };
+    if (await askRoleConsent(conn.client, intent)) return 'consent';
     await conn.client.orgs.setMember(
       { org: opts.namespaceId, account: opts.accountId, role: opts.role },
       { confirm: passkeyConfirm(conn.passkey()) },
     );
+    return 'done';
   } finally {
     conn.after?.();
   }
 }
 
 /**
- * Remove `account` from the team (`removeFromApp`, a passkey step-up). In an
- * org that keeps its apps apart that is Mero Pass only: off its app team and
- * off the invite-only vaults' teams the remover may change, never out of the
- * org. Elsewhere it is out of the org, as before.
+ * Remove `account` from Mero Pass in the team (a passkey step-up), leaving
+ * them in the organization wherever Mero Pass has its app team there: off
+ * that team (every open vault) and off the invite-only vaults' teams the
+ * remover may change, which a session bound to Mero Pass's frontend may do
+ * itself. Only an org without the app team (legacy) takes them out of the
+ * organization, on the consent page when the session is bound
+ * (`removeFromApp`, which then never settles).
  */
 export async function removeTeamMember(
   conn: Conn,
-  opts: { namespaceId: string; accountId: string },
+  opts: { namespaceId: string; accountId: string; name?: string },
 ): Promise<'app' | 'org'> {
   try {
+    const pkg = sourcePackage(conn.source);
+    const view = (await conn.client.orgs.get({ org: opts.namespaceId })) as AppOrgView;
+    const appTeam = appTeamIdIn(view, pkg);
     const vaultTeams = new Set<string>();
-    if (isAppOnly((await conn.client.orgs.get({ org: opts.namespaceId })) as AppOrgView, sourcePackage(conn.source))) {
+    if (appTeam) {
       for (const app of (await listInstances(conn)).filter((a) => a.org === opts.namespaceId)) {
         const team = await teamOf(conn.client, app.appId);
-        if (team) vaultTeams.add(team);
+        if (team && team !== appTeam) vaultTeams.add(team);
       }
+    }
+    if (appTeam && !isAppOnly(view, pkg)) {
+      await removeFromAppTeam(conn.client, opts.namespaceId, conn.source, opts.accountId, conn.passkey);
+      for (const team of vaultTeams) {
+        if (!(opts.accountId in (view.teams?.[team]?.members ?? {}))) continue;
+        await removeFromPrivateTeam(conn.client, opts.namespaceId, team, opts.accountId, conn.passkey).catch(
+          (e: unknown) => console.warn(`removeTeamMember: ${team} still lists ${opts.accountId}`, e),
+        );
+      }
+      return 'app';
     }
     return await removeFromApp(conn.client, opts.namespaceId, conn.source, opts.accountId, conn.passkey, {
       privateTeams: () => [...vaultTeams],
+      consent: orgConsentOptions(opts.name ?? ''),
     });
   } finally {
     conn.after?.();

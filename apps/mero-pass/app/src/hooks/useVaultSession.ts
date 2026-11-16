@@ -14,7 +14,14 @@ import {
 } from '@calimero-network/mero-pass';
 import { vaultAudience } from '../lib/vaults';
 import { useDeviceUnlocked } from './useDeviceLock';
+import { visibleInterval } from '../lib/visibleInterval';
 import { describeError, isTransient } from '../lib/errors';
+
+/** How often a device waiting for the vault key looks again. */
+export const WAITING_POLL_MS = 5_000;
+
+/** How long asks for a read wait for others to join them. */
+export const RELOAD_COALESCE_MS = 250;
 
 export interface VaultSessionView {
   session: VaultSession | null;
@@ -69,10 +76,18 @@ export function useVaultSession(
   const [awaitingApproval, setAwaitingApproval] = useState(false);
   const [holders, setHolders] = useState<VaultSessionView['holders']>(null);
   const busy = useRef(false);
+  // Asked for while a read was running: one more read once it is done, so a
+  // change that arrives mid-read is not lost and a burst becomes one read.
+  const again = useRef(false);
 
-  const reload = useCallback(async () => {
-    if (!session || busy.current) return;
+  const read = useCallback(async () => {
+    if (!session) return;
+    if (busy.current) {
+      again.current = true;
+      return;
+    }
     busy.current = true;
+    again.current = false;
     try {
       const s = await session.refreshKeys();
       const allowed =
@@ -100,8 +115,37 @@ export function useVaultSession(
       setError(describeError(e));
     } finally {
       busy.current = false;
+      if (again.current) void readRef.current();
     }
   }, [session, calimero, source, team]);
+  const readRef = useRef(read);
+  readRef.current = read;
+
+  // A write here and the event it emits come within moments of each other,
+  // and a key rotation emits one event per secret it re-seals: each asks for a
+  // read, and the asks that land together are one read.
+  const pending = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    done: Promise<void>;
+  } | null>(null);
+  const reload = useCallback((): Promise<void> => {
+    if (pending.current) return pending.current.done;
+    let settle: () => void = () => {};
+    const done = new Promise<void>((resolve) => (settle = resolve));
+    const timer = setTimeout(() => {
+      pending.current = null;
+      void readRef.current().finally(settle);
+    }, RELOAD_COALESCE_MS);
+    pending.current = { timer, done };
+    return done;
+  }, []);
+  useEffect(
+    () => () => {
+      if (pending.current) clearTimeout(pending.current.timer);
+      pending.current = null;
+    },
+    [],
+  );
 
   // Open (or drop) the session as the lock and the client change.
   useEffect(() => {
@@ -158,11 +202,12 @@ export function useVaultSession(
   }, [unlocked, client, contextId, attempts]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void read();
+  }, [read]);
 
   // Live: any contract event in this vault means something changed. Events
-  // carry ids only, so each one is a cue to re-read through the session.
+  // carry ids only, so each one is a cue to re-read through the session; the
+  // cues that arrive together are one read (`reload`).
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
   useEffect(() => {
@@ -185,12 +230,12 @@ export function useVaultSession(
     return () => abort.abort();
   }, [calimero, contextId, session]);
 
-  // While waiting for the key, look again every few seconds.
+  // While waiting for the key, look again every few seconds: only while the
+  // tab is visible, and at once when it is shown again.
   useEffect(() => {
     if (state !== 'waiting' && state !== 'uninitialised') return;
-    const t = setInterval(() => void reload(), 5_000);
-    return () => clearInterval(t);
-  }, [state, reload]);
+    return visibleInterval(() => void read(), WAITING_POLL_MS);
+  }, [state, read]);
 
   return {
     session,

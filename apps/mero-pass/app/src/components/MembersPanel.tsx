@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCalimero } from '../calimero';
 import { publishMemberName, shortAccount, useMemberNames } from '../lib/names';
@@ -18,10 +18,24 @@ import {
 import type { TeamMember } from '../lib/vaults';
 import styles from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
+import { returnFromOrgConsent } from '../lib/orgConsent';
+
+/** What is said once someone is out of Mero Pass in a team (`app`) or out of its organization (`org`). */
+function removedNotice(
+  name: string,
+  left: 'app' | 'org',
+  teamName: string,
+): string {
+  const who = name || 'They';
+  return `${who} ${name ? 'is' : 'are'} out of ${left === 'app' ? `Mero Pass in ${teamName} (they stay in the organization and its other apps)` : teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`;
+}
 
 /**
  * Who is in a team (an organization), their role, and the controls to change
- * it. Role changes and removals are passkey step-ups on the node.
+ * it. Role changes and removals are passkey step-ups on the node; an org role
+ * (and a removal from an org without Mero Pass's team) is approved on the
+ * node's consent page when the session is bound to Mero Pass's frontend, and
+ * said here when the page sends the person back.
  */
 export default function MembersPanel({
   namespaceId,
@@ -79,6 +93,33 @@ export default function MembersPanel({
     void load();
   }, [load]);
 
+  // Back from the node's consent page: say what was approved, once.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!client || resumed.current) return;
+    resumed.current = true;
+    void returnFromOrgConsent(client)
+      .then((back) => {
+        if (!back || (back.org && back.org !== namespaceId)) return;
+        if (!back.approved) {
+          setNotice('Not approved: nothing was changed.');
+          return;
+        }
+        setNotice(
+          back.kind === 'setMemberRole'
+            ? `${back.name || 'They'} ${back.name ? 'is' : 'are'} now ${roleLabel(back.role)}.`
+            : removedNotice(back.name, 'org', teamName),
+        );
+        void load();
+        if (back.kind === 'setMemberRole') onRolesChanged();
+      })
+      .catch(() =>
+        setError(
+          'This approval did not come from a request made here. Nothing was changed.',
+        ),
+      );
+  }, [client, namespaceId, teamName, load, onRolesChanged]);
+
   const change = useCallback(
     async (member: TeamMember, role: TeamRole) => {
       if (!conn) return;
@@ -87,11 +128,13 @@ export default function MembersPanel({
       setConfirming(null);
       setBusy('Confirm with your passkey…');
       try {
-        await setMemberRole(conn, {
+        const how = await setMemberRole(conn, {
           namespaceId,
           accountId: member.accountId,
           role,
+          name: nameFor(member),
         });
+        if (how === 'consent') return;
         setNotice(`${nameFor(member)} is now ${roleLabel(role)}.`);
         await load();
         onRolesChanged();
@@ -116,10 +159,9 @@ export default function MembersPanel({
         const left = await removeTeamMember(conn, {
           namespaceId,
           accountId: member.accountId,
+          name,
         });
-        setNotice(
-          `${name} is out of ${left === 'app' ? `Mero Pass in ${teamName} (they stay in the organization and its other apps)` : teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
-        );
+        setNotice(removedNotice(name, left, teamName));
         await load();
       } catch (e) {
         setError(describeError(e));
