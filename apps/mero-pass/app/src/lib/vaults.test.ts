@@ -4,8 +4,8 @@ import type { CalimeroClient } from '@calimero-network/mero-js';
 import {
   MEMBER_DEFAULTS,
   PERSONAL,
-  createPersonalVault,
-  createTeam,
+  finishPersonalVault,
+  finishTeam,
   createVault,
   findVaultByContext,
   listTeamMembers,
@@ -15,6 +15,7 @@ import {
   redeemInvite,
   vaultAudience,
 } from './vaults';
+import type { Conn } from './vaults';
 import { withRoutes } from '@calimero-apps/connect/testing';
 
 /** A fake `CalimeroClient` over one org with an open and an invite-only vault. */
@@ -104,6 +105,17 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 }
 
 const passkey = () => ({}) as never;
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createTeam(conn: Conn, name: string) {
+  const { orgId } = await conn.client.orgs.create({ name });
+  return finishTeam(conn, orgId, 'me', 'Me');
+}
+
+async function createPersonalVault(conn: Conn) {
+  const { orgId } = await conn.client.orgs.create({ name: 'Private' });
+  return finishPersonalVault(conn, orgId, 'Private');
+}
 
 describe('teams and vaults on orgs and app instances', () => {
   it('lists each org as a team, with its vaults, members and the personal marker', async () => {

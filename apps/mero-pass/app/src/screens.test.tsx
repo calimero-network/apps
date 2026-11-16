@@ -7,6 +7,35 @@ import { CalimeroError } from '@calimero-network/mero-js';
 import { type Calimero, CalimeroContext } from './calimero';
 import InvitationPrompt from './components/InvitationPrompt';
 import SignInDialog from './components/SignInDialog';
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const { createElement } = await import('react');
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'create-dialog' },
+            createElement('h2', { 'data-testid': 'create-title' }, p.labels?.title),
+            createElement('p', { 'data-testid': 'create-self' }, p.defaultSelfName),
+            createElement('pre', { 'data-testid': 'create-release' }, JSON.stringify(p.release)),
+            createElement(
+              'button',
+              { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org9', name: 'Ops', selfName: 'Ana' }) },
+              'done',
+            ),
+          )
+        : null,
+  };
+});
+
 import TeamsPage from './pages/teams/TeamsPage';
 import { MEMBER_DEFAULTS, PERSONAL } from './lib/vaults';
 import { invites } from './lib/inviteLink';
@@ -69,6 +98,9 @@ function fakeClient() {
     createOrg: vi.fn(async () => 'org9'),
     setCapabilities: vi.fn(async () => {}),
     setMemberMetadata: vi.fn(async () => {}),
+    setOrgMetadata: vi.fn(async () => {}),
+    createApp: vi.fn(async () => 'app9'),
+    call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
     redeemInvite: vi.fn(async () => ({ org: 'org1' })),
   });
 }
@@ -141,23 +173,36 @@ describe('TeamsPage', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/vault/mine1');
   });
 
-  it('creates a team as an org and opens it', async () => {
+  it('sets up the team the dialog made and opens it', async () => {
     const client = fakeClient();
     renderAt('/teams', calimero(client), <TeamsPage />);
     await screen.findByTestId('team-grid');
-    fireEvent.change(screen.getByTestId('team-name'), {
-      target: { value: 'Ops' },
-    });
     fireEvent.click(screen.getByTestId('team-create'));
+    expect(await screen.findByTestId('create-title')).toHaveTextContent('New team');
+    expect(JSON.parse(screen.getByTestId('create-release').textContent ?? 'null')).toEqual({ package: 'com.calimero.mero-pass' });
+    fireEvent.click(screen.getByTestId('create-done'));
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent('/teams/org9'),
     );
-    expect(client.createOrg).toHaveBeenCalledWith('Ops');
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.setMemberMetadata).toHaveBeenCalledWith('org9', 'me', { name: 'Ana' });
     expect(client.setCapabilities).toHaveBeenCalledWith(
       'org9',
       MEMBER_DEFAULTS,
       expect.objectContaining({ confirm: expect.any(Function) }),
     );
+  });
+
+  it('creates the private vault through the dialog too, in an org marked personal', async () => {
+    const client = fakeClient();
+    client.me.mockImplementation(async () => ({ accountId: 'me', name: 'Me', orgs: [{ orgId: 'org1', name: 'Acme', role: 'owner' }] }));
+    renderAt('/teams', calimero(client), <TeamsPage />);
+    fireEvent.click(await screen.findByTestId('personal-create'));
+    expect(await screen.findByTestId('create-title')).toHaveTextContent('Private vault');
+    fireEvent.click(screen.getByTestId('create-done'));
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/vault/app9'));
+    expect(client.setOrgMetadata).toHaveBeenCalledWith('org9', PERSONAL);
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 });
 

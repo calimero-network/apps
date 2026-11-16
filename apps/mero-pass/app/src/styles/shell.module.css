@@ -907,6 +907,9 @@ select.input {
     flex-wrap: wrap;
     padding: 1.125rem;
   }
+  .heroText {
+    flex: 1 1 10rem;
+  }
   .heroGo {
     display: none;
   }

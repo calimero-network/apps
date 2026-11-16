@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
 import './index.css';
+import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { CalimeroProvider } from './calimero';
 import { basename } from './lib/basename';
@@ -23,9 +24,11 @@ const root = ReactDOM.createRoot(
 root.render(
   <React.StrictMode>
     <CalimeroProvider>
-      <BrowserRouter basename={basename()}>
-        <App />
-      </BrowserRouter>
+      <ConsentPopupReturn>
+        <BrowserRouter basename={basename()}>
+          <App />
+        </BrowserRouter>
+      </ConsentPopupReturn>
     </CalimeroProvider>
   </React.StrictMode>,
 );

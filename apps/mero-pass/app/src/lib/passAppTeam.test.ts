@@ -11,8 +11,8 @@ import type { PasskeyProvider } from '@calimero-network/mero-js';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
 import {
-  createPersonalVault,
-  createTeam,
+  finishPersonalVault,
+  finishTeam,
   createVault,
   findVaultByContext,
   listTeamMembers,
@@ -22,15 +22,27 @@ import {
   removeTeamMember,
   vaultAudience,
 } from './vaults';
+import type { Conn } from './vaults';
 
 const PKG = 'com.calimero.mero-pass';
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
 
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createTeam(cluster: ReturnType<typeof orgCluster>, conn: Conn, name: string) {
+  const { orgId } = await conn.client.orgs.create({ name });
+  return finishTeam(conn, orgId, cluster.state.me, 'Me');
+}
+
+async function createPersonalVault(conn: Conn) {
+  const { orgId } = await conn.client.orgs.create({ name: 'Private' });
+  return finishPersonalVault(conn, orgId, 'Private');
+}
+
 async function team(people: Record<string, string> = {}) {
   const cluster = orgCluster();
   const conn = { client: cluster.client, source: SOURCE, passkey };
-  const { namespaceId: org, warning } = await createTeam(conn, 'Home');
+  const { namespaceId: org, warning } = await createTeam(cluster, conn, 'Home');
   expect(warning).toBeNull();
   Object.assign(cluster.org(org).members, people);
   return { cluster, conn, org };
@@ -59,7 +71,7 @@ describe("a new team gets Mero Pass's own app team", () => {
     const cluster = orgCluster();
     cluster.state.declined.add('scopeApps');
     const conn = { client: cluster.client, source: SOURCE, passkey };
-    const { namespaceId: org } = await createTeam(conn, 'Home');
+    const { namespaceId: org } = await createTeam(cluster, conn, 'Home');
     expect(cluster.modeOf(org)).toBe('legacy');
     await createVault(conn, { namespaceId: org, name: 'Logins', restricted: false });
     expect(cluster.callsOf('createApp')[0]![2]).toEqual({ org });

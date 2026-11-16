@@ -7,11 +7,12 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
-import { ManageInHomeLink } from '@calimero-apps/passkey';
+import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { useCalimero } from '../calimero';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
 
 import { useSignOut } from '../auth/signOut';
+import { basename } from '../lib/basename';
 import { readLastVisit } from '../lib/lastVisit';
 import { useAutoLockMinutes, useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { NARROW_QUERY, useMediaQuery } from '../hooks/useMediaQuery';
@@ -130,6 +131,7 @@ export default function AppShell({
               narrow && <span className={frame.crumb}>Mero Pass</span>
             )}
             <div className={frame.topbarEnd}>
+              <NodeShield compactBelow={720} />
               <ThemeToggle className={frame.iconBtn} />
             </div>
           </header>
@@ -205,7 +207,7 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
         data-testid="brand"
       >
         <img
-          src={`${import.meta.env.BASE_URL}favicon.svg`}
+          src={`${basename()}favicon.svg`}
           alt=""
           width={32}
           height={32}

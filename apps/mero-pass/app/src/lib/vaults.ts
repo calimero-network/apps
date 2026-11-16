@@ -37,7 +37,7 @@ import {
   appPeople,
   appTarget,
   appTeamIdIn,
-  createAppOrg,
+  finishAppOrg,
   isAppOnly,
   listAppInfos,
   orgInstanceOptions,
@@ -224,24 +224,25 @@ export const MEMBER_DEFAULTS =
   ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
 
 /**
- * A new team: an org you own, whose members may add vaults and invite. Setting
- * that default is a passkey step-up; refused, the team stays, and `warning`
- * says what it means.
+ * What follows a team the node approved: its mark, the member defaults (a
+ * passkey step-up, skipped on a session bound to the app; refused, the team
+ * stays and `warning` says what it means), Mero Pass's own team, open, and
+ * your name in it.
  */
-export async function createTeam(
+export async function finishTeam(
   conn: Conn,
-  name: string,
+  namespaceId: string,
+  accountId: string,
+  selfName: string,
   onStatus: StatusFn = noop,
 ): Promise<{ namespaceId: string; warning: string | null }> {
-  onStatus('Creating the team…');
+  onStatus('Setting up the team…');
   try {
-    // The org, marked so it is listed as a team before it holds a vault, its
-    // member defaults, and Mero Pass's own team, open (declined, or an older
-    // node: a legacy org).
-    const made = await createAppOrg(conn.client, name, conn.source, conn.passkey, {
+    const made = await finishAppOrg(conn.client, namespaceId, conn.source, conn.passkey, {
       capabilities: MEMBER_DEFAULTS,
     });
-    await publishOwnName(conn.client, made.orgId);
+    // Best effort: without it teammates see an id.
+    await publishMyName(conn, namespaceId, accountId, selfName).catch(() => {});
     return {
       namespaceId: made.orgId,
       warning: made.capabilitiesError
@@ -359,21 +360,17 @@ export async function createVault(
 /** The vault created in an org the account connects to Mero Pass ("Connect to an existing organization"). */
 export const CONNECTED_VAULT_NAME = 'Shared';
 
-/** Your private vault: an org only you are in, marked personal, with one vault. */
-export async function createPersonalVault(
+/** Your private vault in an org the node approved: marked personal, with one vault named `name`. */
+export async function finishPersonalVault(
   conn: Conn,
+  namespaceId: string,
+  name: string,
   onStatus: StatusFn = noop,
 ): Promise<{ contextId: string; namespaceId: string }> {
   onStatus('Creating your private vault…');
-  const { orgId: namespaceId } = await createAppOrg(conn.client, 'Private', conn.source, conn.passkey, {
-    mark: false,
-  });
+  await finishAppOrg(conn.client, namespaceId, conn.source, conn.passkey, { mark: false });
   await conn.client.orgs.metadata({ org: namespaceId, metadata: PERSONAL });
-  const { contextId } = await createVault(
-    conn,
-    { namespaceId, name: 'Private', restricted: false },
-    onStatus,
-  );
+  const { contextId } = await createVault(conn, { namespaceId, name, restricted: false }, onStatus);
   return { contextId, namespaceId };
 }
 
