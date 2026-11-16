@@ -208,14 +208,14 @@ export default function MatchPage() {
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org, lobby: named } = landing;
+    const { org, lobby: named, alreadyMember } = landing;
     void (async () => {
       const listed = await listLobbies(client, source).catch(() => []);
       const found = (named ? listed.find((l) => l.appId === named) : undefined)
         ?? (org ? listed.find((l) => l.org === org) : undefined);
       await lobby.refetchLobbies();
       after();
-      show({ title: 'Invitation accepted', variant: 'success' });
+      show({ title: alreadyMember ? "You're already in this lobby" : 'Invitation accepted', variant: 'success' });
       if (found) {
         manualLobbySelect.current = false;
         setView('lobby-select');
@@ -824,10 +824,10 @@ export default function MatchPage() {
         join: 'Join',
       }}
       onError={() => invites.drop()}
-      onJoined={({ org }) => {
+      onJoined={({ org, alreadyMember }) => {
         invites.drop();
         closeInvite();
-        setLanding({ org, lobby: invitedLobby(invite) });
+        setLanding({ org, lobby: invitedLobby(invite), alreadyMember });
       }}
     />
   );

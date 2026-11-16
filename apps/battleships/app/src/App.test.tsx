@@ -53,7 +53,8 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
             createElement('pre', { 'data-testid': 'accept-token' }, p.token),
             createElement('pre', { 'data-testid': 'accept-props' }, JSON.stringify({ org: p.org, labels: p.labels })),
             createElement('button', { 'data-testid': 'accept-fail', onClick: () => p.onError?.(new Error('spent')) }, 'fail'),
-            createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org-9' }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org-9', alreadyMember: false }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-member', onClick: () => p.onJoined({ org: 'org-9', alreadyMember: true }) }, 'member'),
             createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
           )
         : null,
@@ -353,6 +354,25 @@ describe('App', () => {
       fireEvent.click(await screen.findByTestId('accept-join'));
       await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-9', 'registerPlayer', {}));
       expect(invites.token()).toBeNull();
+    });
+
+    it('Join says the invitation was accepted', async () => {
+      signedIn();
+      at('/lobby');
+      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
+      render(<App deps={deps(fakeClient([LOBBY, THEIRS]))} invites={invites} />);
+      fireEvent.click(await screen.findByTestId('accept-join'));
+      expect(await screen.findByText('Invitation accepted')).toBeTruthy();
+    });
+
+    it('Continue as an existing member claims no acceptance', async () => {
+      signedIn();
+      at('/lobby');
+      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
+      render(<App deps={deps(fakeClient([LOBBY, THEIRS]))} invites={invites} />);
+      fireEvent.click(await screen.findByTestId('accept-member'));
+      expect(await screen.findByText("You're already in this lobby")).toBeTruthy();
+      expect(screen.queryByText('Invitation accepted')).toBeNull();
     });
 
     it('hands the dialog the link\'s org and wording, so the dialog skips a member', async () => {
