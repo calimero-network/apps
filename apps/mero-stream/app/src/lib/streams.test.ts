@@ -6,7 +6,7 @@ import {
   MEMBER_DEFAULTS,
   captureInvite,
   createRoom,
-  createStream,
+  finishStream,
   setMembersCreateRooms,
   dropInvite,
   inviteLink,
@@ -116,22 +116,15 @@ describe("members of a new stream may create rooms (core's CREATE_APP)", () => {
 
   it("creating a stream sets the org's member defaults, approved with the owner's passkey", async () => {
     const pk = { create: vi.fn(), get: vi.fn() };
-    const client = withRoutes({
-      createOrg: vi.fn(async () => "o1"),
-      setCapabilities: vi.fn(async () => {}),
-    });
-    expect(await createStream(client as never, "Team", () => pk as never)).toEqual({ orgId: "o1", warning: null });
-    expect(client.createOrg).toHaveBeenCalledWith("Team");
+    const client = withRoutes({ setCapabilities: vi.fn(async () => {}) });
+    expect(await finishStream(client as never, "o1", () => pk as never)).toEqual({ orgId: "o1", warning: null });
     // No `at`: the organization's default, not one member's row.
     expect(client.setCapabilities).toHaveBeenCalledWith("o1", MEMBER_DEFAULTS, expect.objectContaining({ confirm: expect.any(Function) }));
   });
 
   it("keeps the stream when the defaults are refused (a cancelled passkey), and says so", async () => {
-    const client = withRoutes({
-      createOrg: vi.fn(async () => "o1"),
-      setCapabilities: vi.fn(async () => Promise.reject(new Error("cancelled"))),
-    });
-    const created = await createStream(client as never, "Team", () => ({}) as never);
+    const client = withRoutes({ setCapabilities: vi.fn(async () => Promise.reject(new Error("cancelled"))) });
+    const created = await finishStream(client as never, "o1", () => ({}) as never);
     expect(created.orgId).toBe("o1");
     expect(created.warning).toMatch(/Members can create rooms/);
   });

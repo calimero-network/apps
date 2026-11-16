@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import App from "./App";
 import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -18,7 +19,9 @@ createRoot(document.getElementById("root")!).render(
     <SessionProvider>
       <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
         <ToastProvider>
-          <App />
+          <ConsentPopupReturn>
+            <App />
+          </ConsentPopupReturn>
         </ToastProvider>
       </BrowserRouter>
     </SessionProvider>

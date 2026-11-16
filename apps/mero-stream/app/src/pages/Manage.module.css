@@ -205,6 +205,12 @@
   color: var(--text-dim);
 }
 
+.toolbarLabel {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+}
+
 .input {
   flex: 1;
   min-width: 0;

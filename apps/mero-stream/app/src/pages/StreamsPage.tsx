@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import {
   CONNECTED_ROOM_NAME,
   createRoom,
-  createStream,
+  finishStream,
   inviteLink,
   appInviteToken,
   listStreams,
   publishMyName,
   type StreamRow,
 } from "../lib/streams";
+import { PACKAGE } from "../lib/meroStream";
 import { storedName } from "../lib/session";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
@@ -30,6 +32,15 @@ import {
   UsersIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
+
+const CREATE_LABELS = {
+  title: "New stream",
+  subtitle: "Name your stream. Each room inside it is one video call.",
+  nameLabel: "Stream name",
+  namePlaceholder: "e.g. Team",
+  selfLabel: "Your name in this stream",
+  selfPlaceholder: "e.g. Alice",
+};
 
 /**
  * Streams = ORGANIZATIONS (v1: namespaces).
@@ -51,10 +62,12 @@ export default function StreamsPage() {
 
   const [streams, setStreams] = useState<StreamRow[]>([]);
   const [listing, setListing] = useState(true);
-  const [name, setName] = useState("");
-  // Your name in the new stream: asked here, once, and every room in it
-  // joins you with it. Offered from the last stream you named yourself in.
-  const [selfName, setSelfName] = useState(() => lastUsedName() || storedName());
+  const [showCreate, setShowCreate] = useState(false);
+  const { source: release, pending: releasePending } = useResolvedSource(
+    conn?.client ?? null,
+    conn?.accountId ?? null,
+    conn?.source ?? { package: PACKAGE },
+  );
 
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -111,24 +124,25 @@ export default function StreamsPage() {
     void load();
   }, [load, location.key]);
 
-  const create = useCallback(() => {
-    const streamName = name.trim();
-    const yourName = selfName.trim();
-    if (!streamName || !yourName || !conn) return;
-    void run("create", async (onStatus) => {
-      onStatus("Creating the stream, then approve with your passkey so members can create rooms…");
-      const { orgId, warning } = await createStream(conn.client, streamName, conn.passkey, conn.source);
-      // Best effort: the stream exists either way, and its first room asks
-      // for the name once if this did not land.
-      await publishMyName(conn.client, orgId, conn.accountId, yourName).catch(() => {});
-      conn.after();
-      setName("");
-      if (warning) showToast(warning);
-      onStatus("Refreshing your streams…");
-      await load(false);
-      navigate(`/streams/${orgId}`);
-    });
-  }, [name, selfName, conn, run, load, navigate, showToast]);
+  const created = useCallback(
+    ({ orgId, selfName }: { orgId: string; name: string; selfName: string }) => {
+      if (!conn) return;
+      setShowCreate(false);
+      void run("create", async (onStatus) => {
+        onStatus("Setting up the stream, then approve with your passkey so members can create rooms…");
+        const { warning } = await finishStream(conn.client, orgId, conn.passkey, conn.source);
+        // Best effort: the stream exists either way, and its first room asks
+        // for the name once if this did not land.
+        await publishMyName(conn.client, orgId, conn.accountId, selfName).catch(() => {});
+        conn.after();
+        if (warning) showToast(warning);
+        onStatus("Refreshing your streams…");
+        await load(false);
+        navigate(`/streams/${orgId}`);
+      });
+    },
+    [conn, run, load, navigate, showToast],
+  );
 
   // "Connect to an existing organization": a room goes into an org the
   // account has for another app only on this explicit choice.
@@ -204,39 +218,30 @@ export default function StreamsPage() {
           <span className={styles.toolbarIcon} aria-hidden="true">
             <LayersIcon size={18} />
           </span>
-          <input
-            className={styles.input}
-            placeholder="Name a new stream"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-            maxLength={60}
-            disabled={pending === "create"}
-            data-testid="stream-name-input"
-            aria-label="New stream name"
-          />
-          <input
-            className={styles.input}
-            placeholder="Your name in this stream"
-            value={selfName}
-            onChange={(e) => setSelfName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-            maxLength={40}
-            disabled={pending === "create"}
-            data-testid="stream-self-name-input"
-            aria-label="Your name in this stream"
-          />
+          <span className={styles.toolbarLabel}>Name a new stream</span>
           <ActionButton
-            onClick={create}
+            onClick={() => setShowCreate(true)}
             pending={pending === "create"}
             pendingLabel="Creating…"
-            disabled={!name.trim() || !selfName.trim() || !conn}
+            disabled={!conn}
             testId="create-stream"
           >
             <PlusIcon size={16} />
-            Create stream
+            New stream
           </ActionButton>
         </div>
+        {conn && (
+          <CreateWorkspaceDialog
+            client={conn.client}
+            passkey={conn.passkey()}
+            release={releasePending ? null : (reviewRelease(release) ?? { package: PACKAGE })}
+            defaultSelfName={lastUsedName() || storedName()}
+            open={showCreate}
+            onClose={() => setShowCreate(false)}
+            onCreated={created}
+            labels={CREATE_LABELS}
+          />
+        )}
         <ConnectExistingOrg appName="Mero Stream" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {status && (
