@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import type { CalimeroClient } from "@calimero-network/mero-js";
 import {
   type ClientRoutes,
   SPENT_INVITE_COPY,
@@ -341,24 +343,18 @@ export function JoinInvitation({
     }
   }
 
+  if (outcome === "member") {
+    return <AlreadyMember joining={joining} classNames={classNames} titleAs={titleAs} onContinue={() => onClose({ member: org })} />;
+  }
   if (outcome) {
     return (
       <Frame classNames={classNames} testId="invitation-outcome">
         <Title as={titleAs} className={classNames.title}>
-          {outcome === "member" ? `You're already in ${joining}` : "This invite cannot be used"}
+          This invite cannot be used
         </Title>
-        <p className={classNames.text}>
-          {outcome === "member"
-            ? `The invitation was for ${joining}, and you are already a member, so there is nothing to accept. It is still unused for the person it was meant for.`
-            : SPENT_INVITE_COPY}
-        </p>
+        <p className={classNames.text}>{SPENT_INVITE_COPY}</p>
         <div className={classNames.actions}>
-          <button
-            type="button"
-            className={classNames.primary}
-            onClick={() => onClose({ member: outcome === "member" ? org : null })}
-            data-testid="invitation-continue"
-          >
+          <button type="button" className={classNames.primary} onClick={() => onClose({ member: null })} data-testid="invitation-continue">
             Continue
           </button>
         </div>
@@ -404,5 +400,110 @@ export function JoinInvitation({
         </button>
       </div>
     </Frame>
+  );
+}
+
+function AlreadyMember({
+  joining,
+  classNames,
+  titleAs,
+  onContinue,
+}: {
+  joining: string;
+  classNames: OnboardingClassNames;
+  titleAs: Heading;
+  onContinue: () => void;
+}) {
+  return (
+    <Frame classNames={classNames} testId="invitation-outcome">
+      <Title as={titleAs} className={classNames.title}>
+        {`You're already in ${joining}`}
+      </Title>
+      <p className={classNames.text}>
+        {`The invitation was for ${joining}, and you are already a member, so there is nothing to accept. It is still unused for the person it was meant for.`}
+      </p>
+      <div className={classNames.actions}>
+        <button type="button" className={classNames.primary} onClick={onContinue} data-testid="invitation-continue">
+          Continue
+        </button>
+      </div>
+    </Frame>
+  );
+}
+
+export interface AcceptInvitationProps {
+  client: CalimeroClient;
+  token: string;
+  /** The org the link named, when it named one: a member of it is told so instead of spending a use. */
+  org: string | null;
+  appName: string;
+  /** What the invite joins, as a noun phrase: "the team". */
+  joining: string;
+  /** Forget the pending invite. */
+  drop: () => void;
+  /** After a join: the app keeps its stored session in step. */
+  after?: () => void;
+  onJoined: (joined: JoinedInvitation) => void;
+  /** Dismissed, or the account was already in `member`. */
+  onClose: (closed: InvitationClosed) => void;
+  classNames?: OnboardingClassNames;
+  titleAs?: Heading;
+}
+
+/**
+ * Signed in, with an invitation: the shared `AcceptInviteDialog` (the node's
+ * consent page for a session bound to the app, else a direct redemption), once
+ * the link's org is known not to be one the account is already in.
+ */
+export function AcceptInvitation({
+  client,
+  token,
+  org,
+  appName,
+  joining,
+  drop,
+  after,
+  onJoined,
+  onClose,
+  classNames = {},
+  titleAs = "h2",
+}: AcceptInvitationProps) {
+  const [member, setMember] = useState<"checking" | "yes" | "no">(org === null ? "no" : "checking");
+
+  useEffect(() => {
+    if (!org) return;
+    let live = true;
+    // Unknown membership (`null`): ask, as for a link that names no org.
+    void memberOf(client, org).then((is) => {
+      if (!live) return;
+      if (is) drop();
+      setMember(is ? "yes" : "no");
+    });
+    return () => {
+      live = false;
+    };
+    // `drop` is the app's; the check runs once per client and link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, org]);
+
+  if (member === "yes") {
+    return <AlreadyMember joining={joining} classNames={classNames} titleAs={titleAs} onContinue={() => onClose({ member: org })} />;
+  }
+  return (
+    <AcceptInviteDialog
+      client={client}
+      open={member === "no"}
+      token={token}
+      appName={appName}
+      onClose={() => {
+        drop();
+        onClose({ member: null });
+      }}
+      onJoined={({ org: joined }) => {
+        drop();
+        after?.();
+        onJoined({ org: joined });
+      }}
+    />
   );
 }

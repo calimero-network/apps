@@ -45,10 +45,12 @@ export {
 } from "./PasskeySignIn";
 export {
   ACCOUNTS_ARE_PASSKEYS,
+  AcceptInvitation,
   InvitationSignIn,
   JoinInvitation,
   SPENT_INVITE_COPY,
   SignInPanel,
+  type AcceptInvitationProps,
   type InvitationClosed,
   type InvitationSignInProps,
   type JoinedInvitation,
