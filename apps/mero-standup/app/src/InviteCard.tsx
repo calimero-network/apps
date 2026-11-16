@@ -3,7 +3,7 @@ import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js"
 import { InviteDialog } from "@calimero-network/mero-react";
 import { inviteBase } from "./teams";
 
-const LABELS = { title: "Invite to this team", subtitle: "Choose what your teammates can do." };
+const LABELS = { noun: "team", title: "Invite to this team", subtitle: "Choose what your teammates can do." };
 
 /**
  * Invite someone to this team's organization. Whoever opens the link signs in
