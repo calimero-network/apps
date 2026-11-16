@@ -276,6 +276,24 @@ describe("App", () => {
     expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();
   });
 
+  it("closes the group when its stream ends and the node then refuses a read", async () => {
+    const client = fakeClient([
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    // Taken out of the org: the stream just ends, and every read is refused.
+    client.view = vi.fn(async (_app: string, method: string) => {
+      if (method === "whoami") return { index: 1, result: VIEWS[method] ?? null };
+      throw new NotFound("no such app");
+    }) as unknown as typeof client.view;
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, ME), JSON.stringify({ appId: "app-1", name: "Board", org: "org-1" }));
+    render(<App deps={deps(client)} storage={storage} />);
+
+    await screen.findByText("You no longer have access to that voting group.");
+    expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();
+  });
+
   it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
     const client = fakeClient();
     const storage = new Memory();

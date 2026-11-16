@@ -13,7 +13,7 @@ import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvi
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
-import { MeroVoteClient } from "./generated/client";
+import { MeroVoteClient, type AppTransport } from "./generated/client";
 import { PACKAGE } from "./meroVote";
 import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { instanceIn, invites as appInvites, listGroups, selectionKey } from "./groups";
@@ -64,6 +64,9 @@ function subscribeTo(vote: MeroVoteClient, onLost: () => void) {
       try {
         const from = (await vote.raw.whoami()).index + 1;
         for await (const _event of vote.events(from, abort.signal)) onEvent();
+        // A stream that ends without a refusal (the node may just close it on a
+        // removal): read again, and a read the node refuses closes the group (`admitted`).
+        if (!abort.signal.aborted) onEvent();
       } catch (e) {
         // Not admitted any more: close it. Anything else (sign-out, network): the poll timer still runs.
         if (!abort.signal.aborted && e instanceof NotFound) onLost();
@@ -71,6 +74,27 @@ function subscribeTo(vote: MeroVoteClient, onLost: () => void) {
     })();
     return () => abort.abort();
   };
+}
+
+type Transport = AppTransport;
+
+/**
+ * `client` with `onLost` run when the node refuses a call because the group is
+ * not there for this account any more (`404` from the node, not the contract's
+ * own refusal): taken out of its organization, or it was deleted.
+ */
+function admitted(client: Transport, onLost: () => void): Transport {
+  const check = (e: unknown): never => {
+    if (e instanceof NotFound && typeof (e as { appCode?: unknown }).appCode !== "string") onLost();
+    throw e;
+  };
+  return {
+    apps: {
+      call: (args, options) => client.apps.call(args, options).catch(check),
+      view: (args, options) => client.apps.view(args, options).catch(check),
+    },
+    events: client.events.bind(client),
+  } as Transport;
 }
 
 export function App({
@@ -170,7 +194,7 @@ export function App({
   }, [open]);
   const group: VoteGroup | null = useMemo(() => {
     if (!client || !opened) return null;
-    const vote = new MeroVoteClient(client, opened.appId, { after });
+    const vote = new MeroVoteClient(admitted(client, closeLost), opened.appId, { after });
     return { client: vote, subscribe: subscribeTo(vote, closeLost) };
   }, [client, opened, after, closeLost]);
 
