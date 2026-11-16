@@ -73,7 +73,9 @@ import { invalidate } from "../platform";
 import { GroupApiDataSource } from "./groupApiDataSource";
 import { ContextApiDataSource } from "./nodeApiDataSource";
 import { createChannel } from "../../utils/createChannel";
-import { CAN_CREATE_CONTEXT, CAN_CREATE_SUBGROUP } from "../../utils/groupCapabilities";
+import { CAN_CREATE_CONTEXT, CAN_CREATE_SUBGROUP, CAN_INVITE_MEMBERS } from "../../utils/groupCapabilities";
+
+const ORG_CREATE_TEAM = 1 << 5;
 
 const api = new GroupApiDataSource();
 
@@ -97,13 +99,22 @@ describe("a workspace is an org", () => {
     await api.createGroup({ applicationId: "x", name: "Team" });
     const org = h.state.orgs.get("org-1")!;
     org.members = { "acct-me": "owner", "acct-bob": "member" };
+    // CREATE_APP alone does not make a channel there: a channel is a team at the top.
     org.capabilities = { "acct-bob": CAN_CREATE_CONTEXT };
     invalidate();
+    expect((await api.getMemberCapabilities("org-1", "acct-bob")).data?.capabilities).toBe(0);
+    org.capabilities = { "acct-bob": CAN_CREATE_CONTEXT | ORG_CREATE_TEAM };
+    invalidate();
     expect((await api.getMemberCapabilities("org-1", "acct-bob")).data?.capabilities).toBe(
-      CAN_CREATE_CONTEXT | CAN_CREATE_SUBGROUP,
+      CAN_CREATE_CONTEXT | ORG_CREATE_TEAM | CAN_CREATE_SUBGROUP,
     );
+    // "Create channels" grants both; turned off, it takes both.
     await api.setMemberCapabilities("org-1", "acct-bob", { capabilities: CAN_CREATE_CONTEXT | CAN_CREATE_SUBGROUP });
-    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", CAN_CREATE_CONTEXT, expect.anything(), {
+    expect(h.client.setCapabilities).toHaveBeenLastCalledWith("org-1", CAN_CREATE_CONTEXT | ORG_CREATE_TEAM, expect.anything(), {
+      account: "acct-bob",
+    });
+    await api.setMemberCapabilities("org-1", "acct-bob", { capabilities: CAN_INVITE_MEMBERS });
+    expect(h.client.setCapabilities).toHaveBeenLastCalledWith("org-1", CAN_INVITE_MEMBERS, expect.anything(), {
       account: "acct-bob",
     });
     await api.updateMemberRole("org-1", "acct-bob", "Admin");
