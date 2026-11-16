@@ -47,9 +47,9 @@ export const invites: InviteStore = createInviteStore(APP);
 
 /**
  * The page an invite link opens: this page's own path (the served
- * `/{version}/`), naming `org` so a member is told so instead of spending the
- * link. The shared dialog adds the token. Pinned here until every cluster keeps
- * the query on its root redirect (core's served-redirect fix).
+ * `/{version}/`), naming `org` so the dialog can tell a member.
+ * The shared dialog adds the token. Pinned here until every cluster keeps the
+ * query on its root redirect (core's served-redirect fix).
  */
 export function inviteBase(org: string): string {
   const url = new URL(window.location.pathname, window.location.origin);

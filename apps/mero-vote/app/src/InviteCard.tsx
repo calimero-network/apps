@@ -5,7 +5,7 @@ import { inviteBase } from "./groups";
 import { LinkIcon, UserPlusIcon } from "./icons";
 import { IconTile } from "./ui";
 
-const LABELS = { title: "Invite to this group", subtitle: "Choose what the people you invite can do." };
+const LABELS = { noun: "group", title: "Invite to this group", subtitle: "Choose what the people you invite can do." };
 
 /**
  * Invite someone to this group's organization. Whoever opens the link signs in

@@ -129,13 +129,13 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       open: boolean;
       org: string;
       linkBase?: string;
-      labels?: { title?: string };
+      labels?: { title?: string; noun?: string };
       onInvited?: (i: { token: string; link: string }) => void;
     }) =>
       p.open
         ? createElement(
             "div",
-            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase },
+            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase, "data-noun": p.labels?.noun },
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
             createElement(
               "button",
@@ -144,11 +144,20 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
-    AcceptInviteDialog: (p: { open: boolean; token: string; onJoined: (j: { org: string }) => void; onClose: () => void }) =>
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      labels?: { noun?: string };
+      onJoined: (j: { org: string }) => void;
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+    }) =>
       p.open
         ? createElement(
             "div",
-            { "data-testid": "accept-dialog", "data-token": p.token },
+            { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-noun": p.labels?.noun },
+            createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
@@ -208,6 +217,7 @@ describe("App", () => {
     expect(screen.getByTestId("invite-title").textContent).toBe("Invite to this group");
     const dialog = screen.getByTestId("invite-dialog");
     expect(dialog.dataset.org).toBe("org-1");
+    expect(dialog.dataset.noun).toBe("group");
     expect(new URL(dialog.dataset.base ?? "").searchParams.toString()).toBe("org=org-1");
     fireEvent.click(screen.getByTestId("invite-done"));
     expect(client.invite).not.toHaveBeenCalled();
@@ -278,16 +288,25 @@ describe("App", () => {
     expect(invites.token()).toBeNull();
   });
 
-  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+  it("hands the accept dialog the link's org and the group wording", async () => {
     const client = fakeClient();
-    Object.assign(client, { me: vi.fn(async () => ({ accountId: ME, orgs: [{ orgId: "org-1" }] })) });
     const storage = new Memory();
     const invites = pendingIn(storage, { token: "tok-9", org: "org-1" });
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
-    await waitFor(() => expect(invites.token()).toBeNull());
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    const dialog = await screen.findByTestId("accept-dialog");
+    expect(dialog.dataset).toMatchObject({ org: "org-1", noun: "group" });
+  });
+
+  it("forgets a spent link when the node refuses it, and keeps the dialog open", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9", org: "org-1" });
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("accept-fail"));
+    expect(invites.token()).toBeNull();
+    expect(screen.getByTestId("accept-dialog")).toBeTruthy();
   });
 
   it("closing the accept dialog joins nothing and forgets the invite", async () => {
@@ -339,21 +358,10 @@ describe("App", () => {
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9" });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      fireEvent.click(await screen.findByTestId("accept-done"));
+      await screen.findByTestId("accept-dialog");
+      await waitFor(() => expect(client.listApps).toHaveBeenCalled());
+      fireEvent.click(screen.getByTestId("accept-done"));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
-      expect(invites.token()).toBeNull();
-    });
-
-    it("a member of the invited org lands in its voting group, without spending the invite", async () => {
-      const client = fakeClient([...TWO_ORGS]);
-      Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-2" }] })) });
-      const storage = new Memory();
-      signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await waitFor(() => expect(selected(storage)).toBe("app-b"));
-      expect(screen.queryByTestId("accept-dialog")).toBeNull();
-      expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
     });
 
