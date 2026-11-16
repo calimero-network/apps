@@ -12,7 +12,7 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { instanceIn, listScenes, readSelection, selectionKey, writeSelection } from "./scenes";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, NodeShield, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, NodeShield, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
@@ -54,12 +54,13 @@ export function StudioPage({
 }) {
   const { session, store } = api;
   const navigate = useNavigate();
-  const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
+  const base = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<OpenedScene | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
 
   const client = session.status === "signed-in" ? session.client : null;
+  const { source, pending: sourcePending } = useResolvedSource(client, session.status === "signed-in" ? session.accountId : null, base);
   // A scene is an app instance, served the frontend of the release it runs.
   useInstanceRelease(client, opened?.appId);
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
@@ -206,7 +207,15 @@ export function StudioPage({
       <div className="page">
         <TopBar onHome={home} onLogout={logout} />
         <main className="wrap">
-          <ScenePicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after}>
+          <ScenePicker
+            key={pickerKey}
+            client={session.client}
+            passkey={deps.passkey}
+            source={source}
+            release={sourcePending ? null : (reviewRelease(source) ?? { package: PACKAGE })}
+            onOpen={open}
+            after={after}
+          >
             {notice && <p className="hint">{notice}</p>}
           </ScenePicker>
         </main>

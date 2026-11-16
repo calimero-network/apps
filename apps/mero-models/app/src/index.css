@@ -342,14 +342,6 @@ select:focus {
   flex-wrap: wrap;
 }
 
-.new-scene input {
-  min-width: 240px;
-  flex: 1;
-  max-width: 340px;
-  padding: 10px 12px;
-  font-size: 14px;
-}
-
 .lobby-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;

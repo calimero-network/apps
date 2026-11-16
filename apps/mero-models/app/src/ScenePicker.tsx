@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CreateWorkspaceDialog, type CreateWorkspaceDialogProps } from "@calimero-network/mero-react";
 import {
   askAnOwnerCopy,
   canCreateIn,
@@ -8,8 +9,18 @@ import {
   type ClientRoutes,
 } from "@calimero-apps/connect";
 import type { OpenedScene } from "./scene";
+import { rememberName, storedName } from "./editor/hooks";
 import { createScene, listScenes, studiosOf } from "./scenes";
 import { IconCube, IconPlus } from "./ui/icons";
+
+const CREATE_LABELS = {
+  title: "New scene",
+  subtitle: "Name your scene, and choose the name collaborators see.",
+  nameLabel: "Scene name",
+  namePlaceholder: "e.g. Spaceship",
+  selfLabel: "Your name",
+  selfPlaceholder: "e.g. Ada",
+};
 
 /**
  * Choose which scene to open, or make one.
@@ -21,13 +32,18 @@ import { IconCube, IconPlus } from "./ui/icons";
  */
 export function ScenePicker({
   client,
+  passkey,
   source,
+  release,
   onOpen,
   after,
   children,
 }: {
-  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ apps: "list" | "create"; orgs: "create" | "get" }>;
+  client: CalimeroClient & ClientRoutes<{ apps: "list" | "create"; orgs: "get" }>;
+  passkey: () => PasskeyProvider;
   source: AppSource;
+  /** What a new scene's studio runs, reviewed in the create dialog; `null` while it is read. */
+  release: CreateWorkspaceDialogProps["release"];
   onOpen: (scene: OpenedScene) => void;
   /** Runs after each request (keeps the stored session current). */
   after: () => void;
@@ -36,7 +52,7 @@ export function ScenePicker({
   const [scenes, setScenes] = useState<AppInfo[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -57,7 +73,7 @@ export function ScenePicker({
     void refresh();
   }, [refresh]);
 
-  async function create(key: string, org: string | null) {
+  async function create(key: string, org: string, name: string) {
     setBusy(key);
     setFailed(null);
     try {
@@ -69,6 +85,12 @@ export function ScenePicker({
       setBusy(null);
       after();
     }
+  }
+
+  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setCreating(false);
+    if (selfName.trim()) rememberName(selfName.trim());
+    await create("new", orgId, name);
   }
 
   const studios = studiosOf(scenes ?? []);
@@ -92,6 +114,16 @@ export function ScenePicker({
 
   return (
     <div className="lobby">
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={release}
+        defaultSelfName={storedName()}
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(c) => void created(c)}
+        labels={CREATE_LABELS}
+      />
       <section className="lobby-hero">
         <div className="lobby-copy">
           <p className="eyebrow">Scenes</p>
@@ -101,17 +133,7 @@ export function ScenePicker({
             meshes and textures live in the scene&apos;s own blobs.
           </p>
           <div className="new-scene">
-            <input
-              placeholder="Scene name"
-              value={name}
-              maxLength={80}
-              onChange={(e) => setName(e.target.value)}
-              aria-label="Scene name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && busy === null) void create("new", null);
-              }}
-            />
-            <button className="large" onClick={() => void create("new", null)} disabled={busy !== null} data-testid="new-scene">
+            <button className="large" onClick={() => setCreating(true)} disabled={busy !== null} data-testid="new-scene">
               <IconPlus /> {busy === "new" ? "Creating…" : "New scene"}
             </button>
           </div>
@@ -184,7 +206,7 @@ export function ScenePicker({
                         {askAnOwnerCopy("a scene")}
                       </p>
                     ) : (
-                      <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org)}>
+                      <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org, "")}>
                         {busy === org ? "Creating…" : "Add scene"}
                       </button>
                     )}

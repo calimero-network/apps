@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
-import { useState } from "react";
+import { createElement, useState } from "react";
 import {
   SessionStore,
   createInviteStore,
@@ -14,6 +14,28 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StudioPage } from "./StudioPage";
+
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-network/mero-react")>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => void p.onCreated({ orgId: "org-new", name: "Spaceship", selfName: "Ada" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+import { storedName } from "./editor/hooks";
 import { useScene } from "./scene";
 import { migrateStoredInvite, selectionKey } from "./scenes";
 import { APP, useSession, type SessionDeps } from "./session";
@@ -163,11 +185,23 @@ describe("the studio's front door", () => {
     renderPage(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     expect(await screen.findByText(/No scenes yet/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Spaceship" } });
     fireEvent.click(screen.getByTestId("new-scene"));
+    expect(screen.getByTestId("create-title").textContent).toBe("New scene");
+    fireEvent.click(screen.getByTestId("create-done"));
     expect(await screen.findByText(`studio app-new in org-new as ${ME}`)).toBeTruthy();
-    expect(client.createOrg).toHaveBeenCalledWith("Spaceship");
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(storedName()).toBe("Ada");
     expect(client.createApp).toHaveBeenCalledWith("Spaceship", "bundle-hash", { org: "org-new" });
+  });
+
+  it("shows why the scene could not be made once its studio exists", async () => {
+    const client = fakeClient();
+    client.createApp.mockRejectedValueOnce(new Error("quota exceeded"));
+    renderPage(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("new-scene"));
+    fireEvent.click(screen.getByTestId("create-done"));
+    expect(await screen.findByText(/quota exceeded/)).toBeTruthy();
   });
 
   it("adds a scene to a studio it is already in", async () => {
