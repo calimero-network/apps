@@ -11,8 +11,10 @@
  *    coalesced into one re-read, so a move appears on your board with no
  *    polling.
  *  - Reads never overlap; a change during a read costs exactly one more read.
- *  - `act(fn)` runs any mutation through the typed client (`crm.ts`) and then
- *    re-reads, so the UI never lags a write.
+ *  - `act(fn)` runs any mutation through the typed client (`crm.ts`) and
+ *    settles once the re-read its own event starts has landed, so the UI never
+ *    lags a write and a write costs one read, not two. With no event within
+ *    {@link ECHO_WAIT_MS} (the stream closed), it re-reads itself.
  *
  * v1 waited for a joined context's state to replicate before its first read
  * ("warming up"); an app on Calimero 1.0 is read from its log, so the first
@@ -71,6 +73,9 @@ export interface UseCrmReturn {
   getDeal: (dealId: string) => Promise<DealDetail>;
 }
 
+/** How long a write waits for its own event before it re-reads without one. */
+export const ECHO_WAIT_MS = 1500;
+
 const DEFAULT_SETTINGS: Settings = { currency: 'USD', rotting_days: 14 };
 
 /** Calls `onChange` (coalesced) for each event of `app` until the returned stop. */
@@ -106,8 +111,10 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
   const [error, setError] = useState<Error | null>(null);
   const [version, setVersion] = useState(0);
 
-  const inFlightRef = useRef(false);
+  const runningRef = useRef<Promise<void> | null>(null);
   const pendingRef = useRef(false);
+  /** Writes waiting for the re-read their own event starts ({@link act}). */
+  const echoRef = useRef(new Set<() => void>());
 
   const pipeline: MeroCrmClient | null = useMemo(
     () => (appId ? new MeroCrmClient(client, appId, { after }) : null),
@@ -120,10 +127,8 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
     setSettings(DEFAULT_SETTINGS); setLoaded(false);
   }, [appId]);
 
-  const refresh = useCallback(async () => {
+  const readOnce = useCallback(async () => {
     if (!pipeline) return;
-    if (inFlightRef.current) { pendingRef.current = true; return; }
-    inFlightRef.current = true;
     setLoading(true);
     try {
       const [st, ds, cs, as, au, se] = await Promise.all([
@@ -146,30 +151,60 @@ export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      inFlightRef.current = false;
       setLoading(false);
-      if (pendingRef.current) {
-        pendingRef.current = false;
-        void refreshRef.current();
-      }
     }
   }, [pipeline]);
 
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
+  const readRef = useRef(readOnce);
+  readRef.current = readOnce;
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  /** One read at a time; asked during one, one more after it. Settles once the reads asked for have landed. */
+  const refresh = useCallback((): Promise<void> => {
+    if (runningRef.current) {
+      pendingRef.current = true;
+      return runningRef.current;
+    }
+    const run = (async () => {
+      try {
+        do {
+          pendingRef.current = false;
+          await readRef.current();
+        } while (pendingRef.current);
+      } finally {
+        runningRef.current = null;
+      }
+    })();
+    runningRef.current = run;
+    return run;
+  }, []);
+
+  useEffect(() => { void refresh(); }, [readOnce, refresh]);
 
   useEffect(() => {
     if (!appId) return;
-    return watchEvents(client, appId, () => void refreshRef.current());
-  }, [client, appId]);
+    return watchEvents(client, appId, () => {
+      const waiting = [...echoRef.current];
+      echoRef.current.clear();
+      void refresh().finally(() => waiting.forEach((done) => done()));
+    });
+  }, [client, appId, refresh]);
 
   const act = useCallback(
     async <T,>(fn: (c: MeroCrmClient) => Promise<T>): Promise<T> => {
       if (!pipeline) throw new Error('Pipeline not ready yet');
       const result = await fn(pipeline);
-      await refresh();
+      // The write's own event re-reads; without one in time, re-read here.
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          echoRef.current.delete(done);
+          void refresh().finally(resolve);
+        }, ECHO_WAIT_MS);
+        echoRef.current.add(done);
+      });
       return result;
     },
     [pipeline, refresh],

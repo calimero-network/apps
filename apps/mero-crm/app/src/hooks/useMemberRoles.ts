@@ -4,10 +4,12 @@
  * (`setMember`, `removeMember`, `setCapabilities` answer 412 CONFIRM_REQUIRED
  * and mero-js asks for the passkey), and every write is followed by a
  * read-back, so a change the node refused never looks like one it accepted.
+ * On a session bound to the app's frontend the organization-wide ones (a role,
+ * permissions, the defaults) go to the node's consent page (`orgConsent.ts`).
  */
 import { useCallback, useMemo } from 'react';
-import { passkeyConfirm, type PasskeyProvider } from '@calimero-network/mero-js';
-import { removeFromApp, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
+import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppSource, ClientRoutes, ConsentClient, MaybeMe } from '@calimero-apps/connect';
 
 import {
   ROLE_ADMIN,
@@ -20,7 +22,8 @@ import {
   repairedDefault,
   type WorkspaceRole,
 } from '../utils/roles';
-import type { OrgMembers } from '../workspaces';
+import { removeFromWorkspace, type OrgMembers } from '../workspaces';
+import { setOrgCapabilities, setOrgRole } from '../orgConsent';
 
 export interface UseMemberRolesReturn {
   /** account -> its role as the screens show it (`Admin` / `Member`). */
@@ -40,8 +43,8 @@ export interface UseMemberRolesReturn {
   /** Write an explicit per-member capability override. */
   setCapabilities: (account: string, capabilities: number) => Promise<void>;
   /**
-   * Out of the workspace: in an org that keeps its apps apart (`appOnly`),
-   * out of this app only (its team), never out of the org; else out of the org.
+   * Out of the workspace: off this app's team where the org has one, never
+   * out of the org; in an org without one (legacy), out of the org.
    */
   removeMember: (account: string) => Promise<void>;
   /** The org keeps its apps apart and this one has its team (Remove is this app's only). */
@@ -62,7 +65,10 @@ export function useMemberRoles({
   after,
   source = null,
 }: {
-  client: ClientRoutes<{ orgs: 'setMember' | 'removeMember' | 'teamRemoveMember' | 'get' | 'capabilities' }>;
+  client: ClientRoutes<{ orgs: 'setMember' | 'removeMember' | 'teamRemoveMember' | 'get' | 'capabilities' }> &
+    Pick<CalimeroClient, 'session'> &
+    MaybeMe &
+    ConsentClient;
   org: string | null;
   self: string;
   state: OrgMembers | null;
@@ -96,31 +102,21 @@ export function useMemberRoles({
 
   const setRole = useCallback(
     (account: string, role: WorkspaceRole) =>
-      write((o) =>
-        client.orgs.setMember(
-          { org: o, account, role: role === ROLE_ADMIN ? 'admin' : 'member' },
-          { confirm: passkeyConfirm(passkey()) },
-        ),
-      ),
+      write((o) => setOrgRole(client, o, account, role === ROLE_ADMIN ? 'admin' : 'member', passkey)),
     [client, passkey, write],
   );
   const setCapabilities = useCallback(
     (account: string, capabilities: number) =>
-      write((o) => client.orgs.capabilities({ org: o, capabilities, account }, { confirm: passkeyConfirm(passkey()) })),
+      write((o) => setOrgCapabilities(client, o, capabilities, passkey, account)),
     [client, passkey, write],
   );
   const removeMember = useCallback(
-    (account: string) => write((o) => removeFromApp(client, o, source, account, passkey)),
+    (account: string) => write((o) => removeFromWorkspace(client, o, source, account, passkey)),
     [client, passkey, write, source],
   );
   const repairDefaultCapabilities = useCallback(
     () =>
-      write((o) =>
-        client.orgs.capabilities(
-          { org: o, capabilities: repairedDefault(defaultCapabilities) },
-          { confirm: passkeyConfirm(passkey()) },
-        ),
-      ),
+      write((o) => setOrgCapabilities(client, o, repairedDefault(defaultCapabilities), passkey)),
     [client, passkey, write, defaultCapabilities],
   );
 
