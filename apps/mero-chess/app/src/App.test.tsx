@@ -54,7 +54,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       p.open
         ? createElement(
             "div",
-            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase },
+            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase, "data-noun": p.labels?.noun, "data-inviter": p.inviterName },
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
             createElement(
               "button",
@@ -67,7 +67,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       p.open
         ? createElement(
             "div",
-            { "data-testid": "accept-dialog", "data-token": p.token },
+            { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-title": p.labels?.title, "data-noun": p.labels?.noun },
+            createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
             createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-9" }) }, "join"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
@@ -224,6 +225,7 @@ describe("App", () => {
     // table to open and the inviter (a seatless inviter by a short account id).
     const dialog = screen.getByTestId("invite-dialog");
     expect(dialog.dataset.org).toBe("org-1");
+    expect(dialog.dataset).toMatchObject({ noun: "table", inviter: "Ada" });
     expect(new URL(dialog.dataset.base ?? "").searchParams.toString()).toBe("org=org-1&table=app-new&from=Ada");
     fireEvent.click(screen.getByTestId("invite-done"));
     expect(client.invite).not.toHaveBeenCalled();
@@ -360,35 +362,36 @@ describe("App", () => {
       expect(invites.token()).toBeNull();
     });
 
-    it("does not spend the link of a table this account already reaches", async () => {
+    it("hands the dialog the link's org and the inviter's wording", async () => {
       at("/play");
-      const client = fakeClient([
-        { appId: "app-1", name: "Table 1", owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      ]);
       const storage = new Memory();
       signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-1", extra: { table: "app-1" } });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await screen.findByText(/You already reach this table/);
-      expect(screen.queryByTestId("accept-dialog")).toBeNull();
-      expect(client.redeemInvite).not.toHaveBeenCalled();
-      expect(invites.token()).toBeNull();
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9", extra: { table: "app-9", from: "Bob" } });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      const dialog = await screen.findByTestId("accept-dialog");
+      expect(dialog.dataset).toMatchObject({ org: "org-9", noun: "table", title: "Join Bob's game" });
     });
 
-    it("tells a member of the invited org so, without spending it, and opens the table", async () => {
+    it("words the dialog by the table alone when the link names no inviter", async () => {
       at("/play");
-      const client = Object.assign(fakeClient([{ ...THEIRS }]), {
-        me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-9" }] })),
-      });
       const storage = new Memory();
       signedIn(storage);
-      // A link to another table of the org than the account reaches.
-      const invites = pendingIn(storage, { token: "tok-9", org: "org-9", extra: { table: "app-gone", from: "Bob" } });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "table", expect.anything()));
-      expect(screen.queryByTestId("accept-dialog")).toBeNull();
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      const dialog = await screen.findByTestId("accept-dialog");
+      expect(dialog.dataset.noun).toBe("table");
+      expect(dialog.dataset.title).toBeUndefined();
+    });
+
+    it("forgets a spent link when the node refuses it, and keeps the dialog open", async () => {
+      at("/play");
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("accept-fail"));
       expect(invites.token()).toBeNull();
-      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(screen.getByTestId("accept-dialog")).toBeTruthy();
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {

@@ -7,7 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { appSource, memberOf, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
+import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { AppListing, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
@@ -30,7 +30,9 @@ import {
   basename,
   deferInvite,
   inviteDeferred,
+  acceptLabels,
   invitedTable,
+  inviter,
   invites as appInvites,
   listTables,
   selectionKey,
@@ -199,47 +201,6 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the question away with it.
   const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
-  // The token checked against the tables this account reaches already.
-  const [checked, setChecked] = useState<string | null>(null);
-
-  // ⚠️ Not asked of someone who already reaches the table the link names, or is
-  // in the org it names: redeeming spends the link's single use, so the owner
-  // trying their own link used to leave the opponent it was meant for with
-  // "unknown invite". The table opens and the token is dropped unspent.
-  const pendingToken = pending?.token ?? null;
-  const pendingTable = invitedTable(pending);
-  const pendingOrg = pending?.org ?? null;
-  useEffect(() => {
-    if (!client || !pendingToken) return;
-    let live = true;
-    void (async () => {
-      const table = pendingTable
-        ? await client.apps
-            .list({})
-            .then((r) => r.apps.find((a) => a.appId === pendingTable) ?? null)
-            .catch(() => null)
-        : null;
-      const member = !table && pendingOrg ? await memberOf(client, pendingOrg) : null;
-      if (!live) return;
-      if (table) {
-        invites.drop();
-        closeInvite();
-        open({ appId: table.appId, name: table.name, org: table.org });
-        setNotice(
-          "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
-        );
-      } else if (member && pendingOrg) {
-        invites.drop();
-        closeInvite();
-        setLanding({ org: pendingOrg, table: pendingTable });
-      }
-      setChecked(pendingToken);
-    })().finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, pendingToken, pendingTable, pendingOrg, invites, open, after, closeInvite, setLanding]);
-
   // Where an invite landed: the table its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
   // them with.
@@ -306,15 +267,6 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (invite && checked !== invite.token) {
-    return (
-      <div className="loading-state">
-        <span className="spinner" aria-hidden="true" />
-        <p className="empty">Reading the invitation…</p>
-      </div>
-    );
-  }
-
   return (
     <>
       <AcceptInviteDialog
@@ -322,7 +274,10 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         client={session.client}
         passkey={deps.passkey()}
         token={invite?.token ?? ""}
+        org={invite?.org ?? undefined}
         appName="Mero Chess"
+        labels={acceptLabels(inviter(invite))}
+        onError={invites.drop}
         onClose={() => {
           invites.drop();
           closeInvite();

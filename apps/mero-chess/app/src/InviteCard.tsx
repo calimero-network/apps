@@ -5,7 +5,7 @@ import { InviteDialog } from "@calimero-network/mero-react";
 import type { OpenTable } from "./TablePage";
 import { tableInviteBase } from "./tables";
 
-const LABELS = { title: "Invite to this table", subtitle: "Choose what your opponent can do." };
+const LABELS = { noun: "table", title: "Invite to this table", subtitle: "Choose what your opponent can do." };
 
 /**
  * Invite someone to this table.
@@ -57,6 +57,7 @@ export function InviteCard({
             org={org}
             appName="Mero Chess"
             labels={LABELS}
+            inviterName={from ?? undefined}
             linkBase={tableInviteBase(table.appId, org, from)}
             onInvited={after}
             client={client}

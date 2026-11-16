@@ -12,6 +12,7 @@ import {
   type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
+import type { AcceptInviteLabels } from "@calimero-network/mero-react";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP } from "./session";
@@ -81,11 +82,15 @@ export function inviter(invite: PendingInvite | null): string | null {
   return invite?.extra[FROM_PARAM] ?? null;
 }
 
+/** The accept dialog's wording: the table, and the inviter's game when the link names them. */
+export function acceptLabels(from: string | null): AcceptInviteLabels {
+  return from ? { noun: "table", title: `Join ${from}'s game` } : { noun: "table" };
+}
+
 /**
  * The page an invite link opens: this frontend, naming `table` to open after
- * joining, `org` (redeeming spends the link's single use even for someone
- * already in the org, so the app tells a member first) and `from`, the
- * inviter's name. The shared dialog adds the token.
+ * joining, `org` (so the dialog can tell a member) and `from`, the inviter's
+ * name. The shared dialog adds the token.
  *
  * Pinned to the router's basename (the served `/{version}/`) until every
  * cluster keeps the query on its root redirect (core's served-redirect fix).
