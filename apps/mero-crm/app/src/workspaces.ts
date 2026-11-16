@@ -3,7 +3,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -107,19 +107,17 @@ export interface CreatedWorkspace {
 }
 
 /**
- * A new workspace: an org, whose members may add pipelines and invite (the default
- * is a passkey step-up; refused, the org stays and the Members page offers it again).
+ * What follows a workspace the node approved: its mark, this app's team, and
+ * the member defaults (a passkey step-up, skipped on a session bound to the
+ * app; declined, the org stays and the Members page offers them again).
  */
-export async function createWorkspace(
-  client: ClientRoutes<{ orgs: 'create' | 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
-  name: string,
+export async function finishWorkspace(
+  client: ClientRoutes<{ orgs: 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedWorkspace> {
-  // The org, marked so it is listed before it holds pipelines, and this app's
-  // own team, open (declined, or an older node: a legacy org). Declined member
-  // defaults leave the org too, and the Members page offers them again.
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     namespaceId: made.orgId,
     warning: made.capabilitiesError

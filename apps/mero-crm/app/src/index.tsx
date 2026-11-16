@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
+import { ConsentPopupReturn } from '@calimero-apps/passkey';
 import { THEME } from './config';
 import { nodeBasename } from '@calimero-apps/node-served';
 import { invites, migrateLegacyInvite } from './workspaces';
@@ -35,6 +36,8 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </React.StrictMode>,
 );
