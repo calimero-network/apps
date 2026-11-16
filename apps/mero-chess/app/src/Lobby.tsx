@@ -10,6 +10,7 @@ import { createTable, listTables } from "./tables";
 import { rememberName, storedName } from "./useChess";
 
 const CREATE_LABELS = {
+  noun: "table",
   title: "New table",
   subtitle: "Name your table, and choose the name your opponent sees.",
   nameLabel: "Table name",
