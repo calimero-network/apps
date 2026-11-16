@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
 import { NodeShield } from '@calimero-apps/passkey';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { IconMenu, IconPlus, IconSearch } from './icons';
@@ -114,6 +115,7 @@ export default function Topbar({
       </Tools>
       <End>
         <NodeShield compactBelow={1240} />
+        <InstallBtn />
         <ThemeToggle />
         <NewBtn type="button" data-testid="open-new-deal-btn" onClick={onNewDeal} title="New deal (N)">
           <IconPlus size={13} /> Deal
@@ -122,6 +124,16 @@ export default function Topbar({
     </Bar>
   );
 }
+
+/* Same look as the theme toggle beside it. */
+const InstallBtn = styled(InstallAppIconButton)`
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: ${t.radiusPill}; padding: 0;
+  display: inline-grid; place-items: center; cursor: pointer;
+  color: ${t.color.text2}; background: transparent; border: 1px solid transparent;
+  transition: color 150ms ease-out, background 150ms ease-out;
+  &:hover { color: ${t.color.text}; background: ${t.color.hover}; }
+  &:focus-visible { outline: 2px solid ${t.color.accentText}; outline-offset: 2px; }
+`;
 
 /* Floating glass header (glass.css `glass-header`). Its blur makes it the
    containing block for fixed descendants; the only things that open from it

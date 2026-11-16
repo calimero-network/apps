@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { NodeShield } from "@calimero-apps/passkey";
 
 import ThemeToggle from "./ThemeToggle";
@@ -64,6 +65,7 @@ export default function AppHeader({ crumbs, right }: { crumbs: Crumb[]; right?: 
         <div className="grow" />
         <div className="appHeaderRight">
           <NodeShield compactBelow={720} />
+          <InstallAppIconButton className="iconBtn" />
           <ThemeToggle />
           {right}
         </div>

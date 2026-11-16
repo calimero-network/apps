@@ -4,6 +4,7 @@ import { useEditorStore } from "../store/editorStore";
 import { invertSelection, resizeSelection } from "../utils/geometry";
 import { FILTERS, UNITS, type FilterKind, type LayerKind, type Member, type PanelId, type Role } from "../types";
 import { Icon } from "./ToolIcons";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import styles from "./TopBar.module.css";
 
 interface Props {
@@ -280,6 +281,7 @@ export default function TopBar({
         <button className={styles.iconBtn} title="Export as PNG" aria-label="Export as PNG" onClick={() => onExport("png")}>
           <Icon name="download" size={17} />
         </button>
+        <InstallAppIconButton className={styles.iconBtn} />
       </div>
 
       <div className={styles.center}>

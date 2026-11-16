@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { useAuth } from "../../sessionContext";
 import { PRODUCT_NAME, getNodeIdentity, teamInviteTeams } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
@@ -281,6 +282,7 @@ export default function DesignShell() {
                 <span className={styles.inviteLabel}>Invite</span>
               </button>
             )}
+            <InstallAppIconButton className={styles.iconBtn} />
             <ThemeToggle className={styles.iconBtn} />
             <UserMenu account={account} onLogout={handleLogout} />
           </div>

@@ -80,6 +80,7 @@ import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
 import { mountCreateWorld, type CreateWorldDialog } from "./createWorld";
 import { mountAcceptInvite, mountInviteWorld, type MountedDialog } from "./inviteDialogs";
+import { mountInstallButton } from "./installButton";
 import { Panorama } from "./panorama";
 
 /** The world the player entered, and who they are. */
@@ -119,6 +120,13 @@ const css = `
   border-radius: 10px; padding: 18px 20px 20px; backdrop-filter: blur(3px);
   box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
 .mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
+.mbl-card { position: relative; }
+.mbl-install { position: absolute; top: 10px; right: 10px; }
+.mbl-install-btn { width: 32px; height: 32px; padding: 0; border: none; border-radius: 999px;
+  background: none; color: #9fb0c3; cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; }
+.mbl-install-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.mbl-install-btn:focus-visible { outline: 2px solid #58c56b; outline-offset: 2px; }
 /* The way back out to the marketing page.
    ⚠️ Its own row BELOW the card, centred, and a bordered button rather than
    a link. The first version was an 11px grey link tucked inside the card next
@@ -255,6 +263,8 @@ export class Landing {
   private createDialog: CreateWorldDialog | null = null;
   /** The invite dialogs mounted with the world picker. */
   private inviteDialogs: MountedDialog[] = [];
+  /** The install icon mounted with the world picker. */
+  private unmountInstall: (() => void) | null = null;
   /** Takes the "new version" prompt away (sign-out, entering a world). */
   private stopUpgrades: (() => void) | null = null;
 
@@ -350,6 +360,8 @@ export class Landing {
     this.createDialog = null;
     this.inviteDialogs.forEach((d) => d.unmount());
     this.inviteDialogs = [];
+    this.unmountInstall?.();
+    this.unmountInstall = null;
   }
 
   private renderPlayCard(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
@@ -579,6 +591,7 @@ export class Landing {
     const el = this.playCardEl();
     const source = worldSource(this.deps.env);
     el.innerHTML = `
+      <span class="mbl-install"></span>
       <h3>Choose a world</h3>
       <div class="mbl-account-note" data-testid="account-note"></div>
       <div class="mbl-worlds" data-testid="world-list"><div class="mbl-note">Loading worlds…</div></div>
@@ -592,6 +605,7 @@ export class Landing {
     const errEl = el.querySelector<HTMLElement>("[data-testid=join-error]")!;
     const noteEl = el.querySelector<HTMLElement>("[data-testid=account-note]")!;
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
+    this.unmountInstall = mountInstallButton(el.querySelector<HTMLElement>(".mbl-install")!);
 
     // `joined`: an invite just let the player in, so a world's org without
     // their name asks for it rather than adopting an older one. `name`: the

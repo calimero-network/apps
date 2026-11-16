@@ -1,3 +1,4 @@
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { ManageInHomeLink } from "@calimero-apps/passkey";
 
 import { describeTarget, useSessionApi } from "../session";
@@ -63,6 +64,7 @@ export default function SessionMenu({
 
   return (
     <div className={styles.root}>
+      <InstallAppIconButton />
       {host && (
         <span
           className={styles.node}

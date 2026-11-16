@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { useSessionApi, useSignedIn } from "../api/sessionContext";
 import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
 import { createProject as createInstance, isAdmin, listProjects } from "../api/teams";
@@ -268,6 +269,7 @@ export default function ProjectsPage() {
         <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
         <div className={styles.headerRight}>
           <ManageInHomeLink session={sessionApi.session} org={teamId} className={styles.homeLink} />
+          <InstallAppIconButton />
           <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
         </div>
       </header>

@@ -8,6 +8,7 @@ import {
   type KeyValueStorage,
 } from "@calimero-apps/connect";
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
@@ -215,6 +216,7 @@ export function App({
                 <span className="btn-label">Change group</span>
               </button>
             )}
+            {signedIn && <InstallAppIconButton className="icon-btn round" />}
             <ThemeToggle />
             {session.status === "signed-in" && (
               <SessionMenu

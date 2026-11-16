@@ -18,3 +18,19 @@ describe("InstallAppButton", () => {
     expect(screen.queryByTestId("install-app")).toBeNull();
   });
 });
+
+describe("InstallAppIconButton", () => {
+  it("renders the header icon only while installing is offered", async () => {
+    const { InstallAppIconButton } = await import("./index");
+    render(<InstallAppIconButton />);
+    expect(screen.queryByTestId("install-app")).toBeNull();
+    const prompt = vi.fn(async () => {});
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("beforeinstallprompt"), { prompt, userChoice: Promise.resolve({ outcome: "accepted" }) }));
+    });
+    const button = screen.getByRole("button", { name: "Install app" });
+    await act(async () => button.click());
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId("install-app")).toBeNull();
+  });
+});

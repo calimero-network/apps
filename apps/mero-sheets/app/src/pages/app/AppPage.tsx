@@ -27,6 +27,7 @@ import { appInviteTeams, appOnlyInviteNote, targetKey, type OtherOrg } from '@ca
 import { CreateWorkspaceDialog, InviteDialog } from '@calimero-network/mero-react';
 import { lastUsedName } from '@calimero-apps/names';
 import { ConnectExistingOrg, ManageInHomeLink, NodeShield, reviewRelease, useResolvedSource } from '@calimero-apps/passkey';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import { useSessionApi, useSignedIn } from '../../sessionContext';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
@@ -1312,6 +1313,7 @@ export default function AppPage() {
   const accountControls = (
     <>
       <HomeLink session={sessionApi.session} org={ws.namespaceId} />
+      <InstallAppIconButton />
       <ThemeToggle />
       <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out" data-testid="action-logout">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"

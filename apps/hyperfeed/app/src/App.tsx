@@ -7,6 +7,7 @@ import { TeamView } from "./TeamView";
 import { BriefView } from "./BriefView";
 import { FeedPicker, FeedSwitcher } from "./FeedPicker";
 import { NodeShield } from "@calimero-apps/passkey";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { NewFeedDialog } from "./NewFeedDialog";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
@@ -445,6 +446,7 @@ function Shell({
               )}
             </div>
           )}
+          <InstallAppIconButton className="icon-button" size={16} />
           <button type="button" className="icon-button" aria-label={theme === "dark" ? "Use light theme" : "Use dark theme"} onClick={toggleTheme}>
             {theme === "dark" ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

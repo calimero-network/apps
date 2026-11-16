@@ -24,6 +24,7 @@ import { useToast } from "../contexts/ToastContext";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import { legacyUsername } from "../utils/projectName";
 import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume } from "../utils/lastVisit";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import styles from "./TeamsPage.module.css";
 import { passkeyConfirm } from "@calimero-network/mero-js";
 
@@ -191,6 +192,7 @@ export default function TeamsPage() {
       <header className={styles.header}>
         <span className={styles.logo}><Logo size={24} /> Mero PixArt</span>
         <div className={styles.headerRight}>
+          <InstallAppIconButton />
           <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
         </div>
       </header>

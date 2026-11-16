@@ -36,6 +36,7 @@ import { SharePanel } from "./SharePanel";
 import { OperatorPanel, SelectModeSwitch } from "./MeshPanels";
 import { UvEditor } from "./UvEditor";
 import { GameExportDialog } from "./GameExport";
+import { InstallAppIconButton } from "@calimero-apps/install";
 
 /**
  * The modeller: menu bar across the top, tools down the left, the 3D view in
@@ -415,6 +416,7 @@ export function Studio({ contextId }: { contextId: string }) {
               </button>
             ))}
           </div>
+          <InstallAppIconButton />
           <button type="button" className="share-btn" onClick={() => setShare(!share)} data-testid="share">
             <IconUsers /> Share
           </button>

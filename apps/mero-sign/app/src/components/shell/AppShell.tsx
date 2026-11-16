@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { InstallAppIconButton } from '@calimero-apps/install';
 import { ManageInHomeLink, NodeShield } from '@calimero-apps/passkey';
 import { describeTarget } from '../../session';
 import { useSessionApi } from '../../sessionContext';
@@ -273,6 +274,7 @@ export function AppShell({
           <div className={styles.topRight}>
             {!bare && <NodeShield />}
             {actions}
+            {!bare && <InstallAppIconButton className={styles.iconBtn} />}
             <ThemeToggle />
           </div>
         </header>

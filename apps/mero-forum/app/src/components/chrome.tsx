@@ -4,6 +4,7 @@
 // and what its buttons do.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -211,6 +212,7 @@ export function AccountChip({
         )}
         {children}
       </span>
+      <InstallAppIconButton className="ui-iconBtn" />
       <button
         type="button"
         className="ui-iconBtn x-logout"

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { isSpentInvite, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
 import { AppListing, InvitationSignIn, SignInPanel, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { InstallAppIconButton } from "@calimero-apps/install";
 
 import { Home } from "./Home";
 import { invites as homeInvites } from "./invites";
@@ -48,7 +49,10 @@ export function App({
   return (
     <div className="home glass-fields">
       <header className="home-header glass-header">
-        <h1>Calimero Home</h1>
+        <div className="home-header-top">
+          <h1>Calimero Home</h1>
+          {session.status === "signed-in" && <InstallAppIconButton />}
+        </div>
         <p className="home-muted">Your organizations, their apps, and who is in each.</p>
       </header>
 

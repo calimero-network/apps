@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { InstallAppIconButton } from "@calimero-apps/install";
 import { useInstanceRelease } from "@calimero-apps/passkey";
 import { decideSelfName, type SelfNameDecision } from "@calimero-apps/names";
 
@@ -265,6 +266,7 @@ function ShellBody() {
               )}
             </nav>
             <div className="grow" />
+            <InstallAppIconButton className="iconBtn" />
             <ThemeToggle />
           </header>
 
