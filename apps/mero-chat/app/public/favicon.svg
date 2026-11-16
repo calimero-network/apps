@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hyperfeed Chat">
+  <defs>
+    <linearGradient id="hfc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3e63f5"/>
+      <stop offset=".55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="114" fill="#ffffff"/>
+  <path fill="url(#hfc)" d="M178 124h156c42 0 76 34 76 76v92c0 42-34 76-76 76H232l-74 54c-9 6-21-1-19-12l9-44c-25-12-46-40-46-74v-92c0-42 34-76 76-76z"/>
+  <g transform="translate(0 196) skewX(-14) translate(0 -196)" fill="#ffffff">
+    <rect x="196" y="184" width="160" height="30" rx="15"/>
+    <rect x="196" y="231" width="116" height="30" rx="15" opacity=".82"/>
+    <rect x="196" y="278" width="70" height="30" rx="15" opacity=".64"/>
+  </g>
+</svg>

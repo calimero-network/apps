@@ -324,7 +324,7 @@ export default function GroupInviteModal({
               </CopyBtn>
               <SingleUse data-testid="invite-single-use">
                 Works once. Make a new link for each person.
-                {chatOnly && " It opens Mero Chat only."}
+                {chatOnly && " It opens Hyperfeed Chat only."}
               </SingleUse>
             </>
           )}

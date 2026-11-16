@@ -30,7 +30,7 @@ const h = vi.hoisted(() => {
 
 vi.mock("../../api/calimero", () => ({
   LISTING: {
-    name: "Mero Chat",
+    name: "Hyperfeed Chat",
     description: "",
     package: "p",
     dir: "mero-chat",
@@ -102,7 +102,7 @@ describe("an invitation link opened while signed out", () => {
     expect(screen.getByTestId("invitation-page")).toBeInTheDocument();
     expect(screen.getByText("You're invited")).toBeInTheDocument();
     expect(screen.getByTestId("signin-desc")).toHaveTextContent(
-      "You've been invited to join the workspace in Mero Chat.",
+      "You've been invited to join the workspace in Hyperfeed Chat.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeInTheDocument();
     expect(screen.getByTestId("signup-passkey")).toBeInTheDocument();

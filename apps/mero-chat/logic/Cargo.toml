@@ -40,7 +40,7 @@ unicode-normalization = { version = "0.1.25", default-features = false }
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package     = "com.calimero.chat"
-name        = "Mero Chat"
+name        = "Hyperfeed Chat"
 description = "Private team chat for your organization: channels, threads and direct messages."
 author      = "Calimero"
 icon        = "../app/public/icons/icon-512x512.png"

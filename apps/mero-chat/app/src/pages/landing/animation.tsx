@@ -1,5 +1,5 @@
 /**
- * Mero Chat — the hero: a small chat you can actually use, not a loop to watch.
+ * Hyperfeed Chat — the hero: a small chat you can actually use, not a loop to watch.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *

@@ -28,7 +28,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
-      includeAssets: ["curb-pwa.svg", "logo.svg", "section-name.svg"],
+      includeAssets: ["favicon.svg", "logo.svg", "apple-touch-icon.png", "og-image.png"],
       manifest: {
         // Root-relative on purpose. A node serves each release under
         // /{version}/ and redirects / to the latest, so "./" would tie an
@@ -36,10 +36,10 @@ export default defineConfig({
         // release, broken once that release is gone. On a root-hosted web
         // deploy "/" and "./" are the same.
         id: "/",
-        name: "Mero Chat",
-        short_name: "Mero Chat",
+        name: "Hyperfeed Chat",
+        short_name: "Hyperfeed Chat",
         description:
-          "Mero Chat: team chat with channels, threads and DMs on Calimero.",
+          "Private team chat: channels, threads and direct messages only your team can read.",
         theme_color: "#f6f7fb",
         background_color: "#f6f7fb",
         display: "standalone",
@@ -96,7 +96,7 @@ export default defineConfig({
             purpose: "any",
           },
           {
-            src: "icons/icon-512x512.png",
+            src: "icons/maskable-512x512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",

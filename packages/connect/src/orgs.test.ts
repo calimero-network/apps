@@ -163,7 +163,7 @@ describe("otherOrgs: labels from app teams (core#4890)", () => {
 describe("labels", () => {
   it("names a package in words", () => {
     expect(packageTitle("com.calimero.mero-blocks")).toBe("Mero Blocks");
-    expect(packageTitle("com.calimero.chat")).toBe("Mero Chat");
+    expect(packageTitle("com.calimero.chat")).toBe("Hyperfeed Chat");
     expect(packageTitle("com.calimero.kv-store")).toBe("KV Store");
   });
 
