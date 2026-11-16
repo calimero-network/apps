@@ -39,6 +39,35 @@ vi.mock("../api/sessionContext", () => ({
   useSessionApi: () => ({ api: { session: { status: "signed-in" }, signOut: vi.fn() } }),
 }));
 
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock("@calimero-network/mero-react", async (importOriginal) => {
+  const { createElement } = await import("react");
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "create-dialog" },
+            createElement("h2", { "data-testid": "create-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "create-self" }, p.defaultSelfName),
+            createElement("pre", { "data-testid": "create-release" }, JSON.stringify(p.release)),
+            createElement(
+              "button",
+              { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Design", selfName: "Ana" }) },
+              "done",
+            ),
+          )
+        : null,
+  };
+});
+
 import TeamsPage from "./TeamsPage";
 import ProjectsPage from "./ProjectsPage";
 import { ToastProvider } from "../contexts/ToastContext";
@@ -115,53 +144,53 @@ describe("TeamsPage", () => {
     expect(client.createOrg).not.toHaveBeenCalled();
   });
 
-  it("creates a team as an org whose members may create projects and invite", async () => {
+  it("sets up the team the dialog made: member defaults, and your name in it", async () => {
     client.me.mockResolvedValue({ orgs: [] });
-    client.createOrg.mockResolvedValue("org-new");
-    client.setCapabilities.mockResolvedValue(undefined);
-    renderAt("/teams");
-    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
-    fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
-    fireEvent.change(screen.getByTestId("new-team-my-name"), { target: { value: "Sandi" } });
-    fireEvent.click(screen.getByTestId("create-team-btn"));
-    expect(await screen.findByText("Design")).toBeTruthy();
-    expect(client.createOrg).toHaveBeenCalledWith("Design");
-    expect(client.setCapabilities).toHaveBeenCalledWith("org-new", expect.any(Number), expect.anything());
-  });
-
-  it("asks your name in the new team in the same step, and writes it to the org", async () => {
-    client.me.mockResolvedValue({ orgs: [] });
-    client.createOrg.mockResolvedValue("org-new");
     client.setCapabilities.mockResolvedValue(undefined);
     client.getOrg.mockResolvedValue({ name: "Design", members: { [ME]: "owner" }, memberMetadata: {} });
     client.setMemberMetadata.mockResolvedValue(undefined);
-    localStorage.setItem("calimero-names:last", "Sandi");
     renderAt("/teams");
     expect(await screen.findByTestId("empty-teams")).toBeTruthy();
-    // Offered the name used last, and required.
-    const mine = screen.getByTestId("new-team-my-name") as HTMLInputElement;
-    expect(mine.value).toBe("Sandi");
-    fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
-    fireEvent.change(mine, { target: { value: " " } });
-    expect((screen.getByTestId("create-team-btn") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(mine, { target: { value: "Ana" } });
     fireEvent.click(screen.getByTestId("create-team-btn"));
+    fireEvent.click(await screen.findByTestId("create-done"));
+    expect(await screen.findByText("Design")).toBeTruthy();
+    expect(client.createOrg).not.toHaveBeenCalled();
+    expect(client.setCapabilities).toHaveBeenCalledWith("org-new", expect.any(Number), expect.anything());
     await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Ana" }));
-    expect(localStorage.getItem("calimero-names:last")).toBe("Ana");
+    expect(screen.queryByTestId("create-dialog")).toBeNull();
   });
 
-  it("still creates the team when writing the name fails", async () => {
+  it("opens the dialog with the team wording and the name you last used", async () => {
     client.me.mockResolvedValue({ orgs: [] });
-    client.createOrg.mockResolvedValue("org-new");
+    localStorage.setItem("calimero-names:last", "Sandi");
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("create-team-btn"));
+    expect((await screen.findByTestId("create-title")).textContent).toBe("New team");
+    expect(screen.getByTestId("create-self").textContent).toBe("Sandi");
+    expect(JSON.parse(screen.getByTestId("create-release").textContent ?? "null")).toEqual({ package: "com.calimero.mero-pixart" });
+  });
+
+  it("still lists the team when writing the name fails", async () => {
+    client.me.mockResolvedValue({ orgs: [] });
     client.setCapabilities.mockResolvedValue(undefined);
     client.getOrg.mockResolvedValue({ members: {}, memberMetadata: {} });
     client.setMemberMetadata.mockRejectedValue(new Error("offline"));
     renderAt("/teams");
-    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
-    fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
-    fireEvent.change(screen.getByTestId("new-team-my-name"), { target: { value: "Ana" } });
-    fireEvent.click(screen.getByTestId("create-team-btn"));
+    fireEvent.click(await screen.findByTestId("create-team-btn"));
+    fireEvent.click(await screen.findByTestId("create-done"));
     expect(await screen.findByText("Design")).toBeTruthy();
+  });
+
+  it("says so when the member defaults are refused, and the team stays", async () => {
+    client.me.mockResolvedValue({ orgs: [] });
+    client.setCapabilities.mockRejectedValue(new Error("declined"));
+    client.getOrg.mockResolvedValue({ members: {}, memberMetadata: {} });
+    client.setMemberMetadata.mockResolvedValue(undefined);
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("create-team-btn"));
+    fireEvent.click(await screen.findByTestId("create-done"));
+    expect(await screen.findByText("Design")).toBeTruthy();
+    expect(await screen.findByText(/will not be able to create projects/)).toBeTruthy();
   });
 });
 

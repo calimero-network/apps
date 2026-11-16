@@ -3,7 +3,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   createInviteStore,
   inviteLink as sharedInviteLink,
   isAppOnly,
@@ -103,17 +103,17 @@ export interface CreatedTeam {
   warning: string | null;
 }
 
-/** A new team: an org whose members may create projects and invite (a passkey step-up). */
-export async function createTeam(
-  client: ClientRoutes<{ orgs: "create" | "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
-  name: string,
+/**
+ * What follows a team the node approved: its mark, member defaults (a passkey
+ * step-up, skipped on a session bound to the app) and this app's own team, open.
+ */
+export async function finishTeam(
+  client: ClientRoutes<{ orgs: "capabilities" | "get" | "metadata" | "appTeamsScope" }>,
+  orgId: string,
   passkey: () => PasskeyProvider,
   source?: AppSource,
 ): Promise<CreatedTeam> {
-  // The org, marked so it is listed as a team before it holds projects, its
-  // member defaults, and this app's own team, open (declined, or an older
-  // node: a legacy org).
-  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  const made = await finishAppOrg(client, orgId, source, passkey, { capabilities: MEMBER_DEFAULTS });
   return {
     groupId: made.orgId,
     warning: made.capabilitiesError
