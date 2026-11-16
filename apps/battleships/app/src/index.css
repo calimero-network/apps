@@ -843,25 +843,6 @@ html, body {
 }
 
 /* ============================================================
-   Invitation code block
-   ============================================================ */
-
-.invite-code {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--text-secondary);
-  overflow-x: auto;
-  max-height: 200px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-/* ============================================================
    Page layout helpers
    ============================================================ */
 
@@ -1732,18 +1713,6 @@ html, body {
 }
 
 /* ============================================================
-   Invitation link
-   ============================================================ */
-
-/* A URL is one long unbroken token, so without an explicit break it either
-   overflows the card or forces a horizontal scrollbar across the page. */
-.invite-link {
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow-wrap: anywhere;
-}
-
-/* ============================================================
    In-app resource footer
    ============================================================ */
 
@@ -2128,17 +2097,4 @@ html, body {
   .app-footer-grid { grid-template-columns: 1fr; }
   :root { --cell-size: 26px; }
   .nav-brand-text { display: none; }
-}
-
-/* The invitation question (`JoinInvitation`): the card's body, Join and Not now in a row. */
-.invitation-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.invitation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
 }

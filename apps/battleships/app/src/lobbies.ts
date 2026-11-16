@@ -1,8 +1,8 @@
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppInfo } from '@calimero-network/mero-js';
 import {
   appTarget,
   createInviteStore,
-  inviteLink,
+  INVITE_PARAMS,
   listAppInfos,
   type AppSource,
   type ClientRoutes,
@@ -78,17 +78,6 @@ export async function saveMemberName(
   await client.orgs.memberMetadata({ org, account, metadata: { name } });
 }
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: 'inviteCreate' }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: 'member', teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /**
  * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
  * A version-pinned invite link's route is read relative to it.
@@ -97,41 +86,34 @@ export const basename = (): string => nodeBasename(new URL(window.location.href)
 
 /** The link parameter naming the lobby an invite opens. */
 const LOBBY_PARAM = 'lobby';
-/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
-const FROM_PARAM = 'from';
 
 /**
  * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`),
- * with the lobby its link names (`&lobby=`) and who sent it (`&from=`):
+ * with the lobby its link names (`&lobby=`):
  * captured in `index.tsx` before React mounts, then bound to the cluster, held
  * for the account that signs in with it and dropped on sign-out by the passkey
  * session (`usePasskeySession({ invites })`).
  */
-export const invites: InviteStore = createInviteStore(APP, { keep: [LOBBY_PARAM, FROM_PARAM] });
+export const invites: InviteStore = createInviteStore(APP, { keep: [LOBBY_PARAM] });
 
 /** The lobby a pending invite's link names, opened once it is redeemed. */
 export function invitedLobby(invite: PendingInvite | null): string | null {
   return invite?.extra[LOBBY_PARAM] ?? null;
 }
 
-/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
-export function inviter(invite: PendingInvite | null): string | null {
-  return invite?.extra[FROM_PARAM] ?? null;
-}
-
 /**
- * The link that opens this frontend with `token` to redeem and `lobby` to open
- * after. `org` names the organization the token admits to, so a player already
- * in it (the inviter opening their own link, say) is not made to spend the
- * token's single use; `from` is the inviter's name, for the question the
- * invitee is asked.
+ * The page an invite link opens (`InviteDialog`'s `linkBase`): this frontend,
+ * naming the lobby to open and `org`, so a player already in it is not made to
+ * spend the token's single use.
  *
  * Pinned to the router's basename (the served `/{version}/`) until every
  * cluster keeps the query on its root redirect (core's served-redirect fix).
- * `/` sends a signed-in player on to the lobby page.
  */
-export function lobbyInviteLink(token: string, lobby: string, org: string, from?: string | null): string {
-  return inviteLink(token, { org, root: basename(), extra: { [LOBBY_PARAM]: lobby, [FROM_PARAM]: from } });
+export function lobbyLinkBase(lobby: string, org: string): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  url.searchParams.set(LOBBY_PARAM, lobby);
+  return url.toString();
 }
 
 /** The key this app kept its pending invite under before the shared store: `{ token, lobby, org }`. */

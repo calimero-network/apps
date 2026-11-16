@@ -30,10 +30,7 @@ interface LobbyViewProps {
   executorPublicKey: string | null;
 
   // Invitation
-  inviteLoading: boolean;
-  invitationJson: string | null;
-  onCreateInvitation: () => void;
-  onDismissInvitation: () => void;
+  onInvitePlayer: () => void;
 
   // Match creation
   player2: string;
@@ -68,7 +65,7 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 export default function LobbyView({
   lobbyAlias, isAdmin, members, teeMembers = [], membersLoading, playerByAccount,
   onChallengePlayer, selfIdentity, executorPublicKey,
-  inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
+  onInvitePlayer,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
   playerStats, history, currentUser,
@@ -214,33 +211,10 @@ export default function LobbyView({
             )}
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                className="btn-deploy"
-                onClick={onCreateInvitation}
-                disabled={inviteLoading}
-              >
-                {inviteLoading ? 'Creating…' : 'Invite player'}
+              <button type="button" className="btn-deploy" onClick={onInvitePlayer}>
+                Invite player
               </button>
             </div>
-
-            {invitationJson && (
-              <div>
-                {/* A link, not a JSON blob: it survives being pasted into a
-                    chat, and opening it on a machine with the desktop app
-                    hands the invitation straight to it. */}
-                <pre className="invite-code invite-link" data-testid="invite-link">{invitationJson}</pre>
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
-                  <CopyButton text={invitationJson} label="Copy link" copiedLabel="Link copied" className="btn-ghost" />
-                  <button type="button" className="btn-ghost" onClick={onDismissInvitation}>
-                    Dismiss
-                  </button>
-                </div>
-                <span style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  Single use: one person can join the lobby with this link. Make a new one for each player you invite.
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CalimeroError, type AppInfo, type CalimeroSession } from '@calimero-network/mero-js';
+import { type AppInfo, type CalimeroSession } from '@calimero-network/mero-js';
 import {
   SessionStore,
   createInviteStore,
@@ -34,6 +34,25 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
               { 'data-testid': 'create-done', onClick: () => void p.onCreated({ orgId: 'org-new', name: 'Friday game', selfName: 'Ada' }) },
               'done',
             ),
+          )
+        : null,
+    InviteDialog: (p: Parameters<typeof actual.InviteDialog>[0]) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'invite-dialog' },
+            createElement('h2', { 'data-testid': 'invite-title' }, p.labels?.title),
+            createElement('pre', { 'data-testid': 'invite-props' }, JSON.stringify({ org: p.org, role: p.role, teams: p.teams, linkBase: p.linkBase })),
+          )
+        : null,
+    AcceptInviteDialog: (p: Parameters<typeof actual.AcceptInviteDialog>[0]) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'accept-dialog' },
+            createElement('pre', { 'data-testid': 'accept-token' }, p.token),
+            createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org-9' }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
           )
         : null,
   };
@@ -126,7 +145,6 @@ function fakeClient(apps: AppInfo[] = []) {
     view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: views(method) })),
     events: vi.fn(async function* () {}),
     me: vi.fn(async () => ({ orgs: [{ orgId: 'org-1', name: 'Harbour', role: 'owner' }] })),
-    invite: vi.fn(async () => 'tok-123'),
     redeemInvite: vi.fn(async () => ({})),
   };
 }
@@ -145,7 +163,7 @@ function at(path: string) {
 
 /** An invite store on `storage` holding `invite`, as `index.tsx` leaves it after capturing a link. */
 function pendingIn(invite: Partial<PendingInvite> & { token: string }, storage: KeyValueStorage = localStorage): InviteStore {
-  const invites = createInviteStore(APP, { storage, keep: ['lobby', 'from'] });
+  const invites = createInviteStore(APP, { storage, keep: ['lobby'] });
   invites.put({ org: null, team: null, doc: null, route: null, extra: {}, ...invite });
   return invites;
 }
@@ -228,20 +246,18 @@ describe('App', () => {
     expect(client.events).toHaveBeenCalledWith('app-1', expect.any(Number), expect.any(AbortSignal));
   });
 
-  it('invites with an org invitation link that names the lobby', async () => {
+  it('invites through the shared dialog, with a link base naming the lobby and its org', async () => {
     signedIn();
     at('/lobby?id=app-1');
     const client = fakeClient([LOBBY]);
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByText('Invite player'));
-    const link = await screen.findByTestId('invite-link');
-    expect(client.invite).toHaveBeenCalledWith('org-1', 'member', expect.anything());
-    const url = new URL(link.textContent ?? '');
-    expect(url.searchParams.get('invite')).toBe('tok-123');
-    expect(url.searchParams.get('lobby')).toBe('app-1');
-    // The org (a member is told so instead of spending it) and who sent it.
-    expect(url.searchParams.get('org')).toBe('org-1');
-    expect(url.searchParams.get('from')).toBe('acct-ali…lice');
+    expect(screen.getByTestId('invite-title').textContent).toBe('Invite to this lobby');
+    const props = JSON.parse(screen.getByTestId('invite-props').textContent ?? '');
+    expect(props).toMatchObject({ org: 'org-1' });
+    const base = new URL(props.linkBase);
+    expect(base.searchParams.get('lobby')).toBe('app-1');
+    expect(base.searchParams.get('org')).toBe('org-1');
   });
 
   it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
@@ -256,24 +272,17 @@ describe('App', () => {
 
   it('signing in on the invitation page asks before joining, then Join opens its lobby', async () => {
     at('/lobby');
-    const theirs: AppInfo[] = [];
+    const theirs: AppInfo[] = [THEIRS];
     const client = fakeClient(theirs);
-    client.redeemInvite.mockImplementation(async () => {
-      theirs.push(THEIRS);
-      return { org: 'org-9' };
-    });
-    const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9', from: 'Bob' } });
+    const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
     render(<App deps={deps(client)} invites={invites} />);
     await screen.findByTestId('invitation-page');
     fireEvent.click(screen.getByTestId('signin-passkey'));
 
-    expect((await screen.findByTestId('invitation-prompt')).textContent).toContain(
-      "Join Bob's game as acct-ali…lice?",
-    );
+    expect((await screen.findByTestId('accept-token')).textContent).toBe('tok-9');
     expect(client.redeemInvite).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-9'));
+    fireEvent.click(screen.getByTestId('accept-join'));
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-9', 'registerPlayer', {}));
     expect(invites.token()).toBeNull();
   });
@@ -290,7 +299,7 @@ describe('App', () => {
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('invitation-prompt')).toBeNull();
+    expect(screen.queryByTestId('accept-dialog')).toBeNull();
     expect(invites.token()).toBeNull();
   });
 
@@ -304,17 +313,13 @@ describe('App', () => {
   });
 
   describe('an invitation opened by a signed-in player', () => {
-    it('asks first: nothing is redeemed until Join', async () => {
+    it('asks first: the dialog opens with the token and nothing is redeemed', async () => {
       signedIn();
       at('/lobby');
       const client = fakeClient([LOBBY]);
-      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9', from: 'Bob' } });
+      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
       render(<App deps={deps(client)} invites={invites} />);
-      expect((await screen.findByTestId('invitation-prompt')).textContent).toContain(
-        "Join Bob's game as acct-ali…lice?",
-      );
-      // Give a would-be auto-redeem every chance to run.
-      await new Promise((r) => setTimeout(r, 50));
+      expect((await screen.findByTestId('accept-token')).textContent).toBe('tok-9');
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBe('tok-9');
     });
@@ -325,55 +330,33 @@ describe('App', () => {
       const client = fakeClient([LOBBY]);
       const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
       render(<App deps={deps(client)} invites={invites} />);
-      fireEvent.click(await screen.findByTestId('invitation-dismiss'));
-      await waitFor(() => expect(screen.queryByTestId('invitation-prompt')).toBeNull());
+      fireEvent.click(await screen.findByTestId('accept-close'));
+      await waitFor(() => expect(screen.queryByTestId('accept-dialog')).toBeNull());
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
     });
 
-    it('tells a player already in the organization so, without spending it, and opens the lobby', async () => {
+    it('Join opens the lobby it joined', async () => {
+      signedIn();
+      at('/lobby');
+      const client = fakeClient([LOBBY, THEIRS]);
+      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-9' } });
+      render(<App deps={deps(client)} invites={invites} />);
+      fireEvent.click(await screen.findByTestId('accept-join'));
+      await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-9', 'registerPlayer', {}));
+      expect(invites.token()).toBeNull();
+    });
+
+    it('a player already in the organization is not asked, and the lobby opens', async () => {
       signedIn();
       at('/lobby');
       const client = fakeClient([LOBBY]);
-      const invites = pendingIn({ token: 'tok-9', org: 'org-1', extra: { lobby: 'app-1', from: 'Bob' } });
+      const invites = pendingIn({ token: 'tok-9', org: 'org-1', extra: { lobby: 'app-1' } });
       render(<App deps={deps(client)} invites={invites} />);
-      expect((await screen.findByTestId('invitation-outcome')).textContent).toContain("You're already in Bob's game");
-      expect(invites.token()).toBeNull();
-      fireEvent.click(screen.getByTestId('invitation-continue'));
       await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
-      expect(client.redeemInvite).not.toHaveBeenCalled();
-    });
-
-    it('says plainly when the invite was already used or has expired, and drops it', async () => {
-      signedIn();
-      at('/lobby');
-      const client = fakeClient([LOBBY]);
-      client.redeemInvite.mockRejectedValueOnce(
-        new CalimeroError(400, 'REJECTED', 'invite was used up, revoked or never existed'),
-      );
-      const invites = pendingIn({ token: 'tok-9', extra: { lobby: 'app-1' } });
-      render(<App deps={deps(client)} invites={invites} />);
-      fireEvent.click(await screen.findByTestId('invitation-join'));
-      expect(
-        await screen.findByText('This invite was already used or has expired. Ask the person who invited you for a new link.'),
-      ).toBeVisible();
+      expect(screen.queryByTestId('accept-dialog')).toBeNull();
       expect(invites.token()).toBeNull();
-    });
-
-    it.each([
-      [401, 'UNAUTHORIZED', 'session expired'],
-      [429, 'RATE_LIMITED', 'too many requests'],
-    ])('keeps the invite when the redemption fails with %i', async (status, code, message) => {
-      signedIn();
-      at('/lobby');
-      const client = fakeClient([LOBBY]);
-      client.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message));
-      const invites = pendingIn({ token: 'tok-9' });
-      render(<App deps={deps(client)} invites={invites} />);
-      fireEvent.click(await screen.findByTestId('invitation-join'));
-      await screen.findByText(/Your invite is kept/);
-      expect(invites.token()).toBe('tok-9');
-      expect(screen.getByTestId('invitation-join')).toBeTruthy();
+      expect(client.redeemInvite).not.toHaveBeenCalled();
     });
 
     it('signing out drops the pending invite, so the next person is not asked to join', async () => {
@@ -382,11 +365,10 @@ describe('App', () => {
       const client = fakeClient([LOBBY]);
       const invites = pendingIn({ token: 'tok-9' });
       render(<App deps={deps(client)} invites={invites} />);
-      await screen.findByTestId('invitation-join');
+      await screen.findByTestId('accept-dialog');
       fireEvent.click(screen.getByText('Logout'));
       await waitFor(() => expect(client.signOut).toHaveBeenCalled());
       await waitFor(() => expect(invites.token()).toBeNull());
-      // Signed out on the landing page, not the invitation page.
       await waitFor(() => expect(document.querySelector('.cal-lp-root')).not.toBeNull());
       expect(screen.queryByTestId('invitation-page')).toBeNull();
       expect(client.redeemInvite).not.toHaveBeenCalled();
@@ -394,8 +376,8 @@ describe('App', () => {
   });
 
   it('captures a link into the shared store, and moves one an older build stored', () => {
-    at('/lobby?invite=tok-9&lobby=app-1&from=Bob');
-    expect(appInvites.capture(window.location)).toMatchObject({ token: 'tok-9', extra: { lobby: 'app-1', from: 'Bob' } });
+    at('/lobby?invite=tok-9&lobby=app-1');
+    expect(appInvites.capture(window.location)).toMatchObject({ token: 'tok-9', extra: { lobby: 'app-1' } });
     expect(window.location.search).toBe('');
     appInvites.drop();
 
@@ -406,7 +388,7 @@ describe('App', () => {
       removeItem: (k) => void storage.delete(k),
     };
     old.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-old', lobby: 'app-9', org: 'org-9' }));
-    const store = createInviteStore(APP, { storage: old, keep: ['lobby', 'from'] });
+    const store = createInviteStore(APP, { storage: old, keep: ['lobby'] });
     migrateStoredInvite(store, old);
     expect(store.pending()).toMatchObject({ token: 'tok-old', org: 'org-9', extra: { lobby: 'app-9' } });
     expect(old.getItem(`${APP}:pending-invite`)).toBeNull();

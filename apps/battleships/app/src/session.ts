@@ -2,7 +2,6 @@ import { createContext, useContext } from "react";
 import type { InviteStore, PendingInvite } from "@calimero-apps/connect";
 import {
   type JoinedAtSignUp,
-  type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
   type ListingProps,
@@ -25,22 +24,6 @@ export const LISTING: ListingProps = {
   package: PACKAGE,
   dir: "battleships",
   dev: import.meta.env.DEV,
-};
-
-/** The app's words and classes for the shared invitation question (`JoinInvitation`). */
-export const ONBOARDING: { appName: string; gives: string; classNames: OnboardingClassNames } = {
-  appName: "Battleships",
-  gives: "you reach its lobby, and can challenge its players.",
-  classNames: {
-    root: "naval-card fade-in",
-    inner: "naval-card-body invitation-body",
-    title: "naval-card-title",
-    text: "mono-sm",
-    error: "lobby-banner-error",
-    actions: "invitation-actions",
-    primary: "btn-deploy",
-    secondary: "btn-ghost",
-  },
 };
 
 /**

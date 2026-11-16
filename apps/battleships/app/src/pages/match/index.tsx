@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { appSource, targetKey } from '@calimero-apps/connect';
-import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { appSource, memberOf, targetKey } from '@calimero-apps/connect';
+import { AcceptInviteDialog, CreateWorkspaceDialog, InviteDialog } from '@calimero-network/mero-react';
 import { lastUsedName } from '@calimero-apps/names';
-import { AppListing, JoinInvitation, reviewRelease, useAskedInvite, useResolvedSource } from '@calimero-apps/passkey';
+import { AppListing, reviewRelease, usePendingInvite, useResolvedSource } from '@calimero-apps/passkey';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -30,8 +30,8 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
-import { invitedLobby, inviter, listLobbies } from '../../lobbies';
-import { LISTING, ONBOARDING, describeTarget, useInviteState, useSessionApi } from '../../session';
+import { invitedLobby, listLobbies, lobbyLinkBase } from '../../lobbies';
+import { LISTING, describeTarget, useInviteState, useSessionApi } from '../../session';
 import { SHIP_TARGETS, validateFleetPayload } from './config';
 
 import NavBar from '../../components/NavBar';
@@ -41,11 +41,17 @@ import ConnectCard from '../../components/ConnectCard';
 import { useToast } from '../../contexts/ToastContext';
 import { forgetLastLobby, pickResumeLobby, readLastLobby, rememberLobby } from '../../utils/lastLobby';
 import LobbyView from '../../components/LobbyView';
-import { formatKey, playerName } from '../../utils/playerName';
+import { playerName } from '../../utils/playerName';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
 import PlacementGrid from '../../components/PlacementGrid';
 import ShipSelector from '../../components/ShipSelector';
+
+const INVITE_LABELS = {
+  title: 'Invite to this lobby',
+  subtitle: 'Choose what the players you invite can do in this lobby.',
+  next: 'Create invite link',
+};
 
 const CREATE_LABELS = {
   noun: 'lobby',
@@ -80,7 +86,6 @@ export default function MatchPage() {
     client,
     accountId,
     source,
-    passkey: sessionApi.passkey,
     after,
     selectionKey: scope ? `battleships:selected-lobby:${scope}` : null,
   });
@@ -103,7 +108,7 @@ export default function MatchPage() {
   const manualLobbySelect = useRef(false);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [invitationLink, setInvitationLink] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Match management
   const [matchId, setMatchId] = useState<string>('');
@@ -194,18 +199,33 @@ export default function MatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render; only the fields listed matter
   }, [view, location.search, lobby.selectedLobby, lobby.lobbies, lobby.lobbyContextId]);
 
-  // An invitation is asked about, never redeemed on its own: "Join {inviter}'s
-  // game as {account}?", with Join and Not now (`JoinInvitation`, rendered
-  // below). A player already in the lobby's organization (the inviter opening
-  // their own link) is told so instead: redeeming would spend the link's
-  // single use. Joining opens the lobby the link named (else one in the org
-  // it joined); a sign-up from the invitation page joined with the invite
+  // An invitation is asked about, never redeemed on its own: `AcceptInviteDialog`
+  // joins on Join. A player already in the lobby's organization (the inviter
+  // opening their own link) is told so instead: redeeming would spend the
+  // link's single use. Joining opens the lobby the link named (else one in the
+  // org it joined); a sign-up from the invitation page joined with the invite
   // already (`SessionProvider` sets `landing`), and its lobby opens.
   const { invites, landing, setLanding } = useInviteState();
-  // The invitation a signed-in account is asked about stays on screen until it
-  // closes: `JoinInvitation` drops the token before it says "already in" or
-  // "used up", and the store would take the question away with it.
-  const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
+  const pending = usePendingInvite(invites);
+  const invite = client ? pending : null;
+  const [asked, setAsked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!client || !invite) return;
+    let live = true;
+    const { org } = invite;
+    void (org ? memberOf(client, org) : Promise.resolve(false)).then((member) => {
+      if (!live) return;
+      if (member && org) {
+        invites.drop();
+        setLanding({ org, lobby: invitedLobby(invite), member: true });
+      } else {
+        setAsked(invite.token);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, invite, invites, setLanding]);
 
   useEffect(() => {
     if (!client || !landing) return;
@@ -739,20 +759,6 @@ export default function MatchPage() {
     [lobby, show],
   );
 
-  const handleCreateInvitation = useCallback(async () => {
-    try {
-      // An org invitation, approved with your passkey: the link carries the
-      // token and the lobby to open once it is redeemed.
-      const link = await lobby.invitePlayer();
-      if (link) {
-        setInvitationLink(link);
-        show({ title: 'Invitation link created', variant: 'success' });
-      }
-    } catch (e) {
-      show({ title: messageOf(e, 'Could not create an invitation'), variant: 'error' });
-    }
-  }, [lobby, show]);
-
   const handleEnterLobby = useCallback(() => {
     if (!lobby.namespaceId) { show({ title: 'No lobby selected', variant: 'error' }); return; }
     manualLobbySelect.current = false;
@@ -806,6 +812,42 @@ export default function MatchPage() {
     />
   );
 
+  const org = lobby.selectedLobby?.org;
+  const inviteDialog = client && org && lobby.namespaceId && (
+    <InviteDialog
+      client={client}
+      passkey={sessionApi.passkey()}
+      open={inviteOpen}
+      onClose={() => setInviteOpen(false)}
+      org={org}
+      appName="Battleships"
+      labels={INVITE_LABELS}
+      linkBase={lobbyLinkBase(lobby.namespaceId, org)}
+    />
+  );
+  const acceptDialog = client && invite && (
+    <AcceptInviteDialog
+      client={client}
+      passkey={sessionApi.passkey()}
+      open={asked === invite.token}
+      onClose={() => invites.drop()}
+      token={invite.token}
+      appName="Battleships"
+      onJoined={({ org }) => {
+        invites.drop();
+        setLanding({ org, lobby: invitedLobby(invite) });
+      }}
+    />
+  );
+
+  const dialogs = (
+    <>
+      {createDialog}
+      {inviteDialog}
+      {acceptDialog}
+    </>
+  );
+
   // --- Not signed in: where the build connects, and a passkey ---
   if (session.status !== 'signed-in') {
     return (
@@ -830,47 +872,12 @@ export default function MatchPage() {
     );
   }
 
-  // --- An invitation: asked before anything is joined ---
-  if (invite) {
-    const from = inviter(invite);
-    return (
-      <div className="app-bg">
-        <NavBar {...navProps} />
-        {createDialog}
-        <div className="page-shell">
-          <div className="page-content">
-            <JoinInvitation
-              {...ONBOARDING}
-              key={invite.token}
-              joining={from ? `${from}'s game` : 'the game'}
-              account={formatKey(session.accountId)}
-              client={session.client}
-              token={invite.token}
-              org={invite.org}
-              drop={invites.drop}
-              after={after}
-              onJoined={({ org }) => {
-                closeInvite();
-                setLanding({ org, lobby: invitedLobby(invite) });
-              }}
-              onClose={({ member }) => {
-                closeInvite();
-                if (member) setLanding({ org: member, lobby: invitedLobby(invite), member: true });
-              }}
-            />
-            <AppFooter />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // --- Lobby Select ---
   if (view === 'lobby-select') {
     return (
       <div className="app-bg">
         <NavBar {...navProps} />
-        {createDialog}
+        {dialogs}
         <div className="page-shell">
           <div className="page-content">
             <LobbySelect
@@ -900,7 +907,7 @@ export default function MatchPage() {
     return (
       <div className="app-bg">
         <NavBar {...navProps} />
-        {createDialog}
+        {dialogs}
         <div className="page-shell">
           <div className="page-content">
             {/* Back belongs with the content it backs out of, not in the bar:
@@ -930,10 +937,7 @@ export default function MatchPage() {
               teeMembers={lobby.teeMembers}
               selfIdentity={lobby.selfIdentity}
               executorPublicKey={lobby.executorPublicKey}
-              inviteLoading={lobby.inviteLoading}
-              invitationJson={invitationLink}
-              onCreateInvitation={handleCreateInvitation}
-              onDismissInvitation={() => setInvitationLink(null)}
+              onInvitePlayer={() => setInviteOpen(true)}
               player2={player2}
               creatingMatch={creatingMatch}
               onPlayer2Change={setPlayer2}
@@ -956,7 +960,7 @@ export default function MatchPage() {
   return (
     <div className="app-bg">
       <NavBar {...navProps} />
-      {createDialog}
+      {dialogs}
       <div className="page-shell">
         <div className="page-content page-content-wide">
           <button type="button" className="page-back" onClick={resetToLobby}>
