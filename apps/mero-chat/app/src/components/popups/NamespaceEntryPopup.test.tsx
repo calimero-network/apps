@@ -162,16 +162,19 @@ describe("NamespaceEntryPopup", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("steps aside while the create dialog is open, and is back when it closes", async () => {
+  it("stays mounted but invisible and hidden from assistive tech while the create dialog is open", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
     const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(await screen.findByText("Welcome to MeroChat")).toBeInTheDocument();
+    const title = await screen.findByText("Welcome to MeroChat");
+    const card = () => title.closest("[aria-hidden]") ?? title.parentElement!;
+    expect(title.closest("[aria-hidden=true]")).toBeNull();
     h.createOpen = true;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(screen.queryByText("Welcome to MeroChat")).toBeNull();
+    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(card().getAttribute("aria-hidden")).toBe("true");
     h.createOpen = false;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(title.closest("[aria-hidden=true]")).toBeNull();
   });
 
   it("opens the shared create dialog from the empty state and from the list", async () => {

@@ -482,11 +482,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const selectedNs = namespaces.find((g) => g.groupId === selectedId);
-  // The create dialog replaces the picker while it is open.
-  if (creating) return null;
   return (
     <Overlay>
-      <Box>
+      {/* Stays behind the create dialog, hidden so its card does not read as a second one. */}
+      <Box aria-hidden={creating || undefined} style={creating ? { visibility: "hidden" } : undefined}>
         {/* Loading */}
         {(step === "loading" || step === "checking") && (
           <>
