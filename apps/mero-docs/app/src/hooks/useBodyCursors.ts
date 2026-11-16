@@ -156,14 +156,16 @@ export function useBodyCursors({
       const { anchor, head } = editor.prosemirrorState.selection;
       const mint = (position: number) =>
         client.anchorAt({ doc: docId, block: blockId, position: scalarAt(geometry, position), before: true });
-      void Promise.all([mint(anchor), mint(head)])
+      // A caret (no selection) is one point: one anchor serves both ends.
+      const first = mint(anchor);
+      void Promise.all([first, head === anchor ? first : mint(head)])
         .then(([anchorToken, headToken]) =>
           publishRef.current({ blockId, anchor: anchorToken, head: headToken }),
         )
         .catch(retry);
     };
     send(0);
-    // Each publish mints two anchors on the node: one per settled move.
+    // Each publish mints an anchor on the node (two for a selection): one per settled move.
     let movingSince: number | null = null;
     const unsubscribe = editor.onSelectionChange(() => {
       if (timer) clearTimeout(timer);
