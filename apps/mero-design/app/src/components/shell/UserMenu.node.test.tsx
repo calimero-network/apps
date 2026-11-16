@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
 import { bindNodeShield } from "@calimero-apps/passkey";
 
@@ -35,7 +35,8 @@ describe("Mero Design's account menu", () => {
     fireEvent.click(screen.getByTestId("user-menu"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Connected to merod local (1 node)" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("Test server: not sealed");
+    // The shield verifies asynchronously: "Checking node…" comes first.
+    await waitFor(() => expect(dialog.textContent).toContain("Test server: not sealed"));
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });
