@@ -26,7 +26,7 @@
 set -euo pipefail
 
 registry="${CALIMERO_REGISTRY_URL:-https://apps.calimero.network}"
-api="${registry%/}/api/v2/bundles"
+api="${registry%/}/api/bundles"
 
 # The well-known development key's signerId (core's `mero_sign::dev_signer_id`,
 # the same key cargo-mero's --dev used): `meroctl app pack` without `--key`

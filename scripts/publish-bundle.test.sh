@@ -21,7 +21,7 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        if self.path == "/api/v2/bundles/upload-url":
+        if self.path == "/api/bundles/upload-url":
             grant = {
                 "url": f"http://127.0.0.1:{self.server.server_port}/storage/obj-1?sig=secret",
                 "object": "obj-1",

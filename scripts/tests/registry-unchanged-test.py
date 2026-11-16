@@ -112,7 +112,7 @@ class Registry(http.server.BaseHTTPRequestHandler):
         url = urllib.parse.urlsplit(self.path)
         q = dict(urllib.parse.parse_qsl(url.query))
         Registry.requests.append(q)
-        if url.path != "/api/v2/bundles" or q.get("package") != PACKAGE or Registry.latest is None:
+        if url.path != "/api/bundles" or q.get("package") != PACKAGE or Registry.latest is None:
             body = []
         elif "version" in q:
             body = [Registry.latest] if q["version"] == Registry.latest["appVersion"] else None
