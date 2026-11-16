@@ -82,6 +82,16 @@ describe("org roles and deleting a team", () => {
     expect(cluster.callsOf("setMember")).toEqual([]);
   });
 
+  it("bound: the consent page sends the person back to the page they asked from", async () => {
+    window.history.replaceState(null, "", "/0.1.0/teams?tab=1");
+    const { cluster, org } = await team({ bob: "member" });
+    const { client, openConsentPage } = bound(cluster.client);
+    void setTeamRole(client as never, org, "bob", "admin", passkey);
+    await tick();
+    expect(openConsentPage.mock.calls[0]![0]).toMatchObject({ returnTo: `${window.location.origin}/0.1.0/teams?tab=1` });
+    window.history.replaceState(null, "", "/");
+  });
+
   it("bound: deleting the team goes to the consent page", async () => {
     const { cluster, org } = await team();
     const { client, openConsentPage } = bound(cluster.client);

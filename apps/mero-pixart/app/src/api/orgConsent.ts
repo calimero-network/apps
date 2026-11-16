@@ -20,7 +20,6 @@ import {
   type LeftApp,
 } from "@calimero-apps/connect";
 import { confirmConsentHandoff } from "@calimero-apps/passkey";
-import { nodeBasename } from "@calimero-apps/node-served";
 
 import type { ToastKind } from "../contexts/ToastContext";
 import { leaveTeam, PRODUCT_NAME, removeTeamMember } from "./teams";
@@ -70,10 +69,14 @@ function keep(intent: OrgIntent | null): void {
   }
 }
 
-/** Where the consent page sends the person back: the app's root on this origin. */
+/**
+ * Where the consent page sends the person back: the page they asked from, so
+ * an owner who changed a role in a team's settings is back on the teams list,
+ * not resumed into the project they had open last (the root's landing).
+ */
 function returnTo(): string {
   const url = new URL(window.location.href);
-  return new URL(nodeBasename(url, "/"), url.origin).toString();
+  return `${url.origin}${url.pathname}${url.search}`;
 }
 
 /** The consent request for `intent`. */
