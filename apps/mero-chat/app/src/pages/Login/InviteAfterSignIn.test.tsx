@@ -33,7 +33,6 @@ const h = vi.hoisted(() => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
-    joinGroup: vi.fn(),
     listGroups: vi.fn(),
     myOrgs: vi.fn(),
     enterWorkspace: vi.fn(),
@@ -53,6 +52,7 @@ vi.mock("../../api/calimero", () => ({
     const s = useSyncExternalStore(h.subscribe, () => h.state);
     return {
       ...s,
+      session: s.status === "signed-in" ? { status: "signed-in", client: {} } : null,
       isAuthenticated: s.status === "signed-in",
       isLoading: false,
       logout: vi.fn(),
@@ -67,15 +67,28 @@ vi.mock("../../api/calimero", () => ({
   approveSignUp: vi.fn(),
   cancelSignUp: vi.fn(),
   getAccountId: () => "acct-me",
+  passkey: () => ({}),
 }));
-vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));
+vi.mock("@calimero-network/mero-react", () => ({
+  AcceptInviteDialog: (p: { open: boolean; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+    p.open ? (
+      <div>
+        <button type="button" onClick={() => p.onJoined({ org: "org-inviter" })}>
+          Join workspace
+        </button>
+        <button type="button" onClick={p.onClose}>
+          Close
+        </button>
+      </div>
+    ) : null,
+}));
+vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs, invalidate: vi.fn() }));
 vi.mock("../../api/meroJsClient", () => ({ isDelegatedSession: () => true }));
 vi.mock("../../contexts/ToastContext", () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
-    joinGroup = h.joinGroup;
     listGroups = h.listGroups;
     getGroupMetadata = vi.fn(async () => ({ data: null, error: null }));
     resolveCurrentMemberIdentity = vi.fn(async () => ({
@@ -116,7 +129,7 @@ vi.mock("../landing/LandingPage", () => ({
 
 import InvitationPrompt from "../../components/popups/InvitationPrompt";
 import { useCalimero } from "../../api/calimero";
-import { INVITATION_STORAGE_KEY, SPENT_INVITE } from "../../utils/invitation";
+import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { markJoinedAwaitingName } from "../../utils/enterWorkspace";
 import Login from "./index";
 
@@ -144,7 +157,6 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   h.set({ status: "signed-out", message: null, accountId: null });
-  h.joinGroup.mockReset();
   h.enterWorkspace.mockReset();
   h.enterJoinedWorkspaceForName.mockReset();
   h.myOrgs.mockReset().mockResolvedValue([]);
@@ -157,48 +169,38 @@ describe("an invitation link, then signing in with an account that has no worksp
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(
-      await screen.findByRole("button", { name: /^join$/i }),
+      await screen.findByRole("button", { name: /join workspace/i }),
     ).toBeInTheDocument();
     // Let the picker's load settle, if it was (wrongly) mounted.
     await act(async () => {});
     expect(picker()).toBeNull();
   });
 
-  it("Join redeems the invite and enters the inviting workspace under the name chosen beside it", async () => {
+  it("Join enters the inviting workspace, asking your name in it once", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok-1");
-    h.joinGroup.mockResolvedValue({
-      data: { groupId: "org-inviter", memberIdentity: "acct-me" },
-      error: null,
-    });
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
-    fireEvent.change(await screen.findByLabelText(/your name/i), { target: { value: "Ann" } });
-    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
-    await vi.waitFor(() =>
-      expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok-1" }),
+    fireEvent.click(
+      await screen.findByRole("button", { name: /join workspace/i }),
     );
+    // Your name is per workspace: a new one has none for you yet.
     await vi.waitFor(() =>
-      expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-inviter", "Ann", "acct-me"),
+      expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-inviter"),
     );
-    // Asked once, here: not again on the picker.
-    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+    expect(h.enterWorkspace).not.toHaveBeenCalled();
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
     expect(picker()).toBeNull();
   });
 
-  it("a refused invite says so, and only then does the picker offer Create workspace", async () => {
+  it("closing the dialog drops the invite, and only then does the picker offer Create workspace", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok-1");
-    h.joinGroup.mockResolvedValue({
-      data: null,
-      error: { code: 404, message: "unknown invite" },
-    });
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
-    fireEvent.change(await screen.findByLabelText(/your name/i), { target: { value: "Ann" } });
-    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(SPENT_INVITE);
+    await screen.findByRole("button", { name: /join workspace/i });
     expect(picker()).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(await screen.findByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 
   it("without an invitation, the picker offers Create workspace", async () => {

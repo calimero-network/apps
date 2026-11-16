@@ -50,8 +50,6 @@ const h = await vi.hoisted(async () => {
       a.access = access;
     }),
     session: { accountId: "acct-me" },
-    invite: vi.fn(async () => "tok-1"),
-    redeemInvite: vi.fn(async () => ({ org: "org-joined" })),
     setMemberMetadata: vi.fn(async () => {}),
     setMember: vi.fn(async () => {}),
     removeMember: vi.fn(async () => ({})),
@@ -165,14 +163,6 @@ describe("a workspace is an org", () => {
     expect(res.data?.selfIdentity).toBe("acct-me");
   });
 
-  it("invites with an org invite token and joins by redeeming one", async () => {
-    await api.createGroup({ applicationId: "x", name: "Team" });
-    const invite = await api.createInvitation("org-1");
-    expect(invite.data).toEqual({ invitation: "tok-1", groupAlias: "Team" });
-    expect(h.client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
-    const joined = await api.joinGroup({ invitation: "tok-1" });
-    expect(joined.data).toEqual({ groupId: "org-joined", memberIdentity: "acct-me" });
-  });
 });
 
 describe("a channel is a chat instance in the org", () => {

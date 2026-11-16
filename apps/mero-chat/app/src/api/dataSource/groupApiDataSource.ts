@@ -12,8 +12,6 @@ import type {
   ContextVisibility,
   CreateGroupRequest,
   CreateGroupResponse,
-  CreateInvitationRequest,
-  CreateInvitationResponse,
   GroupApi,
   GroupContextEntry,
   GroupInfo,
@@ -22,8 +20,6 @@ import type {
   GroupUpgradeStatus,
   JoinGroupContextRequest,
   JoinGroupContextResponse,
-  JoinGroupRequest,
-  JoinGroupResponse,
   LeaveContextResponse,
   LeaveGroupResponse,
   LeaveNamespaceResponse,
@@ -57,7 +53,6 @@ import {
   deleteChannel,
   getAppRecord,
   getOrgRecord,
-  inviteToken,
   invalidate,
   isOrg,
   isOrgAdmin,
@@ -67,7 +62,6 @@ import {
   chatOrgs,
   otherChatOrgs,
   pendingChannel,
-  redeemInvite,
   renameChannel,
   setCapabilities,
   setChatRow,
@@ -254,35 +248,6 @@ export class GroupApiDataSource implements GroupApi {
       return ok(true);
     } catch (error) {
       return catchError("deleteGroup", error);
-    }
-  }
-
-  /**
-   * An invite token into the workspace (a passkey step-up for the inviter),
-   * naming chat's app team where it has one: in a shared org it gives Chat
-   * and no other app (`chatOnly`).
-   */
-  async createInvitation(
-    groupId: string,
-    _request?: CreateInvitationRequest,
-  ): ApiResponse<CreateInvitationResponse> {
-    try {
-      const { token: invitation, appOnly: chatOnly } = await inviteToken(groupId);
-      const org = await getOrgRecord(groupId).catch(() => null);
-      return ok({ invitation, groupAlias: org?.name, ...(chatOnly ? { chatOnly } : {}) });
-    } catch (error) {
-      return catchError("createInvitation", error);
-    }
-  }
-
-  /** Redeems an invite token: the account joins the org. */
-  async joinGroup(request: JoinGroupRequest): ApiResponse<JoinGroupResponse> {
-    try {
-      const groupId = await redeemInvite(request.invitation);
-      if (!groupId) return fail(400, "The invitation did not name a workspace");
-      return ok({ groupId, memberIdentity: getAccountId() });
-    } catch (error) {
-      return catchError("joinGroup", error);
     }
   }
 

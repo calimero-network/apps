@@ -29,20 +29,6 @@ beforeEach(() => {
 });
 
 describe("Chat's consent page", () => {
-  it("asks the node for what a frontend session may not do, returning to Chat's own root", () => {
-    const returnTo = `${window.location.origin}/1.0.0/`;
-    expect(consentRequest({ kind: "createInvite", org: "org-1" }, { inviteTeams: ["team-chat"] })).toEqual({
-      kind: "createInvite",
-      subject: { org: "org-1", role: "member", teams: ["team-chat"] },
-      returnTo,
-    });
-    expect(consentRequest({ kind: "acceptInvite", org: null }, { inviteToken: "tok" })).toEqual({
-      kind: "acceptInvite",
-      subject: { token: "tok" },
-      returnTo,
-    });
-  });
-
   it("asks for the organization-wide changes in core's kinds and fields", () => {
     const returnTo = `${window.location.origin}/1.0.0/`;
     expect(consentRequest({ kind: "setMemberRole", org: "o", account: "a", role: "admin" })).toEqual({
@@ -77,7 +63,7 @@ describe("Chat's consent page", () => {
   });
 
   it("keeps what Chat was doing, shows the page's code first, and forgets it when the person stays", async () => {
-    const intent = { kind: "createInvite" as const, org: "org-1" };
+    const intent = { kind: "deleteOrg" as const, org: "org-1" };
     h.openConsentPage.mockImplementation(
       async (_req, opts: { confirm: (s: { code: string }) => Promise<boolean> }) => {
         expect(consentIntent()).toEqual(intent);
@@ -87,14 +73,14 @@ describe("Chat's consent page", () => {
     );
     h.confirmConsentHandoff.mockResolvedValue(false);
     await expect(askOnConsentPage(intent, consentRequest(intent))).resolves.toBe(false);
-    expect(h.confirmConsentHandoff).toHaveBeenCalledWith({ code: "ABC-DEF", action: "Create an invitation to this workspace" });
+    expect(h.confirmConsentHandoff).toHaveBeenCalledWith({ code: "ABC-DEF", action: "Delete this workspace and everything in it" });
     expect(sessionStorage.getItem(CONSENT_INTENT_KEY)).toBeNull();
   });
 
   it("forgets the intent when the node refuses the request", async () => {
     h.openConsentPage.mockRejectedValue(new Error("refused"));
     await expect(
-      askOnConsentPage({ kind: "createInvite", org: "org-1" }, consentRequest({ kind: "createInvite", org: "org-1" })),
+      askOnConsentPage({ kind: "deleteOrg", org: "org-1" }, consentRequest({ kind: "deleteOrg", org: "org-1" })),
     ).rejects.toThrow("refused");
     expect(consentIntent()).toBeNull();
   });

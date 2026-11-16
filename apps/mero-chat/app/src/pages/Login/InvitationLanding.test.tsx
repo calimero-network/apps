@@ -23,7 +23,6 @@ const h = vi.hoisted(() => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
-    joinGroup: vi.fn(),
     myOrgs: vi.fn(),
   };
 });
@@ -41,6 +40,7 @@ vi.mock("../../api/calimero", () => ({
     return {
       ...s,
       isAuthenticated: s.status === "signed-in",
+      session: s.status === "signed-in" ? { status: "signed-in", client: {} } : null,
       isLoading: false,
       logout: vi.fn(),
     };
@@ -50,11 +50,14 @@ vi.mock("../../api/calimero", () => ({
   approveSignUp: vi.fn(),
   cancelSignUp: vi.fn(),
   getAccountId: () => "acct-me",
+  passkey: () => ({}),
 }));
-vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));
+vi.mock("@calimero-network/mero-react", () => ({
+  AcceptInviteDialog: (p: { open: boolean }) => (p.open ? <button type="button">Join workspace</button> : null),
+}));
+vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs, invalidate: vi.fn() }));
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
-    joinGroup = h.joinGroup;
     getGroupMetadata = vi.fn(async () => ({ data: null, error: null }));
   },
 }));
@@ -90,7 +93,6 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   h.set({ status: "signed-out", message: null });
-  h.joinGroup.mockReset();
   h.myOrgs.mockReset();
   h.myOrgs.mockResolvedValue([]);
 });
@@ -114,7 +116,7 @@ describe("an invitation link opened while signed out", () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(
-      await screen.findByRole("button", { name: /^join$/i }),
+      await screen.findByRole("button", { name: /join workspace/i }),
     ).toBeInTheDocument();
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok-1");
   });

@@ -1,9 +1,8 @@
 /**
  * Workspace invitations on Calimero 1.0: an org invite token.
  *
- * The inviter mints the token with a passkey step-up
- * (`GroupApiDataSource.createInvitation`); the link opens this frontend with
- * `?invite=<token>`. The person opening it is usually not signed in yet, so
+ * The inviter mints the token in the shared invite dialog; the link opens this
+ * frontend with `#invite=<token>`. The person opening it is usually not signed in yet, so
  * `captureInvite` moves the token from the address bar into storage before
  * anything renders, and `InvitationPrompt` offers it once a session exists.
  *
@@ -63,25 +62,6 @@ export function invitationInFlight(): boolean {
   return promptOpen || pendingInvite() !== null;
 }
 
-/**
- * The link that opens this frontend with `token` to redeem.
- *
- * `org` names the workspace the token joins. The token itself does not say,
- * and without it the app cannot tell an invitation into a workspace the
- * visitor is already in: accepting that spends the link's single use on
- * nobody.
- */
-export function generateInvitationUrl(
-  token: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-  org?: string | null,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
-}
-
 /** The token a pasted link (or a bare token) carries, or null. */
 export function parseInvitationInput(input: string): string | null {
   const trimmed = input.trim();
@@ -94,13 +74,14 @@ export function parseInvitationInput(input: string): string | null {
   }
 }
 
-/** Takes `?invite=` off the address bar into storage. Run before React mounts. */
+/** Takes the invite (`#invite=` from the shared dialog's link, or an older `?invite=`) off the address bar into storage. Run before React mounts. */
 export function captureInvite(
   storage: Pick<Storage, "setItem" | "removeItem"> = localStorage,
   loc: Location = window.location,
 ): void {
   const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
+  const hash = new URLSearchParams(url.hash.slice(1));
+  const token = hash.get("invite") ?? url.searchParams.get("invite");
   if (!token) return;
   const org = url.searchParams.get("org");
   try {
@@ -113,6 +94,8 @@ export function captureInvite(
   dropDeferral();
   url.searchParams.delete("invite");
   url.searchParams.delete("org");
+  hash.delete("invite");
+  url.hash = hash.toString();
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -172,17 +155,3 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
   }
 }
 
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/**
- * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer: a 4xx other than 401/429, or a
- * message that says so.
- */
-export function inviteRefused(error: { code?: number; message?: string } | null | undefined): boolean {
-  const code = error?.code;
-  if (typeof code === "number" && code >= 400 && code < 500 && code !== 401 && code !== 429) return true;
-  return /unknown invite|already used|expired|revoked/i.test(error?.message ?? "");
-}

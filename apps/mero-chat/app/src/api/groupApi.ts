@@ -92,36 +92,6 @@ export interface GroupContextEntry {
   metadata?: Record<string, unknown>;
 }
 
-// Mirrors core's closed `CreateGroupInvitationApiRequest`; the old
-// `requester` / `expirationBlockHeight` keys would each be a 400.
-export interface CreateInvitationRequest {
-  expirationTimestamp?: number;
-  recursive?: boolean;
-}
-
-export interface CreateInvitationResponse {
-  /** An org invite token (Calimero 1.0); v1 sent a signed namespace invitation. */
-  invitation: string;
-  groupAlias?: string;
-  /**
-   * The invite gives Hyperfeed Chat only: it names chat's app team in an org whose
-   * apps keep separate people (shared, core#4890), so the organization's
-   * other apps are not opened to the person.
-   */
-  chatOnly?: boolean;
-}
-
-export interface JoinGroupRequest {
-  /** The invite token. */
-  invitation: string;
-  groupAlias?: string;
-}
-
-export interface JoinGroupResponse {
-  groupId: string;
-  memberIdentity: string;
-}
-
 export interface JoinGroupContextRequest {
   contextId: string;
 }
@@ -243,13 +213,6 @@ export interface GroupApi {
   listGroups(): ApiResponse<GroupSummary[]>;
   deleteGroup(groupId: string): ApiResponse<boolean>;
 
-  createInvitation(
-    groupId: string,
-    request?: CreateInvitationRequest,
-  ): ApiResponse<CreateInvitationResponse>;
-  joinGroup(
-    request: JoinGroupRequest,
-  ): ApiResponse<JoinGroupResponse>;
   listMembers(groupId: string): ApiResponse<{ members: GroupMember[]; teeMembers: GroupMember[]; selfIdentity?: string }>;
   addGroupMember(groupId: string, identity: string): ApiResponse<void>;
   removeMember(

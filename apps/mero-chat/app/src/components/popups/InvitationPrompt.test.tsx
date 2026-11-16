@@ -1,31 +1,43 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { CalimeroError } from "@calimero-network/mero-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  joinGroup: vi.fn(),
   getGroupMetadata: vi.fn(),
   enterWorkspace: vi.fn(),
   enterJoinedWorkspaceForName: vi.fn(),
   name: "Alice",
-  last: "",
-  myOrgs: vi.fn(),
-  bound: false,
-  askOnConsentPage: vi.fn(),
+  invalidate: vi.fn(),
+  dialog: vi.fn(),
 }));
 
-vi.mock("../../api/consent", () => ({
-  frontendBound: async () => h.bound,
-  askOnConsentPage: h.askOnConsentPage,
-  consentIntent: () => null,
-  consentRequest: (intent: unknown, terms: { inviteToken?: string }) => ({ kind: "acceptInvite", intent, terms }),
+vi.mock("../../api/platform", () => ({ invalidate: h.invalidate }));
+vi.mock("../../api/calimero", () => ({
+  getAccountId: () => "acct-me",
+  passkey: () => ({ id: "pk" }),
+  useCalimero: () => ({ session: { status: "signed-in", client: { id: "client" } } }),
 }));
-
-vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));
-vi.mock("../../api/calimero", () => ({ getAccountId: () => "acct-me" }));
+vi.mock("@calimero-network/mero-react", () => ({
+  AcceptInviteDialog: (p: {
+    open: boolean;
+    onClose: () => void;
+    onJoined: (j: { org: string }) => void;
+    onError: (e: unknown) => void;
+  }) => {
+    h.dialog(p);
+    return p.open ? (
+      <div>
+        <button onClick={() => void p.onJoined({ org: "org-1" })}>Join</button>
+        <button onClick={p.onClose}>Close dialog</button>
+        <button onClick={() => p.onError(new CalimeroError(400, "REJECTED", "this invite has expired"))}>Spent</button>
+        <button onClick={() => p.onError(new CalimeroError(401, "UNAUTHORIZED", "session expired"))}>Lapsed</button>
+      </div>
+    ) : null;
+  },
+}));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
-    joinGroup = h.joinGroup;
     getGroupMetadata = h.getGroupMetadata;
   },
 }));
@@ -36,7 +48,6 @@ vi.mock("../../utils/enterWorkspace", () => ({
 vi.mock("../../utils/messengerName", () => ({
   getMessengerDisplayName: () => h.name,
 }));
-vi.mock("@calimero-apps/names", () => ({ lastUsedName: () => h.last }));
 
 import InvitationPrompt from "./InvitationPrompt";
 import { INVITATION_ORG_STORAGE_KEY, INVITATION_STORAGE_KEY } from "../../utils/invitation";
@@ -45,101 +56,87 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   h.name = "Alice";
-  h.last = "";
-  h.bound = false;
-  h.askOnConsentPage.mockResolvedValue(false);
-  h.joinGroup.mockResolvedValue({ data: { groupId: "org-1", memberIdentity: "acct-me" }, error: null });
   h.getGroupMetadata.mockResolvedValue({ data: { name: "Team" }, error: null });
-  h.myOrgs.mockResolvedValue([]);
 });
 
 describe("InvitationPrompt", () => {
   it("offers nothing without a pending invitation, or before sign-in", () => {
     const { rerender } = render(<InvitationPrompt enabled />);
-    expect(screen.queryByText(/invited/i)).not.toBeInTheDocument();
+    expect(h.dialog).not.toHaveBeenCalled();
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     rerender(<InvitationPrompt enabled={false} />);
-    expect(screen.queryByText(/invited/i)).not.toBeInTheDocument();
+    expect(h.dialog).not.toHaveBeenCalled();
   });
 
-  it("redeems the token on Join and enters the workspace under the name offered", async () => {
+  it("hands the shared dialog the stored token and Chat's session", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
+    await screen.findByRole("button", { name: "Join" });
+    expect(h.dialog.mock.calls.at(-1)![0]).toMatchObject({
+      open: true,
+      token: "tok",
+      appName: "Hyperfeed Chat",
+      client: { id: "client" },
+      passkey: { id: "pk" },
+    });
+  });
+
+  it("once joined, enters the workspace under the stored name and drops the token", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
     await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalled());
-    expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok" });
     expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
+    expect(h.invalidate).toHaveBeenCalled();
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Join" })).not.toBeInTheDocument();
   });
 
-  it("on Chat's frontend, sends Join to the node's consent page and keeps the token until it decides", async () => {
-    h.bound = true;
-    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
-    localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
-    render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
-    await waitFor(() => expect(h.askOnConsentPage).toHaveBeenCalled());
-    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "acceptInvite", org: "org-1", selfName: "Alice" });
-    expect(h.askOnConsentPage.mock.calls[0]?.[1]).toMatchObject({ terms: { inviteToken: "tok" } });
-    expect(h.joinGroup).not.toHaveBeenCalled();
-    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
-    // Staying here leaves Join on offer.
-    expect(await screen.findByRole("button", { name: /^join$/i })).toBeEnabled();
-  });
-
-  it("asks for the name in the same step, offering the one last used", async () => {
+  it("asks for a name first when there is none", async () => {
     h.name = "";
-    h.last = "Sam";
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    const input = await screen.findByLabelText(/your name/i);
-    expect(input).toHaveValue("Sam");
-    fireEvent.change(input, { target: { value: "  " } });
-    expect(screen.getByRole("button", { name: /^join$/i })).toBeDisabled();
-    fireEvent.change(input, { target: { value: " Sandi " } });
-    fireEvent.click(screen.getByRole("button", { name: /^join$/i }));
-    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Sandi", "acct-me"));
-    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
+    await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
   });
 
-  it("says plainly when the invite was already used or has expired, and drops it", async () => {
-    h.joinGroup.mockResolvedValue({ data: null, error: { code: 404, message: "unknown invite" } });
-    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
-    render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
-    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
-    expect(screen.queryByRole("button", { name: /^join$/i })).not.toBeInTheDocument();
-  });
-
-  it("says why a token could not be redeemed for now, and keeps it", async () => {
-    h.joinGroup.mockResolvedValue({ data: null, error: { code: 503, message: "cluster unavailable" } });
-    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
-    render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /^join$/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("cluster unavailable");
-    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
-  });
-
-  it("does not offer Join to someone already in the workspace, and keeps the link unspent", async () => {
-    h.myOrgs.mockResolvedValue([{ orgId: "org-1", name: "Team", role: "owner" }]);
+  it("names the invite's workspace to the dialog and restores Chat's wording", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
     render(<InvitationPrompt enabled />);
-    expect(await screen.findByText("You're already in this workspace")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^join$/i })).not.toBeInTheDocument();
-    expect(h.joinGroup).not.toHaveBeenCalled();
-    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /open workspace/i }));
-    expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
+    await screen.findByRole("button", { name: "Join" });
+    expect(h.dialog.mock.calls.at(-1)![0]).toMatchObject({
+      org: "org-1",
+      labels: { title: "You're invited to a workspace", join: "Join workspace" },
+    });
   });
 
-  it("Not now drops the invitation", async () => {
+  it("names no org for a link that names none", async () => {
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
-    fireEvent.click(await screen.findByRole("button", { name: /not now/i }));
+    await screen.findByRole("button", { name: "Join" });
+    expect(h.dialog.mock.calls.at(-1)![0].org).toBeUndefined();
+  });
+
+  it("drops the stored token when the node says it is spent, and keeps the dialog up", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: "Spent" }));
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+    expect(screen.getByRole("button", { name: "Join" })).toBeInTheDocument();
+  });
+
+  it("keeps the stored token when the failure is a lapsed session", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: "Lapsed" }));
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
+  });
+
+  it("closing the dialog drops the invitation", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: "Close dialog" }));
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 });

@@ -7,7 +7,6 @@ import ChatTab from "./ChatTab";
 const {
   mockNavigate,
   mockListGroups,
-  mockJoinGroup,
   mockResolveCurrentMemberIdentity,
   mockSetMemberAlias,
   mockSetGroupMemberIdentity,
@@ -23,7 +22,6 @@ const {
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockListGroups: vi.fn(),
-  mockJoinGroup: vi.fn(),
   mockResolveCurrentMemberIdentity: vi.fn(),
   mockSetMemberAlias: vi.fn(),
   mockSetGroupMemberIdentity: vi.fn(),
@@ -57,7 +55,6 @@ vi.mock("../../hooks/useSessionKey", () => ({
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class MockGroupApiDataSource {
     listGroups = mockListGroups;
-    joinGroup = mockJoinGroup;
     resolveCurrentMemberIdentity = mockResolveCurrentMemberIdentity;
     setMemberMetadata = mockSetMemberAlias;
   },
@@ -108,7 +105,6 @@ describe("ChatTab", () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockListGroups.mockReset();
-    mockJoinGroup.mockReset();
     mockResolveCurrentMemberIdentity.mockReset();
     mockSetMemberAlias.mockReset();
     mockSetGroupMemberIdentity.mockReset();

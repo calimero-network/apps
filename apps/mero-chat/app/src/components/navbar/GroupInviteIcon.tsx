@@ -1,6 +1,6 @@
 import { useState } from "react";
 import styled from "styled-components";
-import GroupInviteModal from "../popups/GroupInviteModal";
+import ChatInviteDialog from "../popups/ChatInviteDialog";
 import { getGroupId } from "../../constants/config";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 
@@ -66,9 +66,9 @@ export default function GroupInviteIcon() {
           <path d="M5 12h14" />
         </svg>
       </GroupInviteIconWrapper>
-      <GroupInviteModal
+      <ChatInviteDialog
         groupId={groupId}
-        isOpen={isOpen}
+        open={isOpen}
         onClose={() => setIsOpen(false)}
       />
     </>
