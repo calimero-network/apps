@@ -8,6 +8,35 @@ import { dropInvite, pendingInvite } from './lib/invites';
 
 import { DETAILS, ME, deps, fakeClient, hold, remember } from './test/fixtures';
 
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const { createElement } = await import('react');
+  return {
+    ...(await importOriginal<object>()),
+    CreateWorkspaceDialog: (p: {
+      open: boolean;
+      defaultSelfName?: string;
+      release: unknown;
+      labels?: { title?: string };
+      onCreated: (w: { orgId: string; name: string; selfName: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'create-dialog' },
+            createElement('h2', { 'data-testid': 'create-title' }, p.labels?.title),
+            createElement('p', { 'data-testid': 'create-self' }, p.defaultSelfName),
+            createElement('pre', { 'data-testid': 'create-release' }, JSON.stringify(p.release)),
+            createElement(
+              'button',
+              { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Fresh', selfName: 'Alice' }) },
+              'done',
+            ),
+          )
+        : null,
+  };
+});
+
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock('./pages/landing/LandingPage', () => ({
   default: ({ onConnect }: { onConnect?: () => void }) => (
@@ -48,6 +77,19 @@ describe('App', () => {
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
     // One agreement in it, two people in the org.
     expect(screen.getByText(/1 agreement/)).toBeTruthy();
+  });
+
+  it('opens the shared dialog for a new workspace, then names you in it and opens it', async () => {
+    remember();
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('create-workspace'));
+    expect((await screen.findByTestId('create-title')).textContent).toBe('New workspace');
+    expect(JSON.parse(screen.getByTestId('create-release').textContent ?? 'null')).toEqual({ package: 'com.calimero.mero-sign' });
+    fireEvent.click(screen.getByTestId('create-done'));
+    await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-new'));
+    expect(client.setMemberMetadata).toHaveBeenCalledWith('org-new', ME, { name: 'Alice' });
+    expect(client.createOrg).not.toHaveBeenCalled();
   });
 
   it('tells a member who may not add an agreement to ask an owner, instead of offering Create (B8)', async () => {

@@ -3,6 +3,7 @@ import '@calimero-apps/glass/glass.css';
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { captureInvite } from './lib/invites';
 
@@ -16,6 +17,8 @@ captureInvite();
 // see `@calimero-apps/connect`) is set up by `SessionProvider` inside `App`.
 createRoot(document.getElementById('root')!).render(
   <AppWrapper>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </AppWrapper>,
 );

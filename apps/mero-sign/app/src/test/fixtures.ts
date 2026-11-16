@@ -108,6 +108,9 @@ export function fakeClient() {
                   : null,
     })),
     redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
+    createOrg: vi.fn(async () => 'org-new'),
+    setCapabilities: vi.fn(async () => undefined),
+    setMemberMetadata: vi.fn(async () => undefined),
   });
 }
 
