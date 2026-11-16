@@ -7,11 +7,11 @@ import { InviteCard } from "./InviteCard";
 
 // The shared dialog is mero-react's to test: here only what the app hands it and does after.
 vi.mock("@calimero-network/mero-react", () => ({
-  InviteDialog: (p: { open: boolean; org: string; linkBase?: string; labels?: { title?: string }; onInvited?: (i: { token: string; link: string }) => void }) =>
+  InviteDialog: (p: { open: boolean; org: string; linkBase?: string; labels?: { title?: string; noun?: string }; onInvited?: (i: { token: string; link: string }) => void }) =>
     p.open
       ? createElement(
           "div",
-          { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase },
+          { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase, "data-noun": p.labels?.noun },
           createElement("h2", null, p.labels?.title),
           createElement("button", { "data-testid": "invite-done", onClick: () => p.onInvited?.({ token: "t", link: "l" }) }, "done"),
         )
@@ -32,6 +32,7 @@ describe("InviteCard", () => {
     const dialog = screen.getByTestId("invite-dialog");
     expect(dialog.textContent).toContain("Invite to this scene");
     expect(dialog.dataset.org).toBe("org-1");
+    expect(dialog.dataset.noun).toBe("studio");
     expect(new URL(dialog.dataset.base ?? "").searchParams.get("org")).toBe("org-1");
     fireEvent.click(screen.getByTestId("invite-done"));
     expect(after).toHaveBeenCalledOnce();

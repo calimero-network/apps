@@ -3,7 +3,7 @@ import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js"
 import { InviteDialog } from "@calimero-network/mero-react";
 import { inviteBase } from "./scenes";
 
-const LABELS = { title: "Invite to this scene", subtitle: "Choose what the people you invite can do in this studio." };
+const LABELS = { noun: "studio", title: "Invite to this scene", subtitle: "Choose what the people you invite can do in this studio." };
 
 /**
  * Invite someone to this scene's studio (its organization). One link: whoever

@@ -65,9 +65,9 @@ export const basename = (): string => nodeBasename(new URL(window.location.href)
 
 /**
  * The page an invite link opens: the router's basename (the served
- * `/{version}/`), naming `org` so a member is told so instead of spending the
- * link. The shared dialog adds the token. Pinned here until every cluster keeps
- * the query on its root redirect (core's served-redirect fix).
+ * `/{version}/`), naming `org` so the dialog can tell a member.
+ * The shared dialog adds the token. Pinned here until every cluster keeps the
+ * query on its root redirect (core's served-redirect fix).
  */
 export function inviteBase(org: string): string {
   const url = new URL(basename(), window.location.origin);
