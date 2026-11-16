@@ -15,8 +15,9 @@ import { pathToFileURL } from 'node:url';
 // which the viewer reported as "Failed to render PDF pages.", with the Sign
 // button unreachable behind it. The legacy build carries the polyfills.
 //
-// Node 22 lacks the method too (and `Promise.try`, which the same build also
-// assumes), so importing the app's pdf.js here shows whether it brings them.
+// The test removes both features before importing the app's pdf.js, so it
+// shows whether the build brings them whatever Node runs it (22 lacks them,
+// 24 has them).
 
 const require = createRequire(import.meta.url);
 
@@ -44,10 +45,16 @@ describe('the pdf.js build the app loads', () => {
   it('brings the engine features it relies on, and draws a page', async () => {
     const map = Map.prototype as { getOrInsertComputed?: unknown };
     const promise = Promise as { try?: unknown };
-    expect(
-      [typeof map.getOrInsertComputed, typeof promise.try],
-      'this runtime already has them, so it cannot reproduce the bug',
-    ).toEqual(['undefined', 'undefined']);
+    const had = {
+      getOrInsertComputed: Object.getOwnPropertyDescriptor(map, 'getOrInsertComputed'),
+      try: Object.getOwnPropertyDescriptor(promise, 'try'),
+    };
+    delete map.getOrInsertComputed;
+    delete promise.try;
+    expect([typeof map.getOrInsertComputed, typeof promise.try]).toEqual([
+      'undefined',
+      'undefined',
+    ]);
 
     // Node has no DOMMatrix, which pdf.js's canvas module touches as it is
     // imported. Nothing here draws to a canvas, so an empty stand-in is enough
@@ -75,6 +82,12 @@ describe('the pdf.js build the app loads', () => {
       await expect(page.getOperatorList()).resolves.toBeTruthy();
     } finally {
       await task.destroy();
+      // Back to what the host runtime had, so other tests see it unchanged.
+      for (const [key, target] of [['getOrInsertComputed', map], ['try', promise]] as const) {
+        const d = had[key];
+        if (d) Object.defineProperty(target, key, d);
+        else delete (target as Record<string, unknown>)[key];
+      }
     }
   });
 });
