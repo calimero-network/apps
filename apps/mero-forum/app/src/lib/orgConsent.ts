@@ -35,6 +35,9 @@ import { APP_NAME, PRODUCT_NAME } from "../config";
 /** What Mero Forum asked the consent page for, beyond connect's own kinds. */
 export type OrgConsentIntent = { kind: "deleteOrg"; org: string; name: string };
 
+/** Its request to the consent page (core#5018's organization kinds, not typed by mero-js yet). */
+export type OrgConsentRequest = { kind: "deleteOrg"; subject: { org: string }; returnTo: string };
+
 /** Where {@link OrgConsentIntent} waits while the person is on the consent page (this tab only). */
 export const ORG_CONSENT_KEY = `${APP_NAME}:org-consent-intent`;
 
@@ -102,7 +105,7 @@ export async function askOrgConsent(
 ): Promise<boolean> {
   if (!(await isFrontendBound(client))) return false;
   if (typeof client.openConsentPage !== "function") return false;
-  const request = {
+  const request: ConsentRequest | OrgConsentRequest = {
     kind: intent.kind,
     subject: { org: intent.org },
     returnTo: spacesUrl(),
@@ -111,7 +114,7 @@ export async function askOrgConsent(
   let went = false;
   try {
     // The organization kinds are not in mero-js's `ConsentRequest` yet; the node takes them.
-    await client.openConsentPage(request as unknown as ConsentRequest, {
+    await client.openConsentPage(request as ConsentRequest, {
       confirm: async (started) => {
         went = await handoff(
           started.code,
