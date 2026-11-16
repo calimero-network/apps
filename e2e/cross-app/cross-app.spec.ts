@@ -132,9 +132,12 @@ test("1. Alice makes a workspace in Chat, on its own", async ({ browser }) => {
   await signInToChat(page);
   await expect(page.getByText("You have no Mero Chat workspace yet")).toBeVisible();
   await page.getByRole("button", { name: "Create workspace" }).click();
-  await page.getByPlaceholder("e.g. My Team").fill(WORKSPACE);
-  await page.getByPlaceholder("e.g. Alice").fill("Alice");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
+  // mero-react's shared dialog: names, then the review, from which it creates.
+  const dialog = page.locator(".mero-cw-card");
+  await dialog.getByPlaceholder("e.g. My Team").fill(WORKSPACE);
+  await dialog.getByPlaceholder("e.g. Alice").fill("Alice");
+  await dialog.getByRole("button", { name: "Continue" }).click();
+  await dialog.getByRole("button", { name: "Create workspace" }).click();
   // In the workspace, with the #general channel Chat makes in it.
   await expect(page.getByTestId("channel-item").filter({ hasText: "general" })).toBeVisible();
 
