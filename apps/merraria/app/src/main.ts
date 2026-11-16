@@ -21,6 +21,7 @@ import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
 import { Landing } from "./ui/landing";
+import { startUnlessConsentReturn } from "./ui/createWorld";
 import { knownName } from "./net/playerName";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
@@ -608,4 +609,6 @@ function showFatal(app: HTMLElement, message: string): void {
   app.appendChild(el);
 }
 
-void boot();
+startUnlessConsentReturn(() => {
+  void boot();
+});

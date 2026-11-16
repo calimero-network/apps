@@ -62,10 +62,3 @@ export function indexed(client: AppTransport, onIndex: (index: number) => void):
     events: (app, from, signal) => client.events(app, from, signal),
   };
 }
-
-/** A seed the contract takes: a non-negative integer below 2^32. */
-export function toSeed(raw: unknown, fallback: number): number {
-  const n = Math.floor(Math.abs(Number(raw)));
-  if (!Number.isFinite(n) || n === 0) return fallback;
-  return n % 2 ** 32;
-}

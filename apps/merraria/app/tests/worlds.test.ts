@@ -50,17 +50,16 @@ describe("listWorlds", () => {
 });
 
 describe("createWorld", () => {
-  it("makes an org, the instance in it, then founds the world with its name and seed", async () => {
+  it("makes the instance in the given org, then founds the world with its name and seed", async () => {
     const order: string[] = [];
     const client = {
-      createOrg: vi.fn(async () => (order.push("org"), "org-1")),
       createApp: vi.fn(async () => (order.push("app"), "app-1")),
       call: vi.fn(async (_a: string, method: string, _args?: unknown) => (order.push(method), { index: 1, result: null, events: [] })),
       view: vi.fn(),
     };
-    const world = await createWorld(withRoutes(client), "bundle", "surface", 42);
+    const world = await createWorld(withRoutes(client), "bundle", "surface", 42, "org-1");
     expect(world).toEqual({ appId: "app-1", name: "surface", org: "org-1" });
-    expect(order).toEqual(["org", "app", "createWorld"]);
+    expect(order).toEqual(["app", "createWorld"]);
     expect(client.createApp).toHaveBeenCalledWith("surface", "bundle", { org: "org-1" });
     expect(client.call.mock.calls[0][2]).toMatchObject({ name: "surface", seed: 42 });
   });
