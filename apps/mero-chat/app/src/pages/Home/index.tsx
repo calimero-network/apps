@@ -682,6 +682,46 @@ function Workspace({ isConfigSet }: { isConfigSet: boolean }) {
     });
   }, [groupContextsHook.channels]);
 
+  // The open channel or DM was listed and is not any more (removed from it,
+  // or deleted): nothing of it stays on screen. Back to #general, or to
+  // nothing when that is the one that went. Only one listed before counts,
+  // so a channel just made and not listed yet is left open.
+  const listedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (groupContextsHook.loading || dmsHook.loading) return;
+    const listed = new Set<string>();
+    groupContextsHook.channels.forEach((ch) => {
+      if (ch.isJoined && ch.contextId) listed.add(ch.contextId);
+    });
+    privateDMs.forEach((dm) => {
+      if (dm.contextId) listed.add(dm.contextId);
+    });
+    // An empty list is a read that failed or has not landed, not every channel gone.
+    if (listed.size === 0) return;
+    const before = listedRef.current;
+    listedRef.current = listed;
+    const open = activeChatRef.current;
+    if (!open?.contextId || !before.has(open.contextId) || listed.has(open.contextId)) return;
+    addToast({
+      title: open.type === "direct_message" ? "Conversation closed" : "Channel closed",
+      message: `You no longer have access to ${open.type === "channel" ? `#${open.name}` : "this conversation"}.`,
+      type: "channel",
+      duration: 5000,
+    });
+    const general = generalChannel(groupContextsHook.channels);
+    if (general?.contextIdentity && general.contextId !== open.contextId) {
+      void updateSelectedActiveChatRef.current({
+        type: "channel",
+        contextId: general.contextId,
+        id: general.contextId,
+        name: general.info?.name ?? general.alias ?? GENERAL_CHANNEL,
+        contextIdentity: general.contextIdentity,
+      });
+    } else {
+      setActiveChat(null);
+    }
+  }, [groupContextsHook.channels, groupContextsHook.loading, privateDMs, dmsHook.loading, addToast]);
+
   const onDMSelected = useCallback(
     async (dm: DMContextInfo) => {
       const contextId = dm.contextId;
