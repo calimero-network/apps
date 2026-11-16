@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { CalimeroError } from "@calimero-network/mero-js";
-import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
+import { ManageInHomeError, askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
 import { messageOf } from "../../api/calendar";
 import { useSignedIn } from "../../api/sessionContext";
 import {
@@ -33,6 +33,7 @@ import {
   resumeRequested,
 } from "../../utils/lastVisit";
 import { useClickOutside } from "../../hooks/useClickOutside";
+import { visibleInterval } from "../../utils/visibleInterval";
 import styles from "./teams.module.scss";
 
 /**
@@ -99,7 +100,7 @@ export default function TeamCalendarsPage() {
         setMyRole(org.roles.get(accountId));
       }
     } catch {
-      /* the last answer stays; the next poll or focus tries again */
+      /* the last answer stays; the next poll, or coming back to the tab, tries again */
     } finally {
       setLoading(false);
       after();
@@ -108,12 +109,7 @@ export default function TeamCalendarsPage() {
 
   useEffect(() => {
     void load();
-    const timer = setInterval(load, 30_000);
-    window.addEventListener("focus", load);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", load);
-    };
+    return visibleInterval(() => void load(), 30_000);
   }, [load]);
 
   useEffect(() => {
@@ -164,7 +160,9 @@ export default function TeamCalendarsPage() {
       setNewName("");
       navigate(`/teams/${teamId}/calendar/${contextId}`);
     } catch (err) {
-      showToast(`Could not create calendar: ${messageOf(err)}`);
+      // Adding Mero Calendar to this organization is an admin's step in
+      // Calimero Home (the header links there): say so as it is.
+      showToast(err instanceof ManageInHomeError ? err.message : `Could not create calendar: ${messageOf(err)}`);
     } finally {
       setCreating(false);
       after();
@@ -185,7 +183,6 @@ export default function TeamCalendarsPage() {
       setCalendars((prev) => prev.filter((c) => c.contextId !== contextId));
       forgetCalendar(targetKey, teamId, contextId);
       showToast("Calendar deleted.", "success");
-      await load();
     } catch (err) {
       showToast(`Could not delete the calendar: ${messageOf(err)}`);
     } finally {

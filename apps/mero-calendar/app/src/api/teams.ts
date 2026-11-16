@@ -1,7 +1,14 @@
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  ORG_CAPABILITIES,
+  passkeyConfirm,
+  type AppInfo,
+  type CalimeroClient,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 import {
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
   createInviteStore,
   inviteLinkBase as sharedInviteLinkBase,
@@ -12,6 +19,7 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -19,11 +27,13 @@ import {
   type InviteStore,
   type KeyValueStorage,
   type LeftApp,
+  type MaybeMe,
   type PendingInvite,
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { setOrgName } from "@calimero-apps/names";
 
+import { askOrgConsent, type TeamRoleName } from "./consent";
 import { APP } from "./session";
 
 /**
@@ -42,11 +52,15 @@ import { APP } from "./session";
  * The org gets this app's own **app team** (core#4890), through
  * `@calimero-apps/connect`'s org-app module: a new team's is open (everyone in
  * the org has the app), calendars use team access on it, invites name it, and
- * the member list is its people. Once an admin keeps the org's apps apart in
- * Calimero Home (`shared`), an invite gives Mero Calendar only, and Remove and
- * Leave take someone out of Mero Calendar, not out of the org (leaving the
- * last app offers the org too). An org without one (made before app teams, a
- * node without them, a raw dev bundle) is legacy, as before.
+ * the member list is its people, and Remove and Leave take someone off it, out
+ * of Mero Calendar, not out of the org (leaving offers the org too). Once an
+ * admin keeps the org's apps apart in Calimero Home (`shared`), an invite
+ * gives Mero Calendar only. An org without one (made before app teams, a node
+ * without them, a raw dev bundle) is legacy, as before.
+ *
+ * The organization-wide changes (roles, removing from or leaving the org,
+ * deleting it) go through the node's consent page on a session bound to the
+ * app's frontend (`./consent`).
  */
 
 /** A team this account is in. */
@@ -124,45 +138,104 @@ const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
 
+/** A client for the team's organization-wide changes: it says who it is and opens the consent page. */
+type OrgClient = Pick<CalimeroClient, "session" | "openConsentPage"> & MaybeMe;
+
+/** Mero Calendar's own team in `org` (the org read once), or `null`: a legacy org, a raw bundle. */
+async function calendarTeamIn(
+  client: ClientRoutes<{ orgs: "get" }>,
+  org: string,
+  source: AppSource | null,
+): Promise<{ team: string; appOnly: boolean } | null> {
+  const pkg = sourcePackage(source);
+  if (!pkg) return null;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  const team = appTeamIdIn(view, pkg);
+  return team ? { team, appOnly: isAppOnly(view, pkg) } : null;
+}
+
 /**
- * Leaves the team (`leaveApp`, a passkey step-up). In an org that keeps its
- * apps apart that is Mero Calendar only, with `lastApp` set when it was the
- * caller's last app there (offer {@link leaveTeamOrg}); elsewhere the org.
+ * Leaves the team. Where the org has Mero Calendar's own team, that is off
+ * the team only, which this app may do itself (`lastApp` set when it was the
+ * caller's last app there: offer {@link leaveTeamOrg}). An org without it (a
+ * legacy one) is left altogether: on the node's consent page from the app's
+ * frontend, else directly. Every step is a passkey step-up.
  */
-export function leaveTeam(
-  client: Pick<CalimeroClient, "session"> &
-    ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
+export async function leaveTeam(
+  client: OrgClient & ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
   self?: string,
 ): Promise<LeftApp> {
+  const mine = await calendarTeamIn(client, org, source).catch(() => null);
+  if (mine?.appOnly) return leaveApp(client, org, source, passkey, self ? { self } : {});
+  if (mine) {
+    const account = self ?? client.session?.accountId;
+    if (!account) throw new Error("Sign in to leave.");
+    await removeFromAppTeam(client, org, source, account, passkey);
+    // The org's own app: offer leaving the organization too.
+    return { left: "app", lastApp: true };
+  }
+  if (await askOrgConsent(client, { kind: "leaveOrg", org })) return { left: "org", lastApp: false };
   return leaveApp(client, org, source, passkey, self ? { self } : {});
 }
 
-/** Leaves the organization altogether, every app in it. A passkey step-up. */
-export function leaveTeamOrg(
-  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "removeMember" }>,
+/** Leaves the organization altogether, every app in it. A passkey step-up, on the consent page from the app's frontend. */
+export async function leaveTeamOrg(
+  client: OrgClient & ClientRoutes<{ orgs: "removeMember" }>,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
 ): Promise<void> {
+  if (await askOrgConsent(client, { kind: "leaveOrg", org })) return;
   return leaveOrg(client, org, passkey, self);
 }
 
 /**
- * Removes `account` from the team (`removeFromApp`, a passkey step-up): in an
- * org that keeps its apps apart, out of Mero Calendar only, never out of the
- * org; elsewhere out of the org, as before.
+ * Removes `account` from the team. Where the org has Mero Calendar's own team,
+ * off that team only: they stay in the organization and its other apps. An
+ * org without it (a legacy one) removes them from the organization: on the
+ * node's consent page from the app's frontend, else directly. `name` is what
+ * the screens call them.
  */
-export function removeTeamMember(
-  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
+export async function removeTeamMember(
+  client: OrgClient & ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
   passkey: () => PasskeyProvider,
+  name: string = account,
 ): Promise<"app" | "org"> {
+  if (await calendarTeamIn(client, org, source).catch(() => null)) {
+    await removeFromAppTeam(client, org, source, account, passkey);
+    return "app";
+  }
+  if (await askOrgConsent(client, { kind: "removeMember", org, account, name })) return "org";
   return removeFromApp(client, org, source, account, passkey);
+}
+
+/** Gives `account` the team role `role`: an organization role, on the consent page from the app's frontend. */
+export async function setTeamRole(
+  client: OrgClient & ClientRoutes<{ orgs: "setMember" }>,
+  org: string,
+  account: string,
+  role: TeamRoleName,
+  passkey: () => PasskeyProvider,
+  name: string = account,
+): Promise<void> {
+  if (await askOrgConsent(client, { kind: "setMemberRole", org, account, role, name })) return;
+  await client.orgs.setMember({ org, account, role }, { confirm: passkeyConfirm(passkey()) });
+}
+
+/** The team's owner deletes it, with its calendars: on the consent page from the app's frontend. */
+export async function deleteTeam(
+  client: OrgClient & ClientRoutes<{ orgs: "delete" }>,
+  org: string,
+  passkey: () => PasskeyProvider,
+): Promise<void> {
+  if (await askOrgConsent(client, { kind: "deleteOrg", org })) return;
+  await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
 }
 
 /** Whether a role may delete the team (its owner) rather than leave it. */

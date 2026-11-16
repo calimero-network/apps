@@ -3,12 +3,12 @@ import { RemoveMemberButton, canChangeRole, canRemoveMember } from "@calimero-ap
 import "@calimero-apps/members/members.css";
 
 import { messageOf } from "../../api/calendar";
+import { StayedInApp } from "../../api/consent";
 import { useSignedIn } from "../../api/sessionContext";
-import { PRODUCT_NAME, isAdmin, readOrg, removeTeamMember } from "../../api/teams";
+import { PRODUCT_NAME, isAdmin, readOrg, removeTeamMember, setTeamRole } from "../../api/teams";
 import { useToast } from "../../contexts/ToastContext";
 import { CloseIcon, ShieldIcon, UserIcon } from "../../components/common/icons/Icons";
 import styles from "./teams.module.scss";
-import { passkeyConfirm } from "@calimero-network/mero-js";
 
 interface Props {
   teamId: string;
@@ -98,10 +98,7 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
     }
     setBusy(row.account);
     try {
-      await client.orgs.setMember(
-        { org: teamId, account: row.account, role: next },
-        { confirm: passkeyConfirm(passkey()) },
-      );
+      await setTeamRole(client, teamId, row.account, next, passkey, display(row));
       showToast(
         next === "admin"
           ? `${display(row)} can now manage members and delete calendars.`
@@ -109,11 +106,11 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
         "success",
       );
       onChanged?.();
+      await load();
     } catch (err) {
-      showToast(`Could not change that role: ${messageOf(err)}`);
+      if (!(err instanceof StayedInApp)) showToast(`Could not change that role: ${messageOf(err)}`);
     } finally {
       after();
-      await load();
       setBusy(null);
     }
   }
@@ -121,7 +118,7 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
   async function removeMember(row: Row) {
     setBusy(row.account);
     try {
-      const left = await removeTeamMember(client, teamId, source, row.account, passkey);
+      const left = await removeTeamMember(client, teamId, source, row.account, passkey, display(row));
       showToast(
         left === "app"
           ? `${display(row)} was removed from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
@@ -131,7 +128,7 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
       onChanged?.();
       await load();
     } catch (err) {
-      showToast(`Could not remove that member: ${messageOf(err)}`);
+      if (!(err instanceof StayedInApp)) showToast(`Could not remove that member: ${messageOf(err)}`);
     } finally {
       after();
       setBusy(null);
