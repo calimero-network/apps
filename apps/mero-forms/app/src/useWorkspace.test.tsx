@@ -99,4 +99,25 @@ describe("useWorkspace", () => {
     renderHook(() => useWorkspace("app-1", onLost));
     await waitFor(() => expect(onLost).toHaveBeenCalledTimes(1));
   });
+
+  it("closes the workspace when the stream ends and the node then refuses a read", async () => {
+    const events = vi.fn(async function* () {});
+    const { view } = fakeNode(events as never);
+    const onLost = vi.fn();
+    const { result } = renderHook(() => useWorkspace("app-1", onLost));
+    // The stream ended: the workspace is read again.
+    await waitFor(() => expect(result.current.version).toBe(1));
+    view.mockRejectedValueOnce(new NotFound("no such app"));
+    await expect(result.current.client!.listForms()).rejects.toBeInstanceOf(NotFound);
+    expect(onLost).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the workspace open on a contract's own refusal", async () => {
+    const { view } = fakeNode(eventStream().events as never);
+    const onLost = vi.fn();
+    const { result } = renderHook(() => useWorkspace("app-1", onLost));
+    view.mockRejectedValueOnce(Object.assign(new NotFound("no such form"), { appCode: "NotFound" }));
+    await expect(result.current.client!.listForms()).rejects.toBeTruthy();
+    expect(onLost).not.toHaveBeenCalled();
+  });
 });

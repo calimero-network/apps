@@ -34,12 +34,12 @@ export const SETTLE_MS = 1_500;
  */
 export function useWorkspace(appId: string, onLost?: () => void) {
   const { client: calimero, after } = useSignedIn();
-  const client = useMemo(() => formsClient(calimero, appId, after), [calimero, appId, after]);
+  const lost = useRef(onLost);
+  lost.current = onLost;
+  const client = useMemo(() => formsClient(admitted(calimero, () => lost.current?.()), appId, after), [calimero, appId, after]);
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
-  const lost = useRef(onLost);
-  lost.current = onLost;
 
   useEffect(() => visibleInterval(bump, POLL_MS), [bump]);
 
@@ -50,6 +50,7 @@ export function useWorkspace(appId: string, onLost?: () => void) {
   useEffect(() => {
     const abort = new AbortController();
     void (async () => {
+      let ended = false;
       try {
         const from = (await client.raw.myAccount()).index + 1;
         streaming.current = true;
@@ -62,12 +63,16 @@ export function useWorkspace(appId: string, onLost?: () => void) {
             bump();
           }, 250);
         }
+        ended = true;
       } catch (e) {
         // Not admitted any more: close it. Anything else (a dropped stream): the timer above still re-reads.
         if (!abort.signal.aborted && e instanceof NotFound) lost.current?.();
       } finally {
         streaming.current = false;
       }
+      // A stream that ends without a refusal (the node may just close it on a
+      // removal): read again, and a read the node refuses closes the workspace (`admitted`).
+      if (ended && !abort.signal.aborted) bump();
     })();
     return () => {
       abort.abort();
@@ -99,6 +104,28 @@ export function useWorkspace(appId: string, onLost?: () => void) {
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;
+
+type Transport = Parameters<typeof formsClient>[0];
+
+/**
+ * `client` with `onLost` run when the node refuses a call because the app is
+ * not there for this account any more (`404` from the node, not a contract's
+ * own refusal): removed from the organization, or the workspace was deleted.
+ */
+function admitted(client: Transport, onLost: () => void): Transport {
+  const check = (e: unknown): never => {
+    if (e instanceof NotFound && typeof (e as { appCode?: unknown }).appCode !== "string") onLost();
+    throw e;
+  };
+  return {
+    ...client,
+    apps: {
+      call: (args, options) => client.apps.call(args, options).catch(check),
+      view: (args, options) => client.apps.view(args, options).catch(check),
+    },
+    events: client.events?.bind(client),
+  };
+}
 
 /**
  * Read `load` whenever `version` (or anything in `deps`) moves. Keeps the last
