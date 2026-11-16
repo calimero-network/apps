@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createSpace, inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
+import { finishSpace, inviteForum, inviteLink, invites, listForums, listSpaces, migrateLegacyInvite, readMembers } from "./spaces";
 import { decideStoredForum } from "./storedForum";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
@@ -145,7 +145,7 @@ describe("an org made for another app", () => {
   it("is not a space; a space made here is, before it holds a forum", async () => {
     const c = client();
     expect((await listSpaces(c as never, "b")).map((r) => r.namespaceId)).toEqual(["o1"]);
-    await createSpace(c as never, "Fresh", () => ({}) as never, () => {}, "b");
+    await finishSpace(c as never, "new", () => ({}) as never, "b");
     expect((await listSpaces(c as never, "b")).map((r) => r.namespaceId)).toEqual(["o1", "new"]);
   });
 });

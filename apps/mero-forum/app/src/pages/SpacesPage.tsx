@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { ConnectExistingOrg } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName, setOrgName } from "@calimero-apps/names";
+import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { useLocation, useNavigate } from "react-router-dom";
+import { APP_PACKAGE } from "../config";
 import { useToast } from "../contexts/ToastContext";
 import { useSignedIn } from "../sessionContext";
 import {
   CONNECTED_FORUM_NAME,
   createForum,
-  createSpace,
+  finishSpace,
   deleteSpace,
   inviteLink,
   inviteToken,
@@ -36,14 +39,14 @@ import {
 } from "../components/icons";
 import styles from "./Picker.module.css";
 
-/** Focus the create field from the rail's call to action. Presentation only. */
-function focusCreate() {
-  const el = document.getElementById("space-name");
-  if (el) {
-    el.scrollIntoView({ block: "center" });
-    el.focus();
-  }
-}
+const CREATE_LABELS = {
+  title: "New space",
+  subtitle: "Name your space. Its forums are reachable by its members only.",
+  nameLabel: "Space name",
+  namePlaceholder: "e.g. Design guild",
+  selfLabel: "Your name in this space",
+  selfPlaceholder: "e.g. Ana",
+};
 
 /**
  * Spaces = ORGANIZATIONS (v1: namespaces).
@@ -58,7 +61,8 @@ function focusCreate() {
 export default function SpacesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { client, source, passkey, after } = useSignedIn();
+  const { client, accountId, source, passkey, after } = useSignedIn();
+  const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const { showToast } = useToast();
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
@@ -66,7 +70,7 @@ export default function SpacesPage() {
   // The last list failed. An empty list then is not "no spaces": offering a
   // create would found a duplicate of a space you have.
   const [listFailed, setListFailed] = useState(false);
-  const [name, setName] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
 
   // One key names the action in flight ("create", `invite:<id>`), instead of a
   // single `busy` boolean. With a boolean, clicking Invite disabled Create and
@@ -149,20 +153,23 @@ export default function SpacesPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpenId]);
 
-  const create = useCallback(() => {
-    const spaceName = name.trim();
-    if (!spaceName) return;
-    void run("create", async (onStatus) => {
-      const { namespaceId, warning } = await createSpace(client, spaceName, passkey, onStatus, source);
-      if (warning) showToast(warning, "error");
-      setName("");
-      onStatus("Refreshing your spaces…");
-      await load(false);
-      // Straight into the new space: it has no forums yet, and making one is
-      // the only useful next step.
-      navigate(`/spaces/${namespaceId}`);
-    });
-  }, [name, client, passkey, source, run, load, navigate, showToast]);
+  const created = useCallback(
+    ({ orgId, selfName }: { orgId: string; name: string; selfName: string }) => {
+      setShowCreate(false);
+      void run("create", async (onStatus) => {
+        const { namespaceId, warning } = await finishSpace(client, orgId, passkey, source);
+        if (warning) showToast(warning, "error");
+        // Best effort: without it the first post asks for a name.
+        await setOrgName(client, orgId, accountId, selfName).catch(() => undefined);
+        onStatus("Refreshing your spaces…");
+        await load(false);
+        // Straight into the new space: it has no forums yet, and making one is
+        // the only useful next step.
+        navigate(`/spaces/${namespaceId}`);
+      });
+    },
+    [client, accountId, passkey, source, run, load, navigate, showToast],
+  );
 
   // "Connect to an existing organization": forums go into an org the account
   // has for another app only on this explicit choice, with a first forum.
@@ -245,7 +252,7 @@ export default function SpacesPage() {
           <button
             type="button"
             className="ui-btn ui-btn-primary x-ctaBtn"
-            onClick={focusCreate}
+            onClick={() => setShowCreate(true)}
             aria-label="New space"
           >
             <span className="x-ctaIcon">
@@ -303,26 +310,15 @@ export default function SpacesPage() {
       >
         <div className={styles.createRow}>
           <Avatar label="+" seed="space" square icon={<PlusIcon size={20} />} />
-          <input
-            id="space-name"
-            className={styles.createInput}
-            placeholder="Name a new space…"
-            aria-label="New space name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            data-testid="space-name-input"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) create();
-            }}
-          />
+          <span className={styles.createLabel}>Name a new space</span>
           <button
             className="ui-btn ui-btn-primary"
-            onClick={create}
-            disabled={pending === "create" || !name.trim()}
+            onClick={() => setShowCreate(true)}
+            disabled={pending === "create"}
             data-testid="create-space"
           >
             {pending === "create" && <span className="ui-spinner" />}
-            {pending === "create" ? "Creating…" : "Create"}
+            {pending === "create" ? "Creating…" : "New space"}
           </button>
         </div>
 
@@ -382,7 +378,7 @@ export default function SpacesPage() {
                 type="button"
                 className="ui-btn ui-btn-primary"
                 style={{ marginTop: 14 }}
-                onClick={focusCreate}
+                onClick={() => setShowCreate(true)}
               >
                 <PlusIcon size={16} />
                 New space
@@ -546,6 +542,17 @@ export default function SpacesPage() {
         scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
         appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
+      />
+
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={releasePending ? null : (reviewRelease(release) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={created}
+        labels={CREATE_LABELS}
       />
     </>
   );

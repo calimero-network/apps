@@ -23,6 +23,12 @@
 .createInput::placeholder {
   color: var(--text-faint);
 }
+.createLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  color: var(--text-faint);
+}
 
 .note {
   display: flex;
