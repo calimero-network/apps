@@ -60,6 +60,7 @@
     "addComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Reply on a post; returns the comment's id. Replying to a reply attaches\nto that reply's parent, so a thread is one level deep. Emits `Commented`.",
       "kind": "call",
       "params": [
         [
@@ -81,6 +82,7 @@
     "addTeammate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Make a member of the organization part of the team. Admin only.\n`Invalid` for an account the organization does not hold. Emits\n`TeamChanged`.",
       "kind": "call",
       "params": [
         [
@@ -94,6 +96,7 @@
     "archiveCategory": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Archive, never remove: updates filed under it keep their label. Team\nonly. Emits `CategoryChanged`.",
       "kind": "call",
       "params": [
         [
@@ -107,6 +110,7 @@
     "askQuestion": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Ask the team something; returns its id. Anyone in the audience may. The\nasker's own read is recorded. Emits `QuestionAsked`.",
       "kind": "call",
       "params": [
         [
@@ -128,6 +132,7 @@
     "createCategory": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Team only; at most 50 live categories. Returns the new id. Emits\n`CategoryChanged`.",
       "kind": "call",
       "params": [
         [
@@ -149,6 +154,7 @@
     "deleteComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The author may delete their comment; the team may remove any. Emits\n`Commented`.",
       "kind": "call",
       "params": [
         [
@@ -162,6 +168,7 @@
     "deleteDraft": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete one of the caller's drafts (nothing happens for an unknown id).",
       "kind": "call",
       "params": [
         [
@@ -175,6 +182,7 @@
     "deletePost": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team. Emits `PostDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -188,6 +196,7 @@
     "editCategory": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Team only; an archived category cannot be edited. Emits `CategoryChanged`.",
       "kind": "call",
       "params": [
         [
@@ -213,6 +222,7 @@
     "editComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Only the author edits a comment. Emits `Commented`.",
       "kind": "call",
       "params": [
         [
@@ -230,6 +240,7 @@
     "editUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replace an update's content. Any teammate may. Asks listed with an `id`\nare edited, without one are created, and this update's asks not listed\nare removed. Emits `PostEdited`.",
       "kind": "call",
       "params": [
         [
@@ -247,6 +258,7 @@
     "getEngagement": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Who read what: the team's follow-up list, newest update first. Team only.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -255,6 +267,7 @@
     "getMe": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller: their account, name, roles and muted categories.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -263,6 +276,7 @@
     "getOverview": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The home screen in one call.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -271,6 +285,7 @@
     "getPost": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One post with its sections, metrics and asks.",
       "kind": "view",
       "params": [
         [
@@ -284,6 +299,7 @@
     "getSettings": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The company name and cadence; empty and 0 until the team sets them.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -292,6 +308,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty audience. The node runs it once, when the instance is created;\nit takes no arguments. Its creator (the instance's owner) is its first\nadmin.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -300,6 +317,7 @@
     "listAsks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every ask across every live update, newest first. `status` filters to\n`\"open\"` or `\"resolved\"`.",
       "kind": "view",
       "params": [
         [
@@ -313,6 +331,7 @@
     "listCategories": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Live categories, oldest first, with the caller's unread counts.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -321,6 +340,7 @@
     "listComments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A post's whole thread, oldest first.",
       "kind": "view",
       "params": [
         [
@@ -334,6 +354,7 @@
     "listContributions": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Accepted offers since `since` (unix ms, a decimal string; `\"0\"` for all),\noldest first: what the next update's \"Thank you\" section is written from.",
       "kind": "view",
       "params": [
         [
@@ -347,6 +368,7 @@
     "listDrafts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's drafts, most recently touched first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -355,6 +377,7 @@
     "listMetrics": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every KPI ever reported, one series per metric name (case-insensitive),\noldest point first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -363,6 +386,7 @@
     "listPeople": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Everyone this audience knows about: the owner, every teammate, and every\nmember who has written anything (a profile, a read, a comment…). Team\nfirst, then by name, then by account.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -371,6 +395,7 @@
     "listPosts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One page of posts, newest first. `kind` is `\"update\"`, `\"question\"` or\n`null` for both; `categoryId` filters to one category; `limit` 0 means\n20, at most 100. The cursor names the last post seen.",
       "kind": "view",
       "params": [
         [
@@ -396,6 +421,7 @@
     "markRead": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Record that the caller opened a post. Emits `Read`.",
       "kind": "call",
       "params": [
         [
@@ -409,6 +435,7 @@
     "offerHelp": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "\"I can help.\" One click, optional note. Offering again edits the note\n(and takes back a withdrawal); one offer per account per ask. Only on an\nopen ask. Emits `OfferChanged`.",
       "kind": "call",
       "params": [
         [
@@ -426,6 +453,7 @@
     "publishUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Publish an update to this audience; returns its id. Team only. The\nauthor's own read is recorded. Emits `UpdatePublished`.",
       "kind": "call",
       "params": [
         [
@@ -439,6 +467,7 @@
     "react": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Turn one of the six emoji on or off on a post, for the caller. Emits\n`Reacted`.",
       "kind": "call",
       "params": [
         [
@@ -460,6 +489,7 @@
     "removeTeammate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take a member off the team. Admin only. An admin stays team: their role\ncomes from the organization. Emits `TeamChanged`.",
       "kind": "call",
       "params": [
         [
@@ -473,6 +503,7 @@
     "saveDraft": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Save a draft for the caller only; returns its id (a new one when\n`draftId` is `null` or empty). Nobody else can list or read it.",
       "kind": "call",
       "params": [
         [
@@ -494,6 +525,7 @@
     "setAskStatus": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "`open` or `resolved`. Team only. Emits `AskChanged`.",
       "kind": "call",
       "params": [
         [
@@ -511,6 +543,7 @@
     "setMutedCategories": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Mute categories: their updates stop counting as unread for you. Replaces\nthe whole set. Emits `ProfileSet`.",
       "kind": "call",
       "params": [
         [
@@ -524,6 +557,7 @@
     "setOfferStatus": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Accept or decline someone's offer (`offered`, `accepted`, `declined`).\nTeam only. Emits `OfferChanged`.",
       "kind": "call",
       "params": [
         [
@@ -545,6 +579,7 @@
     "setProfile": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Name yourself. No `account` argument: you can only describe yourself.\nEmits `ProfileSet`.",
       "kind": "call",
       "params": [
         [
@@ -562,6 +597,7 @@
     "setQuestionStatus": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Mark a question `answered` (or `open` again). Team only. Emits\n`StatusChanged`.",
       "kind": "call",
       "params": [
         [
@@ -579,6 +615,7 @@
     "setSettings": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Team only. `cadenceDays` is at most 366 (0 = none). Emits\n`SettingsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -596,6 +633,7 @@
     "withdrawOffer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Withdraw the caller's own offer. Emits `OfferChanged`.",
       "kind": "call",
       "params": [
         [

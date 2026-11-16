@@ -53,6 +53,7 @@
     "addActivity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Schedules a call, meeting, task, email or deadline, on a deal, a person,\nboth or neither. Returns its id. `kind` is one of `call`, `meeting`,\n`task`, `email`, `deadline`. Emits `ActivityChanged`.",
       "kind": "call",
       "params": [
         [
@@ -90,6 +91,7 @@
     "addAutomation": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a rule that schedules a follow-up activity whenever a deal enters a\nstage. In full: \"When a deal enters `stageId`, schedule a `kind`\nactivity called `subject`, due in `dueInDays` days (at most 365).\" At\nmost 10 per stage. Returns the rule's id. Emits `AutomationsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -115,6 +117,7 @@
     "addNote": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a note to a deal. The caller is recorded as its author, and its id\nis returned. The note must not be blank and is at most 10,000\ncharacters. Emits `NoteChanged`.",
       "kind": "call",
       "params": [
         [
@@ -132,6 +135,7 @@
     "addStage": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a stage at the end of the pipeline. Returns its id. Takes a name of\n1 to 120 characters and a win probability of 0 to 100; a pipeline holds\nat most 12 stages. Emits `StagesChanged`.",
       "kind": "call",
       "params": [
         [
@@ -149,6 +153,7 @@
     "createContact": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a person to the address book. The caller is recorded as their\ncreator, and their id is returned. A name of 1 to 120 characters, the\nother fields at most 120, an email that looks like one (or empty). Emits\n`ContactChanged`.",
       "kind": "call",
       "params": [
         [
@@ -178,6 +183,7 @@
     "createDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a new deal to a stage of the pipeline. The caller is recorded as\nits creator, and its id is returned. Runs the stage's automations.\n`NotFound` for an unknown stage or contact; `Invalid` for a blank title\nor a field over 120 characters. Emits `DealCreated`, then\n`AutomationFired` per rule that ran.",
       "kind": "call",
       "params": [
         [
@@ -219,6 +225,7 @@
     "deleteActivity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes an activity. Emits `ActivityChanged`.",
       "kind": "call",
       "params": [
         [
@@ -232,6 +239,7 @@
     "deleteAutomation": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a follow-up rule. Emits `AutomationsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -245,6 +253,7 @@
     "deleteContact": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a person from the address book. Only their creator may: anyone\nelse gets `Forbidden`. Deals keep their history but lose the link. Emits\n`ContactChanged`.",
       "kind": "call",
       "params": [
         [
@@ -258,6 +267,7 @@
     "deleteDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a deal together with its activities and notes. Only its creator\nmay: anyone else gets `Forbidden`. Emits `DealDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -271,6 +281,7 @@
     "deleteNote": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a note from a deal. Only its author may: anyone else gets\n`Forbidden`. Emits `NoteChanged`.",
       "kind": "call",
       "params": [
         [
@@ -284,6 +295,7 @@
     "deleteStage": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a stage and its automations from the pipeline. Refused\n(`Invalid`) while any open deal sits in it, and for the last remaining\nstage: a pipeline always has somewhere to put a deal. A closed deal that\nclosed from it and is reopened later is shown in the first stage. Emits\n`StagesChanged`.",
       "kind": "call",
       "params": [
         [
@@ -297,6 +309,7 @@
     "getDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows one deal with its person, activities and notes. Activities come by\ndue date and notes newest first, at most 1,000 of each. `NotFound` for\nan unknown deal.",
       "kind": "view",
       "params": [
         [
@@ -310,6 +323,7 @@
     "getSettings": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows the currency and the number of idle days after which an open deal\ncounts as rotting.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -318,6 +332,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets up a new CRM with a five-stage pipeline, US dollars as the currency\nand a 14-day rotting threshold. The node runs it once, as the owner,\nwhen the app is created.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -326,6 +341,7 @@
     "listActivities": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists scheduled activities by due date. Can be narrowed to one deal\nand/or by whether they are done. At most the first 1,000.",
       "kind": "view",
       "params": [
         [
@@ -343,6 +359,7 @@
     "listAutomations": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the follow-up rules that run when a deal enters a stage. Oldest\nfirst (at most 12 stages × 10 rules).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -351,6 +368,7 @@
     "listContacts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists everyone in the address book with their deal totals. By name, at\nmost the first 1,000.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -359,6 +377,7 @@
     "listDeals": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists deals, newest first, optionally narrowed by status, stage or\nowner. The filters are exact matches on `status`, `stageId` and `owner`\n(`null` for no filter), and at most the newest 1,000 matches come back.",
       "kind": "view",
       "params": [
         [
@@ -380,6 +399,7 @@
     "listStages": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the stages of the pipeline, in order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -388,6 +408,7 @@
     "markLost": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Closes a deal as lost and records why. The reason is at most 120\ncharacters. Emits `DealStatusChanged`.",
       "kind": "call",
       "params": [
         [
@@ -405,6 +426,7 @@
     "markWon": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Closes a deal as won. Emits `DealStatusChanged`.",
       "kind": "call",
       "params": [
         [
@@ -418,6 +440,7 @@
     "moveDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Moves an open deal to another stage. Runs that stage's automations.\nMoving to the stage it is already in is a no-op; a closed deal is\n`Invalid`. Emits `DealMoved`, then `AutomationFired` per rule that ran.",
       "kind": "call",
       "params": [
         [
@@ -435,6 +458,7 @@
     "reopenDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Puts a closed deal back on the board, in the stage it closed from, or in\nthe first stage if that one was deleted. An open deal is left as it is.\nEmits `DealStatusChanged`.",
       "kind": "call",
       "params": [
         [
@@ -448,6 +472,7 @@
     "reorderStages": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Puts the stages of the pipeline in a new order. `stageIds` must name\nevery stage exactly once (else `Invalid`). Emits `StagesChanged`.",
       "kind": "call",
       "params": [
         [
@@ -461,6 +486,7 @@
     "rescheduleActivity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Moves an activity to a new due time. Emits `ActivityChanged`.",
       "kind": "call",
       "params": [
         [
@@ -478,6 +504,7 @@
     "setActivityDone": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Marks an activity as done, or as not done again. Emits\n`ActivityChanged`.",
       "kind": "call",
       "params": [
         [
@@ -495,6 +522,7 @@
     "setAutomationEnabled": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Turns a follow-up rule on or off. Emits `AutomationsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -512,6 +540,7 @@
     "setCurrency": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes the currency deal values are shown in. Takes a three-letter ISO\n4217 code such as `EUR` (any case; stored upper case), else `Invalid`.\nEmits `SettingsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -525,6 +554,7 @@
     "setRottingDays": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets how many days without activity make an open deal count as rotting.\nTakes 1 to 365, else `Invalid`. Emits `SettingsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -538,6 +568,7 @@
     "updateContact": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes a person's details. Follows the same rules as `createContact`.\n`NotFound` for an unknown contact. Emits `ContactChanged`.",
       "kind": "call",
       "params": [
         [
@@ -571,6 +602,7 @@
     "updateDeal": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes a deal's details. Every field is written. `NotFound` for an\nunknown deal or contact. Emits `DealUpdated`.",
       "kind": "call",
       "params": [
         [
@@ -612,6 +644,7 @@
     "updateStage": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Renames a stage and changes its chance of winning. `NotFound` for an\nunknown stage. Emits `StagesChanged`.",
       "kind": "call",
       "params": [
         [

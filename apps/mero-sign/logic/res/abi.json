@@ -58,6 +58,7 @@
     "addParticipant": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds an account of the organization (guests included) at `permission`.\nAdmins only (`Forbidden`); `Conflict` for a participant (use\n`setParticipantPermission`), `Invalid` for an account outside the\norganization. Clears an earlier removal. Emits `ParticipantJoined`.",
       "kind": "call",
       "params": [
         [
@@ -75,6 +76,7 @@
     "createSignature": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Saves a signature image the caller uploaded as blob `blobIdStr` and\nreturns its id (below 2^53). Private library, owner only.\nEmits `SignatureCreated`.",
       "kind": "call",
       "params": [
         [
@@ -96,6 +98,7 @@
     "deleteDocument": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a document with its search content, signatures and consents.\nAdmins only (`Forbidden`); `NotFound` for an unknown id. The blobs stay\nin the app until the owner deletes them. Emits `DocumentDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -109,6 +112,7 @@
     "deleteSignature": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a saved signature. Private library, owner only; `NotFound` for\nan unknown id. Emits `SignatureDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -122,6 +126,7 @@
     "getContextDetails": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The agreement's name, owner, participants (at most 1,000) and document\ncount. `contextIdStr` is echoed back as `contextId`.",
       "kind": "view",
       "params": [
         [
@@ -135,6 +140,7 @@
     "getContextId": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "This instance's app id (v1's context id).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -143,6 +149,7 @@
     "getDocumentSignatures": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The signatures on a document, in the order they were applied; empty\nfor an unknown document.",
       "kind": "view",
       "params": [
         [
@@ -156,6 +163,7 @@
     "getIdentityMapping": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The identity mapping recorded for a joined agreement. Private library,\nowner only; `NotFound` if none.",
       "kind": "view",
       "params": [
         [
@@ -169,6 +177,7 @@
     "getSharedIdentity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The shared identity recorded for a joined agreement. Private library,\nowner only; `NotFound` if none.",
       "kind": "view",
       "params": [
         [
@@ -182,6 +191,7 @@
     "getUserPermission": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A participant's level; `NotFound` for someone who is not one.",
       "kind": "view",
       "params": [
         [
@@ -195,6 +205,7 @@
     "hasConsented": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether `userIdStr` consented to sign a document.",
       "kind": "view",
       "params": [
         [
@@ -212,6 +223,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty instance. The node runs it once, when the app is created;\nthe owner then calls `setup`.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -220,6 +232,7 @@
     "isDefaultPrivateContext": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Whether this is the account's default private library (set up private\nand named `\"default\"`). `false` before `setup`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -228,6 +241,7 @@
     "joinSharedContext": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Records that the owner joined the agreement `contextIdStr` (its app id)\nas `sharedIdentityStr` (their account). Private library, owner only;\n`Conflict` if already recorded. Emits `ContextJoined`.",
       "kind": "call",
       "params": [
         [
@@ -249,6 +263,7 @@
     "leaveSharedContext": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Forgets a joined agreement. Private library, owner only; `NotFound` if\nit was not recorded. Emits `ContextLeft`.",
       "kind": "call",
       "params": [
         [
@@ -262,6 +277,7 @@
     "listDocuments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every document (at most 1,000, in id order) with its current version\nand status, without its search content.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -270,6 +286,7 @@
     "listJoinedContexts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The joined agreements, at most 1,000, in app-id order. Private library,\nowner only.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -278,6 +295,7 @@
     "listParticipants": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every participant's account, at most 1,000, in account order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -286,6 +304,7 @@
     "listSignatures": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The saved signatures, at most 1,000, in id order. Private library,\nowner only.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -294,6 +313,7 @@
     "markParticipantSigned": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Confirms the CALLER's signature is on a document: `Forbidden` without\nconsent, `Invalid` if they have not signed it. Writes nothing.",
       "kind": "call",
       "params": [
         [
@@ -307,6 +327,7 @@
     "registerSelfAsParticipant": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Joins the agreement as `Sign` (v1: after redeeming an open invitation).\nMembers of the organization only (a guest gets `Forbidden`), not after\nan admin removed you (`Forbidden`), and once (`Conflict`). Emits\n`ParticipantJoined`.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -315,6 +336,7 @@
     "removeParticipant": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a participant, and keeps them from registering again. Admins\nonly (`Forbidden`); `NotFound` for someone who is not one; `Conflict`\nfor the last admin. Emits `ParticipantLeft`.",
       "kind": "call",
       "params": [
         [
@@ -328,6 +350,7 @@
     "resolvePrivateIdentity": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The private identity behind a shared one, if recorded. Private library,\nowner only.",
       "kind": "view",
       "params": [
         [
@@ -341,6 +364,7 @@
     "searchDocumentByEmbedding": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The most relevant passages of a document for a query embedding, as\ntext: by chunk when the document has chunks, else by its whole-document\nembedding. `NotFound` for an unknown document; `Invalid` for a document\nwith nothing to search or an embedding of another dimension.",
       "kind": "view",
       "params": [
         [
@@ -358,6 +382,7 @@
     "setConsent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Records the CALLER's consent to sign a document. Nobody can consent for\nyou, so there is no account parameter.",
       "kind": "call",
       "params": [
         [
@@ -371,6 +396,7 @@
     "setParticipantPermission": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes an existing participant's level, up or down. Admins only\n(`Forbidden`); `NotFound` for someone who is not one; `Conflict` for the\nlast admin stepping down. Setting the level they hold is a no-op.\nEmits `ParticipantPermissionChanged`.",
       "kind": "call",
       "params": [
         [
@@ -388,6 +414,7 @@
     "setup": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Makes this instance a private library (`isPrivate`) or a shared\nagreement named `contextName` (v1's `init(is_private, context_name)`).\nThe app's owner only (`Forbidden`), once (`Conflict`). A shared\nagreement's owner is its first admin.",
       "kind": "call",
       "params": [
         [
@@ -405,6 +432,7 @@
     "signDocument": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Records the CALLER's signature: the PDF at the document's current\nversion (`baseHash`) with their mark on it, uploaded as blob\n`pdfBlobIdStr`, is the document's new version `newHash`. `Sign` or\nabove (`Forbidden`), after consenting (`Forbidden`); `Conflict` for a\nfully signed document, a second signature, or a `baseHash` that is no\nlonger current (someone signed in between: reopen and sign again).\nEmits `DocumentSigned`.",
       "kind": "call",
       "params": [
         [
@@ -434,6 +462,7 @@
     "uploadDocument": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a document the caller uploaded as blob `pdfBlobIdStr` and returns\nits id. `Sign` or above (`Forbidden`). Its required signers are every\nparticipant at `Sign` or above now (at most 1,000). Emits\n`DocumentUploaded`.",
       "kind": "call",
       "params": [
         [
@@ -471,6 +500,7 @@
     "whoami": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's account, as this contract sees it.",
       "kind": "view",
       "params": [],
       "public": false,

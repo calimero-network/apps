@@ -10529,7 +10529,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every ACL admin, in key order."
       }
     },
     "/apps/{app}/methods/aclCapabilities": {
@@ -10595,7 +10596,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The projected map: account → the operations it may perform on `aclDoc`."
       }
     },
     "/apps/{app}/methods/aclDocGet": {
@@ -10661,7 +10663,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The guarded document; `\"\"` before the first write."
       }
     },
     "/apps/{app}/methods/aclDocSet": {
@@ -10727,7 +10730,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Writes the guarded document: the caller needs `write` in `aclCaps`."
       }
     },
     "/apps/{app}/methods/aclGrant": {
@@ -10793,7 +10797,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Grants `role` (ACL admins only). Unknown roles are `Invalid`."
       }
     },
     "/apps/{app}/methods/aclGrantAdmin": {
@@ -10859,7 +10864,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds an admin (ACL admins only; the account must be the app's owner or\nin its org) and projects, so the new admin holds the full mask at once."
       }
     },
     "/apps/{app}/methods/aclHasRole": {
@@ -10925,7 +10931,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `accountHex` holds `role` in the registry."
       }
     },
     "/apps/{app}/methods/aclIsAdmin": {
@@ -10991,7 +10998,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `accountHex` is an ACL admin."
       }
     },
     "/apps/{app}/methods/aclMembersOf": {
@@ -11057,7 +11065,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The holders of `role`, in key order (at most 1,000)."
       }
     },
     "/apps/{app}/methods/aclMyRoles": {
@@ -11123,7 +11132,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's roles."
       }
     },
     "/apps/{app}/methods/aclProject": {
@@ -11189,7 +11199,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rewrites `aclCaps` from the registry (ACL admins only): each role\nholder gets its roles' operations, each admin the full mask. Returns\nhow many accounts the map now covers. Emits `CapabilitiesProjected`."
       }
     },
     "/apps/{app}/methods/aclRevoke": {
@@ -11255,7 +11266,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Revokes `role` (ACL admins only)."
       }
     },
     "/apps/{app}/methods/aclRevokeAdmin": {
@@ -11321,7 +11333,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes an admin (ACL admins only), refusing the last one, then projects."
       }
     },
     "/apps/{app}/methods/aclRoles": {
@@ -11387,7 +11400,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The roles this app defines, and the operations each confers."
       }
     },
     "/apps/{app}/methods/addFrozen": {
@@ -11453,7 +11467,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stores `value` immutably and returns its address: the hex SHA-256 of the\nstored (CBOR) value. The same value twice is one entry. Emits `FrozenAdded`."
       }
     },
     "/apps/{app}/methods/addGuess": {
@@ -11519,7 +11534,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `guess` is `gameId`'s secret. Emits `Guessed`; `NoHash` when the\ngame has no secret yet."
       }
     },
     "/apps/{app}/methods/addSecret": {
@@ -11585,7 +11601,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Keeps `secret` for the caller and publishes its SHA-256 for guesses.\nv1 kept the secret node-local; here it is the caller's entry in the\napp's state, which only `mySecrets` of the same account returns."
       }
     },
     "/apps/{app}/methods/addTag": {
@@ -11651,7 +11668,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds `tag` to `key`'s set. Emits `TagAdded`."
       }
     },
     "/apps/{app}/methods/authoredEntries": {
@@ -11717,7 +11735,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every key with its lowest holder's value (at most 1,000 entries read)."
       }
     },
     "/apps/{app}/methods/authoredGet": {
@@ -11783,7 +11802,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value at `key` of whoever holds it: the lowest account's when\nseveral do."
       }
     },
     "/apps/{app}/methods/authoredGetBy": {
@@ -11849,7 +11869,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`owner`'s own value at `key`."
       }
     },
     "/apps/{app}/methods/authoredGetOwner": {
@@ -11915,7 +11936,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The account `authoredGet` reads `key` from."
       }
     },
     "/apps/{app}/methods/authoredInsert": {
@@ -11981,7 +12003,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Creates the caller's own entry at `key`; `Invalid` when the caller\nalready holds one there (`authoredUpdate` edits it). Another account's\nentry at the same key is theirs and stays. Emits `AuthoredInserted`."
       }
     },
     "/apps/{app}/methods/authoredLen": {
@@ -12047,7 +12070,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many (key, owner) entries there are."
       }
     },
     "/apps/{app}/methods/authoredOwners": {
@@ -12113,7 +12137,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every account holding an entry at `key`, ascending."
       }
     },
     "/apps/{app}/methods/authoredRemove": {
@@ -12179,7 +12204,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes the caller's own entry at `key` and returns its value."
       }
     },
     "/apps/{app}/methods/authoredUpdate": {
@@ -12245,7 +12271,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the caller's own entry at `key`; `NotFound` when the caller\nholds none there (someone else's entry is not theirs to edit)."
       }
     },
     "/apps/{app}/methods/authoredVecEntries": {
@@ -12311,7 +12338,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The values still present, in index order (at most 1,000 slots read)."
       }
     },
     "/apps/{app}/methods/authoredVecGet": {
@@ -12377,7 +12405,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value at `index`; `null` past the end or once removed."
       }
     },
     "/apps/{app}/methods/authoredVecGetOwner": {
@@ -12443,7 +12472,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Who pushed the slot at `index`; `null` past the end."
       }
     },
     "/apps/{app}/methods/authoredVecLen": {
@@ -12509,7 +12539,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many slots there are, removed ones included."
       }
     },
     "/apps/{app}/methods/authoredVecPush": {
@@ -12575,7 +12606,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Appends a slot owned by the caller and returns its index."
       }
     },
     "/apps/{app}/methods/authoredVecRemove": {
@@ -12641,7 +12673,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes the value at `index` (its owner only). The slot stays, so no\nother index moves."
       }
     },
     "/apps/{app}/methods/authoredVecUpdate": {
@@ -12707,7 +12740,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the value at `index` (its owner only)."
       }
     },
     "/apps/{app}/methods/clear": {
@@ -12773,7 +12807,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes every key. Emits `Cleared` only when there was something to clear."
       }
     },
     "/apps/{app}/methods/clearHandler": {
@@ -12839,7 +12874,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Counts one handler run."
       }
     },
     "/apps/{app}/methods/clearWithHandler": {
@@ -12905,7 +12941,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`clear`, then `clearHandler` in the same call; always emits `Cleared`."
       }
     },
     "/apps/{app}/methods/decrementPnCounter": {
@@ -12971,7 +13008,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Takes one from the counter `key` (it may go below zero)."
       }
     },
     "/apps/{app}/methods/deleteFile": {
@@ -13037,7 +13075,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Forgets a file record. Emits `FileDeleted`."
       }
     },
     "/apps/{app}/methods/entries": {
@@ -13103,7 +13142,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every key with its value, in key order. At most 1,000 keys: one page."
       }
     },
     "/apps/{app}/methods/games": {
@@ -13169,7 +13209,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every game's public hash (at most 1,000)."
       }
     },
     "/apps/{app}/methods/get": {
@@ -13235,7 +13276,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`, or `null`."
       }
     },
     "/apps/{app}/methods/getBlobIdHex": {
@@ -13301,7 +13343,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A file's blob id."
       }
     },
     "/apps/{app}/methods/getCounter": {
@@ -13367,7 +13410,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "v1's alias of `getGCounter`."
       }
     },
     "/apps/{app}/methods/getFile": {
@@ -13433,7 +13477,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One file record; `NotFound` when absent."
       }
     },
     "/apps/{app}/methods/getFrozen": {
@@ -13499,7 +13544,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value at `hashHex`. Not 64 hex characters: `NotFound { key: \"dehex\nerror\" }`; no such value: `FrozenNotFound`."
       }
     },
     "/apps/{app}/methods/getGCounter": {
@@ -13565,7 +13611,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The grow-only counter `key`; `NotFound` before its first increment."
       }
     },
     "/apps/{app}/methods/getHandlerExecutionCount": {
@@ -13631,7 +13678,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many handler runs there have been."
       }
     },
     "/apps/{app}/methods/getMetadata": {
@@ -13697,7 +13745,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`innerKey` under `outerKey`; `NotFound { key: outerKey }` when the outer\nkey holds nothing, `NotFound { key: innerKey }` when only the inner is missing."
       }
     },
     "/apps/{app}/methods/getMetric": {
@@ -13763,7 +13812,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The metric at `index`; `NotFound` past the end."
       }
     },
     "/apps/{app}/methods/getPnCounter": {
@@ -13829,7 +13879,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The counter `key`; `NotFound` before its first change."
       }
     },
     "/apps/{app}/methods/getRegister": {
@@ -13895,7 +13946,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Register `key`; `NotFound` when unset."
       }
     },
     "/apps/{app}/methods/getResult": {
@@ -13961,7 +14013,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`; `NotFound { key }` when absent."
       }
     },
     "/apps/{app}/methods/getTagCount": {
@@ -14027,7 +14080,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many tags `key` holds; `NotFound` when it has none."
       }
     },
     "/apps/{app}/methods/getUserNested": {
@@ -14093,7 +14147,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`key` in the caller's own map, or `null`."
       }
     },
     "/apps/{app}/methods/getUserSimple": {
@@ -14159,7 +14214,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's own value, or `null`."
       }
     },
     "/apps/{app}/methods/getUserSimpleFor": {
@@ -14225,7 +14281,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`accountHex`'s value, or `null`. Any account id the node uses."
       }
     },
     "/apps/{app}/methods/hasTag": {
@@ -14291,7 +14348,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `key`'s set holds `tag`; `NotFound` when `key` has no tags."
       }
     },
     "/apps/{app}/methods/incrementCounter": {
@@ -14357,7 +14415,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "v1's alias of `incrementGCounter`."
       }
     },
     "/apps/{app}/methods/incrementGCounter": {
@@ -14423,7 +14482,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds one to the grow-only counter `key` and returns its value."
       }
     },
     "/apps/{app}/methods/incrementPnCounter": {
@@ -14489,7 +14549,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds one to the counter `key` and returns its value."
       }
     },
     "/apps/{app}/methods/insertHandler": {
@@ -14555,7 +14616,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Counts one handler run. Callable directly too, as v1's handlers were."
       }
     },
     "/apps/{app}/methods/len": {
@@ -14621,7 +14683,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many keys are stored (a stored count)."
       }
     },
     "/apps/{app}/methods/listFiles": {
@@ -14687,7 +14750,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every file record, by id (at most 1,000)."
       }
     },
     "/apps/{app}/methods/metricsLen": {
@@ -14753,7 +14817,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many metrics there are."
       }
     },
     "/apps/{app}/methods/myAccount": {
@@ -14819,7 +14884,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account on its own: the name core's copy of this scaffold\nuses, so a scenario runs against either."
       }
     },
     "/apps/{app}/methods/mySecrets": {
@@ -14885,7 +14951,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's own secrets, game id → secret (at most 1,000)."
       }
     },
     "/apps/{app}/methods/ownedGet": {
@@ -14951,7 +15018,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The owned cell; `\"\"` before the first write."
       }
     },
     "/apps/{app}/methods/ownedIsOwner": {
@@ -15017,7 +15085,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `accountHex` owns the owned cell."
       }
     },
     "/apps/{app}/methods/ownedOwner": {
@@ -15083,7 +15152,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The owner of the owned cell."
       }
     },
     "/apps/{app}/methods/ownedSet": {
@@ -15149,7 +15219,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Writes the owned cell (its owner only)."
       }
     },
     "/apps/{app}/methods/ownedTransfer": {
@@ -15215,7 +15286,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Hands the cell to `accountHex` (its owner only; the app's owner or an\norg account). One way: the previous owner can no longer write."
       }
     },
     "/apps/{app}/methods/pushMetric": {
@@ -15281,7 +15353,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Appends `value` and returns the new length."
       }
     },
     "/apps/{app}/methods/remove": {
@@ -15347,7 +15420,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes `key` and returns its value. Emits `Removed` only when a value\nwas removed."
       }
     },
     "/apps/{app}/methods/removeHandler": {
@@ -15413,7 +15487,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Counts one handler run."
       }
     },
     "/apps/{app}/methods/removeWithHandler": {
@@ -15479,7 +15554,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`remove`, then `removeHandler` in the same call. As in v1, `Removed` is\nemitted (and the handler runs) whether or not the key existed."
       }
     },
     "/apps/{app}/methods/rgaAppendText": {
@@ -15545,7 +15621,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Appends `text` at the end."
       }
     },
     "/apps/{app}/methods/rgaClear": {
@@ -15611,7 +15688,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes everything (one `TextDeleted` when there was text)."
       }
     },
     "/apps/{app}/methods/rgaDeleteText": {
@@ -15677,7 +15755,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes the characters in `[start, end)`. Emits `TextDeleted`."
       }
     },
     "/apps/{app}/methods/rgaGetLength": {
@@ -15743,7 +15822,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The document's length in characters."
       }
     },
     "/apps/{app}/methods/rgaGetText": {
@@ -15809,7 +15889,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The document's text."
       }
     },
     "/apps/{app}/methods/rgaGetTitle": {
@@ -15875,7 +15956,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The title; `\"Untitled Document\"` until one is set."
       }
     },
     "/apps/{app}/methods/rgaInsertText": {
@@ -15941,7 +16023,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Inserts `text` at character `position` (0 ..= length). Emits `TextInserted`."
       }
     },
     "/apps/{app}/methods/rgaIsEmpty": {
@@ -16007,7 +16090,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether the document is empty."
       }
     },
     "/apps/{app}/methods/rgaSetTitle": {
@@ -16073,7 +16157,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Renames the document; an empty title is `Invalid`. Emits `TitleChanged`."
       }
     },
     "/apps/{app}/methods/searchFiles": {
@@ -16139,7 +16224,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Files whose name contains `query`, case-insensitive (a scan of the\nfirst 1,000 records)."
       }
     },
     "/apps/{app}/methods/set": {
@@ -16205,7 +16291,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stores `value` under `key`. Emits `Inserted` for a new key, `Updated`\nfor an existing one."
       }
     },
     "/apps/{app}/methods/setMetadata": {
@@ -16271,7 +16358,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets `innerKey` under `outerKey`."
       }
     },
     "/apps/{app}/methods/setRegister": {
@@ -16337,7 +16425,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets register `key`; a later write replaces an earlier one."
       }
     },
     "/apps/{app}/methods/setUserNested": {
@@ -16403,7 +16492,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets `key` in the caller's own map. Emits `UserNestedSet`."
       }
     },
     "/apps/{app}/methods/setUserSimple": {
@@ -16469,7 +16559,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets the caller's own value. Emits `UserSimpleSet`."
       }
     },
     "/apps/{app}/methods/setWithHandler": {
@@ -16535,7 +16626,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`set`, then the handler v1 named with the event (`insertHandler` or\n`updateHandler`), run in the same call. v1 ran it on every node that\nreceived the event; one log runs it once."
       }
     },
     "/apps/{app}/methods/sharedAddWriter": {
@@ -16601,7 +16693,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds a writer (writers only; the app's owner or an org account)."
       }
     },
     "/apps/{app}/methods/sharedGet": {
@@ -16667,7 +16760,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The shared cell; `\"\"` before the first write."
       }
     },
     "/apps/{app}/methods/sharedGetWriters": {
@@ -16733,7 +16827,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The writer set, in key order."
       }
     },
     "/apps/{app}/methods/sharedIsFrozen": {
@@ -16799,7 +16894,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Always `false`: the cell is never frozen (v1 created it unfrozen too)."
       }
     },
     "/apps/{app}/methods/sharedIsWriter": {
@@ -16865,7 +16961,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether `accountHex` is a writer."
       }
     },
     "/apps/{app}/methods/sharedRotateWriters": {
@@ -16931,7 +17028,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the whole writer set (writers only). A set without the caller\nis allowed and takes them out; an empty set is `Invalid`."
       }
     },
     "/apps/{app}/methods/sharedSet": {
@@ -16997,7 +17095,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Writes the shared cell (its writers only). Emits `SharedSet`."
       }
     },
     "/apps/{app}/methods/sortedGet": {
@@ -17063,7 +17162,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`key` in the ordered map, or `null`."
       }
     },
     "/apps/{app}/methods/sortedKeys": {
@@ -17129,7 +17229,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every key in ascending order (at most 1,000)."
       }
     },
     "/apps/{app}/methods/sortedLastKey": {
@@ -17195,7 +17296,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The largest key, or `null`."
       }
     },
     "/apps/{app}/methods/sortedLen": {
@@ -17261,7 +17363,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many keys the ordered map holds."
       }
     },
     "/apps/{app}/methods/sortedRange": {
@@ -17327,7 +17430,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Entries with keys in `[start, end)`, ascending (at most 1,000). An\nempty or inverted range is `{}`."
       }
     },
     "/apps/{app}/methods/sortedRemove": {
@@ -17393,7 +17497,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes `key`; `true` if it was there."
       }
     },
     "/apps/{app}/methods/sortedSet": {
@@ -17459,7 +17564,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Sets `key` in the ordered map."
       }
     },
     "/apps/{app}/methods/sortedTagAdd": {
@@ -17525,7 +17631,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Adds `tag` to the ordered set; `true` if it was new."
       }
     },
     "/apps/{app}/methods/sortedTagContains": {
@@ -17591,7 +17698,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether the ordered set holds `tag`."
       }
     },
     "/apps/{app}/methods/sortedTagRemove": {
@@ -17657,7 +17765,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes `tag`; `true` if it was there."
       }
     },
     "/apps/{app}/methods/sortedTagsAll": {
@@ -17723,7 +17832,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every tag in ascending order (at most 1,000)."
       }
     },
     "/apps/{app}/methods/sortedTagsLast": {
@@ -17789,7 +17899,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The largest tag, or `null`."
       }
     },
     "/apps/{app}/methods/sortedTagsRange": {
@@ -17855,7 +17966,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Tags in `[start, end)`, ascending (at most 1,000)."
       }
     },
     "/apps/{app}/methods/tracingProbe": {
@@ -17921,7 +18033,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Writes to the run's log, and stores `probe_key` so the run has a write.\n\nv1 drove the SDK's `tracing` subscriber with `set_log_level`. The\ncomponent SDK has `env::log` only (the host keeps 64 KiB a run), so the\nlevel filter is done here: the warn line always, the info and debug\nlines only with `debug`. The lines go to the node's log, never into the\ncall's answer."
       }
     },
     "/apps/{app}/methods/updateHandler": {
@@ -17987,7 +18100,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Counts one handler run."
       }
     },
     "/apps/{app}/methods/uploadFile": {
@@ -18053,7 +18167,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records a file whose bytes the caller uploaded to this app's blob store\n(`blobIdStr`, 64 hex), and returns the record's id. Emits `FileUploaded`."
       }
     },
     "/apps/{app}/methods/whoami": {
@@ -18119,7 +18234,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's identity. `deviceId` is the account too (an API key's id\nfor an API-key caller): 1.0 runs a method for the account, not for an\ninstallation."
       }
     },
     "/apps/{app}/methods/wsGetInfo": {
@@ -18185,7 +18301,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Name, admin and the three counts; `Invalid` while unclaimed."
       }
     },
     "/apps/{app}/methods/wsGetMemberRole": {
@@ -18251,7 +18368,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`identity`'s role, or `\"\"`."
       }
     },
     "/apps/{app}/methods/wsInit": {
@@ -18317,7 +18435,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Names the workspace and makes the caller its admin. Workspace admins\nonly (the app's owner first); once only."
       }
     },
     "/apps/{app}/methods/wsListChannels": {
@@ -18383,7 +18502,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The channel directory, by id (at most 1,000). Readable by anyone the\napp admits."
       }
     },
     "/apps/{app}/methods/wsListGroups": {
@@ -18449,7 +18569,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The group directory, by id (at most 1,000)."
       }
     },
     "/apps/{app}/methods/wsListMembers": {
@@ -18515,7 +18636,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member and role, by identity (at most 1,000)."
       }
     },
     "/apps/{app}/methods/wsMyRole": {
@@ -18581,7 +18703,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's role, or `\"\"`."
       }
     },
     "/apps/{app}/methods/wsPingChannel": {
@@ -18647,7 +18770,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Records a ping to another app instance in the directory and emits\n`ChannelPinged`. v1 queued an `xcall` to the target's `ws_pong`; core\n`1.0.0-rc.7` components cannot send one, so nothing is sent and the\ntarget's `wsPingCount` does not move."
       }
     },
     "/apps/{app}/methods/wsPingCount": {
@@ -18713,7 +18837,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Pongs received."
       }
     },
     "/apps/{app}/methods/wsPong": {
@@ -18782,7 +18907,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Receives a ping from another app (`allow(app = \"*\")`). A direct call by\nan account is refused, and so is a caller whose `fromContext` is not\nthe app id the node reports. Emits `PongReceived`."
       }
     },
     "/apps/{app}/methods/wsRegisterChannel": {
@@ -18848,7 +18974,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Registers a channel, or updates one the caller registered. A member\nthat is not `read-only` may; a channel someone else registered is theirs."
       }
     },
     "/apps/{app}/methods/wsRegisterGroup": {
@@ -18914,7 +19041,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Registers or updates a group; ownership as `wsRegisterChannel`."
       }
     },
     "/apps/{app}/methods/wsSetMemberRole": {
@@ -18980,7 +19108,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Grants `identity` a workspace role (workspace admins only). Granting or\ntaking away `admin` also changes who may claim, set roles and moderate.\nAn admin cannot demote themselves."
       }
     },
     "/apps/{app}/methods/wsUnregisterChannel": {
@@ -19046,7 +19175,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a channel: its registrant or a workspace admin."
       }
     },
     "/apps/{app}/methods/wsUnregisterGroup": {
@@ -19112,7 +19242,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes a group: its registrant or a workspace admin."
       }
     }
   },

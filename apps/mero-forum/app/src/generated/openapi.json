@@ -2225,7 +2225,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replies to a post as the caller and returns the comment's id. `body` must\nnot be blank (at most 10,000 bytes); `NotFound` for a missing post.\nEmits `CommentCreated`."
       }
     },
     "/apps/{app}/methods/createPost": {
@@ -2291,7 +2292,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Starts a thread written by the caller and returns its id. `title` (at\nmost 300 bytes) and `body` (at most 10,000) must not be blank, else\n`Invalid`. Emits `PostCreated`."
       }
     },
     "/apps/{app}/methods/deleteComment": {
@@ -2357,7 +2359,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes the caller's own comment and its votes. Only its author may\n(`Forbidden`; a moderator uses `moderateComment`). Emits `CommentDeleted`."
       }
     },
     "/apps/{app}/methods/deletePost": {
@@ -2423,7 +2426,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Deletes the caller's own post, with its comments and every vote on them.\nOnly its author may (`Forbidden`; a moderator uses `moderatePost`).\nEmits `PostDeleted`."
       }
     },
     "/apps/{app}/methods/editComment": {
@@ -2489,7 +2493,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces a comment's body. Only its author may (`Forbidden`). Emits\n`CommentEdited`."
       }
     },
     "/apps/{app}/methods/editPost": {
@@ -2555,7 +2560,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces a post's title and body. Only its author may (`Forbidden`);\n`NotFound` for a missing post. Emits `PostEdited`."
       }
     },
     "/apps/{app}/methods/getNickname": {
@@ -2621,7 +2627,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The name `account` chose, or \"\" when it has not chosen one."
       }
     },
     "/apps/{app}/methods/getPost": {
@@ -2687,7 +2694,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One post with its score, comment count and the caller's vote.\n`NotFound` for a missing (or deleted) post."
       }
     },
     "/apps/{app}/methods/listComments": {
@@ -2753,7 +2761,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of a post's comments, oldest first. `cursor` is the previous\npage's `nextCursor`, `null` for the first; `limit` as in `listPosts`. A\npost with no comments (or none at all) is an empty page."
       }
     },
     "/apps/{app}/methods/listPosts": {
@@ -2819,7 +2828,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of the feed. `sort` is `\"new\"` (default: newest first) or\n`\"top\"` (highest score first, then newest). `cursor` is the previous\npage's `nextCursor` (opaque, and only good for the same sort), `null` for\nthe first page. `limit` 0 means 20; more than 100 means 100."
       }
     },
     "/apps/{app}/methods/moderateComment": {
@@ -2885,7 +2895,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes anyone's comment as a moderator, with its votes (`Forbidden` for\nanyone else). Emits `CommentDeleted`."
       }
     },
     "/apps/{app}/methods/moderatePost": {
@@ -2951,7 +2962,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes anyone's post as a moderator, with its comments and votes\n(`Forbidden` for anyone else). Emits `PostDeleted`."
       }
     },
     "/apps/{app}/methods/moderators": {
@@ -3017,7 +3029,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The accounts that may remove any post or comment, in key order."
       }
     },
     "/apps/{app}/methods/setModerators": {
@@ -3083,7 +3096,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the moderators. Only a moderator may (`Forbidden`). Every\naccount must be the forum's owner or in its organization, and the list\nmust not be empty (`Invalid`). Emits `ModeratorsChanged`."
       }
     },
     "/apps/{app}/methods/setNickname": {
@@ -3149,7 +3163,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Claims a display name for the CALLER (trimmed, at most 64 bytes, else\n`Invalid`); an empty name clears it. Names are not unique and authorise\nnothing. Emits `ProfileSet`."
       }
     },
     "/apps/{app}/methods/vote": {
@@ -3215,7 +3230,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's vote on a post: up (1), down (-1) or retract (0); anything\nelse is `Invalid`. One per account: voting again replaces it. `NotFound`\nfor a missing post. Emits `Voted`."
       }
     },
     "/apps/{app}/methods/voteComment": {
@@ -3281,7 +3297,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's vote on a comment, as `vote` for a post. `NotFound` for a\nmissing comment. Emits `CommentVoted`."
       }
     }
   },

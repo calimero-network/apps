@@ -36,6 +36,7 @@
     "bookSlot": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Book the slot starting at `startMs`. A link books once: after this it\ncan only reschedule or cancel. The meeting goes into the owner's\ncalendar as a private event.",
       "kind": "call",
       "params": [
         [
@@ -57,6 +58,7 @@
     "cancelBooking": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Cancel the link's meeting. The link is spent afterwards.",
       "kind": "call",
       "params": [
         [
@@ -70,6 +72,7 @@
     "createBookingLink": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A booking link for the API key whose SHA-256 is `link.tokenHash`. The\nowner's client created the key first; the key itself never reaches the\ncontract from the owner.",
       "kind": "call",
       "params": [
         [
@@ -83,6 +86,7 @@
     "createEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Create an event, routed BY WHETHER ANYONE ELSE IS IN IT: with no peers\nit is the caller's private event (`createPrivateEvent`), with peers a\nshared one. The contract decides, not the client. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -96,6 +100,7 @@
     "createPrivateEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A private event of the caller's; `peers` on the request is ignored.\nNo event is emitted: nobody else is in it. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -109,6 +114,7 @@
     "deleteBookingLink": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete one of the caller's links. A meeting it booked stays in the\ncalendar. The client revokes the link's API key too. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -122,6 +128,7 @@
     "deleteEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a shared event; only its owner may. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -135,6 +142,7 @@
     "deletePrivateEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete one of the caller's private events. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -148,6 +156,7 @@
     "getAvailableSlots": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The start times, in Unix milliseconds (decimal strings), the link behind\n`token` offers in `[fromMs, toMs)`.\n\nThe window is clamped, never refused: it starts no earlier than now and\nspans at most `MAX_SLOT_RANGE_DAYS`. A view's clock is the time of the\napp's last write, so \"now\" here can lag; pass your own now as `fromMs`.\n`bookSlot` checks the slot again at the time of booking.",
       "kind": "view",
       "params": [
         [
@@ -169,6 +178,7 @@
     "getBookingPage": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "What the link behind `token` offers, and its booking if it has one.",
       "kind": "view",
       "params": [
         [
@@ -182,6 +192,7 @@
     "getEvents": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The shared events the caller owns or is invited to, in id order (at\nmost 1,000 of each). Nobody else's: this is the access rule now, not\nonly a filter.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -190,6 +201,7 @@
     "getMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member who set a name, in account order (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -198,6 +210,7 @@
     "getPrivateEvents": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's private events, in id order (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -206,6 +219,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty calendar. The node runs it once, when the app is created.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -214,6 +228,7 @@
     "listBookingLinks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The caller's booking links, newest first (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -222,6 +237,7 @@
     "rescheduleBooking": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move the link's meeting to the slot starting at `startMs`.",
       "kind": "call",
       "params": [
         [
@@ -239,6 +255,7 @@
     "setUsername": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Register or refresh the caller's display name. Idempotent: the first\ncall joins (`MemberJoined`), later calls rename (`MemberUsernameUpdated`).\nA member can only ever name themselves.",
       "kind": "call",
       "params": [
         [
@@ -252,6 +269,7 @@
     "updateEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Update a shared event; only its owner may (`Forbidden` for anyone else,\n`NotFound` when there is none). Emptying `peers` does NOT make it\nprivate again: sharing is one-way, as in v1. Removed peers no longer\nsee it. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -269,6 +287,7 @@
     "updatePrivateEvent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Update one of the caller's private events, and PROMOTE it to a shared\nevent (same id) when the update names its first peers. Answers the id.",
       "kind": "call",
       "params": [
         [

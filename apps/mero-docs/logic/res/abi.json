@@ -84,6 +84,7 @@
     "addComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a comment to a document. The comment is the caller's, at most\n10,000 characters, and its id is returned. Emits `CommentAdded`.",
       "kind": "call",
       "params": [
         [
@@ -101,6 +102,7 @@
     "addManager": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Makes a member of the organization a manager. Only the owner may\n(`Forbidden`); the owner itself, or someone outside the organization, is\n`Invalid`. Emits `ManagerAdded`.",
       "kind": "call",
       "params": [
         [
@@ -114,6 +116,7 @@
     "addTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a tag to a document. A tag it has already is a no-op. `tag` is a\nkey of lowercase letters, digits and dashes (1 to 64), else `Invalid`.\nDoes not change `updatedBy`. Emits `DocTagsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -131,6 +134,7 @@
     "anchorAt": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Gets a marker for a spot in a block's text that still points to it after\nother edits. The anchor is for the gap at `position`, stuck to the\ncharacter after it (`before`) or before it.",
       "kind": "view",
       "params": [
         [
@@ -156,6 +160,7 @@
     "applyDelta": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Edits the text of a block. Applies Quill steps to it and returns the\nundo token for `undo`. An insert's `attributes` are its complete\nformatting; a retain's change only the keys they name. Allowed\nformatting keys are `bold`, `italic`, `underline`, `strike`,\n`textColor`, `backgroundColor`, `link`, `code`, `comment`; any other is\n`Invalid`. At most 100,000 characters after. Emits `TextChanged`.",
       "kind": "call",
       "params": [
         [
@@ -177,6 +182,7 @@
     "applyDeltaOn": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Edits the text of a block only if nobody has changed it in the meantime.\nThat is `applyDelta`, only if the block's text is still `base` and, with\nan `anchor`, the steps are an insert right at it; otherwise nothing is\nwritten and the block's current spans and ids come back to rebase onto.",
       "kind": "call",
       "params": [
         [
@@ -206,6 +212,7 @@
     "archiveDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Hides a document from the default list without deleting it. Emits\n`DocArchived`.",
       "kind": "call",
       "params": [
         [
@@ -219,6 +226,7 @@
     "commentCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts the comments on all the folder's documents.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -227,6 +235,7 @@
     "commentSchemaVersion": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows which version of the comment format a comment was saved in. 1 for\nevery live comment, `null` for a missing one.",
       "kind": "view",
       "params": [
         [
@@ -240,6 +249,7 @@
     "createDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Creates a new document with a title and an empty body. Returns its id.\nThe title is at most 1024 characters. Not idempotent: a retry after a\nlost response creates a second document. Emits `DocCreated`.",
       "kind": "call",
       "params": [
         [
@@ -253,6 +263,7 @@
     "deleteBlock": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a block from a document. Its text is kept, so ids that name it\nstill resolve. Emits `BlockDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -270,6 +281,7 @@
     "deleteComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a comment. Its author may, and the folder's moderator may delete\nany. Emits `CommentDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -283,6 +295,7 @@
     "deleteDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a document together with its title, body, tags and comments.\nOnly its creator or the folder's moderator (whoever created this\ninstance) may (`Forbidden`). Emits `DocDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -296,6 +309,7 @@
     "deleteTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a workspace tag for good. Its key stays taken. `NotFound` for an\nunknown key. Emits `TagChanged`.",
       "kind": "call",
       "params": [
         [
@@ -309,6 +323,7 @@
     "deleteView": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a saved view. `NotFound` for an unknown id. Emits `ViewChanged`.",
       "kind": "call",
       "params": [
         [
@@ -322,6 +337,7 @@
     "editComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes the text of a comment. Only its author may (`Forbidden`). Emits\n`CommentEdited`.",
       "kind": "call",
       "params": [
         [
@@ -339,6 +355,7 @@
     "editDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Renames a document. Replaces the whole title. Emits `TitleChanged` and\n`DocEdited`.",
       "kind": "call",
       "params": [
         [
@@ -356,6 +373,7 @@
     "getBlock": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows one block of a document. `null` when it is not in the document.",
       "kind": "view",
       "params": [
         [
@@ -373,6 +391,7 @@
     "getBlockDelta": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows a block's text with its formatting. Comes as runs of equally\nformatted characters.",
       "kind": "view",
       "params": [
         [
@@ -390,6 +409,7 @@
     "getComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows one comment. `NotFound` for a missing one.",
       "kind": "view",
       "params": [
         [
@@ -403,6 +423,7 @@
     "getDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows a document's title, tags and details. Its text is read through\n`getDocument`. `NotFound` for a missing document.",
       "kind": "view",
       "params": [
         [
@@ -416,6 +437,7 @@
     "getDocument": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows every block of a document, in order.",
       "kind": "view",
       "params": [
         [
@@ -429,6 +451,7 @@
     "getOwner": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows who owns this workspace or folder. That is the account that\ncreated this instance.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -437,6 +460,7 @@
     "getStateDigest": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Summarizes a document's whole body as one string, so two copies can be\ncompared. It reads `kind/depth[attr=value]{marks:text};` per block: two\nreaders agree on a document exactly when their digests match.",
       "kind": "view",
       "params": [
         [
@@ -450,6 +474,7 @@
     "getText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows a block's text without its formatting.",
       "kind": "view",
       "params": [
         [
@@ -467,6 +492,7 @@
     "getTitle": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows a document's title.",
       "kind": "view",
       "params": [
         [
@@ -480,6 +506,7 @@
     "getTitleState": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows a document's title together with an id for each character. Editors\nuse the ids to merge edits made at the same time.",
       "kind": "view",
       "params": [
         [
@@ -493,6 +520,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Starts an empty folder of documents, or a workspace's shared settings.\nIts creator (`env::app_owner()`) is the registry's owner, or the\nfolder's moderator.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -501,6 +529,7 @@
     "insertBlock": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a new empty block, such as a paragraph or a heading, to a document.\nInserts an empty block of `kind` at `depth` after the block `after`\n(`null`: first), and returns its id. Emits `BlockInserted`.",
       "kind": "call",
       "params": [
         [
@@ -526,6 +555,7 @@
     "listBlocks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the ids of a document's blocks, in order.",
       "kind": "view",
       "params": [
         [
@@ -539,6 +569,7 @@
     "listComments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists a document's comments. In no particular order; an empty list for a\nmissing document.",
       "kind": "view",
       "params": [
         [
@@ -552,6 +583,7 @@
     "listDocs": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the documents in the folder. Archived ones are included only with\n`includeArchived`.",
       "kind": "view",
       "params": [
         [
@@ -565,6 +597,7 @@
     "listManagers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the managers, in account order. The owner is not included.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -573,6 +606,7 @@
     "listTags": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the workspace's tags, in key order. Deleted ones are included.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -581,6 +615,7 @@
     "listViews": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the saved views, in id order.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -589,6 +624,7 @@
     "mark": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Formats a stretch of a block's text, for example as bold or a link. Sets\n`key` to `value` on the characters `[start, end)`, or removes it with\n`null`. Returns the mark's id (`null` for an empty range). Emits\n`MarkApplied`.",
       "kind": "call",
       "params": [
         [
@@ -622,6 +658,7 @@
     "mergeBlocks": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Joins two blocks into one. Appends `second`'s text (with its formatting)\nto `first` and takes `second` out of the document. At most 100,000\ncharacters joined. Emits `BlockChanged` and `BlockDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -643,6 +680,7 @@
     "moveBlock": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Moves a block to another place in a document. It goes after `after`\n(`null`: first). Emits `BlockMoved`.",
       "kind": "call",
       "params": [
         [
@@ -664,6 +702,7 @@
     "passageCount": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Counts how often a piece of text appears in a block's text. Exact and\ncase-sensitive; matches inside words count. Occurrences do not overlap.",
       "kind": "view",
       "params": [
         [
@@ -685,6 +724,7 @@
     "removeManager": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Takes a manager's role away from someone. Only the owner may\n(`Forbidden`); someone who is not a manager is `NotFound`. Emits\n`ManagerRemoved`.",
       "kind": "call",
       "params": [
         [
@@ -698,6 +738,7 @@
     "removeTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a tag from a document. One the document does not have is a\nno-op. Emits `DocTagsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -715,6 +756,7 @@
     "resolveIds": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Finds where marked spots in a block's text are now. `null` for an\nunknown one.",
       "kind": "view",
       "params": [
         [
@@ -736,6 +778,7 @@
     "saveView": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Saves a named view for the workspace, or renames or changes one already\nsaved. `id`: 1 to 64 ASCII letters, digits and dashes; `name`: 1 to 60\nbytes after trimming; `query`: at most 1000 bytes. The first saver is\nits `createdBy`. Emits `ViewChanged`.",
       "kind": "call",
       "params": [
         [
@@ -757,6 +800,7 @@
     "searchDocs": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Finds documents whose title or text matches the words you search for.\nEvery word of `query` must start a word of the document\n(case-insensitive), a title match scoring double; best match first.\n`cursor` is the previous page's `nextCursor`; `limit` defaults to 20, at\nmost 100. A blank query finds nothing; one over 256 bytes is `Invalid`.",
       "kind": "view",
       "params": [
         [
@@ -782,6 +826,7 @@
     "setAttr": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets a formatting property of a block, such as a heading's level.\nRemoves it with `null`. Emits `BlockChanged`.",
       "kind": "call",
       "params": [
         [
@@ -807,6 +852,7 @@
     "setDepth": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Indents or outdents a block by setting its nesting depth. Emits\n`BlockChanged`.",
       "kind": "call",
       "params": [
         [
@@ -828,6 +874,7 @@
     "setKind": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes what a block is, for example from a paragraph to a heading.\n`kind` is BlockNote's own string. Emits `BlockChanged`.",
       "kind": "call",
       "params": [
         [
@@ -849,6 +896,7 @@
     "setTag": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Creates a workspace tag, or changes its name and color. `key`: 1 to 64\nlowercase letters, digits and dashes; `name`: 1 to 32 characters after\ntrimming; `color`: `#rrggbb`. A deleted tag's key is `Invalid` for good.\nEmits `TagChanged`.",
       "kind": "call",
       "params": [
         [
@@ -870,6 +918,7 @@
     "splitBlock": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Splits a block in two at a character. The text from `at` on moves, with\nits formatting, to a new block of the same type, depth and attributes\nright after it, whose id is returned. The head keeps the block's id.\nEmits `BlockInserted` and `BlockChanged`.",
       "kind": "call",
       "params": [
         [
@@ -891,6 +940,7 @@
     "titleAnchorAt": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Gets a marker for a spot in a document's title that still points to it\nafter other edits. The anchor is for the gap at `position`, stuck to the\ncharacter after it (`before`) or before it.",
       "kind": "view",
       "params": [
         [
@@ -912,6 +962,7 @@
     "titleApplyDelta": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Edits a document's title. Applies Quill steps (no `attributes`: the\ntitle is plain) to the title and returns the undo token for `titleUndo`.\nAt most 1024 characters after. Emits `TitleChanged`.",
       "kind": "call",
       "params": [
         [
@@ -929,6 +980,7 @@
     "titleApplyDeltaOn": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Edits a document's title only if nobody has changed it in the meantime.\nThat is `titleApplyDelta`, only if the title is still `base` and, with\nan `anchor`, the steps are an insert right at it; otherwise nothing is\nwritten and the current title comes back to rebase onto.",
       "kind": "call",
       "params": [
         [
@@ -954,6 +1006,7 @@
     "titleResolve": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Finds where marked spots in a document's title are now. `null` for an\nunknown one.",
       "kind": "view",
       "params": [
         [
@@ -971,6 +1024,7 @@
     "titleUndo": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Undoes an edit to a document's title. Applies an undo token from\n`titleApplyDelta` (or `titleUndo`) and returns the token that undoes\nthis. Emits `TitleChanged`.",
       "kind": "call",
       "params": [
         [
@@ -988,6 +1042,7 @@
     "unarchiveDoc": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Brings an archived document back into the default list. Emits\n`DocUnarchived`.",
       "kind": "call",
       "params": [
         [
@@ -1001,6 +1056,7 @@
     "undo": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Undoes an edit to a block's text. Applies an undo token from\n`applyDelta` (or `undo`) to the block and returns the token that undoes\nthis. Emits `TextChanged`.",
       "kind": "call",
       "params": [
         [

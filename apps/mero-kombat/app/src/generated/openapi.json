@@ -2161,7 +2161,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record one action (a punch, a kick, a jump) in round `round` of match\n`matchIndex`. `hit` says it connected, `blocked` that it was guarded.\n\nEvery call is one transaction. `matchIndex` and `round` are stated by\nthe client rather than assumed, so a blow thrown in the closing frame of\na round cannot silently land in the next one: it is refused instead\n(`RoundOver`). Emits `Acted`, then `RoundOver` and `MatchOver` when this\nblow decided them."
       }
     },
     "/apps/{app}/methods/arena": {
@@ -2227,7 +2228,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The whole arena in one call, as the caller sees it at `now` (their\nclock, for who is `online`)."
       }
     },
     "/apps/{app}/methods/history": {
@@ -2293,7 +2295,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every match this arena has fought, oldest first (at most 512)."
       }
     },
     "/apps/{app}/methods/join": {
@@ -2359,7 +2362,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Announce yourself, or refresh your name and fighter. Emits\n`PlayerJoined` the first time."
       }
     },
     "/apps/{app}/methods/pick": {
@@ -2425,7 +2429,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change fighter. Allowed any time: the look is yours, and the damage\ntable is the same for everybody. Emits `Seated` again when you hold a\ncorner, so the other screen redraws you."
       }
     },
     "/apps/{app}/methods/rematch": {
@@ -2491,7 +2496,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Start the next match. Corners stay; health and rounds reset. Returns\nthe new match's index. `MatchNotFinished`, `NotInCorner`, and\n`MatchLimit` past 512 matches."
       }
     },
     "/apps/{app}/methods/sit": {
@@ -2557,7 +2563,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take corner `p1` or `p2`, if it is free. Sitting again in your own\ncorner refreshes your name and fighter.\n\nOne person cannot hold both: this is a game between two people.\n`CornerTaken` when someone else holds it, `InOtherCorner` when you hold\nthe other one."
       }
     },
     "/apps/{app}/methods/stand": {
@@ -2623,7 +2630,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Leave your corner, only before you have fought here: a corner someone\nhas fought from is the record of who fought. `NotInCorner`,\n`AlreadyFought`."
       }
     }
   },

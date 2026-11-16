@@ -62,6 +62,7 @@
     "acceptDraw": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Accept the opponent's standing offer. `GameOver`, `NotSeated`,\n`NoDrawOffer`.",
       "kind": "call",
       "params": [
         [
@@ -75,6 +76,7 @@
     "claimDraw": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Claim the draw the position allows: threefold repetition or the\nfifty-move rule. Both are claims under the rules of chess, so neither\nends a game on its own. `GameOver`, `NotSeated`, `NoDrawToClaim`.",
       "kind": "call",
       "params": [
         [
@@ -88,6 +90,7 @@
     "declineDraw": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Refuse the opponent's standing offer (a move refuses it too).\n`NotSeated`, `NoDrawOffer`.",
       "kind": "call",
       "params": [
         [
@@ -101,6 +104,7 @@
     "heartbeat": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Presence only: no event, so a heartbeat does not wake every client.",
       "kind": "call",
       "params": [
         [
@@ -114,6 +118,7 @@
     "history": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every game this table has played, oldest first (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -122,6 +127,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A new table with game 0 waiting for two players. `title` defaults to\n`\"Chess\"`; `now` (the creator's clock) is `createdAt`, `\"0\"` when not\ngiven.",
       "kind": "init",
       "params": [
         [
@@ -139,6 +145,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Announce yourself at the table, or refresh your presence and name.\nEmits `PlayerJoined` the first time.",
       "kind": "call",
       "params": [
         [
@@ -156,6 +163,7 @@
     "offerDraw": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Offer a draw in the current position. The offer stands until the\nposition changes. `GameOver`, `NotSeated`.",
       "kind": "call",
       "params": [
         [
@@ -169,6 +177,7 @@
     "play": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Play a move, in UCI (`e2e4`, `e7e8q`; a promotion with no piece named\nis a queening). Returns its SAN. Emits `Moved`, then `GameEnded` when\nthe move ended the game on the board.\n\n`GameOver`, `MoveLimit`, `WaitingForOpponent` (a chair is empty),\n`NotYourMove`, `BadMove` (not UCI), `IllegalMove`.",
       "kind": "call",
       "params": [
         [
@@ -186,6 +195,7 @@
     "rematch": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Start the next game, colours swapped. Returns its index.\n`GameNotFinished`, `NotSeated`, `GameLimit`.",
       "kind": "call",
       "params": [
         [
@@ -199,6 +209,7 @@
     "resign": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Resign the current game. `GameOver`, `NotSeated`.",
       "kind": "call",
       "params": [
         [
@@ -212,6 +223,7 @@
     "sit": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take the `white` or `black` chair, if it is free. Sitting in your own\nchair again does nothing.\n\nThe seat name is the colour you hold in the FIRST game; colours swap\non every rematch. Taking BOTH chairs is allowed on purpose: one person\nmoving for each side in turn is how chess is played when the other\nperson is in the room. `UnknownSeat`, `SeatTaken`.",
       "kind": "call",
       "params": [
         [
@@ -233,6 +245,7 @@
     "stand": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Give up your chair: only before you have played at this table, and\nonly before the current game has a move. A chair you have played from\nis the table's record of who played; the way out of a game is\n`resign`. `NotSeated`, `AlreadyPlayed`.",
       "kind": "call",
       "params": [
         [
@@ -246,6 +259,7 @@
     "table": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The whole table in one call, as the caller sees it at `now` (their\nclock, for who is `online`). See [`TableView`].",
       "kind": "view",
       "params": [
         [

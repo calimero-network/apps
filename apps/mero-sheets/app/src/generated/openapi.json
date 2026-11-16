@@ -6937,7 +6937,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Record a file attached to a cell. Upload the bytes to the app's blob\nstore first; this stores what the cell shows. Returns its id."
       }
     },
     "/apps/{app}/methods/addChart": {
@@ -7003,7 +7004,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Chart a range. Editors. Returns the chart's id."
       }
     },
     "/apps/{app}/methods/addComment": {
@@ -7069,7 +7071,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Comment on a cell, or reply to a comment (`parent`). Commenters and up.\n`@nickname` mentions a member. Returns the comment id."
       }
     },
     "/apps/{app}/methods/addRule": {
@@ -7135,7 +7138,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a conditional format, colour scale, validation or alert. Editors."
       }
     },
     "/apps/{app}/methods/applyAxisOps": {
@@ -7201,7 +7205,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Insert, delete or restore rows and columns; each op is one write.\nThe client picks ids (a letter first) and fractional positions."
       }
     },
     "/apps/{app}/methods/applyCellOps": {
@@ -7267,7 +7272,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Apply up to [`MAX_OPS_PER_APPLY`] cell ops to one sheet in one call,\nwith one `CellsChanged` event."
       }
     },
     "/apps/{app}/methods/applyPrivateCellOps": {
@@ -7333,7 +7339,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Write cells of one of the caller's private sheets: the same ops as\n`applyCellOps`, on implicit (position) row and column ids."
       }
     },
     "/apps/{app}/methods/applyStyleOps": {
@@ -7399,7 +7406,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change cells' styles: bold, italic, underline, strike, wrap (`1`),\ncolor and fill (`#rrggbb`), align (`left`, `center`, `right`); an\nempty value clears the field."
       }
     },
     "/apps/{app}/methods/clearCell": {
@@ -7465,7 +7473,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Blank a cell's value and format."
       }
     },
     "/apps/{app}/methods/createPrivateSheet": {
@@ -7531,7 +7540,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Make a private sheet. Returns its id."
       }
     },
     "/apps/{app}/methods/createSheet": {
@@ -7597,7 +7607,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add a sheet; a taken name gets ` (2)`, ` (3)`, …. Editors. Returns its id."
       }
     },
     "/apps/{app}/methods/deleteComment": {
@@ -7663,7 +7674,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a comment. Its author or an owner may."
       }
     },
     "/apps/{app}/methods/deleteNamedRange": {
@@ -7729,7 +7741,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a named range. Editors."
       }
     },
     "/apps/{app}/methods/deletePrivateSheet": {
@@ -7795,7 +7808,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete one of the caller's private sheets and its cells."
       }
     },
     "/apps/{app}/methods/deleteSheet": {
@@ -7861,7 +7875,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a sheet. Its cells stay stored and are never read again."
       }
     },
     "/apps/{app}/methods/dropLink": {
@@ -7927,7 +7942,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The source withdrew a link: remove its sheet. Editors."
       }
     },
     "/apps/{app}/methods/editComment": {
@@ -7993,7 +8009,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change a comment's text. Only its author may."
       }
     },
     "/apps/{app}/methods/editNote": {
@@ -8059,7 +8076,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Edit a cell's note with one Quill-shaped delta (text and formatting).\nFormats: `bold`, `italic`, `underline`, `strike`, `code`, `highlight`,\n`link`. At most [`MAX_NOTE_CHARS`] characters."
       }
     },
     "/apps/{app}/methods/exportAll": {
@@ -8125,7 +8143,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "All sheets (as `listSheets`); the client assembles the file."
       }
     },
     "/apps/{app}/methods/getActivity": {
@@ -8191,7 +8210,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Activity since `since` (nanoseconds), newest first, at most `limit`\n(capped at 500) entries."
       }
     },
     "/apps/{app}/methods/getAllCells": {
@@ -8257,7 +8277,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every non-blank cell across all sheets, raw and computed."
       }
     },
     "/apps/{app}/methods/getAttachments": {
@@ -8323,7 +8344,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every attachment, oldest first."
       }
     },
     "/apps/{app}/methods/getCells": {
@@ -8389,7 +8411,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One sheet's cells with computed values. Evaluates the sheet and the\nsheets it transitively references."
       }
     },
     "/apps/{app}/methods/getCharts": {
@@ -8455,7 +8478,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every chart."
       }
     },
     "/apps/{app}/methods/getComments": {
@@ -8521,7 +8545,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every comment, oldest first."
       }
     },
     "/apps/{app}/methods/getFunctions": {
@@ -8587,7 +8612,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every formula function, sorted by name."
       }
     },
     "/apps/{app}/methods/getLayouts": {
@@ -8653,7 +8679,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every sheet's explicit row and column entries."
       }
     },
     "/apps/{app}/methods/getLinks": {
@@ -8719,7 +8746,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every live link into this workbook."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -8785,7 +8813,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Everyone who has announced themselves, oldest arrival first."
       }
     },
     "/apps/{app}/methods/getNamedRanges": {
@@ -8851,7 +8880,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every named range, sorted by name."
       }
     },
     "/apps/{app}/methods/getNote": {
@@ -8917,7 +8947,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A cell's note as formatted runs; empty when it has none."
       }
     },
     "/apps/{app}/methods/getNotedCells": {
@@ -8983,7 +9014,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every cell with a non-empty note, with the start of its text."
       }
     },
     "/apps/{app}/methods/getPrivateCells": {
@@ -9049,7 +9081,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every cell of the caller's private sheets. `computed_value` is empty:\nthe client evaluates them, with the shared sheets they read."
       }
     },
     "/apps/{app}/methods/getPrivateSheets": {
@@ -9115,7 +9148,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's private sheets, in the order they were made."
       }
     },
     "/apps/{app}/methods/getProject": {
@@ -9181,7 +9215,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The project's id, name (empty until `initProject`) and creation time."
       }
     },
     "/apps/{app}/methods/getProtections": {
@@ -9247,7 +9282,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every protected range."
       }
     },
     "/apps/{app}/methods/getPublications": {
@@ -9313,7 +9349,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every live link from this workbook: those whose maker may still edit."
       }
     },
     "/apps/{app}/methods/getRules": {
@@ -9379,7 +9416,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every rule."
       }
     },
     "/apps/{app}/methods/getSheetViews": {
@@ -9445,7 +9483,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every sheet's frozen panes and resized rows and columns."
       }
     },
     "/apps/{app}/methods/getStyles": {
@@ -9511,7 +9550,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every styled cell, with its set fields."
       }
     },
     "/apps/{app}/methods/initProject": {
@@ -9577,7 +9617,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Name the workbook, once. Owners only. Returns the workbook's id."
       }
     },
     "/apps/{app}/methods/join": {
@@ -9643,7 +9684,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Announce the caller under a nickname, or rename it. Idempotent;\n`joined_at` is kept across calls."
       }
     },
     "/apps/{app}/methods/listSheets": {
@@ -9709,7 +9751,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The workbook's sheets in tab order, then the linked ones."
       }
     },
     "/apps/{app}/methods/protectRange": {
@@ -9775,7 +9818,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Protect a range (corner row and column ids; all four empty for the\nwhole sheet): only owners and `editors` may then change its cells.\nOwners only. Returns the protection id."
       }
     },
     "/apps/{app}/methods/publishRange": {
@@ -9841,7 +9885,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Link a range to another workbook (its app instance id), where it shows\nas a read-only sheet called `name`. Editors. Returns the link's id."
       }
     },
     "/apps/{app}/methods/pushPublication": {
@@ -9907,7 +9952,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A link's current values, for the client to deliver to its workbook\nwith `receiveLink`. Editors."
       }
     },
     "/apps/{app}/methods/receiveLink": {
@@ -9973,7 +10019,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Receive a linked range from another workbook (`fromContext`, its app\ninstance id). Editors of this workbook: the person relaying it."
       }
     },
     "/apps/{app}/methods/removeAttachment": {
@@ -10039,7 +10086,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove an attachment. Whoever attached it, or an owner, may."
       }
     },
     "/apps/{app}/methods/removeChart": {
@@ -10105,7 +10153,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove a chart. Editors."
       }
     },
     "/apps/{app}/methods/removeProtection": {
@@ -10171,7 +10220,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove a protection. Owners only."
       }
     },
     "/apps/{app}/methods/removeRule": {
@@ -10237,7 +10287,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove a rule. Editors."
       }
     },
     "/apps/{app}/methods/renamePrivateSheet": {
@@ -10303,7 +10354,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename one of the caller's private sheets."
       }
     },
     "/apps/{app}/methods/renameSheet": {
@@ -10369,7 +10421,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename a sheet; a name another sheet has is refused."
       }
     },
     "/apps/{app}/methods/searchFunctions": {
@@ -10435,7 +10488,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The functions whose name starts with `prefix` (case ignored)."
       }
     },
     "/apps/{app}/methods/setCell": {
@@ -10501,7 +10555,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set a cell's raw value (a literal or a formula). Returns the cell's key."
       }
     },
     "/apps/{app}/methods/setCellFormat": {
@@ -10567,7 +10622,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set only a cell's display format (\"\" = Automatic), keeping its value."
       }
     },
     "/apps/{app}/methods/setCommentResolved": {
@@ -10633,7 +10689,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Resolve or reopen a comment thread. Commenters and up."
       }
     },
     "/apps/{app}/methods/setFrozen": {
@@ -10699,7 +10756,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Freeze the first `rows` rows and `cols` columns (0 unfreezes). Editors."
       }
     },
     "/apps/{app}/methods/setNamedRange": {
@@ -10765,7 +10823,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Define or redefine a named range (`target` in stored form). Editors."
       }
     },
     "/apps/{app}/methods/setRole": {
@@ -10831,7 +10890,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set a member's workbook role: `owner`, `editor`, `commenter` or\n`viewer`. Owners only; the last owner stays one."
       }
     },
     "/apps/{app}/methods/setSizes": {
@@ -10897,7 +10957,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Resize rows and columns (`axis` `row` or `col`, size in pixels). Editors."
       }
     },
     "/apps/{app}/methods/unlink": {
@@ -10963,7 +11024,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Remove a linked sheet here; later pushes of it are ignored. Editors."
       }
     },
     "/apps/{app}/methods/unpublish": {
@@ -11029,7 +11091,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stop a link. Whoever linked it, or an owner, may. The client removes\nits sheet from the other workbook with `dropLink`."
       }
     },
     "/apps/{app}/methods/updateChart": {
@@ -11095,7 +11158,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replace a chart's range, kind or title. Editors."
       }
     },
     "/apps/{app}/methods/updateProtection": {
@@ -11161,7 +11225,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change who may edit a protected range, and its description. Owners only."
       }
     },
     "/apps/{app}/methods/updateRule": {
@@ -11227,7 +11292,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replace a rule. Editors."
       }
     },
     "/apps/{app}/methods/whoami": {
@@ -11293,7 +11359,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's account: the id its roster row, comments and cursor carry."
       }
     }
   },

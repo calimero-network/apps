@@ -4544,7 +4544,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Pin a comment at a canvas point, or replace the comment with the same `id`\n(its replies are kept). Editors only; the author is the caller. Emits `CommentAdded`."
       }
     },
     "/apps/{app}/methods/addElement": {
@@ -4610,7 +4611,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add an element, or replace the element with the same `id`. Editors only\n(`Forbidden`). `createdBy` is set by the contract. For an `image` or `svg`,\n`blobId` names a blob uploaded to this app. Answers the id. Emits `ElementAdded`."
       }
     },
     "/apps/{app}/methods/addElements": {
@@ -4676,7 +4678,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`addElement` for many elements in one call (a paste, an import): at most\n200, else `Invalid` and nothing is added. Editors only. Answers the ids in\norder. Emits one `ElementsAdded`."
       }
     },
     "/apps/{app}/methods/addReply": {
@@ -4742,7 +4745,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Reply to a comment. Editors only; the author is the caller. Does nothing if\nthe comment does not exist. Emits `CommentUpdated`."
       }
     },
     "/apps/{app}/methods/bringToFront": {
@@ -4808,7 +4812,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Paint an element above every other one. Editors only. Does nothing for an\nunknown id. Emits `LayerReordered`."
       }
     },
     "/apps/{app}/methods/canEdit": {
@@ -4874,7 +4879,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Whether the caller may change the canvas and comments."
       }
     },
     "/apps/{app}/methods/clearComments": {
@@ -4940,7 +4946,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete every comment and reply, for every member. Board admin only\n(`Forbidden`). Emits no event, as in v1."
       }
     },
     "/apps/{app}/methods/clearElements": {
@@ -5006,7 +5013,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete every element, for every member. Board admin only (`Forbidden`).\nEmits `LayerReordered`."
       }
     },
     "/apps/{app}/methods/deleteComment": {
@@ -5072,7 +5080,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete a comment and its replies. Editors only. An unknown id is not an\nerror, and still emits `CommentDeleted`."
       }
     },
     "/apps/{app}/methods/deleteElement": {
@@ -5138,7 +5147,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete an element. Editors only. An unknown id is not an error, and still\nemits `ElementDeleted`."
       }
     },
     "/apps/{app}/methods/deleteElements": {
@@ -5204,7 +5214,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`deleteElement` for many elements in one call: at most 200 ids, else\n`Invalid`. Editors only. Ids already gone are fine. Emits one `ElementsDeleted`."
       }
     },
     "/apps/{app}/methods/deleteReply": {
@@ -5270,7 +5281,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Delete one reply. Editors only. Does nothing, and emits nothing, if the\nreply is not there. Emits `CommentUpdated`."
       }
     },
     "/apps/{app}/methods/getBoard": {
@@ -5336,7 +5348,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The board's name, description, element and member counts, and owner."
       }
     },
     "/apps/{app}/methods/getComments": {
@@ -5402,7 +5415,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The comments, each with its replies oldest first: at most a page of\ncomments (1,000), each with at most a page of replies."
       }
     },
     "/apps/{app}/methods/getCursors": {
@@ -5468,7 +5482,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every pointer's last reported position: at most a page (1,000)."
       }
     },
     "/apps/{app}/methods/getElement": {
@@ -5534,7 +5549,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One element by id, or `null`."
       }
     },
     "/apps/{app}/methods/getElements": {
@@ -5600,7 +5616,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The canvas in paint order, lowest `layerIndex` first: at most a page\n(1,000 elements). `getElementsPage` reads a larger board page by page."
       }
     },
     "/apps/{app}/methods/getElementsByIds": {
@@ -5666,7 +5683,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Several elements by id in one read (the ids a batch event named): those that\nexist, in the order asked. At most 1,000 ids, else `Invalid`."
       }
     },
     "/apps/{app}/methods/getElementsPage": {
@@ -5732,7 +5750,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "One page of the canvas in paint order. `cursor` is the previous page's\n`nextCursor` (`null` for the first page); `limit` 0 means 500, more than\n1,000 means 1,000. New: v1 returned the whole board from `getElements`."
       }
     },
     "/apps/{app}/methods/getMembers": {
@@ -5798,7 +5817,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member who has joined: at most a page (1,000), by account."
       }
     },
     "/apps/{app}/methods/getRole": {
@@ -5864,7 +5884,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "A member's effective role: `\"admin\"`, `\"editor\"` or `\"viewer\"`. Anything\nthat names nobody is a viewer."
       }
     },
     "/apps/{app}/methods/grantEditor": {
@@ -5930,7 +5951,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Let a member change the canvas and comments. Admin only (`Forbidden`);\n`Invalid` when `member` is not an account of the app's organization (they\nneed not have joined the board yet). Emits `RoleUpdated`."
       }
     },
     "/apps/{app}/methods/join": {
@@ -5996,7 +6018,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Add the caller to the board's members, so others see their name. Anyone who\nreaches the app may join; joining grants no editing. Does nothing, and emits\nnothing, if the caller has already joined (`updateMemberUsername` renames)."
       }
     },
     "/apps/{app}/methods/listRoles": {
@@ -6062,7 +6085,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every member who has joined, with their effective role: at most a page (1,000)."
       }
     },
     "/apps/{app}/methods/myRole": {
@@ -6128,7 +6152,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The caller's effective role."
       }
     },
     "/apps/{app}/methods/revokeEditor": {
@@ -6194,7 +6219,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Take the editor role away. Admin only (`Forbidden`). An admin's own admin\nrole, and an org admin's editing, are unaffected. Emits `RoleUpdated`."
       }
     },
     "/apps/{app}/methods/sendToBack": {
@@ -6260,7 +6286,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Paint an element below every other one. Editors only. Does nothing for an\nunknown id. Emits `LayerReordered`."
       }
     },
     "/apps/{app}/methods/setLayerIndex": {
@@ -6326,7 +6353,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move one element to a position in the paint order (0 at the back; past the\nend is clamped to the front). Only the elements whose index must change are\nwritten. Editors only. Does nothing if `id` names no element. Emits\n`LayerReordered`."
       }
     },
     "/apps/{app}/methods/transferOwnership": {
@@ -6392,7 +6420,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Hand the board to another account of the organization: it becomes owner and\nadmin, and the caller stops being admin (so loses editing unless also an\neditor). Owner only (`Forbidden`); `Invalid` when `newOwner` is not an\naccount of the app's organization. Emits `OwnerTransferred`."
       }
     },
     "/apps/{app}/methods/updateBoard": {
@@ -6458,7 +6487,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename or re-describe the board; `null` keeps a field. Owner only\n(`Forbidden`). Emits `BoardUpdated`."
       }
     },
     "/apps/{app}/methods/updateCursor": {
@@ -6524,7 +6554,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Report the caller's pointer position to the other members. Open to everyone\nwho reaches the board, viewers included. One pointer per account (v1: per\ndevice). Emits `CursorMoved`."
       }
     },
     "/apps/{app}/methods/updateElement": {
@@ -6590,7 +6621,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Move, resize or restyle an element; `null` leaves a field unchanged. Editors\nonly. Does nothing if `id` names no element. Emits `ElementUpdated`."
       }
     },
     "/apps/{app}/methods/updateElementLabel": {
@@ -6656,7 +6688,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set or clear an element's label (its layer name and group). Editors only.\nDoes nothing if `id` names no element. Emits `ElementUpdated`."
       }
     },
     "/apps/{app}/methods/updateElementLabels": {
@@ -6722,7 +6755,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`updateElementLabel` for many elements in one call: at most 200, else\n`Invalid`. Editors only. Unknown ids are skipped. Emits one `ElementsUpdated`."
       }
     },
     "/apps/{app}/methods/updateElements": {
@@ -6788,7 +6822,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "`updateElement` for many elements in one call (a multi-select drag): at most\n200 patches, else `Invalid`. Editors only. Unknown ids are skipped. Emits one\n`ElementsUpdated` naming the ids that existed."
       }
     },
     "/apps/{app}/methods/updateMemberUsername": {
@@ -6854,7 +6889,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Rename the caller's own member entry. Does nothing if the caller has not\njoined. Emits `MemberUsernameUpdated`."
       }
     },
     "/apps/{app}/methods/updateShadow": {
@@ -6920,7 +6956,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Set or remove an element's drop shadow: all four fields are replaced, all\n`null` removes it. Editors only. Does nothing if `id` names no element.\nEmits `ElementUpdated`."
       }
     },
     "/apps/{app}/methods/updateTextStyle": {
@@ -6986,7 +7023,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Change a text element's content or style; `null` leaves a field unchanged.\nEditors only. Does nothing if `id` names no element; on an element that is\nnot text it changes only `updatedAt`. Emits `ElementUpdated`."
       }
     }
   },

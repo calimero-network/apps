@@ -39,6 +39,7 @@
     "addLayer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Add a layer (or replace the one with its id). `createdBy` is the\ncaller, whatever the argument says. Answers the id.",
       "kind": "call",
       "params": [
         [
@@ -52,6 +53,7 @@
     "bringToFront": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Put a layer above every other one.",
       "kind": "call",
       "params": [
         [
@@ -77,6 +79,7 @@
     "clearLayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete every layer. Owner only.",
       "kind": "call",
       "params": [],
       "public": false,
@@ -85,6 +88,7 @@
     "deleteLayer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Delete a layer. A group's children move to the top level.",
       "kind": "call",
       "params": [
         [
@@ -98,6 +102,7 @@
     "getCursors": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every pointer (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -127,6 +132,7 @@
     "getLayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every layer, bottom to top (`layerIndex`, then id). At most\n`MAX_LAYERS`, which `addLayer` enforces.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -135,6 +141,7 @@
     "getMembers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member (at most 1,000), `id` from the row's account.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -143,6 +150,7 @@
     "getRole": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "\"admin\" (the owner), \"editor\" or \"viewer\".",
       "kind": "view",
       "params": [
         [
@@ -156,6 +164,7 @@
     "grantEditor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Let a member of the team edit. Owner only.",
       "kind": "call",
       "params": [
         [
@@ -169,6 +178,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "A new document, owned by its creator (the app's creator: `init` runs\nas the owner). Every argument is optional: `name` \"Untitled\", a\n1280 x 720 transparent canvas.",
       "kind": "init",
       "params": [
         [
@@ -194,6 +204,7 @@
     "join": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Put the caller on the roster. Idempotent: a member already on it is\nleft as is.",
       "kind": "call",
       "params": [
         [
@@ -215,6 +226,7 @@
     "listRoles": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every member on the roster with their role (at most 1,000).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -223,6 +235,7 @@
     "moveLayer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move a layer into or out of a group and set its index in one call.",
       "kind": "call",
       "params": [
         [
@@ -248,6 +261,7 @@
     "moveLayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Re-parent several layers in one call (`[[id, parentId | null], ..]`).\nA move that would make a layer its own ancestor is skipped, as are\nunknown ids.",
       "kind": "call",
       "params": [
         [
@@ -273,6 +287,7 @@
     "reorderLayers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Apply an explicit ordering: `[[id, index], ..]`.",
       "kind": "call",
       "params": [
         [
@@ -290,6 +305,7 @@
     "revokeEditor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Make a member view-only again. Owner only. The org's owner and\nadmins keep editing whatever this says.",
       "kind": "call",
       "params": [
         [
@@ -303,6 +319,7 @@
     "sendToBack": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Put a layer below every other one. With room below the bottom one\n(its index above 0) only this layer moves; a stack starting at 0\nshifts the others up by one.",
       "kind": "call",
       "params": [
         [
@@ -320,6 +337,7 @@
     "transferOwnership": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Hand the document to another member of the team. Owner only. The\nprevious owner keeps editing (they become an editor).",
       "kind": "call",
       "params": [
         [
@@ -333,6 +351,7 @@
     "updateAdjustments": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Patch a layer's adjustments.",
       "kind": "call",
       "params": [
         [
@@ -382,6 +401,7 @@
     "updateCursor": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Move the caller's pointer. Open to everyone who reaches the\ndocument, viewers included.",
       "kind": "call",
       "params": [
         [
@@ -403,6 +423,7 @@
     "updateDocument": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename, re-describe, resize or recolour the document. Owner only\n(`OwnerOnly`).",
       "kind": "call",
       "params": [
         [
@@ -432,6 +453,7 @@
     "updateLayer": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Patch a layer's metadata, transform and compositing. Each argument\nis optional; an unknown id changes nothing.",
       "kind": "call",
       "params": [
         [
@@ -501,6 +523,7 @@
     "updateLayerContent": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Replace a raster layer's pixels with a freshly uploaded blob.",
       "kind": "call",
       "params": [
         [
@@ -530,6 +553,7 @@
     "updateLayerMask": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Set or clear (`null`) a layer's mask blob.",
       "kind": "call",
       "params": [
         [
@@ -551,6 +575,7 @@
     "updateMemberUsername": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rename the caller on the roster. Nothing for someone not on it.",
       "kind": "call",
       "params": [
         [
@@ -568,6 +593,7 @@
     "updateText": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Patch a text layer's properties.",
       "kind": "call",
       "params": [
         [
@@ -613,6 +639,7 @@
     "updateTransform": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Patch the free-transform params: rotation, scale, shear (clamped to\n-80..=80), mirror and corner-pin warp (an empty warp clears it).",
       "kind": "call",
       "params": [
         [

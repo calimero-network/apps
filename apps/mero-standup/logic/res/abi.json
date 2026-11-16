@@ -70,6 +70,7 @@
     "clearUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Withdraw the caller's standup for `day`; `NoUpdate` when the caller has\nnone. Never touches anyone else's. Emits `UpdateCleared`.",
       "kind": "call",
       "params": [
         [
@@ -83,6 +84,7 @@
     "currentBlockers": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "What is blocking the team right now: each member's LATEST update, if\nit names a blocker. An old blocker someone has since posted past is\nnot current. Newest day first, then by author.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -91,6 +93,7 @@
     "getDay": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Everyone's standup for one day, ordered by author.",
       "kind": "view",
       "params": [
         [
@@ -104,6 +107,7 @@
     "getDecision": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "One decision by id; `NoSuchDecision` when there is none.",
       "kind": "view",
       "params": [
         [
@@ -117,6 +121,7 @@
     "getName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The name `account` chose, or \"\".",
       "kind": "view",
       "params": [
         [
@@ -130,6 +135,7 @@
     "getWeek": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Seven days of standups starting at `start`, oldest first: the weekly\ndigest in one call instead of seven.",
       "kind": "view",
       "params": [
         [
@@ -143,6 +149,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The empty team. The node runs it once, when the app is created.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -151,6 +158,7 @@
     "listDays": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Days with at least one update, newest first, strictly before `before`\nwhen it is given (the previous page's `nextCursor`).",
       "kind": "view",
       "params": [
         [
@@ -168,6 +176,7 @@
     "listDecisions": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The log, newest first. `search` keeps decisions whose title, text,\nrationale or tags contain it (case-insensitive); `tag` keeps those\ncarrying exactly that tag; `fromDay` those logged from that standup\nday; `standingOnly` drops the superseded ones. `cursor` is the previous\npage's `nextCursor`. A tag or day filter reads only that slice of the\nlog; `search` and `standingOnly` read through the rest.",
       "kind": "view",
       "params": [
         [
@@ -201,6 +210,7 @@
     "logDecision": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Record a decision as the caller and return its id (32 hex characters).\n\n`supersedes` names the decision this one replaces: it must exist and\nstill stand (`NoSuchDecision`, `AlreadySuperseded`). `tags`, `with`\n(accounts involved) and `fromDay` (the standup day it came out of) are\nwritten with it. A decision is never changed afterwards: changing course\nis a new decision. Emits `DecisionLogged`.",
       "kind": "call",
       "params": [
         [
@@ -238,6 +248,7 @@
     "members": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Everyone who has an update or a chosen name, with the latest day they\nposted for, ordered by account. The UI uses it for \"still to post today\".\n\nNot the org's membership: a member who never touched the app is not in\nhere (the org lists them: `client.listMembers`).",
       "kind": "view",
       "params": [],
       "public": false,
@@ -246,6 +257,7 @@
     "offerHelp": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Offer to help with `author`'s blocker on `day`, or change your note.\nThe update has to exist (`NoSuchUpdate`) and name a blocker\n(`NoBlocker`), and you cannot offer yourself help (`OwnBlocker`). The\noffer is the caller's own row. Emits `HelpOffered`.",
       "kind": "call",
       "params": [
         [
@@ -267,6 +279,7 @@
     "postUpdate": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Post, or rewrite, the caller's standup for `day` (`YYYY-MM-DD`).\n\nThe day comes from the client because \"today\" is the member's local\ndate, which the contract cannot know. At least one field must say\nsomething; `blockers` may stay empty, and usually does. Only ever\nwrites the caller's own entry. Emits `UpdatePosted`.",
       "kind": "call",
       "params": [
         [
@@ -292,6 +305,7 @@
     "setName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Claim a display name for the calling account; an empty name clears it.\nNo `account` argument: you can only name yourself. Emits `ProfileSet`.",
       "kind": "call",
       "params": [
         [
@@ -305,6 +319,7 @@
     "setTeamName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Name the team. Any member may; an empty name clears it. Emits\n`TeamRenamed`.",
       "kind": "call",
       "params": [
         [
@@ -318,6 +333,7 @@
     "tags": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Every tag in the log with how many decisions carry it, most used first.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -326,6 +342,7 @@
     "teamName": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The team's name, or \"\" if nobody has named it.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -334,6 +351,7 @@
     "whoami": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "The calling account, as the views render it. The frontend uses it to\nfind \"my\" update in a day without a second identity lookup.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -342,6 +360,7 @@
     "withdrawHelp": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Take back the caller's own offer on `author`'s update for `day`;\n`NoHelp` when the caller has made none there. Emits `HelpWithdrawn`.",
       "kind": "call",
       "params": [
         [

@@ -54,6 +54,7 @@
     "addComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Posts a comment on an issue. The comment must not be blank. Returns its\nid, `comment-<ms>-<8 hex>`, with the caller as its author. `NotFound`\nfor an unknown issue. Emits `CommentAdded`.",
       "kind": "call",
       "params": [
         [
@@ -71,6 +72,7 @@
     "addLabel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Adds a label to an issue. A label is 1 to 64 characters; adding it twice\nkeeps one. Emits `IssueLabelsChanged`.",
       "kind": "call",
       "params": [
         [
@@ -88,6 +90,7 @@
     "createIssue": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Files a new issue on the board. Returns its id, `issue-<ms>-<8 hex>`. It\nstarts `Open`, filed by the caller. `title` and each label are 1 to 64\ncharacters, the four sections must not be blank, and `priority` is one\nof `low`, `medium`, `high`, `urgent`; anything else is `Invalid`. Emits\n`IssueCreated`.",
       "kind": "call",
       "params": [
         [
@@ -125,6 +128,7 @@
     "deleteComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes a comment. Only its author may: anyone else gets `Forbidden`.\nEmits `CommentDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -138,6 +142,7 @@
     "deleteIssue": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Deletes an issue together with its labels and its whole comment thread.\nOnly its creator may: anyone else gets `Forbidden`. `NotFound` for an\nunknown issue. Emits `IssueDeleted`.",
       "kind": "call",
       "params": [
         [
@@ -151,6 +156,7 @@
     "editComment": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes the text of a comment. It must not be blank, and `editedAt` is\nstamped. Only its author may: anyone else gets `Forbidden`. Emits\n`CommentEdited`.",
       "kind": "call",
       "params": [
         [
@@ -168,6 +174,7 @@
     "getIssue": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows one issue with its comments, oldest first. At most the first 1,000\ncomments. `NotFound` for an unknown issue.",
       "kind": "view",
       "params": [
         [
@@ -181,6 +188,7 @@
     "getRepoInfo": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows the repository this board tracks. Its URL is empty until\n`setRepoUrl`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -189,6 +197,7 @@
     "getStatusCounts": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Shows how many issues sit in each column of the board. Counts come in\ncolumn order: `Open`, `In progress`, `Blocked`, `Done`.",
       "kind": "view",
       "params": [],
       "public": false,
@@ -197,6 +206,7 @@
     "init": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Starts an empty issue board. The node runs it once, when the app is\ncreated; it takes no arguments.",
       "kind": "init",
       "params": [],
       "public": false,
@@ -205,6 +215,7 @@
     "listIssues": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Lists the board's issues, oldest first, optionally narrowed by status,\nassignee or label. The filters are exact matches (`null` for no filter),\nand at most the first 1,000 matches come back.",
       "kind": "view",
       "params": [
         [
@@ -226,6 +237,7 @@
     "removeLabel": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Removes a label from an issue. Removing one it lacks succeeds. Emits\n`IssueLabelsChanged` either way.",
       "kind": "call",
       "params": [
         [
@@ -243,6 +255,7 @@
     "setAssignee": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Assigns an issue to someone, or unassigns it. Pass `null` to clear the\nassignee; otherwise it is free text, conventionally an account id. Emits\n`IssueAssigneeChanged`.",
       "kind": "call",
       "params": [
         [
@@ -260,6 +273,7 @@
     "setImpact": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rewrites the description of what an issue affects. It must not be blank.\nEmits `IssueEdited`.",
       "kind": "call",
       "params": [
         [
@@ -277,6 +291,7 @@
     "setPriority": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Changes how urgent an issue is. Takes `low`, `medium`, `high` or\n`urgent` (else `Invalid`). Emits `IssuePriorityChanged`.",
       "kind": "call",
       "params": [
         [
@@ -294,6 +309,7 @@
     "setRepoUrl": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Sets or changes the repository this board tracks. `Invalid` when `url`\nis empty or does not start with `http://` or `https://`. Emits\n`RepoUrlChanged`.",
       "kind": "call",
       "params": [
         [
@@ -307,6 +323,7 @@
     "setRepro": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rewrites the steps that reproduce an issue. They must not be blank.\nEmits `IssueEdited`.",
       "kind": "call",
       "params": [
         [
@@ -324,6 +341,7 @@
     "setResolutionCriteria": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rewrites what has to be true for an issue to count as resolved. It must\nnot be blank. Emits `IssueEdited`.",
       "kind": "call",
       "params": [
         [
@@ -341,6 +359,7 @@
     "setStatus": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Moves an issue to another column of the board. `status` is exactly\n`Open`, `In progress`, `Blocked` or `Done` (else `Invalid`). `NotFound`\nfor an unknown issue. Emits `IssueStatusChanged`.",
       "kind": "call",
       "params": [
         [
@@ -358,6 +377,7 @@
     "setSummary": {
       "allowSystem": false,
       "confirm": false,
+      "doc": "Rewrites an issue's summary. It must not be blank. Emits `IssueEdited`.",
       "kind": "call",
       "params": [
         [

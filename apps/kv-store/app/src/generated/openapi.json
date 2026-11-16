@@ -1211,7 +1211,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes every key, as any member may (no passkey confirmation, as in v1).\nEmits `Cleared` only when the store was not already empty."
       }
     },
     "/apps/{app}/methods/entries": {
@@ -1277,7 +1278,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Every key with its value, as a JSON object in key order; `{}` for an empty\nstore. At most the first 1,000 keys: one page of the map."
       }
     },
     "/apps/{app}/methods/get": {
@@ -1343,7 +1345,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`, or `null` when it is absent."
       }
     },
     "/apps/{app}/methods/getOrInsert": {
@@ -1409,7 +1412,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`, first storing `value` there if the key is absent.\nAn existing value is returned unchanged, NOT the argument (the entry API's\npoint). Emits `Inserted` only when it stores."
       }
     },
     "/apps/{app}/methods/getResult": {
@@ -1475,7 +1479,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`; `NotFound { key }` when it is absent."
       }
     },
     "/apps/{app}/methods/getUnchecked": {
@@ -1541,7 +1546,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "The value under `key`; an absent key aborts the run with a panic, which the\nnode reports as a trap (`422 TRAP`) and which commits nothing. Kept as the\ncounter-example: use `get` or `getResult`."
       }
     },
     "/apps/{app}/methods/len": {
@@ -1607,7 +1613,8 @@
           "confirm": false,
           "kind": "view",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "How many keys the store holds (a stored count, not a scan). A `u64`, so a\ndecimal string on the wire: `\"0\"` for an empty store."
       }
     },
     "/apps/{app}/methods/remove": {
@@ -1673,7 +1680,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Removes `key` and returns the value it held, or `null` when it was absent.\nEmits `Removed` only when a value was removed: an event for an absent key\nwould announce a change that never happened."
       }
     },
     "/apps/{app}/methods/set": {
@@ -1739,7 +1747,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Stores `value` under `key`, replacing any value already there. Emits\n`Inserted` for a new key and `Updated` for an existing one."
       }
     },
     "/apps/{app}/methods/updateIfExists": {
@@ -1805,7 +1814,8 @@
           "confirm": false,
           "kind": "call",
           "public": false
-        }
+        },
+        "x-calimero-publisher-description": "Replaces the value under `key` only if the key exists, and says whether it\ndid. An absent key is left absent: `false`, nothing written, no event.\nEmits `Updated` when the value is replaced."
       }
     }
   },
