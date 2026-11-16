@@ -272,7 +272,7 @@ catalog:
 catalogs:
   component:
     "@calimero-network/mero-js": ^35.3.0
-    "@calimero-network/mero-react": ^11.4.0
+    "@calimero-network/mero-react": ^11.5.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
