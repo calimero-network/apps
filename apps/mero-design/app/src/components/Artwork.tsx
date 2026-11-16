@@ -107,24 +107,6 @@ export function EmptyTeamsArt() {
   );
 }
 
-/** Invitations: a link card flying out of an envelope. */
-export function InviteArt() {
-  return (
-    <svg viewBox="0 0 220 140" width="220" height="140" aria-hidden="true">
-      <rect x="40" y="56" width="140" height="74" rx="16" fill="var(--md-art-a)" />
-      <g transform="rotate(-6 110 52)">
-        <rect x="58" y="16" width="104" height="70" rx="12" fill="var(--glass-surface-solid)" stroke="var(--glass-line-strong)" />
-        <rect x="72" y="32" width="56" height="8" rx="4" fill="var(--glass-line-strong)" />
-        <rect x="72" y="48" width="76" height="8" rx="4" fill="var(--glass-line)" />
-        <rect x="72" y="62" width="36" height="12" rx="6" fill="var(--glass-ink)" />
-      </g>
-      <path d="M40 72 L110 108 L180 72 V114 a16 16 0 0 1 -16 16 H56 a16 16 0 0 1 -16 -16 Z" fill="var(--md-art-b)" />
-      <circle cx="186" cy="34" r="12" fill="var(--md-art-c)" />
-      <circle cx="30" cy="40" r="7" fill="var(--md-art-d)" />
-    </svg>
-  );
-}
-
 /** Inspector, nothing selected: a pointer about to pick a shape. */
 export function SelectArt() {
   return (

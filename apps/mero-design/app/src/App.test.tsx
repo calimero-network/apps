@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget } from "@calimero-apps/connect";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,26 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
               { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Studio", selfName: "Alice" }) },
               "done",
             ),
+          )
+        : null,
+    AcceptInviteDialog: (p: { open: boolean; token: string; appName?: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("p", { "data-testid": "accept-props" }, `${p.token} ${p.appName}`),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "done"),
+          )
+        : null,
+    InviteDialog: (p: { open: boolean; org: string; teams?: string[]; appName?: string; labels?: { title?: string }; linkBase?: string }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog" },
+            createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName })),
+            createElement("pre", { "data-testid": "invite-base" }, p.linkBase),
           )
         : null,
   };
@@ -185,10 +205,11 @@ describe("App", () => {
     hold({ token: "tok-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(client.redeemInvite).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Mero Design");
+    expect(invites.token()).toBe("tok-1");
+    fireEvent.click(screen.getByTestId("accept-done"));
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
   });
   it("asks your name once on joining a team that has none for you, and keeps it in the team", async () => {
@@ -198,8 +219,7 @@ describe("App", () => {
     const client = fakeClient();
     client.getOrg.mockResolvedValue({ name: "Design team", members: { [ME]: "member" }, memberMetadata: {} });
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
     // Offered the name used last.
     const input = (await screen.findByTestId("username-input")) as HTMLInputElement;
     expect(input.value).toBe("Alice A");
@@ -214,7 +234,7 @@ describe("App", () => {
     hold({ token: "tok-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
     expect(screen.queryByTestId("username-input")).toBeNull();
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
@@ -258,8 +278,7 @@ describe("App", () => {
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId("signin-passkey"));
       await waitFor(() => expect(client.signIn).toHaveBeenCalled());
-      fireEvent.click(await screen.findByTestId("invitation-join"));
-      await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+      fireEvent.click(await screen.findByTestId("accept-done"));
       await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
       expect(invites.token()).toBeNull();
     });
@@ -272,7 +291,7 @@ describe("App", () => {
       // The team list's own redirect into the team lands first (it is async):
       // joining is asked over it.
       await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
-      fireEvent.click(await screen.findByTestId("invitation-join"));
+      fireEvent.click(await screen.findByTestId("accept-done"));
       await waitFor(() => expect(window.location.pathname).toBe("/boards/board-1"));
     });
 
@@ -309,37 +328,33 @@ describe("App", () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect(await screen.findByText("You're already in this team")).toBeTruthy();
-    expect(screen.queryByTestId("invitation-join")).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
+    fireEvent.click(screen.getByTestId("invitation-continue"));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
+  it("opens the shared invite dialog from the shell, worded for the team and linking to it", async () => {
+    remember();
+    window.history.replaceState(null, "", "/teams/org-1/projects");
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTitle("Invite people to Design team"));
+    expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to Design team");
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Mero Design" });
+    expect(new URL(screen.getByTestId("invite-base").textContent ?? "").searchParams.get("org")).toBe("org-1");
+  });
+
+  it("closing the join dialog drops the invite and joins nothing", async () => {
     remember();
     hold({ token: "tok-1" });
     const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toBe(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
+    fireEvent.click(await screen.findByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull());
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(invites.token()).toBeNull();
-  });
-
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
-    remember();
-    hold({ token: "tok-1" });
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
-    expect(invites.token()).toBe("tok-1");
-    expect(screen.getByTestId("invitation-join")).toBeTruthy();
   });
 
   it("tells a member who may not add a board to ask an owner, instead of offering Create (B8)", async () => {

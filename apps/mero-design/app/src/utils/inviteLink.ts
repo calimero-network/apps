@@ -1,7 +1,6 @@
 import {
   createInviteStore,
-  describeRedeemFailure,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -10,15 +9,15 @@ import { APP_NAME } from "../config";
 import { nodeBasename } from "./servedByNode";
 
 /**
- * Team invitations on Calimero 1.0: an **org invite** token (minted with the
- * inviter's passkey, `client.invite`) carried in `?invite=` on a link to this
- * frontend, redeemed (`client.redeemInvite`) once the person is signed in and
- * says yes. Replaces v1's signed namespace invitation in a deflate+base58
- * link, and its desktop deep link.
+ * Team invitations on Calimero 1.0: an **org invite** token (minted and
+ * redeemed through the shared dialogs) carried in `?invite=` or `#invite=` on a
+ * link to this frontend, redeemed once the person is signed in and says yes.
+ * Replaces v1's signed namespace invitation in a deflate+base58 link, and its
+ * desktop deep link.
  */
 
 /**
- * The link that opens this frontend with `token` to redeem.
+ * The page an invitation link opens (the shared invite dialog adds the token).
  *
  * `org` names the team the token joins. The token itself does not say, and
  * without it the app cannot tell an invitation into a team the visitor is
@@ -27,13 +26,12 @@ import { nodeBasename } from "./servedByNode";
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
+export function inviteLinkBase(
+  org: string,
   location: Pick<Location, "origin"> = window.location,
   base: string = nodeBasename(),
-  org?: string | null,
 ): string {
-  return sharedInviteLink(token, { org, root: base, origin: location.origin });
+  return sharedInviteLinkBase({ org, root: base, origin: location.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), captured in `main.tsx` before React mounts. */
@@ -144,13 +142,4 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
   } catch {
     /* nothing stored */
   }
-}
-
-/**
- * The plain sentence for a failed redemption: a spent invite plainly, anything
- * else (a lapsed session, a rate limit, the cluster unreachable) as worth
- * another try, the token kept.
- */
-export function inviteFailure(e: unknown): string {
-  return describeRedeemFailure(e);
 }

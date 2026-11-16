@@ -32,6 +32,7 @@
   font-weight: 700;
   letter-spacing: -0.02em;
 }
+.title + .desc { margin-top: 12px; }
 
 .close {
   background: none;
@@ -43,40 +44,12 @@
 }
 .close:hover { color: var(--glass-ink); }
 
-.art { display: flex; justify-content: center; margin: 4px 0 12px; }
-.art svg { width: 150px; height: auto; }
-
 .desc {
   font-size: 13px;
   color: var(--glass-ink-2);
   line-height: 1.5;
   margin-bottom: 18px;
 }
-
-.tokenBox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--glass-sunken);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: var(--glass-radius-sm);
-  padding: 10px 12px;
-  min-height: 44px;
-}
-
-.token {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--glass-ink);
-  user-select: all;
-}
-
-.muted { font-size: 13px; color: var(--glass-muted); }
 
 .actions {
   display: flex;
@@ -119,20 +92,6 @@
   margin-top: 10px;
 }
 
-.spinner {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--glass-line-strong);
-  border-top-color: var(--glass-ink);
-  border-radius: 50%;
-  animation: inviteModalSpin 0.8s linear infinite;
-}
-
-@keyframes inviteModalSpin {
-  to { transform: rotate(360deg); }
-}
-
 /* The invitation page: the same card as the popup, alone on the page. */
 .page {
   min-height: 100vh;
@@ -145,10 +104,4 @@
   background: var(--glass-ground);
   color: var(--glass-ink);
   font-family: var(--glass-font);
-}
-
-.note {
-  font-size: 12px;
-  color: var(--glass-muted);
-  margin-top: 8px;
 }

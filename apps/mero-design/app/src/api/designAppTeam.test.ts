@@ -14,7 +14,7 @@ import { orgCluster } from "@calimero-apps/connect/testing";
 import { bindApi, getApi } from "./client";
 import {
   createBoard,
-  createTeamInvitation,
+  teamInviteTeams,
   finishTeam,
   leaveTeam,
   leaveTeamOrg,
@@ -85,15 +85,14 @@ describe("invites and people", () => {
 
   it("standalone: the invite names the team; every member but a guest is listed", async () => {
     const { cluster, org } = await team(people);
-    expect((await createTeamInvitation(org)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
+    expect(await teamInviteTeams(org)).toEqual([cluster.teamOf(org, PKG)]);
     expect((await listGroupMembers(org)).members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
   it("apps kept apart: Mero Design only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
-    expect((await createTeamInvitation(org)).appOnly).toBe(true);
+    expect(await teamInviteTeams(org)).toEqual([cluster.teamOf(org, PKG)]);
     const listed = await listGroupMembers(org);
     expect(listed.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect(listed.appOnly).toBe(true);
@@ -103,8 +102,7 @@ describe("invites and people", () => {
   it("a legacy org: the org-wide invite, every member listed", async () => {
     const cluster = signedIn();
     const org = cluster.addOrg({ mode: "legacy", members: people });
-    expect((await createTeamInvitation(org)).appOnly).toBe(false);
-    expect(cluster.callsOf("invite")[0]![3]).toBeUndefined();
+    expect(await teamInviteTeams(org)).toEqual([]);
     expect((await listGroupMembers(org)).members).toHaveLength(4);
   });
 });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../sessionContext";
-import { PRODUCT_NAME, getNodeIdentity } from "../../api/rpc";
+import { PRODUCT_NAME, getNodeIdentity, teamInviteTeams } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";
 import { useIsGroupAdmin } from "../../hooks/useIsGroupAdmin";
@@ -76,6 +76,7 @@ export default function DesignShell() {
   const [railOpen, setRailOpen] = useState(readRailOpen);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteTeams, setInviteTeams] = useState<string[]>([]);
   const [boardSlot, setBoardSlot] = useState<HTMLElement | null>(null);
   const [account, setAccount] = useState("");
   const [deleting, setDeleting] = useState<Project | null>(null);
@@ -149,7 +150,16 @@ export default function DesignShell() {
     openSettings(section, section === "board" ? settingsBoardId ?? undefined : undefined);
   }, [openSettings, settingsBoardId]);
 
-  const openInvite = useCallback(() => setInviteOpen(true), []);
+  const openInvite = useCallback(() => {
+    if (!teamId) return;
+    teamInviteTeams(teamId).then(
+      (teams) => {
+        setInviteTeams(teams);
+        setInviteOpen(true);
+      },
+      (err) => showToast(extractErrorMessage(err, "Failed to create the invitation.")),
+    );
+  }, [teamId, showToast]);
 
   async function confirmDeleteBoard(board: Project) {
     setDeleting(null);
@@ -320,8 +330,8 @@ export default function DesignShell() {
           )}
       </div>
 
-      {inviteOpen && teamId && (
-        <InviteModal teamId={teamId} teamName={teamName} onClose={() => setInviteOpen(false)} />
+      {teamId && (
+        <InviteModal teamId={teamId} teamName={teamName} teams={inviteTeams} open={inviteOpen} onClose={() => setInviteOpen(false)} />
       )}
       {deleting && (
         <ConfirmDialog

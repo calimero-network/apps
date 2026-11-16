@@ -1,6 +1,6 @@
 import { passkeyConfirm, AppError, ORG_CAPABILITIES, TrapError, type AppInfo } from "@calimero-network/mero-js";
 import {
-  appInvite,
+  appInviteTeams,
   appPeople,
   appTarget,
   finishAppOrg,
@@ -14,7 +14,6 @@ import {
   otherOrgs,
   removeFromApp,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -323,29 +322,14 @@ export async function leaveTeamOrg(org: string): Promise<void> {
 }
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey,
- * naming this app's team (`appInvite`): `appOnly` when it gives Mero Design
- * only (an org that keeps its apps apart). Org-wide in a legacy org.
+ * The app team an invitation into `org` names (`appInviteTeams`), for the
+ * shared invite dialog: it gives Mero Design only in an org that keeps its apps
+ * apart. Org-wide (no team) in a legacy org.
  */
-export async function createTeamInvitation(org: string): Promise<AppInviteToken> {
-  const { client, source, passkey, after } = getApi();
+export async function teamInviteTeams(org: string): Promise<string[]> {
+  const { client, source, after } = getApi();
   try {
-    return await appInvite(client, org, source, passkey);
-  } finally {
-    after();
-  }
-}
-
-/** Redeem an invitation token. Answers the org it joined, when the node names it. */
-export async function redeemInvitation(token: string): Promise<string | null> {
-  const { client, after } = getApi();
-  try {
-    const redeemed = await client.orgs.inviteRedeem({ token });
-    for (const key of ["org", "orgId"]) {
-      const v = (redeemed as Record<string, unknown>)[key];
-      if (typeof v === "string" && v) return v;
-    }
-    return null;
+    return (await appInviteTeams(client, org, source)).teams;
   } finally {
     after();
   }
