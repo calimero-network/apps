@@ -48,6 +48,7 @@ import PlacementGrid from '../../components/PlacementGrid';
 import ShipSelector from '../../components/ShipSelector';
 
 const CREATE_LABELS = {
+  noun: 'lobby',
   title: 'New lobby',
   subtitle: 'Name your lobby, and choose how the players in it will see you.',
   nameLabel: 'Lobby name',
