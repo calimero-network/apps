@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useNodeShieldApp, useInstanceRelease, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -156,13 +156,14 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   const api = useSessionApi();
   const navigate = useNavigate();
   const { session, store } = api;
-  const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
+  const base = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<OpenTable | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [lobbyKey, setLobbyKey] = useState(0);
 
   const client = session.status === "signed-in" ? session.client : null;
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
+  const { source, pending: sourcePending } = useResolvedSource(client, session.status === "signed-in" ? session.accountId : null, base);
   // A table is an app instance, served the frontend of the release it runs.
   useInstanceRelease(client, opened?.appId);
   useNodeShieldApp(opened?.appId, source);
@@ -359,7 +360,15 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
           onLeave={() => open(null)}
         />
       ) : (
-        <Lobby key={lobbyKey} client={session.client} source={source} onOpen={open} after={after} />
+        <Lobby
+          key={lobbyKey}
+          client={session.client}
+          passkey={deps.passkey}
+          source={source}
+          release={sourcePending ? null : (reviewRelease(source) ?? { package: PACKAGE })}
+          onOpen={open}
+          after={after}
+        />
       )}
     </>
   );

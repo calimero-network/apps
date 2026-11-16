@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppInfo } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CreateWorkspaceDialog, type CreateWorkspaceDialogProps } from "@calimero-network/mero-react";
 import type { AppSource, ClientRoutes } from "@calimero-apps/connect";
 
 import { messageOf } from "./chess";
 import { Piece } from "./pieces";
 import type { OpenTable } from "./TablePage";
 import { createTable, listTables } from "./tables";
+import { rememberName, storedName } from "./useChess";
+
+const CREATE_LABELS = {
+  title: "New table",
+  subtitle: "Name your table, and choose the name your opponent sees.",
+  nameLabel: "Table name",
+  namePlaceholder: "e.g. Friday blitz",
+  selfLabel: "Your name",
+  selfPlaceholder: "e.g. Ada",
+};
 
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
@@ -21,12 +32,17 @@ function shortId(id: string) {
  */
 export function Lobby({
   client,
+  passkey,
   source,
+  release,
   onOpen,
   after,
 }: {
-  client: ClientRoutes<{ apps: "list" | "create"; orgs: "create" }>;
+  client: CalimeroClient & ClientRoutes<{ apps: "list" | "create" }>;
+  passkey: () => PasskeyProvider;
   source: AppSource;
+  /** What a new table's club runs, reviewed in the create dialog; `null` while it is read. */
+  release: CreateWorkspaceDialogProps["release"];
   onOpen: (table: OpenTable) => void;
   /** Runs after each request (keeps the stored session current). */
   after: () => void;
@@ -34,6 +50,7 @@ export function Lobby({
   const [tables, setTables] = useState<AppInfo[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -56,11 +73,10 @@ export function Lobby({
     return [...seen.entries()];
   }, [tables]);
 
-  async function make(key: string, org?: string) {
+  async function make(name: string, org: string, key: string) {
     setBusy(key);
     setFailed(null);
     try {
-      const name = `Table ${(tables?.length ?? 0) + 1}`;
       const made = await createTable(client, source, name, org);
       after();
       onOpen({ appId: made.appId, name, org: made.org });
@@ -73,8 +89,24 @@ export function Lobby({
     }
   }
 
+  async function created({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) {
+    setCreating(false);
+    if (selfName.trim()) rememberName(selfName.trim());
+    await make(name, orgId, "new");
+  }
+
   return (
     <div className="lobby">
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={release}
+        defaultSelfName={storedName()}
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(c) => void created(c)}
+        labels={CREATE_LABELS}
+      />
       <section className="lobby-hero">
         <div className="lobby-copy">
           <p className="eyebrow">Lobby</p>
@@ -84,7 +116,7 @@ export function Lobby({
             log. No game server: the rules run in the contract, on every move.
           </p>
           <div className="row">
-            <button className="large" onClick={() => void make("new")} disabled={busy !== null}>
+            <button className="large" onClick={() => setCreating(true)} disabled={busy !== null}>
               {busy === "new" ? "Creating…" : "New table"}
             </button>
             <button className="ghost large" onClick={() => void refresh()} disabled={busy !== null}>
@@ -152,7 +184,7 @@ export function Lobby({
                     <span className="mono ns-id" title={org}>
                       {shortId(org)} · {count} table{count === 1 ? "" : "s"}
                     </span>
-                    <button className="ghost small" disabled={busy !== null} onClick={() => void make(org, org)}>
+                    <button className="ghost small" disabled={busy !== null} onClick={() => void make(`Table ${(tables?.length ?? 0) + 1}`, org, org)}>
                       {busy === org ? "Creating…" : "Add table"}
                     </button>
                   </li>
