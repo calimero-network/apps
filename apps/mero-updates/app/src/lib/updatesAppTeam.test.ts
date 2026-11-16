@@ -98,12 +98,19 @@ describe("Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
   });
 
-  it("standalone and legacy: leaving the company is leaving the organization, as before", async () => {
+  it("standalone: off Mero Updates' team, the organization's app, so leaving the organization is offered", async () => {
     const { cluster, org } = await company({ "acct-ana": "owner" });
-    expect(await leaveCompany(cluster.client, org, SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
-    expect(cluster.org(org).members["acct-me"]).toBeUndefined();
+    cluster.org(org).members["acct-me"] = "member";
+    expect(await leaveCompany(cluster.client, org, SOURCE, passkey)).toEqual({ left: "app", lastApp: true });
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-me"]);
+    expect(cluster.org(org).members["acct-me"]).toBe("member");
+  });
+
+  it("a company without Mero Updates' team (legacy): leaving the organization, as before", async () => {
+    const cluster = orgCluster();
     const legacy = cluster.addOrg({ mode: "legacy", role: "member" });
-    expect((await leaveCompany(cluster.client, legacy, SOURCE, passkey)).left).toBe("org");
+    expect(await leaveCompany(cluster.client, legacy, SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
+    expect(cluster.org(legacy).members["acct-me"]).toBeUndefined();
   });
 });
 
@@ -118,10 +125,12 @@ describe("Remove", () => {
     expect((await readCompany(cluster.client, org, SOURCE)).people).not.toContain("acct-bob");
   });
 
-  it("standalone: out of the organization, as before", async () => {
+  it("standalone: off Mero Updates' team, a team call; they stay in the organization", async () => {
     const { cluster, org } = await company({ "acct-bob": "member" });
-    expect(await removeFromCompany(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("org");
-    expect(cluster.org(org).members["acct-bob"]).toBeUndefined();
+    expect(await removeFromCompany(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-bob"]);
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+    expect(cluster.org(org).members["acct-bob"]).toBe("member");
   });
 
   it("a legacy org: out of the organization", async () => {

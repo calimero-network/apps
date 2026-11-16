@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  askAnOwnerCopy,
+  canCreateIn,
+  ConsentNotStarted,
+  describeError,
+} from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/active";
@@ -91,7 +98,8 @@ export default function AudiencesPage() {
     try {
       await fn(setStatus);
     } catch (e) {
-      setError(describeError(e));
+      // They chose not to go to the approval page: nothing changed, nothing to say.
+      if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
     } finally {
       after();
       setPending(null);

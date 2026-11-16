@@ -14,6 +14,7 @@ import MetricsPage from "./pages/MetricsPage";
 import PeoplePage from "./pages/PeoplePage";
 import SettingsPage from "./pages/SettingsPage";
 import InvitationPage from "./components/InvitationPage";
+import ConsentReturn from "./components/ConsentReturn";
 import InvitationPrompt from "./components/InvitationPrompt";
 import SignInDialog from "./components/SignInDialog";
 import { pendingInvite } from "./lib/companies";
@@ -146,6 +147,7 @@ export default function App() {
   // for the others.
   return (
     <ToastProvider>
+      <ConsentReturn />
       <InvitationPrompt />
       <InvitationGate>
         <Routes>

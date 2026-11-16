@@ -53,18 +53,31 @@ export function useUpdatesClient(): MeroUpdatesClient | null {
 /** How long to wait before reopening a dropped event stream. */
 const RECONNECT_MS = 2_000;
 
+/** Whether `error` is the node refusing this account the instance (403) or not knowing it (404). */
+export function accessLost(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return status === 403 || status === 404;
+}
+
 /**
  * Calls `onEvent` for every event of the audience `appId` (from now on), and
  * once more after every reconnect of the stream: events missed while it was
  * down are not replayed, so the screen re-reads instead. Replaces mero-react's
  * `useSubscription` + `useStreamReconnect`.
+ *
+ * The stream starts after the log index a view answers at, so opening an
+ * audience never replays its history. When the node answers that this
+ * account may no longer reach the audience (403, 404), it stops instead of
+ * retrying and calls `onLost`.
  */
-export function useAudienceEvents(appId: string | null, onEvent: () => void): void {
+export function useAudienceEvents(appId: string | null, onEvent: () => void, onLost?: () => void): void {
   const signedIn = useMaybeSignedIn();
   const client = signedIn?.client ?? null;
   const after = signedIn?.after;
   const handler = useRef(onEvent);
   handler.current = onEvent;
+  const lost = useRef(onLost);
+  lost.current = onLost;
   useEffect(() => {
     if (!client || !appId) return;
     const abort = new AbortController();
@@ -72,11 +85,18 @@ export function useAudienceEvents(appId: string | null, onEvent: () => void): vo
     const open = async (reconnect: boolean) => {
       if (reconnect) handler.current();
       try {
-        for await (const _event of client.events(appId, undefined, abort.signal)) {
+        // Where the state a read sees ends: events after it are news.
+        const { index } = await client.apps.view({ app: appId, method: "getSettings", args: {} });
+        if (abort.signal.aborted) return;
+        for await (const _event of client.events(appId, index + 1, abort.signal)) {
           handler.current();
         }
-      } catch {
-        // Dropped (or refused): try again below, unless we are unmounting.
+      } catch (e) {
+        if (!abort.signal.aborted && accessLost(e)) {
+          lost.current?.();
+          return;
+        }
+        // Dropped: try again below, unless we are unmounting.
       } finally {
         after?.();
       }

@@ -187,8 +187,8 @@ describe("inside an audience", () => {
       cursor: null,
       limit: 100,
     });
-    // The live stream of this instance is open.
-    expect(h.client.events).toHaveBeenCalledWith("app-1", undefined, expect.any(AbortSignal));
+    // The live stream of this instance is open, from the log's head (the view's index 1): no replay.
+    await waitFor(() => expect(h.client.events).toHaveBeenCalledWith("app-1", 2, expect.any(AbortSignal)));
   });
 });
 
