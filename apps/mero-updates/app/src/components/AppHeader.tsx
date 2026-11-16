@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
+import { NodeShield } from "@calimero-apps/passkey";
+
 import ThemeToggle from "./ThemeToggle";
 import { ChevronRightIcon } from "./icons";
 
@@ -61,6 +63,7 @@ export default function AppHeader({ crumbs, right }: { crumbs: Crumb[]; right?: 
         )}
         <div className="grow" />
         <div className="appHeaderRight">
+          <NodeShield compactBelow={720} />
           <ThemeToggle />
           {right}
         </div>
