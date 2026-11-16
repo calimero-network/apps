@@ -14,7 +14,7 @@
 
 import {
   createInviteStore,
-  inviteLink,
+  inviteLinkBase,
   type InviteStore,
   type KeyValueStorage,
   type PendingInvite,
@@ -26,44 +26,26 @@ import { basename } from './basename';
 export const INVITE_PARAM = 'invite';
 
 /**
- * The link that opens this frontend with `token` to redeem, at the app's root
- * (not the page it was minted on). With `org`, it names the team (org) a team
- * invitation is for: the token does not say until it is redeemed, and
- * redeeming spends a use even for someone already in the team, so the link
- * names it for the app to tell a member "you are already in" first. Left off a
- * vault invitation that also admits to an invite-only vault: a team member
- * still needs that one.
+ * The page an invite link opens, before the token: the app's root (not the page
+ * it was minted on). With `org`, it names the team (org) a team invitation is
+ * for: the token does not say until it is redeemed, and redeeming spends a use
+ * even for someone already in the team, so the link names it for the app to
+ * tell a member "you are already in" first. Left off a vault invitation that
+ * also admits to an invite-only vault: a team member still needs that one.
+ * The shared dialog adds the token.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function invitationUrl(
-  token: string,
-  location: Pick<Location, 'origin' | 'pathname'> = window.location,
+export function inviteBase(
   org?: string,
+  location: Pick<Location, 'origin' | 'pathname'> = window.location,
 ): string {
-  const trimmed = token.trim();
-  if (!trimmed)
-    throw new Error('cannot build an invitation link for an empty token');
-  return inviteLink(trimmed, {
+  return inviteLinkBase({
     org,
     root: basename(location.pathname),
     origin: location.origin,
   });
-}
-
-/** What the invite modal shows: the link, and the bare token. */
-export function shareableInvitation(
-  token: string,
-  org?: string,
-): {
-  link: string;
-  code: string;
-} {
-  return {
-    link: invitationUrl(token, window.location, org),
-    code: token.trim(),
-  };
 }
 
 /** A pasted link or bare token, as the token; null for anything else. */
@@ -80,6 +62,11 @@ export function invitationFromRaw(raw: string): string | null {
 
 /** This app's pending invite, captured in `index.tsx` before React mounts. */
 export const invites = createInviteStore('mero-pass');
+
+/** Takes `invite=` (and `&org=`) off the address bar into the store. */
+export function captureInvite(loc: Pick<Location, 'href'> = window.location): void {
+  invites.capture(loc, { basename: basename(new URL(loc.href).pathname) });
+}
 
 const LEGACY_PENDING = 'mero-pass:pending-invite';
 const LEGACY_ORG = 'mero-pass:pending-invite-org';

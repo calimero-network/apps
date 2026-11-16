@@ -33,18 +33,17 @@ import {
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
 import {
-  appInvite,
   appPeople,
   appTarget,
   appTeamIdIn,
   finishAppOrg,
   isAppOnly,
   listAppInfos,
+  appInviteTeams,
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -433,76 +432,30 @@ export async function vaultAudience(
 
 // ── Invitations ──────────────────────────────────────────────────────────────
 
-export const INVITE_VALIDITY = [
-  { secs: 60 * 60, label: '1 hour' },
-  { secs: 24 * 60 * 60, label: '24 hours' },
-  { secs: 7 * 24 * 60 * 60, label: '7 days' },
-] as const;
-export const DEFAULT_INVITE_SECS = 24 * 60 * 60;
-
 /**
- * An invite into the team as a member (a passkey step-up), naming Mero Pass's
- * app team (`appInvite`); `appOnly` when it gives Mero Pass only (an org that
- * keeps its apps apart).
+ * The teams an invite names: Mero Pass's app team (`appInviteTeams`), and
+ * `vaultTeam` for an invite-only vault.
  */
-export async function mintTeamInvite(
-  conn: Conn,
-  opts: { namespaceId: string; validForSecs?: number },
-  onStatus: StatusFn = noop,
-): Promise<AppInviteToken> {
-  onStatus('Confirm with your passkey to create the invitation…');
-  try {
-    return await appInvite(conn.client, opts.namespaceId, conn.source, conn.passkey, {
-      ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS,
-    });
-  } finally {
-    conn.after?.();
-  }
-}
-
-/**
- * An invite to one vault: for an invite-only vault, into the team as a member
- * and into the vault's own team; for an open vault, the team invite (an open
- * vault is reached by everyone in the team).
- */
-export async function mintVaultInvite(
-  conn: Conn,
-  opts: { namespaceId: string; team: string | null; validForSecs?: number },
-  onStatus: StatusFn = noop,
-): Promise<AppInviteToken> {
-  onStatus('Confirm with your passkey to create the invitation…');
-  try {
-    return await appInvite(conn.client, opts.namespaceId, conn.source, conn.passkey, {
-      ...(opts.team ? { teams: [opts.team] } : {}),
-      ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS,
-    });
-  } finally {
-    conn.after?.();
-  }
+export async function inviteTeams(
+  conn: Pick<Conn, 'client' | 'source'>,
+  org: string,
+  vaultTeam: string | null = null,
+): Promise<{ teams: string[]; appOnly: boolean }> {
+  const { teams, appOnly } = await appInviteTeams(conn.client, org, conn.source);
+  return { teams: vaultTeam ? [...teams, vaultTeam] : teams, appOnly };
 }
 
 /** Where a redeemed invitation lands. */
 export type Redeemed =
   { kind: 'team'; namespaceId: string } | { kind: 'joined' };
 
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const key of ['org', 'orgId']) {
-    const v = redeemed[key];
-    if (typeof v === 'string' && v) return v;
-  }
-  return null;
-}
-
-/** Redeem an invite token; answers where to land. */
-export async function redeemInvite(
+/** A team the account has just joined: publishes its name there, so teammates see it. */
+export async function joinedTeam(
   conn: Pick<Conn, 'client' | 'after'>,
-  token: string,
-): Promise<Redeemed> {
+  org: string,
+): Promise<void> {
   try {
-    const org = joinedOrg(await conn.client.orgs.inviteRedeem({ token: token.trim() }));
-    if (org) await publishOwnName(conn.client, org);
-    return org ? { kind: 'team', namespaceId: org } : { kind: 'joined' };
+    await publishOwnName(conn.client, org);
   } finally {
     conn.after?.();
   }

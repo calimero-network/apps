@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  captureInvite,
   invitationFromRaw,
-  invitationUrl,
+  inviteBase,
   invites,
   migrateLegacyInvite,
 } from './inviteLink';
@@ -22,20 +23,19 @@ beforeEach(() => {
 });
 
 describe('invitation links', () => {
-  it('carries the token in ?invite=, at the app root', () => {
+  it('opens the app root with no token, for the shared dialog to add it to', () => {
     expect(
-      invitationUrl('tok123', {
+      inviteBase(undefined, {
         origin: 'https://pass.example',
         pathname: '/teams/org1',
       }),
-    ).toBe('https://pass.example/?invite=tok123');
+    ).toBe('https://pass.example/');
     expect(
-      invitationUrl('tok', {
+      inviteBase('org1', {
         origin: 'https://n.example',
         pathname: '/1.2.0/vault/abc',
       }),
-    ).toBe('https://n.example/1.2.0/?invite=tok');
-    expect(() => invitationUrl('  ')).toThrow();
+    ).toBe('https://n.example/1.2.0/?org=org1');
   });
 
   it('reads a pasted link or a bare token', () => {
@@ -56,19 +56,19 @@ describe('invitation links', () => {
   });
 
   it('names the team in ?org= and keeps it with the token until dropped', () => {
-    expect(
-      invitationUrl(
-        'tok',
-        { origin: 'https://pass.example', pathname: '/teams/org1' },
-        'org1',
-      ),
-    ).toBe('https://pass.example/?invite=tok&org=org1');
     window.history.replaceState(null, '', '/?invite=tok&org=org1');
     invites.capture(window.location);
     expect(invites.pending()?.org).toBe('org1');
     expect(window.location.search).toBe('');
     invites.drop();
     expect(invites.pending()).toBeNull();
+  });
+
+  it('takes a link the shared dialog made (token in the fragment) off the address bar', () => {
+    window.history.replaceState(null, '', '/teams?org=org1#invite=tok');
+    captureInvite();
+    expect(invites.pending()).toMatchObject({ token: 'tok', org: 'org1' });
+    expect(window.location.search + window.location.hash).toBe('');
   });
 
   it('moves an invite an earlier build stored under its own keys into the shared store', () => {

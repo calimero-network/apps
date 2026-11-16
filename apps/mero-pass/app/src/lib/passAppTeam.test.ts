@@ -17,8 +17,7 @@ import {
   findVaultByContext,
   listTeamMembers,
   listVaults,
-  mintTeamInvite,
-  mintVaultInvite,
+  inviteTeams,
   removeTeamMember,
   vaultAudience,
 } from './vaults';
@@ -88,25 +87,30 @@ describe("a new team gets Mero Pass's own app team", () => {
 describe('invites name the app team', () => {
   it('standalone: a team invite names it, a vault invite names it and the vault team', async () => {
     const { cluster, conn, org } = await team();
-    const appTeam = cluster.teamOf(org, PKG);
-    expect((await mintTeamInvite(conn, { namespaceId: org })).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]!.slice(3)).toEqual([[appTeam], { ttlSecs: 86400 }]);
-    await mintVaultInvite(conn, { namespaceId: org, team: 'vault-team', validForSecs: 60 });
-    expect(cluster.callsOf('invite')[1]!.slice(3)).toEqual([[appTeam, 'vault-team'], { ttlSecs: 60 }]);
+    const appTeam = cluster.teamOf(org, PKG)!;
+    expect(await inviteTeams(conn, org)).toEqual({ teams: [appTeam], appOnly: false });
+    expect((await inviteTeams(conn, org, 'vault-team')).teams).toEqual([appTeam, 'vault-team']);
   });
 
-  it('apps kept apart: the link gives Mero Pass only', async () => {
+  it('apps kept apart: the link still names the app team only', async () => {
     const { cluster, conn, org } = await team();
     cluster.keepAppsApart(org);
-    expect((await mintTeamInvite(conn, { namespaceId: org })).appOnly).toBe(true);
+    expect(await inviteTeams(conn, org)).toEqual({ teams: [cluster.teamOf(org, PKG)], appOnly: true });
   });
 
   it('a legacy org: the org-wide invite, as before', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'legacy' });
     const conn = { client: cluster.client, source: SOURCE, passkey };
-    expect((await mintTeamInvite(conn, { namespaceId: org })).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]!.slice(3)).toEqual([undefined, { ttlSecs: 86400 }]);
+    expect((await inviteTeams(conn, org)).teams).toEqual([]);
+    expect((await inviteTeams(conn, org, 'vault-team')).teams).toEqual(['vault-team']);
+  });
+
+  it('an org with app teams but none for Mero Pass is refused, not widened', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'shared', app: 'com.calimero.other' });
+    const conn = { client: cluster.client, source: SOURCE, passkey };
+    await expect(inviteTeams(conn, org)).rejects.toThrow(/not set up/);
   });
 });
 
