@@ -98,18 +98,22 @@ export default function AudienceShell() {
   // close it and go back to the company's audiences instead of retrying.
   const navigate = useNavigate();
   const { showToast } = useToast();
+  // Once: the stream and every read on screen can each be the one to tell.
+  const closing = useRef<string | null>(null);
   const onLost = useCallback(() => {
+    if (closing.current === contextId) return;
+    closing.current = contextId;
     const ns = getActiveNamespaceId();
     clearActiveAudience();
     showToast("You no longer have access to that audience.", "error");
     navigate(ns ? `/companies/${ns}` : "/companies", { replace: true });
-  }, [navigate, showToast]);
+  }, [contextId, navigate, showToast]);
 
   // Every event of this instance, and every reconnect of the stream (events
   // missed while it was down are re-read, not replayed), bumps the revision.
   useAudienceEvents(contextId, bump, onLost);
 
-  const revisionValue = useMemo(() => ({ revision, bump }), [revision, bump]);
+  const revisionValue = useMemo(() => ({ revision, bump, lost: onLost }), [revision, bump, onLost]);
 
   return (
     <RevisionContext.Provider value={revisionValue}>

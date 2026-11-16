@@ -113,6 +113,8 @@ export function useAudienceEvents(appId: string | null, onEvent: () => void, onL
 export const RevisionContext = createContext<{
   revision: number;
   bump: () => void;
+  /** This account no longer reaches the audience: close it. */
+  lost?: () => void;
 }>({ revision: 0, bump: () => undefined });
 
 export function useRevision() {
@@ -136,7 +138,9 @@ export function useLive<T>(
   setData: (next: T | null) => void;
 } {
   const client = useUpdatesClient();
-  const { revision } = useRevision();
+  const { revision, lost } = useRevision();
+  const lostRef = useRef(lost);
+  lostRef.current = lost;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -155,7 +159,14 @@ export function useLive<T>(
         setError(null);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(describeError(e));
+        if (cancelled) return;
+        // Taken out of the app with the audience open: its event stream stays
+        // up but stops delivering, so a refused read is what tells.
+        if (accessLost(e) && lostRef.current) {
+          lostRef.current();
+          return;
+        }
+        setError(describeError(e));
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
