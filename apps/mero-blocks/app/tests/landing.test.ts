@@ -10,6 +10,23 @@ import { createInviteStore, resolveTarget, type InviteStore, type PendingInvite 
 
 vi.mock("../src/ui/panorama", () => ({ Panorama: class { destroy() {} } }));
 vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () => {}) }));
+// The shared dialog is mero-react's to test: here only what the launcher hands it and does after.
+vi.mock("../src/ui/createWorld", async () => {
+  const actual = await vi.importActual<typeof import("../src/ui/createWorld")>("../src/ui/createWorld");
+  return {
+    ...actual,
+    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, onCreated: (c: unknown) => void) => ({
+      open: () => {
+        const done = document.createElement("button");
+        done.dataset.testid = "create-done";
+        done.onclick = () => onCreated({ orgId: "org-new", name: "castle", selfName: "Alex" });
+        document.body.appendChild(done);
+      },
+      source: () => base,
+      unmount: () => document.querySelector("[data-testid=create-done]")?.remove(),
+    }),
+  };
+});
 
 import { connect, type Phase, type SessionDeps } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
@@ -276,7 +293,7 @@ describe("launcher", () => {
     void again.choice;
   });
 
-  it("creates a world in its own org with the seed typed, and enters it", async () => {
+  it("creates a world in the org the dialog made, and enters it", async () => {
     const { client, choice } = await launcher([]);
     click(q("[data-testid=sign-up-btn]"));
     await flush();
@@ -284,22 +301,34 @@ describe("launcher", () => {
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Steve");
     expect(q("[data-testid=world-list]")?.textContent).toContain("No worlds yet");
     click(q("[data-testid=create-world-open-btn]"));
-    (q("#mbl-world-name") as HTMLInputElement).value = "castle";
-    (q("#mbl-seed") as HTMLInputElement).value = "42";
-    // The name is asked here, once, and lives on the world's org.
-    expect((q("[data-testid=self-name-input]") as HTMLInputElement).value).toBe("Steve");
-    (q("[data-testid=self-name-input]") as HTMLInputElement).value = "Alex";
-    click(q("[data-testid=create-world-btn]"));
+    click(q("[data-testid=create-done]"));
     const entered = await choice;
+    // The name is asked in the dialog, once, and lives on the world's org.
     expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", "acc-1", { name: "Alex" });
     expect(entered.name).toBe("Alex");
     expect(q("[data-testid=name-modal]")).toBeNull();
-    expect(client.createOrg).toHaveBeenCalledWith("castle");
+    expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("castle", "bundle-1", {
       org: "org-new",
-      initArgs: expect.objectContaining({ name: "castle", seed: "42" }),
+      initArgs: expect.objectContaining({ name: "castle", seed: "1337" }),
     });
     expect(entered.world).toEqual({ appId: "app-new", name: "castle", org: "org-new" });
+  });
+
+  it("says why the world could not be made once its org exists", async () => {
+    const { client } = await launcher([], localStorage, undefined, (c) =>
+      c.createApp.mockRejectedValueOnce(new CalimeroError(403, "QUOTA", "quota exceeded")),
+    );
+    click(q("[data-testid=sign-up-btn]"));
+    await flush();
+    await flush();
+    click(q("[data-testid=create-world-open-btn]"));
+    click(q("[data-testid=create-done]"));
+    await flush();
+    await flush();
+    expect(q("[data-testid=join-error]")?.textContent).toContain("Could not create world");
+    expect(q("[data-testid=join-error]")?.textContent).toContain("quota exceeded");
+    expect(client.createApp).toHaveBeenCalledTimes(1);
   });
 
   describe("an invite link, once signed in", () => {

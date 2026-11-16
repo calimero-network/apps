@@ -54,12 +54,10 @@ describe("worlds are app instances", () => {
     expect(listApps).toHaveBeenLastCalledWith({ package: "p" });
   });
 
-  it("are created in an organization of their own, with the init arguments", async () => {
-    const createOrg = vi.fn(async () => "org-1");
+  it("are created in the organization the node made for them, with the init arguments", async () => {
     const createApp = vi.fn(async () => "app-1");
-    const made = await createWorld(withRoutes({ createOrg, createApp }), "abc", "overworld", 1337, 1700000000);
+    const made = await createWorld(withRoutes({ createApp }), "abc", "overworld", 1337, "org-1", 1700000000);
     expect(made).toEqual({ appId: "app-1", org: "org-1", name: "overworld" });
-    expect(createOrg).toHaveBeenCalledWith("overworld");
     expect(createApp).toHaveBeenCalledWith("overworld", "abc", {
       org: "org-1",
       initArgs: { name: "overworld", seed: "1337", now: "1700000000" },
