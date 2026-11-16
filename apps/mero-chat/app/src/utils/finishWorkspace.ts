@@ -20,7 +20,7 @@ type Toast = (toast: Omit<ToastNotification, "id">) => string;
 export async function finishWorkspace(
   api: Pick<
     GroupApiDataSource,
-    "setGroupMetadata" | "resolveCurrentMemberIdentity" | "setMemberMetadata"
+    "resolveCurrentMemberIdentity" | "setMemberMetadata"
   >,
   groupId: string,
   name: string,
@@ -31,11 +31,6 @@ export async function finishWorkspace(
   setStoredGroupAlias(groupId, name);
   // Before #general, so the channel is made under your name in it.
   setMessengerDisplayName(selfName, groupId);
-  // The `name` the org was created with does not reach the group's metadata
-  // record — a freshly created namespace reads back `metadata: null` — so
-  // write it explicitly. The creator is the owner, so this succeeds and gives
-  // the workspace a name everyone can see.
-  await api.setGroupMetadata(groupId, name).catch(() => {});
 
   // Every workspace starts with #general: someone who joins from an
   // invitation lands in a channel rather than an empty workspace, and the

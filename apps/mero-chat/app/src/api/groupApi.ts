@@ -68,6 +68,8 @@ export interface GroupMember {
   role: GroupMemberRole;
   /** An owner or admin of the organization: an Admin in Chat whom Chat cannot make a member. */
   orgAdmin?: boolean;
+  /** Their role in the workspace's organization (`owner`, `admin`, `member`, `guest`), in a workspace's list. */
+  orgRole?: string;
 }
 
 export interface GroupUpgradeStatus {

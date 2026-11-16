@@ -147,9 +147,9 @@ describe("a workspace is an org", () => {
     invalidate();
     const res = await api.listMembers("org-1");
     expect(res.data?.members).toEqual([
-      { identity: "acct-me", role: "Admin", alias: undefined, orgAdmin: true },
-      { identity: "acct-bob", role: "Member", alias: "Bob" },
-      { identity: "acct-gus", role: "ReadOnly", alias: undefined },
+      { identity: "acct-me", role: "Admin", alias: undefined, orgAdmin: true, orgRole: "owner" },
+      { identity: "acct-bob", role: "Member", alias: "Bob", orgRole: "member" },
+      { identity: "acct-gus", role: "ReadOnly", alias: undefined, orgRole: "guest" },
     ]);
     expect(res.data?.selfIdentity).toBe("acct-me");
   });

@@ -63,22 +63,8 @@ describe("useWorkspaceName", () => {
     expect(result.current).toBe("Calimero");
   });
 
-  it("promotes a local-only name so everyone else sees it", async () => {
+  it("never renames the workspace from a local name (a rename is organization-wide)", async () => {
     mockGetStoredGroupAlias.mockReturnValue("Calimero");
-
-    renderHook(() => useWorkspaceName("g1"));
-
-    await waitFor(() =>
-      expect(mockSetGroupMetadata).toHaveBeenCalledWith("g1", "Calimero"),
-    );
-  });
-
-  it("does not promote when the workspace is already named", async () => {
-    mockGetStoredGroupAlias.mockReturnValue("Calimero");
-    mockGetGroupMetadata.mockResolvedValue({
-      data: { name: "Calimero", data: {}, updatedAt: 0, updatedBy: "x" },
-      error: null,
-    });
 
     renderHook(() => useWorkspaceName("g1"));
 
