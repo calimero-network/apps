@@ -17,6 +17,7 @@ import { clearLastVisit, forgetProject, pickRemembered, readLastVisit, rememberT
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
+import { visibleInterval } from "../utils/visibleInterval";
 
 type Tab = "projects" | "invitations";
 
@@ -123,8 +124,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     void loadProjects();
-    const id = setInterval(loadProjects, 30_000);
-    return () => clearInterval(id);
+    return visibleInterval(() => void loadProjects(), 30_000);
   }, [loadProjects]);
 
   // Remember this team for the next open (utils/lastVisit). Every read checks

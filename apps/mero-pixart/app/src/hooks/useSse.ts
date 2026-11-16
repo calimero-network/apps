@@ -14,15 +14,15 @@ const RECONNECT_MS = 2_000;
  *
  * The node answers the committed events first, then live ones; a reconnect
  * resumes after the last one seen (its `id` is its log index). Callers coalesce
- * bursts (the history at open is one): every event only means "read again".
+ * bursts (the history at open is one): an event's kind says what to read again.
  */
 export function useSse(
   contextId: string | null,
-  onEvent: (payload: unknown) => void,
+  onEvent: (kind: string, data: unknown) => void,
   onReconnect?: () => void,
 ) {
   const { client } = useSignedIn();
-  useAppEvents(client, contextId, (_kind, data) => onEvent(data), onReconnect);
+  useAppEvents(client, contextId, onEvent, onReconnect);
 }
 
 export function useAppEvents(

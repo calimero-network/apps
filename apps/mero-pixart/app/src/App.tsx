@@ -7,6 +7,7 @@ import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import EditorPage from "./pages/EditorPage";
 import InvitationHost from "./components/InvitationHost";
+import ConsentReturn from "./components/ConsentReturn";
 import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
 
@@ -62,6 +63,8 @@ function FrontDoor({ bounce }: { bounce: boolean }) {
 export default function App() {
   return (
     <ToastProvider>
+      {/* Before the routes: the consent page's return is read before they move on. */}
+      <ConsentReturn />
       {/* Around the routes: an invitation link can open this app on any page,
           and while one is pending its screens stand in for the route. */}
       <InvitationHost>

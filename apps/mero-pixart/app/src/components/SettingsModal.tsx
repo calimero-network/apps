@@ -4,7 +4,8 @@ import "@calimero-apps/members/members.css";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
-import { PRODUCT_NAME, isAdmin, removeTeamMember } from "../api/teams";
+import { PRODUCT_NAME, isAdmin } from "../api/teams";
+import { removeFromTeam, setTeamRole } from "../api/orgConsent";
 import { useTeam } from "../api/useTeam";
 import { useToast } from "../contexts/ToastContext";
 import { effectiveDocumentRole } from "../utils/documentRoles";
@@ -12,7 +13,6 @@ import { truncateMiddle } from "../utils/format";
 import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
 import styles from "./SettingsModal.module.css";
-import { passkeyConfirm } from "@calimero-network/mero-js";
 
 interface Props {
   type: "team" | "project";
@@ -170,10 +170,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
     }
     setBusyMember(identity);
     try {
-      await client.orgs.setMember(
-        { org: teamId!, account: identity, role: next },
-        { confirm: passkeyConfirm(passkey()) },
-      );
+      await setTeamRole(client, teamId!, identity, next, passkey);
       showToast(
         next === "admin"
           ? "Member promoted to admin: they manage the team and edit every document."
@@ -192,7 +189,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
   async function removeMember(identity: string) {
     setBusyMember(identity);
     try {
-      const left = await removeTeamMember(client, teamId!, source, identity, passkey);
+      const left = await removeFromTeam(client, teamId!, source, identity, passkey);
       showToast(
         left === "app"
           ? `Member removed from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
