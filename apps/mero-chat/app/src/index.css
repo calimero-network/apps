@@ -1245,3 +1245,8 @@ textarea {
 ::placeholder {
   color: var(--glass-muted);
 }
+
+/* Above the workspace picker's overlay (99999), which stays behind the create dialog. */
+.mero-cw.mero-cw-overlay {
+  z-index: 100000;
+}
