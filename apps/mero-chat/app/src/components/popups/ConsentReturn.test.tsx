@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   returnFromConsent: vi.fn(),
-  finishWorkspace: vi.fn(),
+  consentIntent: vi.fn(() => ({ kind: "createInvite", org: "org-1" })),
   enterWorkspace: vi.fn(),
   enterJoinedWorkspaceForName: vi.fn(),
   getGroupMetadata: vi.fn(),
@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
   name: "Ann",
 }));
 
-vi.mock("../../api/consent", () => ({ returnFromConsent: h.returnFromConsent }));
+vi.mock("../../api/consent", () => ({ returnFromConsent: h.returnFromConsent, consentIntent: h.consentIntent }));
 vi.mock("../../api/platform", () => ({ invalidate: vi.fn() }));
 vi.mock("../../api/calimero", () => ({ getAccountId: () => "acct-me" }));
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -20,7 +20,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   },
 }));
 vi.mock("../../contexts/ToastContext", () => ({ useToast: () => ({ addToast: h.addToast }) }));
-vi.mock("../../utils/finishWorkspace", () => ({ finishWorkspace: h.finishWorkspace }));
 vi.mock("../../utils/enterWorkspace", () => ({
   enterWorkspace: h.enterWorkspace,
   enterJoinedWorkspaceForName: h.enterJoinedWorkspaceForName,
@@ -45,6 +44,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   h.name = "Ann";
+  h.consentIntent.mockReturnValue({ kind: "createInvite", org: "org-1" });
   h.getGroupMetadata.mockResolvedValue({ data: { name: "Acme" }, error: null });
   window.history.replaceState(null, "", "/");
 });
@@ -63,16 +63,11 @@ describe("ConsentReturn", () => {
     expect(h.returnFromConsent).not.toHaveBeenCalled();
   });
 
-  it("finishes the workspace the page created, under the names Chat kept", async () => {
+  it("leaves a return it kept no intent for to the create-workspace dialog", () => {
     back();
-    h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "createOrg", name: "Acme", selfName: "Ann" },
-      result: approved("createOrg", { orgId: "org-9" }),
-    });
+    h.consentIntent.mockReturnValue(null as never);
     render(<ConsentReturn enabled />);
-    await waitFor(() =>
-      expect(h.finishWorkspace).toHaveBeenCalledWith(expect.anything(), "org-9", "Acme", "Ann", h.addToast),
-    );
+    expect(h.returnFromConsent).not.toHaveBeenCalled();
   });
 
   it("shows the link of the invite the page minted", async () => {
@@ -100,12 +95,11 @@ describe("ConsentReturn", () => {
   it("says a decline changed nothing, and a return that is not this tab's request too", async () => {
     back();
     h.returnFromConsent.mockResolvedValue({
-      intent: { kind: "createOrg", name: "Acme", selfName: "Ann" },
-      result: { requestId: "r1", kind: "createOrg", status: "declined", decidedAt: 1 },
+      intent: { kind: "createInvite", org: "org-1" },
+      result: { requestId: "r1", kind: "createInvite", status: "declined", decidedAt: 1 },
     });
     const { unmount } = render(<ConsentReturn enabled />);
     await waitFor(() => expect(h.addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Not approved" })));
-    expect(h.finishWorkspace).not.toHaveBeenCalled();
     unmount();
 
     back();
@@ -114,6 +108,5 @@ describe("ConsentReturn", () => {
     await waitFor(() =>
       expect(h.addToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Nothing was changed" })),
     );
-    expect(h.finishWorkspace).not.toHaveBeenCalled();
   });
 });

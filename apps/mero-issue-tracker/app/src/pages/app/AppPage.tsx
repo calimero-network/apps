@@ -8,17 +8,19 @@ import React, {
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
-import { useNodeShieldApp } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName } from "@calimero-apps/names";
+import { reviewRelease, useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useIssues } from "../../hooks/useItems";
 import { useSignedIn } from "../../sessionContext";
+import { APP_PACKAGE } from "../../config";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
 import NewIssueModal from "../../components/NewIssueModal";
 import InviteModal from "../../components/InviteModal";
-import NamespaceCreateDialog from "../../components/NamespaceCreateDialog";
 import AddRepoDialog from "../../components/AddRepoDialog";
 import NsEmptyState from "../../components/NsEmptyState";
 import AliasGate from "../../components/AliasGate";
@@ -40,8 +42,17 @@ const EMPTY_FILTERS: Filters = {
  * with no name in the workspace (one made before names were asked on creating
  * or joining it) -> blocking alias gate, once per workspace.
  */
+const CREATE_LABELS = {
+  title: "New workspace",
+  subtitle: "Name your team workspace. You will add repositories to it next.",
+  nameLabel: "Workspace name",
+  namePlaceholder: "e.g. Platform team",
+  selfLabel: "Your name in this workspace",
+  selfPlaceholder: "e.g. ronit",
+};
+
 export default function AppPage(): React.ReactElement | null {
-  const { client, after, source } = useSignedIn();
+  const { client, after, source, sourcePending, passkey } = useSignedIn();
   const ws = useWorkspace();
   useNodeShieldApp(ws.activeRepo, source);
   const toast = useToast();
@@ -225,14 +236,21 @@ export default function AppPage(): React.ReactElement | null {
   // and the workspace both drive the same dialogs.
   const dialogs = (
     <>
-      {showCreateNs && (
-        <NamespaceCreateDialog
-          release={ws.createRelease}
-          releasePending={ws.sourcePending}
-          onCreate={ws.createNamespace}
-          onClose={() => setShowCreateNs(false)}
-        />
-      )}
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={sourcePending ? null : (reviewRelease(source) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreateNs}
+        onClose={() => setShowCreateNs(false)}
+        onCreated={async (created) => {
+          setShowCreateNs(false);
+          const notice = await ws.workspaceCreated(created);
+          if (notice) toast.show({ variant: "warning", description: notice });
+        }}
+        labels={CREATE_LABELS}
+      />
+
       {showAddRepo && (
         <AddRepoDialog
           onAdd={ws.addRepo}

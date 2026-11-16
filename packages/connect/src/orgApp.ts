@@ -166,9 +166,34 @@ export async function createAppOrg(
   options: CreateAppOrgOptions = {},
 ): Promise<CreatedAppOrg> {
   const orgId = (await client.orgs.create({ name })).orgId;
+  return finishAppOrg(client, orgId, source, passkey, options);
+}
+
+/** Whether the session was opened on an app's frontend (core binds it to that package); `false` when it cannot say. */
+export async function isAppBound(client: object): Promise<boolean> {
+  try {
+    const me = (await (client as ClientRoutes<{ auth: "me" }>).auth.me()) as { app?: unknown };
+    return typeof me.app === "string" && me.app !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What follows an org's creation, for an org made elsewhere (the node's consent
+ * page): the mark, the member defaults and the app's team, as {@link createAppOrg}.
+ * A package-bound session skips the member defaults: core cannot take them in the consent.
+ */
+export async function finishAppOrg(
+  client: ClientRoutes<{ orgs: "get" | "metadata" | "capabilities" | "appTeamsScope" }>,
+  orgId: string,
+  source: AppSource | null | undefined,
+  passkey: PasskeyLike,
+  options: CreateAppOrgOptions = {},
+): Promise<CreatedAppOrg> {
   if (source && options.mark !== false) await markOrgFor(client, orgId, source);
   let capabilitiesError: unknown = null;
-  if (options.capabilities !== undefined) {
+  if (options.capabilities !== undefined && !(await isAppBound(client))) {
     try {
       await client.orgs.capabilities(
         { org: orgId, capabilities: options.capabilities },

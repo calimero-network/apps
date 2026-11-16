@@ -100,9 +100,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     rootGroupId: 'ns',
     selectNamespace: vi.fn(),
     clearNamespace: vi.fn(),
-    createWorkspace: vi.fn().mockResolvedValue('ns-new'),
-    createWorkspaceLoading: false,
-    createWorkspaceError: null,
+    workspaceCreated: vi.fn().mockResolvedValue(undefined),
     registryContextId: 'ctx',
     // A healthy workspace has exactly one registry context. The duplicate
     // banner is exercised in its own test.

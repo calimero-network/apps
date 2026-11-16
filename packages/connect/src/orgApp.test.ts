@@ -12,6 +12,7 @@ import {
   appPeople,
   appTeamIdIn,
   createAppOrg,
+  finishAppOrg,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -182,6 +183,23 @@ describe("creating a workspace", () => {
     expect((await createAppOrg(c, "Acme", "bundle-hash", passkey)).teamId).toBeNull();
     expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
     expect(c.orgs.capabilities).not.toHaveBeenCalled();
+  });
+
+  it("finishing an org made elsewhere: a package-bound session skips the member defaults without an error", async () => {
+    const c = Object.assign(cluster(legacy()), { auth: { me: vi.fn(async () => ({ app: PKG })) } });
+    const made = await finishAppOrg(c, "org", SOURCE, () => passkey, { capabilities: 7 });
+    expect(c.orgs.capabilities).not.toHaveBeenCalled();
+    expect(made).toEqual({ orgId: "org", teamId: "team-new", capabilitiesError: null });
+    expect(c.orgs.metadata).toHaveBeenCalledWith({ org: "org", metadata: { createdFor: PKG } });
+  });
+
+  it("finishing an org made elsewhere: an unbound session, or one that cannot say, sets the member defaults", async () => {
+    const unbound = Object.assign(cluster(legacy()), { auth: { me: vi.fn(async () => ({})) } });
+    await finishAppOrg(unbound, "org", SOURCE, () => passkey, { capabilities: 7 });
+    expect(unbound.orgs.capabilities).toHaveBeenCalledWith({ org: "org", capabilities: 7 }, CONFIRMED);
+    const unknown = Object.assign(cluster(legacy()), { auth: { me: vi.fn(async () => Promise.reject(new Error("down"))) } });
+    await finishAppOrg(unknown, "org", SOURCE, () => passkey, { capabilities: 7 });
+    expect(unknown.orgs.capabilities).toHaveBeenCalled();
   });
 
   it("adoptAppTeam passes `shared` explicitly: closed only in an org that is shared already", async () => {

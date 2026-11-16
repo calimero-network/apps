@@ -268,10 +268,11 @@ catalog:
 # 35.3.0 adds the `{ service }` option to packageCapabilities and transient node checks.
 # mero-react 11.3.0 ships the node shield (`/node-shield`, with `open` and `compact`) that @calimero-apps/passkey renders;
 # it depends on mero-js ^35.3.0, so the components resolve one mero-js.
+# mero-react 11.4.0 adds CreateWorkspaceDialog, the one create-workspace dialog the pilot apps render.
 catalogs:
   component:
     "@calimero-network/mero-js": ^35.3.0
-    "@calimero-network/mero-react": ^11.3.0
+    "@calimero-network/mero-react": ^11.4.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

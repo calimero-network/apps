@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { consentReturn } from "@calimero-network/mero-js";
 
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { returnFromConsent, type ConsentReturned } from "../../api/consent";
+import { consentIntent, returnFromConsent, type ConsentReturned } from "../../api/consent";
 import { invalidate } from "../../api/platform";
 import { getAccountId } from "../../api/calimero";
 import { setStoredGroupAlias } from "../../constants/config";
 import { useToast } from "../../contexts/ToastContext";
 import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
-import { finishWorkspace } from "../../utils/finishWorkspace";
 import { dropInvite } from "../../utils/invitation";
 import { log } from "../../utils/logger";
 import { getMessengerDisplayName } from "../../utils/messengerName";
@@ -17,8 +16,9 @@ import GroupInviteModal from "./GroupInviteModal";
 /**
  * Finishes what Chat sent the person to the node's consent page for, when the
  * page sends them back (`?request_id=…&result=…`, see `api/consent.ts`): the
- * new workspace is named, given #general and entered; the minted invite's link
- * is shown; the joined workspace is entered. What the approval made is read
+ * minted invite's link
+ * is shown; the joined workspace is entered. A workspace's creation is the
+ * shared dialog's (`ChatWorkspaceCreator`). What the approval made is read
  * from the node's sealed result, never from the return URL, and a return that
  * does not match the request this tab started is refused by `resumeConsent`.
  */
@@ -29,7 +29,8 @@ export default function ConsentReturn({ enabled }: { enabled: boolean }) {
   const [invite, setInvite] = useState<{ org: string; token: string } | null>(null);
 
   useEffect(() => {
-    if (!enabled || started.current || !consentReturn(window.location.href)) return;
+    // Only a return this app kept an intent for: the shared dialog resumes its own.
+    if (!enabled || started.current || !consentReturn(window.location.href) || !consentIntent()) return;
     started.current = true;
     void (async () => {
       let returned: ConsentReturned | null;
@@ -53,12 +54,6 @@ export default function ConsentReturn({ enabled }: { enabled: boolean }) {
       }
       invalidate();
       switch (result.kind) {
-        case "createOrg": {
-          const orgId = result.outcome?.orgId;
-          if (!orgId || intent?.kind !== "createOrg") return;
-          await finishWorkspace(api.current, orgId, intent.name, intent.selfName, addToast);
-          return;
-        }
         case "createInvite": {
           const token = result.outcome?.token;
           if (token && intent?.kind === "createInvite") setInvite({ org: intent.org, token });

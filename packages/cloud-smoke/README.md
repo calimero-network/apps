@@ -90,3 +90,13 @@ fails at sign-up with the cluster's refusal and a hint naming the policy.
 
 The test is never retried (`retries: 0`): a retry would make a second account
 and hide a sign-in that only works the second time.
+
+## Creating a workspace (`create-workspace.smoke.ts`)
+
+Opt-in (`CREATE_WORKSPACE_E2E=1`): serves the local production build of an app at its real Cloud origin
+(`page.route`), signs up a fresh passkey account, and walks the shared create-workspace dialog through
+names, review and approval on the node's consent page in a pop-up.
+Build each app with `VITE_CALIMERO_MIN_RELEASE` set, point `E2E_DIST_MERO_CRM` (and `_MERO_CHAT`, `_MERO_ISSUE_TRACKER`, `_MERO_DOCS`) at the output, and run
+`CREATE_WORKSPACE_E2E=1 npx playwright test src/create-workspace.smoke.ts`.
+Screenshots of each step go to `test-results/create-workspace/` at the repo root.
+An app no cluster serves yet is served at Mero CRM's origin with `VITE_CALIMERO_PACKAGE=com.calimero.mero-crm`.

@@ -15,7 +15,9 @@ const {
   mockGetName,
   mockSetName,
   mockEnterForName,
+  mockOpenCreate,
 } = vi.hoisted(() => ({
+  mockOpenCreate: vi.fn(),
   mockResolveIdentity: vi.fn(),
   mockGetName: vi.fn(),
   mockSetName: vi.fn(),
@@ -70,14 +72,7 @@ vi.mock("../../utils/session", () => ({
 
 // The real popup creates a namespace on a node; here it only has to be shown
 // and to report a creation.
-vi.mock("../popups/CreateWorkspacePopup", () => ({
-  default: ({ onSuccess, onCancel }: { onSuccess: (id: string) => void; onCancel: () => void }) => (
-    <div data-testid="create-workspace-popup">
-      <button onClick={() => onSuccess("group-new")}>fake-create</button>
-      <button onClick={onCancel}>fake-cancel</button>
-    </div>
-  ),
-}));
+vi.mock("../../utils/createWorkspaceStore", () => ({ openCreateWorkspace: mockOpenCreate }));
 
 describe("WorkspaceSwitcher", () => {
   beforeEach(() => {
@@ -175,38 +170,12 @@ describe("WorkspaceSwitcher", () => {
   });
 
   describe("New workspace", () => {
-    // CreateWorkspacePopup existed but nothing rendered it: a member already
-    // inside a workspace had no way to create another.
-    it("opens the create popup from the switcher", async () => {
+    it("opens the shared create dialog from the switcher, and moves nothing itself", async () => {
       render(<WorkspaceSwitcher isCollapsed={false} />);
       fireEvent.click(await screen.findByText("Current"));
       fireEvent.click(screen.getByTestId("workspace-switcher-create"));
-      expect(screen.getByTestId("create-workspace-popup")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByText("fake-cancel"));
-      expect(screen.queryByTestId("create-workspace-popup")).not.toBeInTheDocument();
+      expect(mockOpenCreate).toHaveBeenCalledTimes(1);
       expect(mockClearStoredSession).not.toHaveBeenCalled();
-    });
-
-    it("drops the old workspace's stored chat once the new one exists", async () => {
-      const location = window.location;
-      // jsdom refuses navigation; capture the assignment instead.
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        value: { ...location, href: "" },
-      });
-      try {
-        render(<WorkspaceSwitcher isCollapsed={false} />);
-        fireEvent.click(await screen.findByText("Current"));
-        fireEvent.click(screen.getByTestId("workspace-switcher-create"));
-        fireEvent.click(screen.getByText("fake-create"));
-
-        expect(mockClearStoredSession).toHaveBeenCalled();
-        expect(mockSetNamespaceReady).toHaveBeenCalledWith("group-new");
-        expect(window.location.href).toBe("/");
-      } finally {
-        Object.defineProperty(window, "location", { configurable: true, value: location });
-      }
     });
   });
 

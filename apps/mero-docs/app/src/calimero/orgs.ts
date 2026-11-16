@@ -47,7 +47,7 @@ import {
   appInvite,
   appPeople,
   appTarget,
-  createAppOrg,
+  finishAppOrg,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -449,16 +449,12 @@ export class OrgAdmin {
   // ---------------------------------------------------------------- workspaces
 
   /**
-   * A new workspace: the org and Docs' own team, open (`createAppOrg`;
-   * declined, or a node without app teams, a legacy org). Its member defaults
-   * and registry instance follow.
+   * What follows a workspace the node approved: Docs' own team, open (declined,
+   * or a node without app teams, a legacy org).
    */
-  async createNamespace(input: { name: string }): Promise<{ namespaceId: string }> {
-    const { orgId: namespaceId } = await createAppOrg(this.client, input.name, this.source, this.passkey, {
-      mark: false,
-    });
-    this.changed(namespaceId);
-    return { namespaceId };
+  async finishNamespace(orgId: string): Promise<void> {
+    await finishAppOrg(this.client, orgId, this.source, this.passkey, { mark: false });
+    this.changed(orgId);
   }
 
   async deleteNamespace(orgId: string): Promise<void> {

@@ -20,7 +20,7 @@
 //   identity:      applicationId, selfIdentity
 //   namespaces:    namespaces, selectedNamespaceId, rootGroupId (=== org id),
 //                  selectNamespace, clearNamespace
-//   creation:      createWorkspace, createWorkspaceLoading, createWorkspaceError
+//   creation:      workspaceCreated
 //   registry:      registryContextId, registryClient, folders, registryAdmin
 //   folder:        selectedFolderId, setSelectedFolder
 //   status:        loading, stage, error, refetch
@@ -37,7 +37,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useLive, type GroupMember, type Namespace } from '@/calimero/react';
-import { targetKey } from '@calimero-apps/connect';
+import { isAppBound, targetKey } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
 import { useInstanceRelease, useNodeShieldApp } from '@calimero-apps/passkey';
 import { useSession } from '@/calimero/session';
@@ -49,7 +49,7 @@ import { useAppRoute } from './useAppRoute';
 import { deriveDriveStage, stageHidesContent, type DriveLoadingStage } from '@/lib/driveStage';
 import { confirmedNamespace, rememberedOn, syncWorkspaceRoute } from '@/lib/namespaceSelection';
 import { type MergedFolder } from './useWorkspaceTree';
-import { DEFAULT_NEW_MEMBER_CAPS, MAX_ALIAS_LENGTH } from '@/constants/config';
+import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
 import { foldersOf, type CoreFolder } from '@/lib/coreFolders';
 import { folderLabel } from '@/lib/folderLabel';
 import { restrictionOf } from '@/lib/folderRestriction';
@@ -107,10 +107,11 @@ export interface DriveWorkspaceState {
   selectNamespace: (nsId: string | null) => void;
   clearNamespace: () => void;
 
-  /** `selfName`: your name in the new workspace, written right after it is made. */
-  createWorkspace: (alias: string, selfName?: string) => Promise<string | null>;
-  createWorkspaceLoading: boolean;
-  createWorkspaceError: Error | null;
+  /**
+   * Finishes a workspace the node approved: Docs' team, its registry, member
+   * defaults, and `selfName` as your name in it. Opens it; throws on failure.
+   */
+  workspaceCreated: (created: { orgId: string; selfName: string }) => Promise<void>;
 
   registryContextId: string | null;
   /** Always empty on 1.0: the org metadata records exactly one registry. */
@@ -395,55 +396,36 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [goFolder, goHome],
   );
 
-  // --- Create a workspace: the org, member defaults, the registry ---
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState<Error | null>(null);
-  const createWorkspace = useCallback(
-    async (alias: string, selfName?: string): Promise<string | null> => {
-      if (!admin) return null;
-      const trimmed = alias.trim();
-      if (!trimmed) {
-        setCreateError(new Error('Workspace name is required'));
-        return null;
-      }
-      if (trimmed.length > MAX_ALIAS_LENGTH) {
-        setCreateError(new Error(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`));
-        return null;
-      }
-      setCreateLoading(true);
-      setCreateError(null);
-      try {
-        const { namespaceId } = await admin.createNamespace({ name: trimmed });
-        // The registry first: it is what makes the org a workspace of this app.
-        await admin.createContext({ groupId: namespaceId, name: 'Registry' });
+  // --- A workspace the node approved: its team, the registry, member defaults ---
+  const workspaceCreated = useCallback(
+    async ({ orgId, selfName }: { orgId: string; selfName: string }): Promise<void> => {
+      if (!admin || !client) throw new Error('Not signed in.');
+      await admin.finishNamespace(orgId);
+      // The registry first: it is what makes the org a workspace of this app.
+      await admin.createContext({ groupId: orgId, name: 'Registry' });
+      // A passkey step-up the node's consent cannot carry yet, so a session
+      // bound to this app skips it; refused, only owners and admins can create
+      // folders until the defaults are set.
+      if (!(await isAppBound(client))) {
         try {
-          // A passkey step-up; refused, the workspace stays and only its
-          // owner and admins can create folders until the defaults are set.
-          await admin.setDefaultCapabilities(namespaceId, { defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS });
+          await admin.setDefaultCapabilities(orgId, { defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS });
         } catch (e) {
           console.warn('[useDriveWorkspace] member defaults not set; set them in Member defaults.', e);
         }
-        if (selfName?.trim()) {
-          // Your name in the workspace, asked in the same dialog. Refused, the
-          // workspace stays and the name gate asks for it once on entry.
-          await setOrgName(admin, namespaceId, admin.self, selfName).catch((e: unknown) =>
-            console.warn('[useDriveWorkspace] workspace name for self not set; the gate will ask.', e),
-          );
-        }
-        createdNsId.current = namespaceId;
-        await refetchNamespaces();
-        userCleared.current = false;
-        goWorkspace(namespaceId);
-        setStoredNsId(namespaceId);
-        return namespaceId;
-      } catch (e: unknown) {
-        setCreateError(toError(e));
-        return null;
-      } finally {
-        setCreateLoading(false);
       }
+      // Refused, the workspace stays and the name gate asks for it once on entry.
+      if (selfName.trim()) {
+        await setOrgName(admin, orgId, admin.self, selfName).catch((e: unknown) =>
+          console.warn('[useDriveWorkspace] workspace name for self not set; the gate will ask.', e),
+        );
+      }
+      createdNsId.current = orgId;
+      await refetchNamespaces();
+      userCleared.current = false;
+      goWorkspace(orgId);
+      setStoredNsId(orgId);
     },
-    [admin, refetchNamespaces, goWorkspace, setStoredNsId],
+    [admin, client, refetchNamespaces, goWorkspace, setStoredNsId],
   );
 
   const selectNamespace = useCallback(
@@ -507,9 +489,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       rootGroupId,
       selectNamespace,
       clearNamespace,
-      createWorkspace,
-      createWorkspaceLoading: createLoading,
-      createWorkspaceError: createError,
+      workspaceCreated,
       registryContextId,
       registryDuplicates: [],
       registryUnsynced: false,
@@ -539,9 +519,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       rootGroupId,
       selectNamespace,
       clearNamespace,
-      createWorkspace,
-      createLoading,
-      createError,
+      workspaceCreated,
       registryContextId,
       registryClient,
       folders,

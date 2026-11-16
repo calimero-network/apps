@@ -29,6 +29,7 @@ import {
   appTeamIdIn,
   appTeamMembers,
   createAppOrg,
+  finishAppOrg,
   leaveApp,
   leaveOrg,
   listAppInfos,
@@ -457,6 +458,16 @@ export async function createOrg(name: string, capabilities?: number): Promise<st
     });
   }
   return made.orgId;
+}
+
+/**
+ * What follows a workspace the node approved: Chat's own app team, open, and
+ * the member defaults (a passkey step-up, skipped on a session bound to
+ * Chat's frontend). Declined, the workspace stays a legacy one.
+ */
+export async function finishOrg(orgId: string, capabilities?: number): Promise<void> {
+  await run((c) => finishAppOrg(c, orgId, chatSource(), passkey, { mark: false, capabilities }));
+  invalidate();
 }
 
 export async function setCapabilities(org: string, capabilities: number, account?: string): Promise<void> {

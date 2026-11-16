@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import { NamespaceSwitcher } from '../NamespaceSwitcher';
 
 const selectNamespace = vi.fn();
@@ -16,13 +17,38 @@ const driveState = {
   loading: false,
   error: null as Error | null,
   refetch: vi.fn(),
+  workspaceCreated: undefined as unknown,
 };
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => driveState,
 }));
-vi.mock('../NamespaceCreateDialog', () => ({
-  NamespaceCreateDialog: () => <div role="dialog" aria-label="create dialog" />,
+const workspaceCreated = vi.fn();
+driveState.workspaceCreated = workspaceCreated;
+vi.mock('@/calimero/session', () => ({
+  useSession: () => ({
+    passkey: () => ({}),
+    source: { package: 'com.example.docs', version: '1.0.0' },
+    resolvingSource: false,
+  }),
 }));
+vi.mock('@/calimero/react', () => ({ useLive: () => ({ client: {} }) }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+// The shared dialog is mero-react's to test: here only what the switcher hands it and does after.
+vi.mock('@calimero-network/mero-react', () => ({
+  CreateWorkspaceDialog: (p: {
+    open: boolean;
+    labels?: { title?: string };
+    onCreated: (c: { orgId: string; name: string; selfName: string }) => void;
+  }) =>
+    p.open ? (
+      <div role="dialog" aria-label="create dialog">
+        <h2>{p.labels?.title}</h2>
+        <button onClick={() => p.onCreated({ orgId: 'ns-new', name: 'New', selfName: 'Ada' })}>done</button>
+      </div>
+    ) : null,
+}));
+vi.mock('@calimero-apps/passkey', () => ({ reviewRelease: () => ({ package: 'com.example.docs', version: '1.0.0' }) }));
+vi.mock('@calimero-apps/names', () => ({ lastUsedName: () => 'Ada' }));
 
 // Radix DropdownMenu opens on pointerdown in jsdom.
 function openMenu() {
@@ -72,6 +98,25 @@ describe('NamespaceSwitcher', () => {
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
     expect(screen.getByRole('dialog', { name: 'create dialog' })).toBeTruthy();
+  });
+
+  it('finishes the workspace the dialog made and closes it', async () => {
+    workspaceCreated.mockResolvedValueOnce(undefined);
+    render(<NamespaceSwitcher />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'done' }));
+    await waitFor(() => expect(workspaceCreated).toHaveBeenCalledWith({ orgId: 'ns-new', name: 'New', selfName: 'Ada' }));
+    expect(screen.queryByRole('dialog', { name: 'create dialog' })).toBeNull();
+  });
+
+  it("says why finishing the workspace failed, in the node's words", async () => {
+    workspaceCreated.mockRejectedValueOnce(new Error('registry refused'));
+    render(<NamespaceSwitcher />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /New workspace/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'done' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('registry refused'));
   });
 
   // An invitation is joined by opening its link; there is nowhere to paste one.

@@ -16,19 +16,13 @@ const h = vi.hoisted(() => ({
   listOtherOrgs: vi.fn(),
   enterWorkspace: vi.fn(),
   sessionKey: "account:me" as string | null,
-  bound: false,
-  askOnConsentPage: vi.fn(),
+  openCreateWorkspace: vi.fn(),
+  createOpen: false,
 }));
 
-vi.mock("../../api/consent", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  frontendBound: async () => h.bound,
-  askOnConsentPage: h.askOnConsentPage,
-}));
-
-vi.mock("../../utils/installedApps", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveInstalledAppId: (id: string) => Promise.resolve(id),
+vi.mock("../../utils/createWorkspaceStore", () => ({
+  openCreateWorkspace: h.openCreateWorkspace,
+  useCreateWorkspaceOpen: () => h.createOpen,
 }));
 
 vi.mock("../../utils/createChannel", async (importOriginal) => ({
@@ -89,8 +83,8 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 beforeEach(() => {
   localStorage.clear();
   h.sessionKey = "account:me";
-  h.bound = false;
-  h.askOnConsentPage.mockReset().mockResolvedValue(false);
+  h.openCreateWorkspace.mockReset();
+  h.createOpen = false;
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -168,69 +162,32 @@ describe("NamespaceEntryPopup", () => {
     ).not.toBeInTheDocument();
   });
 
-  // Every workspace starts with #general, so someone who joins from an
-  // invitation lands in a channel instead of an empty workspace, and the join
-  // has something to wait for that tells "synced" from "not arrived yet".
-  it("creates #general, public, in a new workspace", async () => {
+  it("stays mounted but invisible and hidden from assistive tech while the create dialog is open", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
-    open();
+    const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    const title = await screen.findByText("Welcome to MeroChat");
+    const card = () => title.closest("[aria-hidden]") ?? title.parentElement!;
+    expect(title.closest("[aria-hidden=true]")).toBeNull();
+    h.createOpen = true;
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(card().getAttribute("aria-hidden")).toBe("true");
+    h.createOpen = false;
+    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
+    expect(title.closest("[aria-hidden=true]")).toBeNull();
+  });
+
+  it("opens the shared create dialog from the empty state and from the list", async () => {
+    h.listGroups.mockResolvedValue({ data: [], error: null });
+    const empty = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: "Create workspace" }));
-    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), {
-      target: { value: "Design team" },
-    });
-    fireEvent.change(screen.getByTestId("create-self-name"), { target: { value: "Ada" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() =>
-      expect(h.createChannel).toHaveBeenCalledWith("ns-new", "general", true),
-    );
-  });
+    expect(h.openCreateWorkspace).toHaveBeenCalledTimes(1);
+    empty.unmount();
 
-  // A workspace left on its name step after creating it was listed alone and
-  // later entered nameless from the sidebar. The name is asked with the
-  // workspace's own, so neither can happen.
-  it("asks your name with the workspace's, and enters it named, with no second step", async () => {
-    localStorage.setItem("calimero-names:last", "Ada");
+    h.listGroups.mockResolvedValue({ data: [{ groupId: "ns0", alias: "Mine" }], error: null });
     open();
     fireEvent.click(await screen.findByText("+ Create new workspace"));
-    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
-    const self = screen.getByTestId("create-self-name") as HTMLInputElement;
-    // Prefilled with the name used last, and required.
-    expect(self.value).toBe("Ada");
-    fireEvent.change(self, { target: { value: " " } });
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
-    fireEvent.change(self, { target: { value: "Ada L" } });
-    let nameAtGeneral = "";
-    h.createChannel.mockImplementation(async () => {
-      nameAtGeneral = localStorage.getItem("chat-username:ns-new") ?? "";
-      return { contextId: "ctx-general", memberKey: "key" };
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "ns-new", "Ada L", "me"));
-    // #general is made under your name in the new workspace.
-    expect(nameAtGeneral).toBe("Ada L");
-    expect(screen.queryByText("Choose a display name to use in this server.")).toBeNull();
-  });
-
-  it("on Chat's frontend, creates the workspace on the node's consent page, keeping both names", async () => {
-    h.bound = true;
-    open();
-    fireEvent.click(await screen.findByText("+ Create new workspace"));
-    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
-    fireEvent.change(screen.getByTestId("create-self-name"), { target: { value: "Ada" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(h.askOnConsentPage).toHaveBeenCalled());
-    expect(h.askOnConsentPage.mock.calls[0]?.[0]).toEqual({ kind: "createOrg", name: "Design team", selfName: "Ada" });
-    expect(h.askOnConsentPage.mock.calls[0]?.[1]).toMatchObject({ kind: "createOrg", subject: { name: "Design team" } });
-    expect(h.createGroup).not.toHaveBeenCalled();
-    // Staying here (the person did not go) leaves the form as it was.
-    expect(await screen.findByRole("button", { name: "Create" })).toBeEnabled();
-  });
-
-  it("cannot create a workspace without your name", async () => {
-    open();
-    fireEvent.click(await screen.findByText("+ Create new workspace"));
-    fireEvent.change(screen.getByPlaceholderText("e.g. My Team"), { target: { value: "Design team" } });
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(h.openCreateWorkspace).toHaveBeenCalledTimes(2);
     expect(h.createGroup).not.toHaveBeenCalled();
   });
 

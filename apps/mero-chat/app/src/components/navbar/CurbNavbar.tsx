@@ -11,6 +11,7 @@ import GroupInviteIcon from "./GroupInviteIcon";
 import { WebSocketStatus } from "../WebSocketStatus";
 import ThemeToggle from "./ThemeToggle";
 import InstallButton from "./InstallButton";
+import { NodeShield } from "@calimero-apps/passkey";
 import ChatAppIcon from "/icons/icon-96x96.png";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
@@ -340,6 +341,7 @@ export default function CurbNavbar({
         <GroupInviteIcon />
         <AdminIcon />
         <InstallButton />
+        <NodeShield compactBelow={1240} />
         <ThemeToggle />
         <SettingsIcon />
       </FlexContainer>

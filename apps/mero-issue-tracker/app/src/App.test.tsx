@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CalimeroError, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
+import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import App from './App';
@@ -20,6 +21,27 @@ vi.mock('@calimero-apps/passkey', async (importOriginal) => {
     ...actual,
     useInstanceRelease: (...[client, app]: Parameters<typeof actual.useInstanceRelease>) =>
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
+  };
+});
+// The shared dialog is mero-react's to test: here only what the app hands it and does after.
+vi.mock('@calimero-network/mero-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
+  return {
+    ...actual,
+    CreateWorkspaceDialog: (p: Parameters<typeof actual.CreateWorkspaceDialog>[0]) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'create-dialog' },
+            p.release === null
+              ? createElement('p', { 'data-testid': 'create-pending' }, 'pending')
+              : [
+                  createElement('h2', { key: 't', 'data-testid': 'create-title' }, p.labels?.title),
+                  createElement('pre', { key: 's', 'data-testid': 'create-source' }, JSON.stringify(p.release)),
+                  createElement('button', { key: 'b', 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Platform', selfName: 'Alice' }) }, 'done'),
+                ],
+          )
+        : null,
   };
 });
 const HOST = `https://${'a'.repeat(52)}.apps.calimero.network`;
@@ -348,31 +370,24 @@ describe('App', () => {
       expect(client.setMemberMetadata).not.toHaveBeenCalled();
     });
 
-    it('asks for your name in the create dialog and writes it to the new workspace', async () => {
+    it('names you in the workspace the dialog made, and opens it', async () => {
       const client = fakeClient({ signedIn: true });
       unnamed(client);
       client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
-      localStorage.setItem('calimero-names:last', 'Alice L');
       storeSession();
       window.history.replaceState(null, '', '/issue-tracker');
       render(<App deps={deps(client)} />);
 
       fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
-      // Prefilled with the name used for the last workspace, and required.
-      const self = screen.getByTestId('ns-create-self-name') as HTMLInputElement;
-      expect(self.value).toBe('Alice L');
-      fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
-      fireEvent.change(self, { target: { value: '' } });
-      expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
-      fireEvent.change(self, { target: { value: 'Alice' } });
       client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }] }));
-      fireEvent.click(screen.getByTestId('ns-create-submit'));
+      fireEvent.click(await screen.findByTestId('create-done', {}, SLOW));
 
       await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith('org-new', 'acct-alice', { name: 'Alice' }), SLOW);
       await waitFor(() => expect(readActiveNs()).toBe('org-new'), SLOW);
       await new Promise((r) => setTimeout(r, 200));
       expect(screen.queryByTestId('alias-gate')).toBeNull();
-      expect(localStorage.getItem('calimero-names:last')).toBe('Alice');
+      expect(screen.queryByTestId('create-dialog')).toBeNull();
+      expect(client.createOrg).not.toHaveBeenCalled();
     });
 
     it('asks once right after joining a workspace that has no name for you', async () => {
@@ -466,30 +481,46 @@ describe('the release new repositories are created from', () => {
     return (latest: string) => answer({ latest });
   }
 
+  /** Signed in with no workspace, to the open create dialog (the shared one, stubbed). */
   async function startCreating(client: ReturnType<typeof fakeClient>, env: SessionDeps['env']) {
     client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [] }));
     storeSession(env);
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client, env)} />);
     fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
-    fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
-    fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Alice' } });
   }
 
-  it('shows the screens while the newest release is read, and holds the create back until it is', async () => {
+  /** The source the stubbed dialog was handed. */
+  const dialogSource = async () => JSON.parse((await screen.findByTestId('create-source', {}, SLOW)).textContent ?? 'null');
+
+  it('opens the shared dialog with the app wording, once the newest release is read', async () => {
     const client = fakeClient({ signedIn: true });
     const answer = slowRelease(client);
     await startCreating(client, UNVERSIONED_ENV);
-    await waitFor(() => expect(client.package).toHaveBeenCalledTimes(1), SLOW);
-    const submit = screen.getByTestId('ns-create-submit') as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-    const dialog = within(screen.getByRole('dialog'));
-    expect(dialog.getByTestId('release-checking').textContent).toBe('Checking the newest release…');
+    expect((await screen.findByTestId('create-pending', {}, SLOW)).textContent).toBe('pending');
     answer('2.0.0');
-    await waitFor(() => expect(submit.disabled).toBe(false), SLOW);
-    expect(dialog.queryByTestId('release-checking')).toBeNull();
-    fireEvent.click(submit);
-    expect(await screen.findByText('com.calimero.mero-issue-tracker v2.0.0', {}, SLOW)).toBeTruthy();
+    expect(await dialogSource()).toEqual({ package: 'com.calimero.mero-issue-tracker', version: '2.0.0' });
+    expect(screen.getByTestId('create-title').textContent).toBe('New workspace');
+    expect(client.createOrg).not.toHaveBeenCalled();
+  });
+
+  it('sets the member defaults for an unbound session, and says so when they are refused', async () => {
+    const client = fakeClient({ signedIn: true });
+    client.setCapabilities.mockRejectedValue(new Error('declined'));
+    await startCreating(client, UNVERSIONED_ENV);
+    fireEvent.click(await screen.findByTestId('create-done', {}, SLOW));
+    await waitFor(() => expect(client.setCapabilities).toHaveBeenCalledTimes(1), SLOW);
+    expect(await screen.findByText(/people you invite will not be able to add repositories/, {}, SLOW)).toBeTruthy();
+  });
+
+  it('skips the member defaults silently on a session bound to the app', async () => {
+    const client = fakeClient({ signedIn: true });
+    await startCreating(client, UNVERSIONED_ENV);
+    client.me.mockImplementation(async () => ({ accountId: 'acct-alice', orgs: [{ orgId: 'org-new', name: 'Platform', role: 'owner' }], app: 'com.calimero.mero-issue-tracker' }));
+    fireEvent.click(await screen.findByTestId('create-done', {}, SLOW));
+    await waitFor(() => expect(readActiveNs()).toBe('org-new'), SLOW);
+    expect(client.setCapabilities).not.toHaveBeenCalled();
+    expect(screen.queryByText(/people you invite will not be able/)).toBeNull();
   });
 
   it('creates a repository from the release that was read', async () => {
@@ -565,35 +596,12 @@ describe('the release new repositories are created from', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
     fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
     fireEvent.click(await screen.findByTestId('ns-create-btn', {}, SLOW));
-    fireEvent.change(screen.getByTestId('ns-create-name'), { target: { value: 'Platform' } });
-    fireEvent.change(screen.getByTestId('ns-create-self-name'), { target: { value: 'Bob' } });
-    expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(true);
+    expect((await screen.findByTestId('create-pending', {}, SLOW)).textContent).toBe('pending');
     answer('3.0.0');
-    await waitFor(() => expect((screen.getByTestId('ns-create-submit') as HTMLButtonElement).disabled).toBe(false), SLOW);
-    fireEvent.click(screen.getByTestId('ns-create-submit'));
-    expect(await screen.findByText('com.calimero.mero-issue-tracker v3.0.0', {}, SLOW)).toBeTruthy();
+    expect(await dialogSource()).toEqual({ package: 'com.calimero.mero-issue-tracker', version: '3.0.0' });
   });
 
-  it('creates straight from the form when the newest release cannot be read', async () => {
-    const client = fakeClient({ signedIn: true });
-    client.package.mockRejectedValue(new Error('offline'));
-    await startCreating(client, UNVERSIONED_ENV);
-    const submit = screen.getByTestId('ns-create-submit');
-    await waitFor(() => expect(submit.textContent).toBe('Create workspace'), SLOW);
-    fireEvent.click(submit);
-    await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
-    expect(screen.queryByText('Review before creating')).toBeNull();
-  });
 
-  it('creates straight from the form for a raw dev bundle, and never asks for a release', async () => {
-    const client = fakeClient({ signedIn: true });
-    await startCreating(client, DEV_ENV);
-    const submit = screen.getByTestId('ns-create-submit');
-    expect(submit.textContent).toBe('Create workspace');
-    fireEvent.click(submit);
-    await waitFor(() => expect(client.createOrg).toHaveBeenCalledTimes(1), SLOW);
-    expect(client.package).not.toHaveBeenCalled();
-  });
 });
 
 describe('the node shield', () => {

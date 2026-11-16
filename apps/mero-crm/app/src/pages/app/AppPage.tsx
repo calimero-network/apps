@@ -8,17 +8,19 @@ import React, {
 import { Outlet } from "react-router-dom";
 import styled from "styled-components";
 import { useToast } from "@calimero-network/mero-ui";
-import { useNodeShieldApp } from "@calimero-apps/passkey";
+import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { lastUsedName } from "@calimero-apps/names";
+import { reviewRelease, useNodeShieldApp } from "@calimero-apps/passkey";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useCrm } from "../../hooks/useCrm";
 import { useSignedIn } from "../../sessionContext";
+import { APP_PACKAGE } from "../../config";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
 import NewDealModal, { type NewDealInput } from "../../components/NewDealModal";
 import InviteModal from "../../components/InviteModal";
-import NamespaceCreateDialog from "../../components/NamespaceCreateDialog";
 import AddPipelineDialog from "../../components/AddPipelineDialog";
 import NsEmptyState from "../../components/NsEmptyState";
 import AliasGate from "../../components/AliasGate";
@@ -33,8 +35,17 @@ import { optU64, u64 } from '../../crm';
  * with no name in the workspace (one made before names were asked on creating
  * or joining it) -> blocking alias gate, once per workspace.
  */
+const CREATE_LABELS = {
+  title: "New workspace",
+  subtitle: "Name your team workspace. You will add pipelines to it next.",
+  nameLabel: "Workspace name",
+  namePlaceholder: "e.g. Platform team",
+  selfLabel: "Your name in this workspace",
+  selfPlaceholder: "e.g. ronit",
+};
+
 export default function AppPage(): React.ReactElement | null {
-  const { client, source, after } = useSignedIn();
+  const { client, source, sourcePending, passkey, after } = useSignedIn();
   const ws = useWorkspace();
   useNodeShieldApp(ws.activePipeline, source);
   const toast = useToast();
@@ -230,14 +241,21 @@ export default function AppPage(): React.ReactElement | null {
   // and the workspace both drive the same dialogs.
   const dialogs = (
     <>
-      {showCreateNs && (
-        <NamespaceCreateDialog
-          release={ws.createRelease}
-          releasePending={ws.sourcePending}
-          onCreate={ws.createNamespace}
-          onClose={() => setShowCreateNs(false)}
-        />
-      )}
+      <CreateWorkspaceDialog
+        client={client}
+        passkey={passkey()}
+        release={sourcePending ? null : (reviewRelease(source) ?? { package: APP_PACKAGE })}
+        defaultSelfName={lastUsedName()}
+        open={showCreateNs}
+        onClose={() => setShowCreateNs(false)}
+        onCreated={async (created) => {
+          setShowCreateNs(false);
+          const notice = await ws.workspaceCreated(created);
+          if (notice) toast.show({ variant: "warning", description: notice });
+        }}
+        labels={CREATE_LABELS}
+      />
+
       {showAddPipeline && (
         <AddPipelineDialog
           onAdd={ws.addPipeline}

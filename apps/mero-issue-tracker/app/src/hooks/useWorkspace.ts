@@ -14,14 +14,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, otherOrgs, type OtherOrg } from '@calimero-apps/connect';
 import { setOrgName } from '@calimero-apps/names';
-import { reviewRelease, useInstanceRelease, type ReviewRelease } from '@calimero-apps/passkey';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { useSignedIn } from '../sessionContext';
 import { MeroIssueTrackerClient } from '../generated/client';
 import { toRepoInfo } from '../tracker';
 import {
   addRepo as addRepoTo,
-  createWorkspace,
+  finishWorkspace,
   inviteLink,
   inviteToken,
   leaveWorkspace,
@@ -44,13 +44,6 @@ import {
 
 export type { RepoEntry, Workspace };
 
-export interface CreateWorkspaceResult {
-  /** The new workspace, or null when creation failed (`createNamespaceError` says why). */
-  namespaceId: string | null;
-  /** Set when the workspace exists but its member defaults could not be set. */
-  warning: string | null;
-}
-
 export interface UseWorkspaceReturn {
   /** The account's other orgs, where this app may be added ("Connect to an existing organization"). */
   loadOtherOrgs: () => Promise<OtherOrg[]>;
@@ -65,13 +58,10 @@ export interface UseWorkspaceReturn {
   namespaces: Workspace[];
   activeNs: string | null;
   selectNamespace: (id: string) => void;
-  /** Creates a workspace and sets `selfName` as your name in it (asked in the same dialog). */
-  createNamespace: (name: string, selfName?: string) => Promise<CreateWorkspaceResult>;
-  /** The release a new workspace's repositories are created from, to review before creating; `null` for a raw bundle. */
-  createRelease: ReviewRelease | null;
+  /** Finishes a workspace the node approved (its team, your name in it) and opens it. Answers a notice to show, or `null`. */
+  workspaceCreated: (created: { orgId: string; selfName: string }) => Promise<string | null>;
   /** The newest release is still being read: creates (workspace, repository, connect) wait for it. */
   sourcePending: boolean;
-  createNamespaceError: Error | null;
   /**
    * Mints an invitation (a passkey step-up) naming this app's team, and
    * answers the link to share; `appOnly` when it gives this app only (an org
@@ -124,7 +114,6 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [namespacesPending, setNamespacesPending] = useState(true);
   const [namespacesFailed, setNamespacesFailed] = useState(false);
   const [activeNs, setActiveNs] = useState<string | null>(null);
-  const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
 
   const loadNamespaces = useCallback(async (): Promise<Workspace[] | null> => {
     try {
@@ -166,26 +155,16 @@ export function useWorkspace(): UseWorkspaceReturn {
     return () => window.removeEventListener(JOINED_EVENT, onJoined);
   }, [loadNamespaces, selectNamespace]);
 
-  const createRelease = useMemo(() => reviewRelease(source), [source]);
-
-  const createNamespace = useCallback(
-    async (name: string, selfName?: string): Promise<CreateWorkspaceResult> => {
-      setCreateNamespaceError(null);
-      try {
-        const { namespaceId, warning } = await createWorkspace(client, name, passkey, source);
-        // Your name in the new workspace, before it opens so the name gate never
-        // shows. Best effort: if it fails the workspace exists anyway, and the
-        // gate asks for the name on entering it.
-        if (selfName?.trim()) await setOrgName(client, namespaceId, accountId, selfName).catch(() => {});
-        await loadNamespaces();
-        selectNamespace(namespaceId);
-        return { namespaceId, warning };
-      } catch (e) {
-        setCreateNamespaceError(asError(e));
-        return { namespaceId: null, warning: null };
-      } finally {
-        after();
-      }
+  const workspaceCreated = useCallback(
+    async ({ orgId, selfName }: { orgId: string; selfName: string }): Promise<string | null> => {
+      const { warning } = await finishWorkspace(client, orgId, passkey, source);
+      // Your name in the new workspace, before it opens so the name gate never
+      // shows. Best effort: the gate asks for it on entering if this fails.
+      if (selfName.trim()) await setOrgName(client, orgId, accountId, selfName).catch(() => {});
+      await loadNamespaces();
+      selectNamespace(orgId);
+      after();
+      return warning;
     },
     [client, source, accountId, passkey, loadNamespaces, selectNamespace, after],
   );
@@ -419,10 +398,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     namespaces,
     activeNs,
     selectNamespace,
-    createNamespace,
-    createRelease,
+    workspaceCreated,
     sourcePending,
-    createNamespaceError,
     invite,
     leaveWorkspace: leave,
     repos,

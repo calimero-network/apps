@@ -10,12 +10,13 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppSource } from '@calimero-apps/connect';
 import { orgCluster } from '@calimero-apps/connect/testing';
 
 import { useMemberRoles } from './hooks/useMemberRoles';
 import {
   addRepo,
-  createWorkspace,
+  finishWorkspace,
   inviteToken,
   leaveWorkspace,
   leaveWorkspaceOrg,
@@ -26,6 +27,12 @@ const PKG = 'com.calimero.mero-issue-tracker';
 const SOURCE = { package: PKG };
 const passkey = () => ({}) as PasskeyProvider;
 const noop = () => {};
+
+/** An org as the node's consent page makes it, then what the app does after. */
+async function createWorkspace(client: ReturnType<typeof orgCluster>['client'], name: string, passkey: () => PasskeyProvider, source?: AppSource) {
+  const { orgId } = await client.orgs.create({ name });
+  return finishWorkspace(client, orgId, passkey, source);
+}
 
 async function workspace(people: Record<string, string> = {}) {
   const cluster = orgCluster();

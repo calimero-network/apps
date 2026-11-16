@@ -21,9 +21,17 @@ function docs(cluster = orgCluster()) {
   return { cluster, admin: new OrgAdmin(cluster.client, cluster.state.me, () => passkey, SOURCE) };
 }
 
+/** An org as the node's consent page makes it, then what Docs does after. */
+async function createNamespace({ cluster, admin }: ReturnType<typeof docs>) {
+  const { orgId } = await cluster.client.orgs.create({ name: 'Acme' });
+  await admin.finishNamespace(orgId);
+  return orgId;
+}
+
 async function workspace(people: Record<string, string> = {}) {
-  const { cluster, admin } = docs();
-  const { namespaceId: org } = await admin.createNamespace({ name: 'Acme' });
+  const made = docs();
+  const { cluster, admin } = made;
+  const org = await createNamespace(made);
   Object.assign(cluster.org(org).members, people);
   return { cluster, admin, org };
 }
@@ -49,7 +57,7 @@ describe('a new workspace gets Docs\' own app team', () => {
   it('a declined team leaves a legacy workspace, whose registry uses organization access', async () => {
     const { cluster, admin } = docs();
     cluster.state.declined.add('scopeApps');
-    const { namespaceId: org } = await admin.createNamespace({ name: 'Acme' });
+    const org = await createNamespace({ cluster, admin });
     expect(cluster.modeOf(org)).toBe('legacy');
     const { contextId } = await admin.createContext({ groupId: org, name: 'Registry' });
     expect(cluster.state.apps.get(contextId)!.access).toEqual({ kind: 'org' });
