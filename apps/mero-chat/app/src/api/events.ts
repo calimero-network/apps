@@ -78,6 +78,8 @@ export async function streamApp(
   app: string,
   onEvent: (e: AppEvent) => void,
   signal: AbortSignal,
+  /** The app's log index this stream has seen up to (its start, then each event's). */
+  onIndex?: (index: number) => void,
 ): Promise<void> {
   let from: number | null = null;
   let connected = false;
@@ -86,6 +88,7 @@ export async function streamApp(
       if (from === null) {
         const head = await client.apps.view({ app, method: "getMessageCount", args: {} });
         from = head.index + 1;
+        onIndex?.(head.index);
       }
       const stream = client.events(app, from, signal);
       if (connected) connectEvents.emit(app);
@@ -93,7 +96,10 @@ export async function streamApp(
       setOnline(true);
       for await (const event of stream) {
         const at = indexOf(event.id);
-        if (at !== null) from = at + 1;
+        if (at !== null) {
+          from = at + 1;
+          onIndex?.(at);
+        }
         onEvent({ app, kind: event.kind, data: v1Payload(event.kind, event.data) });
       }
     } catch {
@@ -135,7 +141,6 @@ export function useAppEvents(apps: string[], onEvent: (e: AppEvent) => void): vo
       }
     }
     for (const app of wanted) {
-      heads.current.delete(app);
       if (live.has(app)) continue;
       let client: CalimeroClient;
       try {
@@ -145,7 +150,9 @@ export function useAppEvents(apps: string[], onEvent: (e: AppEvent) => void): vo
       }
       const ctrl = new AbortController();
       live.set(app, ctrl);
-      void streamApp(client, app, (e) => onEventRef.current(e), ctrl.signal);
+      // Where the stream got to is where the check carries on should the app
+      // leave the streamed ones: nothing that lands in between is missed.
+      void streamApp(client, app, (e) => onEventRef.current(e), ctrl.signal, (index) => heads.current.set(app, index));
     }
   }, [apps, isAuthenticated]);
 

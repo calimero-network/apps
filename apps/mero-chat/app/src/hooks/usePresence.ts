@@ -65,22 +65,44 @@ export function usePresence(
 
 /**
  * Who is online in the workspace: one presence channel for all of it, on the
- * app every member is in (#general), instead of one per DM. This client
- * announces itself there once and keeps the entry fresh; everyone else
- * present is in `online` (accounts).
+ * app every member is in (#general), instead of one per DM. This client keeps
+ * one entry there; everyone else present is in `online` (accounts).
+ *
+ * The composer of #general types through this same entry ({@link
+ * useWorkspacePresence}): a second publisher there would be the same account
+ * and device, each overwriting the other's entry.
  */
-const WorkspaceOnline = createContext<ReadonlySet<string>>(new Set());
+export interface WorkspacePresence {
+  app: string | null;
+  online: ReadonlySet<string>;
+  /** Every other account's slice (`{}`, or a typing slice from #general's composer). */
+  peers: Map<string, Record<string, unknown>>;
+  /** Adds `slice` to this client's entry; `null` drops back to plain presence. */
+  setSlice: (slice: Record<string, unknown> | null) => void;
+}
+
+const NONE: WorkspacePresence = { app: null, online: new Set(), peers: new Map(), setSlice: () => {} };
+const WorkspacePresenceContext = createContext<WorkspacePresence>(NONE);
 
 export function WorkspacePresenceProvider({ app, children }: { app: string | undefined; children: ReactNode }) {
-  const { peers, setPresence } = useEphemeral<Record<string, never>>(app ?? null);
+  const { peers, setPresence } = useEphemeral<Record<string, unknown>>(app ?? null);
   useEffect(() => {
     if (app) setPresence({});
   }, [app, setPresence]);
-  const online = useMemo(() => new Set(peers.keys()), [peers]);
-  return createElement(WorkspaceOnline.Provider, { value: online }, children);
+  const setSlice = useCallback((slice: Record<string, unknown> | null) => setPresence(slice ?? {}), [setPresence]);
+  const value = useMemo<WorkspacePresence>(
+    () => (app ? { app, online: new Set(peers.keys()), peers, setSlice } : NONE),
+    [app, peers, setSlice],
+  );
+  return createElement(WorkspacePresenceContext.Provider, { value }, children);
+}
+
+/** The workspace's presence channel (see {@link WorkspacePresenceProvider}). */
+export function useWorkspacePresence(): WorkspacePresence {
+  return useContext(WorkspacePresenceContext);
 }
 
 /** The accounts online in the workspace (not you). */
 export function useWorkspaceOnline(): ReadonlySet<string> {
-  return useContext(WorkspaceOnline);
+  return useContext(WorkspacePresenceContext).online;
 }

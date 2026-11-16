@@ -26,6 +26,32 @@ vi.mock("../api/presence", async (importOriginal) => ({
   }),
 }));
 
+const workspace = {
+  app: null as string | null,
+  online: new Set<string>(),
+  peers: new Map<string, Record<string, unknown>>(),
+  setSlice: vi.fn(),
+};
+vi.mock("./usePresence", () => ({ useWorkspacePresence: () => workspace }));
+
+describe("useEphemeralPresence — in the workspace's presence app (#general)", () => {
+  afterEach(() => {
+    workspace.app = null;
+    workspace.setSlice.mockClear();
+    publishes.length = 0;
+  });
+
+  it("types through the workspace entry, never a second one", () => {
+    workspace.app = "general";
+    const { result } = renderHook(() => useEphemeralPresence("general"));
+    act(() => result.current.noteTyping());
+    expect(workspace.setSlice).toHaveBeenLastCalledWith(expect.objectContaining({ typing: true }));
+    act(() => result.current.clearTyping());
+    expect(workspace.setSlice).toHaveBeenLastCalledWith(null);
+    expect(publishes.filter((p) => p.ctx === "general")).toEqual([]);
+  });
+});
+
 describe("formatTyping", () => {
   it("renders nothing when nobody is typing", () => {
     expect(formatTyping([])).toBe("");

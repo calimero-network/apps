@@ -114,8 +114,10 @@ function fail<T>(code: number, message: string): Result<T> {
 }
 
 function catchError<T>(context: string, error: unknown): Result<T> {
-  console.error(`${context} failed:`, error);
   const status = (error as { status?: unknown })?.status;
+  // Not found is an answer (an org not joined yet, a channel just deleted), not a fault.
+  if (status === 404) console.debug(`${context}: not found`, error);
+  else console.error(`${context} failed:`, error);
   return fail(typeof status === "number" ? status : 500, describeError(error));
 }
 

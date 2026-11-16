@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEphemeral } from "../api/presence";
+import { useWorkspacePresence } from "./usePresence";
 
 import { getMessengerDisplayName } from "../utils/messengerName";
 import { nameRepository } from "../repositories/names/useNames";
@@ -59,7 +60,18 @@ export interface UseEphemeralPresenceResult {
 }
 
 export function useEphemeralPresence(contextId: string | null): UseEphemeralPresenceResult {
-  const { peers, setPresence, clearPresence, error } = useEphemeral<PresenceSlice>(contextId);
+  // #general is the workspace's presence channel: its typing goes through that
+  // entry, not a second one (same account and device, they would overwrite).
+  const workspace = useWorkspacePresence();
+  const shared = contextId !== null && contextId === workspace.app;
+  const own = useEphemeral<PresenceSlice>(shared ? null : contextId);
+  const setShared = workspace.setSlice;
+  const sharedSet = useCallback((slice: PresenceSlice) => setShared({ ...slice }), [setShared]);
+  const sharedClear = useCallback(() => setShared(null), [setShared]);
+  const peers = shared ? (workspace.peers as unknown as Map<string, PresenceSlice>) : own.peers;
+  const setPresence = shared ? sharedSet : own.setPresence;
+  const clearPresence = shared ? sharedClear : own.clearPresence;
+  const error = shared ? null : own.error;
   // Recompute the labels when names load.
   const [namesVersion, setNamesVersion] = useState(0);
   useEffect(() => nameRepository.subscribe(() => setNamesVersion((n) => n + 1)), []);
