@@ -63,10 +63,10 @@ import {
   type SignedOut,
 } from "../net/session";
 import {
-  alreadyInInvitedWorld,
   createWorld,
   forgetWorld,
   invitedWorld,
+  inviter,
   invites as gameInvites,
   lastWorld,
   listWorlds,
@@ -645,19 +645,13 @@ export class Landing {
         if (world) return enter(world, { joined: true });
         noteEl.textContent = "Invitation accepted — pick the world below.";
       }
-      // An invitation: asked, never redeemed on its own. Already in its world:
-      // enter it, and leave the link unspent for whoever it was for.
-      if (this.invites.pending()) {
-        const mine = await alreadyInInvitedWorld(phase.client, source, this.invites);
-        phase.sessions.sync(phase.client);
-        if (mine) return enter(mine);
-        const pending = this.invites.pending();
-        if (pending) {
-          const answer = await this.askToJoin(phase, pending);
-          if (answer.world) return enter(answer.world, { joined: true });
-          noteEl.textContent = answer.note;
-          listEl.innerHTML = `<div class="mbl-note">Loading worlds…</div>`;
-        }
+      // An invitation: asked, never redeemed on its own (the dialog skips a member).
+      const pending = this.invites.pending();
+      if (pending) {
+        const answer = await this.askToJoin(phase, pending);
+        if (answer.world) return enter(answer.world, { joined: true });
+        noteEl.textContent = answer.note;
+        listEl.innerHTML = `<div class="mbl-note">Loading worlds…</div>`;
       }
       let worlds: AppInfo[];
       try {
@@ -680,8 +674,13 @@ export class Landing {
       );
       // Invites are for the world last played (an org of its own).
       if (current?.org) {
-        const invite = mountInviteWorld(phase.client, this.deps.passkey(), current.org, current.appId, () =>
-          phase.sessions.sync(phase.client),
+        const invite = mountInviteWorld(
+          phase.client,
+          this.deps.passkey(),
+          current.org,
+          current.appId,
+          () => phase.sessions.sync(phase.client),
+          knownName() || undefined,
         );
         this.inviteDialogs.push(invite);
         inviteBtn.hidden = false;
@@ -699,6 +698,9 @@ export class Landing {
     return new Promise((resolve) => {
       const dialog = mountAcceptInvite(phase.client, this.deps.passkey(), {
         token: pending.token,
+        org: pending.org ?? undefined,
+        from: inviter(pending),
+        onError: () => this.invites.drop(),
         onJoined: ({ org }) => {
           this.invites.drop();
           void (async () => {

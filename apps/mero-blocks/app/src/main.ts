@@ -204,8 +204,13 @@ async function boot(): Promise<void> {
 
   // ---- overlays (Esc/O = game menu, M = map — trackpad-friendly) --------
   const inviteDialog = choice.world.org
-    ? mountInviteWorld(session.client, defaultDeps.passkey(), choice.world.org, worldId, () =>
-        session.sessions.sync(session.client),
+    ? mountInviteWorld(
+        session.client,
+        defaultDeps.passkey(),
+        choice.world.org,
+        worldId,
+        () => session.sessions.sync(session.client),
+        choice.name,
       )
     : null;
   const options = new PauseMenu(app, {

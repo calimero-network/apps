@@ -8,6 +8,7 @@ import { worldLinkBase } from "../net/worlds";
 const APP_NAME = "Mero Blocks";
 
 const LABELS = {
+  noun: "world",
   title: "Invite to this world",
   subtitle: "Choose what the players you invite can do in this world.",
   next: "Create invite link",
@@ -49,6 +50,7 @@ export function mountInviteWorld(
   org: string,
   world: string,
   after: () => void,
+  inviterName?: string,
 ): MountedDialog {
   return mountDialog(
     (open, close) => (
@@ -61,7 +63,8 @@ export function mountInviteWorld(
         appName={APP_NAME}
         labels={LABELS}
         onInvited={after}
-        linkBase={worldLinkBase(org, world)}
+        inviterName={inviterName}
+        linkBase={worldLinkBase(org, world, inviterName)}
       />
     ),
     false,
@@ -72,7 +75,9 @@ export function mountInviteWorld(
 export function mountAcceptInvite(
   client: CalimeroClient,
   passkey: PasskeyProvider,
-  { token, onJoined, onClose }: Pick<AcceptInviteDialogProps, "token" | "onJoined" | "onClose">,
+  { token, org, from, onJoined, onClose, onError }: Pick<AcceptInviteDialogProps, "token" | "org" | "onJoined" | "onClose" | "onError"> & {
+    from: string | null;
+  },
 ): MountedDialog {
   return mountDialog(
     (open, close) => (
@@ -81,7 +86,14 @@ export function mountAcceptInvite(
         passkey={passkey}
         open={open}
         token={token}
+        org={org}
         appName={APP_NAME}
+        labels={{
+          noun: "world",
+          title: from ? `Join ${from}'s game` : "Join the game",
+          body: "Joining makes you a member of its world's organization: you can enter its worlds and build there.",
+        }}
+        onError={onError}
         onJoined={onJoined}
         onClose={() => {
           close();
