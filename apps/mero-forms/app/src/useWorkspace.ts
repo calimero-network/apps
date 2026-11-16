@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NotFound } from "@calimero-network/mero-js";
 import { formsClient, type MeroFormsClient } from "./formsApi";
 import { useSignedIn } from "./sessionContext";
+import { visibleInterval } from "./lib/visibleInterval";
 
 /**
  * Re-read on a timer too, not only on events. An event is a nudge, and a
@@ -10,56 +12,84 @@ import { useSignedIn } from "./sessionContext";
 const POLL_MS = 30_000;
 
 /**
+ * After a write of yours, how long the event stream has to deliver it before
+ * the workspace is re-read anyway.
+ */
+export const SETTLE_MS = 1_500;
+
+/**
  * The forms client bound to this workspace (an app instance), plus a
  * `version` that bumps whenever the workspace may have changed: a local write,
  * a teammate's edit, or a new response from a form key or a public link.
  * Views re-read when it moves.
  *
+ * The stream starts at the log's head: what is already committed is what the
+ * views read, not replayed. A write of yours comes back on it like anyone
+ * else's, so it is not re-read twice. The safety-net poll skips ticks while
+ * the tab is hidden. `onLost` runs once the node no longer admits this
+ * account to the workspace (removed from it, or it was deleted).
+ *
  * There is no optimistic update anywhere. A change is shown once the contract
  * has taken it, which is the only point at which it is true.
  */
-export function useWorkspace(appId: string) {
+export function useWorkspace(appId: string, onLost?: () => void) {
   const { client: calimero, after } = useSignedIn();
   const client = useMemo(() => formsClient(calimero, appId, after), [calimero, appId, after]);
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
+  const lost = useRef(onLost);
+  lost.current = onLost;
 
-  useEffect(() => {
-    const timer = window.setInterval(bump, POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [bump]);
+  useEffect(() => visibleInterval(bump, POLL_MS), [bump]);
 
   // The app's committed events, coalesced: one change can arrive as several.
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streaming = useRef(false);
   useEffect(() => {
     const abort = new AbortController();
     void (async () => {
       try {
-        for await (const _event of calimero.events(appId, undefined, abort.signal)) {
+        const from = (await client.raw.myAccount()).index + 1;
+        streaming.current = true;
+        for await (const _event of client.events(from, abort.signal)) {
+          if (settle.current) clearTimeout(settle.current);
+          settle.current = null;
           if (pending.current) clearTimeout(pending.current);
           pending.current = setTimeout(() => {
             pending.current = null;
             bump();
           }, 250);
         }
-      } catch {
-        // The stream dropped or was refused: the timer above still re-reads.
+      } catch (e) {
+        // Not admitted any more: close it. Anything else (a dropped stream): the timer above still re-reads.
+        if (!abort.signal.aborted && e instanceof NotFound) lost.current?.();
+      } finally {
+        streaming.current = false;
       }
     })();
     return () => {
       abort.abort();
       if (pending.current) clearTimeout(pending.current);
+      if (settle.current) clearTimeout(settle.current);
     };
-  }, [calimero, appId, bump]);
+  }, [client, bump]);
 
-  /** Run one contract call, then re-read everything. */
+  /** Run one contract call; its event re-reads, or a re-read follows if none comes. */
   const act = useCallback(
     async <T,>(fn: (c: MeroFormsClient) => Promise<T>): Promise<T> => {
       try {
         return await fn(client);
       } finally {
-        bump();
+        if (!streaming.current) bump();
+        else {
+          if (settle.current) clearTimeout(settle.current);
+          settle.current = setTimeout(() => {
+            settle.current = null;
+            bump();
+          }, SETTLE_MS);
+        }
       }
     },
     [client, bump],

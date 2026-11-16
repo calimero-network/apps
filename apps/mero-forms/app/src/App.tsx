@@ -114,13 +114,25 @@ function SignedInApp({
   onLogout: () => void;
 }) {
   const { active, open, leaving } = useActiveWorkspace();
+  // Said on the picker once the open workspace no longer admits this account.
+  const [lostNotice, setLostNotice] = useState(false);
   // Moving to the frontend of the release the open workspace runs.
   if (leaving) return null;
 
   if (!active) {
     return (
       <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />}>
-        <WorkspacePicker onOpen={open} />
+        {lostNotice && (
+          <div className="card" role="status">
+            <p className="empty">You no longer have access to that workspace.</p>
+          </div>
+        )}
+        <WorkspacePicker
+          onOpen={(w) => {
+            setLostNotice(false);
+            open(w);
+          }}
+        />
         <div className="card">
           <h2>Join with an invitation</h2>
           <p className="empty">
@@ -141,6 +153,11 @@ function SignedInApp({
         setTheme={setTheme}
         onSwitchWorkspace={() => {
           window.location.hash = "";
+          open(null);
+        }}
+        onLost={() => {
+          window.location.hash = "";
+          setLostNotice(true);
           open(null);
         }}
         onLogout={onLogout}
@@ -183,6 +200,7 @@ function WorkspaceView({
   theme,
   setTheme,
   onSwitchWorkspace,
+  onLost,
   onLogout,
 }: {
   appId: string;
@@ -191,9 +209,11 @@ function WorkspaceView({
   theme: Theme;
   setTheme: (t: Theme) => void;
   onSwitchWorkspace: () => void;
+  /** The workspace no longer admits this account: closed, back to the picker. */
+  onLost: () => void;
   onLogout: () => void;
 }) {
-  const workspace = useWorkspace(appId);
+  const workspace = useWorkspace(appId, onLost);
   const [route, go] = useRoute();
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const onTeam = useRead(workspace.client, workspace.version, (c) => c.amITeam(), []);
