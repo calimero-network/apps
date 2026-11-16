@@ -3,6 +3,7 @@ import type { CalimeroClient } from "@calimero-network/mero-js";
 import { MeroKombatClient } from "./generated/client";
 import { indexed, messageOf, now, type ArenaView, type MatchSummary } from "./kombat";
 import { presencePublisher, subscribePresence } from "./presence";
+import { visibleInterval } from "./utils/visibleInterval";
 import type { ArenaState, Slice } from "./game/controller";
 import type { MoveKind } from "./game/sim";
 import type { FighterId } from "./game/fighters";
@@ -58,20 +59,25 @@ export function useKombatClient(conn: ArenaConn): KombatClient {
 
 /**
  * Calls `onEvent` for each event the arena emits, from now on, until the
- * returned stop. Every event is a nudge to read `arena` again.
+ * returned stop. Every event is a nudge to read `arena` again. `onOpen` says
+ * whether the stream is open.
  */
 function subscribeEvents(
   client: ArenaConn["client"],
   appId: string,
   from: number,
   onEvent: () => void,
+  onOpen: (open: boolean) => void = () => {},
 ): () => void {
   const abort = new AbortController();
   void (async () => {
+    onOpen(true);
     try {
       for await (const _event of client.events(appId, from, abort.signal)) onEvent();
     } catch {
       // Stream closed (sign-out, arena left, network): the poll still runs.
+    } finally {
+      onOpen(false);
     }
   })();
   return () => abort.abort();
@@ -256,31 +262,42 @@ export function useArena(conn: ArenaConn) {
     }
   }, [client]);
 
+  // The safety-net poll skips ticks while the tab is hidden and runs once on return.
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
+    return visibleInterval(() => void refresh(), POLL_MS);
   }, [refresh]);
 
   // Live events from just after the first read: from index 0 the stream would
   // replay every blow the arena has ever seen.
   const loaded = view !== null;
+  const streaming = useRef(false);
   useEffect(() => {
     if (!loaded) return;
-    return subscribeEvents(raw, appId, client.index() + 1, () => void refresh());
+    return subscribeEvents(
+      raw,
+      appId,
+      client.index() + 1,
+      () => void refresh(),
+      (open) => (streaming.current = open),
+    );
   }, [raw, appId, client, refresh, loaded]);
 
   const run = useCallback(
     async (fn: (c: MeroKombatClient) => Promise<unknown>) => {
       setBusy(true);
       setError(null);
+      let refused = false;
       try {
         await fn(client.kombat);
       } catch (e) {
+        refused = true;
         setError(messageOf(e));
       } finally {
         setBusy(false);
-        await refresh();
+        // A call that went through emits an event, which the open stream
+        // turns into the read; a refused one, or no stream, reads here.
+        if (refused || !streaming.current) await refresh();
       }
     },
     [client, refresh],
