@@ -64,6 +64,12 @@ export function getJsonRpcClient() {
   };
 }
 
+const CONTEXT_INFO_TTL_MS = 60_000;
+const contextInfoCache = new Map<
+  string,
+  { at: number; value: ApiResponse<import("../../types/Common").ContextInfo> }
+>();
+
 export class ClientApiDataSource implements ClientApi {
   async createChannel(
     props: CreateChannelProps,
@@ -1404,6 +1410,22 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async getContextInfo(
+    contextId: string,
+    executorPublicKey: string,
+  ): ApiResponse<import("../../types/Common").ContextInfo> {
+    // A conversation's type and creation never change, and the channel and DM
+    // lists re-read every one of them on each poll: one read a minute is enough.
+    const hit = contextInfoCache.get(contextId);
+    if (hit && Date.now() - hit.at < CONTEXT_INFO_TTL_MS) return hit.value;
+    const value = this.readContextInfo(contextId, executorPublicKey);
+    contextInfoCache.set(contextId, { at: Date.now(), value });
+    void value.then((r) => {
+      if (r.error) contextInfoCache.delete(contextId);
+    });
+    return value;
+  }
+
+  private async readContextInfo(
     contextId: string,
     executorPublicKey: string,
   ): ApiResponse<import("../../types/Common").ContextInfo> {

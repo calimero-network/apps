@@ -120,11 +120,17 @@ export async function run<T>(fn: (c: CalimeroClient) => Promise<T>): Promise<T> 
 // ── small caches (a channel list reads every channel's record) ───────────────
 
 const TTL_MS = 5_000;
+/**
+ * An app instance's record (its org and access) changes only when someone
+ * writes it: kept as long as the polls that re-read it are apart. A write from
+ * this page forgets it at once (`invalidate`).
+ */
+const APP_TTL_MS = 30_000;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
 
-function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+function cached<T>(key: string, load: () => Promise<T>, ttl = TTL_MS): Promise<T> {
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.value as Promise<T>;
+  if (hit && Date.now() - hit.at < ttl) return hit.value as Promise<T>;
   const value = load();
   cache.set(key, { at: Date.now(), value });
   value.catch(() => cache.delete(key));
@@ -173,7 +179,7 @@ export function getAppRecord(app: string): Promise<AppRecord> {
       access: asAccess(raw.access),
       metadata,
     };
-  });
+  }, APP_TTL_MS);
 }
 
 export function getOrgRecord(org: string): Promise<OrgRecord> {
@@ -295,10 +301,15 @@ async function openAccess(org: string): Promise<Access> {
   return access;
 }
 
+/** `/me`, shared by the reads that follow each other on load (cached briefly, like the org records). */
+function meRecord(): Promise<Record<string, unknown>> {
+  return cached("me:self", () => run((c) => c.auth.me()) as Promise<Record<string, unknown>>);
+}
+
 /** The orgs this account is in (`/me`). */
 export async function myOrgs(): Promise<Array<{ orgId: string; name: string; role: string }>> {
-  const me = (await run((c) => c.auth.me())) as { orgs?: Array<{ orgId: string; name: string; role: string }> };
-  return me.orgs ?? [];
+  const record = (await meRecord()) as { orgs?: Array<{ orgId: string; name: string; role: string }> };
+  return record.orgs ?? [];
 }
 
 /**
@@ -670,7 +681,7 @@ export function resetBoundSession(): void {
 }
 
 function boundSession(): Promise<boolean> {
-  bound ??= run((c) => c.auth.me())
+  bound ??= meRecord()
     .then((me) => {
       const app = (me as { app?: unknown }).app;
       return typeof app === "string" && app.length > 0;

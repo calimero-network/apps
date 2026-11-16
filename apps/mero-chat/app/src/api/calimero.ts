@@ -14,6 +14,7 @@
  * | `getContextId()`: the context on screen | the same name: the **app instance** on screen |
  * | `getContextIdentity()`: this node's identity in that context | the signed-in **account**: one id everywhere |
  */
+import { countCalls } from "../utils/callCounter";
 import { useSyncExternalStore } from "react";
 import {
   browserPasskey,
@@ -232,6 +233,7 @@ export function startCalimero(): Promise<void> {
     try {
       target = await connectTarget(import.meta.env, { app: APP, package: APP_PACKAGE });
       client = await createClient(target);
+      if (import.meta.env.DEV) countCalls(client);
       sessions = new SessionStore(APP, target);
       loadSignUpPolicy(client);
       set({ knownAccount: knownAccountHere(target) });
