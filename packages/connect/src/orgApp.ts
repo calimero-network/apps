@@ -31,7 +31,7 @@
  */
 import { passkeyConfirm, type CalimeroClient, type OrgMode, type PasskeyProvider } from "@calimero-network/mero-js";
 
-import { appTeamMembers, appTeams, createAppTeam, inviteToApp } from "./appTeams";
+import { appTeamMembers, appTeamOf, appTeams, createAppTeam, inviteToApp } from "./appTeams";
 import { goToConsent, isFrontendBound, type ConsentClient, type ConsentOptions, type MaybeMe } from "./consent";
 import { joinedOrg, type OrgAccessView, type OrgTeamView } from "./invite";
 import { markOrgFor } from "./orgs";
@@ -218,7 +218,9 @@ export async function isAppBound(client: object): Promise<boolean> {
 /**
  * What follows an org's creation, for an org made elsewhere (the node's consent
  * page): the mark, the member defaults and the app's team, as {@link createAppOrg}.
- * A package-bound session skips the member defaults: core cannot take them in the consent.
+ * A package-bound session skips the member defaults (core cannot take them in
+ * the consent) and reads the app's team, which the consent page made, rather
+ * than making it.
  */
 export async function finishAppOrg(
   client: ClientRoutes<{ orgs: "get" | "metadata" | "capabilities" | "appTeamsScope" }>,
@@ -228,8 +230,9 @@ export async function finishAppOrg(
   options: CreateAppOrgOptions = {},
 ): Promise<CreatedAppOrg> {
   if (source && options.mark !== false) await markOrgFor(client, orgId, source);
+  const bound = await isAppBound(client);
   let capabilitiesError: unknown = null;
-  if (options.capabilities !== undefined && !(await isAppBound(client))) {
+  if (options.capabilities !== undefined && !bound) {
     try {
       await client.orgs.capabilities(
         { org: orgId, capabilities: options.capabilities },
@@ -241,7 +244,12 @@ export async function finishAppOrg(
   }
   let teamId: string | null = null;
   try {
-    teamId = await adoptAppTeam(client, orgId, source, passkey);
+    const pkg = sourcePackage(source);
+    teamId = bound
+      ? pkg
+        ? ((await appTeamOf(client as unknown as ClientRoutes<{ orgs: "appTeamList" }>, orgId, pkg))?.team?.teamId ?? null)
+        : null
+      : await adoptAppTeam(client, orgId, source, passkey);
   } catch (e) {
     console.warn("createAppOrg: the app's team was not made; the org is a legacy one", e);
   }

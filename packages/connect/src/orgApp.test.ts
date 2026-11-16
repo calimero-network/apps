@@ -186,10 +186,14 @@ describe("creating a workspace", () => {
   });
 
   it("finishing an org made elsewhere: a package-bound session skips the member defaults without an error", async () => {
-    const c = Object.assign(cluster(legacy()), { auth: { me: vi.fn(async () => ({ app: PKG })) } });
+    const c = Object.assign(cluster({ ...standalone(), teams: { "team-chat": appTeam(PKG, "everyone") } }), {
+      auth: { me: vi.fn(async () => ({ app: PKG })) },
+    });
     const made = await finishAppOrg(c, "org", SOURCE, () => passkey, { capabilities: 7 });
     expect(c.orgs.capabilities).not.toHaveBeenCalled();
-    expect(made).toEqual({ orgId: "org", teamId: "team-new", capabilitiesError: null });
+    // The consent page made the app's team: read, not made again.
+    expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
+    expect(made).toEqual({ orgId: "org", teamId: "team-chat", capabilitiesError: null });
     expect(c.orgs.metadata).toHaveBeenCalledWith({ org: "org", metadata: { createdFor: PKG } });
   });
 
