@@ -21,6 +21,8 @@ import type { NameLink } from "./links";
 import { fillReplyCall } from "./lens/lens";
 import type { ActionMode, AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 import type { BlobStore } from "./attachments";
+import { isNotFound } from "@calimero-apps/connect";
+import { visibleInterval } from "./visibleInterval";
 
 export interface Feed {
   page: FeedPage | null;
@@ -150,9 +152,13 @@ export const TOAST_MS = 5_000;
 
 /**
  * Re-read when nothing arrived, for a change made while the event stream was
- * reconnecting: a missed event is never replayed.
+ * reconnecting: a missed event is never replayed. Only while the tab is shown,
+ * and only when no read ran for that long.
  */
-const POLL_MS = 15_000;
+export const POLL_MS = 15_000;
+
+/** Reads in a row that must find the feed gone before it is closed. */
+export const GONE_CONFIRMATIONS = 2;
 
 /**
  * One feed, kept current.
@@ -162,7 +168,7 @@ const POLL_MS = 15_000;
  * how the caller says "something changed" — an event on the feed's context, or
  * the demo's own change listener.
  */
-export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
+export function useFeed(backend: FeedBackend | null, nudge: number, onGone?: () => void): Feed {
   const [page, setPage] = useState<FeedPage | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [lenses, setLenses] = useState<LensView[]>([]);
@@ -183,6 +189,14 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   // The error the last read set, so a good read clears only its own: an
   // action's refusal stays up after the re-read that follows it.
   const readError = useRef<string | null>(null);
+  // When the last read finished, so the safety-net poll stays quiet while events keep the feed current.
+  const lastRead = useRef(0);
+  // Reads in a row that found the feed gone (deleted, or your access to it taken away).
+  const goneReads = useRef(0);
+  const gone = useRef(onGone);
+  useEffect(() => {
+    gone.current = onGone;
+  }, [onGone]);
 
   const refresh = useCallback(async () => {
     if (!backend) return;
@@ -220,12 +234,20 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
         const stale = readError.current;
         readError.current = null;
         setError((now) => (now === stale ? null : now));
+        goneReads.current = 0;
       } while (again.current);
     } catch (e) {
+      // The feed is gone: close it once, instead of failing every read from now on.
+      if (isNotFound(e) && ++goneReads.current >= GONE_CONFIRMATIONS && gone.current) {
+        gone.current();
+        return;
+      }
+      if (!isNotFound(e)) goneReads.current = 0;
       readError.current = messageOf(e);
       setError(readError.current);
     } finally {
       reading.current = false;
+      lastRead.current = Date.now();
     }
   }, [backend, filter, appKey]);
 
@@ -233,10 +255,13 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     void refresh();
   }, [refresh, nudge]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  useEffect(
+    () =>
+      visibleInterval(() => {
+        if (Date.now() - lastRead.current >= POLL_MS) void refresh();
+      }, POLL_MS),
+    [refresh],
+  );
 
   const run = useCallback(
     async (fn: (b: FeedBackend) => Promise<unknown>) => {
