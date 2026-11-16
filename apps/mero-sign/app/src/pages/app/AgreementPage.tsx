@@ -34,6 +34,7 @@ import {
   type Document as DocumentRow,
 } from '../../api/clientApi';
 import { useActiveWorkspace } from '../../lib/activeWorkspace';
+import { useAgreementEvents } from '../../lib/agreementEvents';
 import { toBlobIdHex } from '../../lib/blobIds';
 import {
   integrityWarning,
@@ -324,6 +325,17 @@ export default function AgreementPage() {
       cancelled = true;
     };
   }, [app, contextId, loadDetails, loadDocuments]);
+
+  // A peer's upload, signature, delete or join shows without a reload.
+  useAgreementEvents(
+    app,
+    contextId || null,
+    () => {
+      void loadDetails();
+      void loadDocuments();
+    },
+    () => setError('You no longer have access to this agreement.'),
+  );
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {
