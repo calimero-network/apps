@@ -87,7 +87,7 @@ describe("Chat's consent page", () => {
     );
     h.confirmConsentHandoff.mockResolvedValue(false);
     await expect(askOnConsentPage(intent, consentRequest(intent))).resolves.toBe(false);
-    expect(h.confirmConsentHandoff).toHaveBeenCalledWith({ code: "ABC-DEF", action: "Create the workspace “Acme”" });
+    expect(h.confirmConsentHandoff).toHaveBeenCalledWith({ code: "ABC-DEF", action: "Create an invitation to this workspace" });
     expect(sessionStorage.getItem(CONSENT_INTENT_KEY)).toBeNull();
   });
 
@@ -148,11 +148,13 @@ describe("askOrgConsent", () => {
 
   it("bound: sends the person to the consent page with the change's kind, keeping the intent", async () => {
     h.me.mockResolvedValue({ accountId: "acct-me", app: "chat" });
-    h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
-      opts.confirm({ code: "ABC-DEF" });
-      return { requestId: "r1" };
-    });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    h.openConsentPage.mockImplementation(
+      async (_req, opts: { confirm: (s: { code: string }) => Promise<boolean> }) => {
+        await opts.confirm({ code: "ABC-DEF" });
+        return { requestId: "r1" };
+      },
+    );
+    h.confirmConsentHandoff.mockResolvedValue(true);
     const { askOrgConsent, consentIntent: kept } = await load();
     void askOrgConsent({ kind: "leaveOrg", org: "o" });
     await vi.waitFor(() => expect(h.openConsentPage).toHaveBeenCalled());
@@ -162,11 +164,13 @@ describe("askOrgConsent", () => {
 
   it("bound, and the person stays: nothing was changed, and says so", async () => {
     h.me.mockResolvedValue({ accountId: "acct-me", app: "chat" });
-    h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
-      opts.confirm({ code: "ABC-DEF" });
-      return { requestId: "r1" };
-    });
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    h.openConsentPage.mockImplementation(
+      async (_req, opts: { confirm: (s: { code: string }) => Promise<boolean> }) => {
+        await opts.confirm({ code: "ABC-DEF" });
+        return { requestId: "r1" };
+      },
+    );
+    h.confirmConsentHandoff.mockResolvedValue(false);
     const { askOrgConsent, StayedOnChat } = await load();
     await expect(askOrgConsent({ kind: "renameOrg", org: "o", name: "Acme" })).rejects.toBeInstanceOf(StayedOnChat);
     expect(consentIntent()).toBeNull();

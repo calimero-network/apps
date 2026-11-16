@@ -506,7 +506,6 @@ describe("channels and DMs are teams below Chat's", () => {
       createSubgroup: async () => ({ data: { groupId: sg }, error: null }),
       setSubgroupVisibility: (...a) => api.setSubgroupVisibility(...a),
       createGroupContext: (...a) => new ContextApiDataSource().createGroupContext(...a),
-      joinChat: async () => ({ data: "ok", error: null }),
     });
     if ("error" in made) throw new Error(made.error);
     const team = accessOf(made.contextId).team!;

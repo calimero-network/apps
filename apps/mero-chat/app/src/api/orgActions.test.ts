@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   chatOnly: false,
   chatTeam: false,
   openConsentPage: vi.fn(),
+  confirmConsentHandoff: vi.fn(),
   platform: {
     chatOnlyIn: vi.fn(),
     hasChatTeam: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("./platform", () => ({
       openConsentPage: h.openConsentPage,
     }),
 }));
+vi.mock("@calimero-apps/passkey", () => ({ confirmConsentHandoff: h.confirmConsentHandoff }));
 vi.mock("../utils/servedByNode", () => ({ nodeBasename: () => "/" }));
 vi.mock("./calimero", () => ({ getAccountId: () => "acct-me" }));
 
@@ -45,11 +47,13 @@ beforeEach(() => {
   h.chatTeam = false;
   h.platform.chatOnlyIn.mockImplementation(async () => h.chatOnly);
   h.platform.hasChatTeam.mockImplementation(async () => h.chatTeam);
-  h.openConsentPage.mockImplementation(async (_req, opts: { confirm: (s: { code: string }) => boolean }) => {
-    opts.confirm({ code: "ABC-DEF" });
-    return { requestId: "r1" };
-  });
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+  h.openConsentPage.mockImplementation(
+    async (_req, opts: { confirm: (s: { code: string }) => Promise<boolean> }) => {
+      await opts.confirm({ code: "ABC-DEF" });
+      return { requestId: "r1" };
+    },
+  );
+  h.confirmConsentHandoff.mockResolvedValue(true);
 });
 
 /** Each action, the consent request it makes on Chat's frontend, and the route it calls otherwise. */

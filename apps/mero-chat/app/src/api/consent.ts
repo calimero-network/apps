@@ -197,12 +197,20 @@ export function consentRequest(
 /** What `intent` asks the node to approve, in the words the person used. */
 export function consentAction(intent: ConsentIntent): string {
   switch (intent.kind) {
-    case "createOrg":
-      return `Create the workspace “${intent.name}”`;
     case "createInvite":
       return "Create an invitation to this workspace";
     case "acceptInvite":
       return "Join the workspace you were invited to";
+    case "setMemberRole":
+      return intent.role === "admin" ? "Make them an admin of this organization" : "Change their role in this organization";
+    case "removeMember":
+      return "Remove them from this organization";
+    case "leaveOrg":
+      return "Leave this workspace's organization";
+    case "renameOrg":
+      return `Rename the workspace to “${intent.name}”`;
+    case "deleteOrg":
+      return "Delete this workspace and everything in it";
   }
 }
 

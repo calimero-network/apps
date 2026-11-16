@@ -178,12 +178,12 @@ describe("NamespaceEntryPopup", () => {
   it("stays mounted but invisible and hidden from assistive tech while the create dialog is open", async () => {
     h.listGroups.mockResolvedValue({ data: [], error: null });
     const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    const title = await screen.findByText("Welcome to MeroChat");
+    const title = await screen.findByText("Welcome to Hyperfeed Chat");
     const card = () => title.closest("[aria-hidden]") ?? title.parentElement!;
     expect(title.closest("[aria-hidden=true]")).toBeNull();
     h.createOpen = true;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(screen.getByText("Welcome to MeroChat")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to Hyperfeed Chat")).toBeInTheDocument();
     expect(card().getAttribute("aria-hidden")).toBe("true");
     h.createOpen = false;
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
