@@ -216,7 +216,15 @@ export function App({
       )}
 
       {session.status === "signed-in" && !asking && !opened && (
-        <StorePicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
+        <StorePicker
+          key={pickerKey}
+          client={session.client}
+          accountId={session.accountId}
+          source={source}
+          passkey={deps.passkey}
+          onOpen={open}
+          after={after}
+        />
       )}
 
       {session.status === "signed-in" && !asking && opened && kv && (
