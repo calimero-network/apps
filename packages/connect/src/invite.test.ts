@@ -12,6 +12,7 @@ import {
   createInviteStore,
   describeRedeemFailure,
   inviteLink,
+  inviteLinkBase,
   inviteRefusal,
   isSpentInvite,
   joinedOrg,
@@ -120,6 +121,17 @@ describe("inviteLink: at the root, never pinned to the inviter's frontend versio
   });
 });
 
+describe("inviteLinkBase", () => {
+  it("is the invite link without its token, and a dialog's fragment token is captured from it", () => {
+    const options = { origin: "https://x.example", root: "/1.2.0/", org: "o", route: "/deals/7" };
+    expect(inviteLinkBase(options)).toBe("https://x.example/1.2.0/?org=o&to=%2Fdeals%2F7");
+    expect(inviteLink("t", options)).toBe("https://x.example/1.2.0/?invite=t&org=o&to=%2Fdeals%2F7");
+    const store = createInviteStore("crm", { storage: memoryStorage() });
+    store.capture({ href: `${inviteLinkBase(options)}#invite=t` }, { basename: "/1.2.0/", history: history() });
+    expect(store.pending()).toMatchObject({ token: "t", org: "o", route: "/deals/7" });
+  });
+});
+
 describe("createInviteStore", () => {
   it("captures a root link once: stored, the address bar cleaned, subscribers told", () => {
     const storage = memoryStorage();
@@ -140,6 +152,17 @@ describe("createInviteStore", () => {
     expect(h.replaceState).toHaveBeenCalledWith(null, "", "https://abc.apps.calimero.network/1.2.0/?utm=x#h");
     // The same object while nothing changed (useSyncExternalStore).
     expect(store.pending()).toBe(store.pending());
+  });
+
+  it("captures a token from the fragment, the shared dialogs' link, keeping an unrelated fragment", () => {
+    const h = history();
+    const store = createInviteStore("crm", { storage: memoryStorage() });
+    expect(store.capture({ href: "https://a.example/?org=o&to=%2Fx#invite=tok&k=v" }, { history: h })).toMatchObject({
+      token: "tok",
+      org: "o",
+      route: "/x",
+    });
+    expect(h.replaceState).toHaveBeenCalledWith(null, "", "https://a.example/#k=v");
   });
 
   it("reads a version-pinned link's route from its path, relative to the basename", () => {

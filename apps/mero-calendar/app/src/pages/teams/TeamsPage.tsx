@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { appOnlyInviteNote, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
-import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, appOnlyInviteNote, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { lastUsedName } from "@calimero-apps/names";
 import { messageOf, PACKAGE } from "../../api/calendar";
@@ -10,8 +10,7 @@ import {
   CONNECTED_CALENDAR_NAME,
   createCalendar,
   finishTeam,
-  inviteLink,
-  inviteToken,
+  inviteLinkBase,
   leaveTeam as leaveOrgTeam,
   leaveTeamOrg,
   PRODUCT_NAME,
@@ -43,6 +42,12 @@ const CREATE_LABELS = {
   selfPlaceholder: "e.g. Ada",
 };
 
+const INVITE_LABELS = {
+  noun: "team",
+  title: "Invite to this team",
+  subtitle: "Choose what the people you invite can do in this team.",
+};
+
 /**
  * The teams this account is in: Calimero organizations (v1: namespaces of
  * this app). Orgs are the platform's teams, so one made in another Calimero
@@ -61,10 +66,10 @@ export default function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [inviteFor, setInviteFor] = useState<{ id: string; link: string; appOnly?: boolean } | null>(
-    null,
-  );
+  const [inviteFor, setInviteFor] = useState<{ org: string; teams: string[]; appOnly: boolean } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Mounted once a team exists, so a full-page approval finishes here on return.
+  const inviteOrg = inviteFor?.org ?? teams[0]?.groupId;
 
   const loadTeams = useCallback(async () => {
     try {
@@ -217,29 +222,13 @@ export default function TeamsPage() {
     navigate(`/teams/${teamId}`);
   }
 
-  async function generateInvite(teamId: string) {
+  async function inviteTo(org: string) {
     setMenuOpenId(null);
     try {
-      // An org invite, approved with this account's passkey. The link is all
-      // there is to share: opening it (and signing in) joins the team.
-      const { token, appOnly } = await inviteToken(client, teamId, passkey(), source);
-      // The link names the team, so someone already in it is not joined again.
-      setInviteFor({
-        id: teamId,
-        link: inviteLink(token, { href: new URL(appRoot(), window.location.origin).href }, teamId),
-        appOnly,
-      });
+      setInviteFor({ org, ...(await appInviteTeams(client, org, source)) });
     } catch (err) {
       showToast(`Failed to generate invitation: ${messageOf(err)}`);
-    } finally {
-      after();
     }
-  }
-
-  async function copyInvite() {
-    if (!inviteFor) return;
-    await navigator.clipboard.writeText(inviteFor.link);
-    showToast("Invitation link copied to clipboard.", "success");
   }
 
   if (resumeTo) {
@@ -284,6 +273,19 @@ export default function TeamsPage() {
           onCreated={teamCreated}
           labels={CREATE_LABELS}
         />
+        {inviteOrg && (
+          <InviteDialog
+            client={client}
+            passkey={passkey()}
+            open={inviteFor !== null}
+            onClose={() => setInviteFor(null)}
+            org={inviteOrg}
+            teams={inviteFor?.teams}
+            appName={PRODUCT_NAME}
+            labels={inviteFor?.appOnly ? { ...INVITE_LABELS, note: appOnlyInviteNote(PRODUCT_NAME) } : INVITE_LABELS}
+            linkBase={inviteFor ? inviteLinkBase(inviteFor.org, { href: new URL(appRoot(), window.location.origin).href }) : undefined}
+          />
+        )}
         <ConnectExistingOrg appName="Mero Calendar" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (
@@ -335,7 +337,7 @@ export default function TeamsPage() {
                     </button>
                     <button
                       className={styles.dropdownItem}
-                      onClick={() => generateInvite(t.groupId)}
+                      onClick={() => void inviteTo(t.groupId)}
                     >
                       Invite
                     </button>
@@ -360,43 +362,6 @@ export default function TeamsPage() {
                     )}
                   </div>
                 )}
-                {inviteFor?.id === t.groupId && (
-                  <div className={styles.inviteBox}>
-                    <code className={styles.inviteCode} title={inviteFor.link}>
-                      {inviteFor.link.slice(0, 40)}…{inviteFor.link.slice(-8)}
-                    </code>
-                    <span
-                      className={styles.inviteNote}
-                      data-testid="invite-single-use"
-                      title="One person can join with this link. Generate another for each person you invite."
-                    >
-                      Single use
-                    </span>
-                    {inviteFor.appOnly && (
-                      <span
-                        className={styles.inviteNote}
-                        data-testid="invite-app-only"
-                        title={appOnlyInviteNote(PRODUCT_NAME)}
-                      >
-                        {PRODUCT_NAME} only
-                      </span>
-                    )}
-                    <button
-                      className="mc-btn"
-                      onClick={copyInvite}
-                      data-testid="copy-invite"
-                    >
-                      Copy
-                    </button>
-                    <button
-                      className="mc-btn mc-btn--ghost"
-                      onClick={() => setInviteFor(null)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-
               </div>
             ))}
           </div>

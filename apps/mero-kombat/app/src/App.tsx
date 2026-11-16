@@ -15,7 +15,8 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, PasskeySignIn, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, InvitationSignIn, NodeShield, PasskeySignIn, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
@@ -157,6 +158,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the page away with it.
   const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
+  const inviteArena = invitedArena(invite);
 
   // Where an invite landed: the arena its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
@@ -164,7 +166,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org, arena: named } = landing;
+    const { org, arena: named, alreadyMember } = landing;
     void (async () => {
       setLobbyKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -178,7 +180,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
       open(null);
       // In the org, but with no arena there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("an arena") : "Invitation accepted: the arena is in your list.");
+      setNotice(may === false ? askAnOwnerCopy("an arena") : alreadyMember ? "You're already in this arena." : "Invitation accepted: the arena is in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -217,30 +219,28 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
-  if (invite) {
-    return (
-      <JoinInvitation
-        {...ONBOARDING}
-        key={invite.token}
-        client={session.client}
-        token={invite.token}
-        org={invite.org}
-        drop={invites.drop}
-        after={after}
-        onJoined={({ org }) => {
-          closeInvite();
-          setLanding({ org, arena: invitedArena(invite) });
-        }}
-        onClose={({ member }) => {
-          closeInvite();
-          if (member) setLanding({ org: member, arena: invitedArena(invite) });
-        }}
-      />
-    );
-  }
-
   return (
     <>
+      <AcceptInviteDialog
+        open={invite !== null}
+        client={session.client}
+        passkey={deps.passkey()}
+        token={invite?.token ?? ""}
+        org={invite?.org ?? undefined}
+        appName="Mero Kombat"
+        labels={{ noun: "arena" }}
+        onError={invites.drop}
+        onClose={() => {
+          invites.drop();
+          closeInvite();
+        }}
+        onJoined={({ org, alreadyMember }) => {
+          invites.drop();
+          closeInvite();
+          setLanding({ org, arena: inviteArena, alreadyMember });
+          after();
+        }}
+      />
       {notice && (
         <div className="card alert" role="status">
           <p className="empty">{notice}</p>

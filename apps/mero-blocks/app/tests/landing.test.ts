@@ -28,6 +28,51 @@ vi.mock("../src/ui/createWorld", async () => {
   };
 });
 
+// The shared invite dialogs are mero-react's to test: here only what the launcher hands them and does after.
+const dialogs = vi.hoisted(() => ({
+  invite: [] as { org: string; world: string; opened: boolean; inviterName?: string }[],
+  accept: [] as { org?: string; from: string | null }[],
+  joinOrg: "org-2",
+  joinMember: false,
+  beforeJoin: () => {},
+}));
+vi.mock("../src/ui/inviteDialogs", () => ({
+  mountInviteWorld: (_c: unknown, _p: unknown, org: string, world: string, _after: unknown, inviterName?: string) => {
+    const d = { org, world, inviterName, opened: false, open: () => void (d.opened = true), unmount: () => {} };
+    dialogs.invite.push(d);
+    return d;
+  },
+  mountAcceptInvite: (
+    _c: unknown,
+    _p: unknown,
+    props: {
+      token: string;
+      org?: string;
+      from: string | null;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
+      onClose: () => void;
+      onError: () => void;
+    },
+  ) => {
+    dialogs.accept.push({ org: props.org, from: props.from });
+    const el = document.createElement("div");
+    el.dataset.testid = "accept-dialog";
+    el.dataset.token = props.token;
+    for (const [id, run] of [
+      ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg, alreadyMember: dialogs.joinMember }))],
+      ["accept-close", () => props.onClose()],
+      ["accept-fail", () => props.onError()],
+    ] as const) {
+      const b = document.createElement("button");
+      b.dataset.testid = id;
+      b.onclick = run;
+      el.appendChild(b);
+    }
+    document.body.appendChild(el);
+    return { open: () => {}, unmount: () => el.remove() };
+  },
+}));
+
 import { connect, type Phase, type SessionDeps } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { PACKAGE } from "../src/net/blocks";
@@ -66,7 +111,6 @@ function fakeClient(worlds: AppInfo[]) {
     listApps: vi.fn(async () => worlds),
     createOrg: vi.fn(async () => "org-new"),
     createApp: vi.fn(async () => "app-new"),
-    invite: vi.fn(async () => "tok"),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
     getOrg: vi.fn(async (org: string) => ({ memberMetadata: members[org] ?? {} })),
     setMemberMetadata: vi.fn(async (org: string, account: string, meta: Record<string, unknown>) => {
@@ -108,8 +152,13 @@ function invited(token: string, more: Partial<PendingInvite> = {}) {
 }
 
 beforeEach(() => {
+  dialogs.invite.length = 0;
+  dialogs.accept.length = 0;
+  dialogs.joinOrg = "org-2";
+  dialogs.joinMember = false;
+  dialogs.beforeJoin = () => {};
   localStorage.clear();
-  invites = createInviteStore("mero-blocks", { storage: localStorage, keep: ["world", "from"] });
+  invites = createInviteStore("mero-blocks", { storage: localStorage, keep: ["world"] });
 });
 afterEach(() => {
   document.body.innerHTML = "";
@@ -289,6 +338,8 @@ describe("launcher", () => {
     expect(q("[data-testid=world-card-current] .mbl-card-title")?.textContent).toBe("beta");
     const invite = q("[data-testid=invite-btn]") as HTMLButtonElement;
     expect(invite.hidden).toBe(false);
+    click(invite);
+    expect(dialogs.invite.at(-1)).toMatchObject({ org: "org-b", world: "app-b", opened: true, inviterName: "Steve" });
     expect(client.signIn).toHaveBeenCalledTimes(1);
     void again.choice;
   });
@@ -336,7 +387,7 @@ describe("launcher", () => {
       for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
       expect(check()).toBe(true);
     };
-    const asked = () => q("[data-testid=invite-confirm]") !== null;
+    const asked = () => q("[data-testid=accept-dialog]") !== null;
     const listed = () => document.querySelectorAll(".mbl-card-title").length > 0;
 
     // Just joined: the world's org has no name for this player yet, asked once.
@@ -346,30 +397,30 @@ describe("launcher", () => {
       click(q("[data-testid=name-save-btn]"));
     };
 
-    it("asks which account joins whose game, and redeems nothing until Join", async () => {
-      invited("tok-1", { extra: { from: "Alex" } });
+    it("asks through the shared dialog, and redeems nothing until Join", async () => {
+      invited("tok-1");
       localStorage.setItem("calimero-names:last", "Alex");
       const { client, choice } = await launcher([world("app-1", "mine", "org-1"), world("app-2", "theirs", "org-2")]);
       expect(q("[data-testid=invite-note]")).not.toBeNull();
       click(q("[data-testid=sign-in-btn]"));
       await until(asked);
-      expect(q("[data-testid=invite-question]")?.textContent).toBe("Join Alex's game as acc-1?");
+      expect(q("[data-testid=accept-dialog]")?.getAttribute("data-token")).toBe("tok-1");
       await new Promise((r) => setTimeout(r, 30));
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(listed()).toBe(false);
 
-      click(q("[data-testid=invite-join]"));
+      click(q("[data-testid=accept-join]"));
       // Your name in the world's org, asked once, prefilled with the last one used.
       await until(() => q("[data-testid=name-modal]") !== null);
       expect((q("[data-testid=name-modal] input") as HTMLInputElement).value).toBe("Alex");
       await named("Sam");
       const entered = await choice;
-      expect(client.redeemInvite).toHaveBeenCalledWith("tok-1");
       expect(entered.name).toBe("Sam");
       expect(client.setMemberMetadata).toHaveBeenCalledWith("org-2", "acc-1", { name: "Sam" });
       // The world of the org it joined opens.
       expect(entered.world.appId).toBe("app-2");
       expect(invites.token()).toBeNull();
+      expect(asked()).toBe(false);
     });
 
     it("a session restored on load asks too, and enters the world the link names", async () => {
@@ -389,17 +440,32 @@ describe("launcher", () => {
         let joined = false;
         const all = c.listApps.getMockImplementation()!;
         c.listApps.mockImplementation(async () => (joined ? all() : []));
-        c.redeemInvite.mockImplementation(async () => {
-          joined = true;
-          return { org: "org-2" };
-        });
+        dialogs.beforeJoin = () => (joined = true);
       });
       await until(asked);
-      expect(q("[data-testid=invite-question]")?.textContent).toBe("Join the game as acc-1?");
       expect(client.redeemInvite).not.toHaveBeenCalled();
-      click(q("[data-testid=invite-join]"));
+      click(q("[data-testid=accept-join]"));
       await named("Sam");
       expect((await choice).world.appId).toBe("app-3");
+    });
+
+    it("hands the dialog the link's org and the inviter, so the dialog skips a member", async () => {
+      invited("tok-1", { org: "org-1", extra: { from: "Ada" } });
+      const { client } = await launcher([world("app-1", "mine", "org-1")]);
+      click(q("[data-testid=sign-in-btn]"));
+      await until(asked);
+      expect(dialogs.accept).toEqual([{ org: "org-1", from: "Ada" }]);
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+    });
+
+    it("a refused join forgets the token but keeps the dialog on screen", async () => {
+      invited("tok-1");
+      await launcher([world("app-1", "mine", "org-1")]);
+      click(q("[data-testid=sign-in-btn]"));
+      await until(asked);
+      click(q("[data-testid=accept-fail]"));
+      expect(invites.token()).toBeNull();
+      expect(asked()).toBe(true);
     });
 
     it("Not now joins nothing, forgets the invite and lists the player's worlds", async () => {
@@ -407,52 +473,35 @@ describe("launcher", () => {
       const { client } = await launcher([world("app-1", "mine", "org-1")]);
       click(q("[data-testid=sign-in-btn]"));
       await until(asked);
-      click(q("[data-testid=invite-not-now]"));
+      click(q("[data-testid=accept-close]"));
       await until(listed);
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
       expect(asked()).toBe(false);
     });
 
-    it.each([
-      [401, "UNAUTHORIZED", "session expired"],
-      [429, "RATE_LIMITED", "too many requests"],
-      [503, "UNAVAILABLE", "try later"],
-    ])("keeps the invite and the question when the redemption fails with %i", async (status, code, message) => {
+    it("a joined org holding no world says so and lists the player's worlds", async () => {
       invited("tok-1");
-      const { client } = await launcher([world("app-1", "mine", "org-1")], localStorage, undefined, (c) =>
-        c.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message)),
-      );
+      dialogs.joinOrg = "org-empty";
+      await launcher([world("app-1", "mine", "org-1")]);
       click(q("[data-testid=sign-in-btn]"));
       await until(asked);
-      click(q("[data-testid=invite-join]"));
-      await until(() => /invite is kept/i.test(q("[data-testid=invite-error]")?.textContent ?? ""));
-      expect(client.redeemInvite).toHaveBeenCalledTimes(1);
-      expect(invites.token()).toBe("tok-1");
-      expect(q("[data-testid=invite-join]")?.textContent).toBe("Try again");
-    });
-
-    it("a network failure keeps the invite too", async () => {
-      invited("tok-1");
-      await launcher([], localStorage, undefined, (c) => c.redeemInvite.mockRejectedValue(new TypeError("Failed to fetch")));
-      click(q("[data-testid=sign-in-btn]"));
-      await until(asked);
-      click(q("[data-testid=invite-join]"));
-      await until(() => /invite is kept/i.test(q("[data-testid=invite-error]")?.textContent ?? ""));
-      expect(invites.token()).toBe("tok-1");
-    });
-
-    it("drops an invite the node refuses for good, says so and lists the worlds", async () => {
-      invited("tok-1");
-      await launcher([world("app-1", "mine", "org-1")], localStorage, undefined, (c) =>
-        c.redeemInvite.mockRejectedValue(new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed")),
-      );
-      click(q("[data-testid=sign-in-btn]"));
-      await until(asked);
-      click(q("[data-testid=invite-join]"));
+      click(q("[data-testid=accept-join]"));
       await until(listed);
-      expect(q("[data-testid=account-note]")?.textContent).toContain("already used or has expired");
+      expect(q("[data-testid=account-note]")?.textContent).toContain("Invitation accepted");
       expect(invites.token()).toBeNull();
+    });
+
+    it("continuing as an existing member of an org holding no world claims no acceptance", async () => {
+      invited("tok-1");
+      dialogs.joinOrg = "org-empty";
+      dialogs.joinMember = true;
+      await launcher([world("app-1", "mine", "org-1")]);
+      click(q("[data-testid=sign-in-btn]"));
+      await until(asked);
+      click(q("[data-testid=accept-join]"));
+      await until(listed);
+      expect(q("[data-testid=account-note]")?.textContent).toBe("You're already in this world");
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {
@@ -486,19 +535,6 @@ describe("launcher", () => {
     expect(q("[data-testid=invite-note]")?.textContent).toBe(
       "You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.",
     );
-  });
-
-  it("enters a world the player is already in without spending the link", async () => {
-    invited("tok-1", { org: "org-1" });
-    const { client, choice } = await launcher([world("app-1", "mine", "org-1")], localStorage, undefined, (c) => {
-      c.members["org-1"] = { "acc-1": { name: "Alex" } };
-    });
-    click(q("[data-testid=sign-in-btn]"));
-    const entered = await choice;
-    expect(entered.world.appId).toBe("app-1");
-    expect(entered.name).toBe("Alex");
-    expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
   });
 
   it("shows the shared listing on a copy no cluster serves, not a developer error", async () => {

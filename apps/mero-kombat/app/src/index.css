@@ -413,22 +413,6 @@ body {
   white-space: nowrap;
 }
 
-/* ── join / invite ──────────────────────────────────────────────────────── */
-.link-row { display: flex; gap: 8px; align-items: center; margin: 4px 0 12px; }
-.invite-link {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-size: 0.76rem;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ── arena page ─────────────────────────────────────────────────────────── */
 .arena-head {
   display: flex;

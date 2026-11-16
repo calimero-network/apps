@@ -7,8 +7,8 @@
 //                  last played renders first, one click to enter) or create
 //                  one; invite friends into the world last played.
 // An invitation link waits in the shared invite store (net/worlds.ts). Once
-// signed in, the person is asked "Join {inviter}'s game as {account}?" (Join or
-// Not now), and Join enters the invited world; nothing is redeemed before that.
+// signed in, the shared accept dialog asks (Join or Not now), and Join enters
+// the invited world; nothing is redeemed before that.
 //
 // The player's name is the world org's (net/playerName.ts): asked in the
 // create-world dialog, or once right after an invite joins a world, and
@@ -18,9 +18,7 @@ import type { SignUpPolicy } from "@calimero-network/mero-js";
 import {
   describeError,
   describeInviteRefusal,
-  describeRedeemFailure,
   inviteRefusal,
-  isSpentInvite,
   readSignUpPolicy,
   signUpAccess,
   signUpNotice,
@@ -47,17 +45,13 @@ import { decideSelfName, rememberLastUsedName } from "@calimero-apps/names";
 
 import {
   CURRENT_WORLD,
-  alreadyInInvitedWorld,
   createWorld,
   invitedWorld,
   inviter,
   invites as gameInvites,
-  inviteToken,
   listWorlds,
   readCurrentWorld,
-  redeemPendingInvite,
   worldIn,
-  worldInviteLink,
   writeCurrentWorld,
   type World,
 } from "../net/worlds";
@@ -67,6 +61,7 @@ import { knownName, readOrgName, saveOrgName } from "../net/playerName";
 import { shortAccount, type Connection } from "../net/session";
 import { deleteWorld } from "../state/persistence";
 import { mountCreateWorld, type CreateWorldDialog } from "./createWorld";
+import { mountAcceptInvite, mountInviteWorld, type MountedDialog } from "./inviteDialogs";
 import { WorldAnim } from "./worldAnim";
 import { showLandingAgain } from "../pages/landing/mount";
 
@@ -218,10 +213,6 @@ const css = `
 .mtl-modal-close:hover { color: #fff; }
 .mtl-account { font-size: 12px; color: #8fe0a0; margin: -8px 0 4px; }
 .mtl-account code { color: #cdd9e5; }
-.mtl-ask { text-align: center; }
-.mtl-ask h3 { margin: 4px 0 6px; }
-.mtl-ask-actions { display: flex; gap: 8px; }
-.mtl-ask-actions .mtl-btn { flex: 1; }
 .mtl-warn { color: #ffd37a; font-size: 12px; margin-top: 10px; line-height: 1.5; }
 .mtl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
   flex-wrap: wrap; margin-top: 8px; }
@@ -290,6 +281,8 @@ export class Landing {
   private joinedAtSignUp: { org: string | null; world: string | null } | null = null;
   /** The create-world dialog, mounted while the world picker shows. */
   private createDialog: CreateWorldDialog | null = null;
+  /** The invite dialogs mounted with the world picker. */
+  private inviteDialogs: MountedDialog[] = [];
   /** Takes the "new version" prompt away (sign-out, entering a world). */
   private stopUpgrades: (() => void) | null = null;
 
@@ -321,7 +314,7 @@ export class Landing {
       this.render(defaults, (choice) => {
         this.anim?.stop();
         this.offerUpgrades(false);
-        this.createDialog?.unmount();
+        this.unmountDialogs();
         this.root.remove();
         resolve(choice);
       });
@@ -406,9 +399,15 @@ export class Landing {
     return this.root.querySelector("#mtl-play")!;
   }
 
-  private renderPlayCard(defaults: Defaults, done: (c: LaunchChoice) => void): void {
+  private unmountDialogs(): void {
     this.createDialog?.unmount();
     this.createDialog = null;
+    this.inviteDialogs.forEach((d) => d.unmount());
+    this.inviteDialogs = [];
+  }
+
+  private renderPlayCard(defaults: Defaults, done: (c: LaunchChoice) => void): void {
+    this.unmountDialogs();
     if (this.conn.accountId) this.renderWorldPicker(defaults, done);
     else this.renderSignIn(defaults, done);
   }
@@ -651,29 +650,16 @@ export class Landing {
 
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
     if (inviteBtn && current?.org) {
-      const org = current.org;
-      inviteBtn.addEventListener("click", async () => {
-        errEl.textContent = "";
-        inviteBtn.disabled = true;
-        inviteBtn.textContent = "Creating invite…";
-        try {
-          const token = await inviteToken(this.conn.client, org, this.conn.approver());
-          const name = knownName() || defaults.name;
-          const from = !name || name === "Player" ? shortAccount(this.conn.accountId ?? "") : name;
-          const link = worldInviteLink(token, org, { world: current.appId, from });
-          await navigator.clipboard.writeText(link);
-          inviteBtn.textContent = "Single-use invite link copied!";
-        } catch (e) {
-          errEl.textContent = `Could not create invite: ${describeError(e)}`;
-          inviteBtn.textContent = "Invite friends";
-        } finally {
-          this.conn.sync();
-          setTimeout(() => {
-            inviteBtn.textContent = `Invite friends to ${current.name || "this world"}`;
-            inviteBtn.disabled = false;
-          }, 2500);
-        }
-      });
+      const invite = mountInviteWorld(
+        this.conn.client,
+        this.conn.approver(),
+        current.org,
+        current.appId,
+        this.conn.sync,
+        knownName() || undefined,
+      );
+      this.inviteDialogs.push(invite);
+      inviteBtn.addEventListener("click", () => invite.open());
     }
 
     // `joined`: an invite just let the player in, so a world's org without
@@ -710,25 +696,18 @@ export class Landing {
         noticeEl.textContent = "Invitation accepted: the world is in your list.";
         noticeEl.hidden = false;
       }
-      // An invitation: asked, never redeemed on its own. A player already in
-      // the invited world (the inviter opening their own link) enters it, and
-      // the link stays unspent for the player it was meant for.
-      if (this.invites.pending()) {
-        const mine = await alreadyInInvitedWorld(this.conn.client, this.source, this.invites);
-        this.conn.sync();
-        if (mine) return enter(mine);
-        const pending = this.invites.pending();
-        if (pending) {
-          const answer = await this.askToJoin(listEl, pending);
-          if (answer.world) return enter(answer.world, { joined: true });
-          if (answer.note) {
-            noticeEl.textContent = answer.note;
-            noticeEl.hidden = false;
-          }
-          listEl.innerHTML = "";
-          if (current) listEl.appendChild(this.worldCard(current, true, -1, enter));
-          listEl.appendChild(loading);
+      // An invitation: asked, never redeemed on its own (the dialog skips a member).
+      const pending = this.invites.pending();
+      if (pending) {
+        const answer = await this.askToJoin(pending);
+        if (answer.world) return enter(answer.world, { joined: true });
+        if (answer.note) {
+          noticeEl.textContent = answer.note;
+          noticeEl.hidden = false;
         }
+        listEl.innerHTML = "";
+        if (current) listEl.appendChild(this.worldCard(current, true, -1, enter));
+        listEl.appendChild(loading);
       }
       try {
         const worlds = await listWorlds(this.conn.client, this.source);
@@ -748,56 +727,32 @@ export class Landing {
   }
 
   /**
-   * "Join {inviter}'s game as {account}?" in place of the world list, until
-   * the player answers. Join redeems the invite: joined, it answers the world
-   * to enter (or a note when the org holds none yet); refused for good, the
-   * token is dropped and the note says so. A lapsed session, a rate limit or
-   * the network keeps the token and the question, to try again. Not now
-   * drops the token and joins nothing.
+   * The shared accept dialog, until the player answers. Joined, it answers the
+   * world to enter (or a note when the org holds none yet); Not now drops the
+   * token and joins nothing. The dialog shows the node's own refusal.
    */
-  private askToJoin(listEl: HTMLElement, pending: PendingInvite): Promise<{ world: World | null; note: string }> {
-    const from = inviter(pending);
-    const joining = from ? `${from}'s game` : "the game";
-    listEl.innerHTML = `
-      <div class="mtl-ask" data-testid="invite-confirm">
-        <h3 data-testid="invite-question">Join ${escapeHtml(joining)} as ${escapeHtml(shortAccount(this.conn.accountId ?? ""))}?</h3>
-        <div class="mtl-note">Joining makes you a member of its world's organization: you can enter its worlds and build there.</div>
-        <div class="mtl-error" data-testid="invite-error" role="alert"></div>
-        <div class="mtl-ask-actions">
-          <button class="mtl-btn green" data-testid="invite-join">Join</button>
-          <button class="mtl-btn ghost" data-testid="invite-later">Not now</button>
-        </div>
-      </div>
-    `;
-    const joinBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-join]")!;
-    const laterBtn = listEl.querySelector<HTMLButtonElement>("[data-testid=invite-later]")!;
-    const errEl = listEl.querySelector<HTMLElement>("[data-testid=invite-error]")!;
-    joinBtn.focus();
+  private askToJoin(pending: PendingInvite): Promise<{ world: World | null; note: string }> {
     return new Promise((resolve) => {
-      laterBtn.addEventListener("click", () => {
-        this.invites.drop();
-        resolve({ world: null, note: "" });
-      });
-      joinBtn.addEventListener("click", async () => {
-        errEl.textContent = "";
-        joinBtn.disabled = true;
-        laterBtn.disabled = true;
-        joinBtn.textContent = "Joining…";
-        try {
-          const world = await redeemPendingInvite(this.conn.client, this.source, this.invites);
-          resolve({ world, note: world ? "" : "Invitation accepted: the world is in your list." });
-        } catch (e) {
-          if (isSpentInvite(e)) {
-            resolve({ world: null, note: describeRedeemFailure(e) });
-            return;
-          }
-          errEl.textContent = describeRedeemFailure(e);
-          joinBtn.textContent = "Try again";
-          joinBtn.disabled = false;
-          laterBtn.disabled = false;
-        } finally {
-          this.conn.sync();
-        }
+      const dialog = mountAcceptInvite(this.conn.client, this.conn.approver(), {
+        token: pending.token,
+        org: pending.org ?? undefined,
+        from: inviter(pending),
+        onError: () => this.invites.drop(),
+        onJoined: ({ org, alreadyMember }) => {
+          this.invites.drop();
+          void (async () => {
+            const worlds = await listWorlds(this.conn.client, this.source).catch(() => []);
+            this.conn.sync();
+            const world = worldIn(worlds, org, invitedWorld(pending));
+            dialog.unmount();
+            resolve({ world, note: world ? "" : alreadyMember ? "You're already in this world" : "Invitation accepted: the world is in your list." });
+          })();
+        },
+        onClose: () => {
+          this.invites.drop();
+          dialog.unmount();
+          resolve({ world: null, note: "" });
+        },
       });
     });
   }

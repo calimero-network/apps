@@ -107,8 +107,9 @@ gone, and v1's abi-codegen `KvStoreClient` is now core's. It now resolves its ta
 (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
 `vite build`), signs in with a **passkey**, lists and creates **stores** (app
 instances: v1's contexts), shares one through an **organization** (v1's
-namespace) with an **invite link** (making it is approved with your passkey;
-opening it after signing in redeems it and opens the shared store; the pending
+namespace) with an **invite link** (made in mero-react's shared invite dialog, approved on the node's
+consent page; opening it after signing in asks in the shared accept dialog and
+opens the shared store; the pending
 invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the contract through
 `KvStoreClient` (`src/generated/client.ts`), which `meroctl app codegen`
 writes from `logic/res/abi.json`.

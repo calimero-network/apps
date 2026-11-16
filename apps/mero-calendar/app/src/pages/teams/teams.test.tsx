@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ME = "acct-me";
+const PKG = "com.calimero.mero-calendar";
 const client = withRoutes({
   session: { accountId: ME },
   me: vi.fn(),
@@ -15,7 +16,7 @@ const client = withRoutes({
   setCapabilities: vi.fn(),
   deleteOrg: vi.fn(),
   removeMember: vi.fn(),
-  invite: vi.fn(),
+  listAppTeams: vi.fn(),
   listApps: vi.fn(),
   getOrg: vi.fn(),
   createApp: vi.fn(),
@@ -26,7 +27,7 @@ const client = withRoutes({
 const signedIn = {
   client,
   accountId: ME,
-  source: "bundle-hash",
+  source: "bundle-hash" as unknown,
   passkey: () => ({}),
   after: () => {},
   targetKey: "local:test",
@@ -63,6 +64,24 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      appName?: string;
+      labels?: { noun?: string; note?: string; title?: string };
+      linkBase?: string;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog" },
+            createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, teams: p.teams, appName: p.appName })),
+            createElement("pre", { "data-testid": "invite-base" }, p.linkBase),
+            createElement("pre", { "data-testid": "invite-labels" }, JSON.stringify({ noun: p.labels?.noun, note: p.labels?.note })),
+          )
+        : null,
   };
 });
 
@@ -71,7 +90,7 @@ import { ToastProvider } from "../../contexts/ToastContext";
 import TeamCalendarsPage from "./TeamCalendarsPage";
 import { MEMBER_DEFAULTS } from "../../api/teams";
 import { CalimeroError } from "@calimero-network/mero-js";
-import { askAnOwnerCopy } from "@calimero-apps/connect";
+import { appOnlyInviteNote, askAnOwnerCopy } from "@calimero-apps/connect";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 function renderAt(path: string) {
@@ -91,6 +110,7 @@ function renderAt(path: string) {
 beforeEach(() => {
   for (const fn of Object.values(client)) if (typeof fn === "function") fn.mockReset();
   client.listApps.mockResolvedValue([]);
+  signedIn.source = "bundle-hash";
   localStorage.clear();
 });
 
@@ -180,16 +200,61 @@ describe("TeamsPage", () => {
     expect(client.createOrg).not.toHaveBeenCalled();
   });
 
-  it("makes an invitation link carrying an org invite", async () => {
+  it("invites through the shared dialog with the team's wording, naming the team and the link's org", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
     client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", bundle: "bundle-hash" }]);
-    client.invite.mockResolvedValue("tok-123");
     renderAt("/teams");
     fireEvent.click(await screen.findByTestId("team-menu-org-a"));
     fireEvent.click(screen.getByText("Invite"));
-    await waitFor(() => expect(client.invite).toHaveBeenCalledWith("org-a", "member", expect.anything()));
-    const code = await screen.findByTitle(/invite=tok-123/);
-    expect(code).toBeTruthy();
+    expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to this team");
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-a", appName: "Mero Calendar", teams: [] });
+    expect(new URL(screen.getByTestId("invite-base").textContent ?? "").searchParams.get("org")).toBe("org-a");
+    expect(screen.queryByTestId("invite-dialog")).toBeTruthy();
+  });
+
+  it("names Mero Calendar's own team in an org that has app teams", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
+    client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", package: PKG }]);
+    client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: PKG, teamId: "team-cal" }] });
+    signedIn.source = { package: PKG };
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("team-menu-org-a"));
+    fireEvent.click(screen.getByText("Invite"));
+    expect(JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "").teams).toEqual(["team-cal"]);
+  });
+
+  it("words the invite as a team, with the app-only note in a shared org", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
+    client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", package: PKG }]);
+    client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: PKG, teamId: "team-cal" }] });
+    signedIn.source = { package: PKG };
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("team-menu-org-a"));
+    fireEvent.click(screen.getByText("Invite"));
+    const labels = JSON.parse((await screen.findByTestId("invite-labels")).textContent ?? "");
+    expect(labels).toEqual({ noun: "team", note: appOnlyInviteNote("Mero Calendar") });
+  });
+
+  it("adds no app-only note outside a shared org", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
+    client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", bundle: "bundle-hash" }]);
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("team-menu-org-a"));
+    fireEvent.click(screen.getByText("Invite"));
+    const labels = JSON.parse((await screen.findByTestId("invite-labels")).textContent ?? "");
+    expect(labels).toEqual({ noun: "team" });
+  });
+
+  it("opens no dialog, and says why, when the org has app teams but none for Mero Calendar", async () => {
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
+    client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", package: PKG }]);
+    client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: "com.calimero.other", teamId: "team-x" }] });
+    signedIn.source = { package: PKG };
+    renderAt("/teams");
+    fireEvent.click(await screen.findByTestId("team-menu-org-a"));
+    fireEvent.click(screen.getByText("Invite"));
+    expect(await screen.findByText(/Failed to generate invitation/)).toBeTruthy();
+    expect(screen.queryByTestId("invite-dialog")).toBeNull();
   });
 });
 

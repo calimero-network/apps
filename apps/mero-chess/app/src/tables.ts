@@ -1,8 +1,8 @@
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appTarget,
   createInviteStore,
-  inviteLink,
+  INVITE_PARAMS,
   listAppInfos,
   targetKey,
   type AppSource,
@@ -12,6 +12,7 @@ import {
   type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
+import type { AcceptInviteLabels } from "@calimero-network/mero-react";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP } from "./session";
@@ -51,17 +52,6 @@ export async function createTable(
   return { appId, org };
 }
 
-/** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /**
  * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
  * A version-pinned invite link's route is read relative to it.
@@ -92,17 +82,25 @@ export function inviter(invite: PendingInvite | null): string | null {
   return invite?.extra[FROM_PARAM] ?? null;
 }
 
+/** The accept dialog's wording: the table, and the inviter's game when the link names them. */
+export function acceptLabels(from: string | null): AcceptInviteLabels {
+  return from ? { noun: "table", title: `Join ${from}'s game` } : { noun: "table" };
+}
+
 /**
- * The link that opens this frontend with `token` to redeem and `table` to open
- * after. It also names `org` (redeeming spends the link's single use even for
- * someone already in the org, so the app tells a member first) and `from`, the
- * inviter's name, for the question the invitee is asked.
+ * The page an invite link opens: this frontend, naming `table` to open after
+ * joining, `org` (so the dialog can tell a member) and `from`, the inviter's
+ * name. The shared dialog adds the token.
  *
  * Pinned to the router's basename (the served `/{version}/`) until every
  * cluster keeps the query on its root redirect (core's served-redirect fix).
  */
-export function tableInviteLink(token: string, table: string, org: string, from?: string | null): string {
-  return inviteLink(token, { org, root: basename(), extra: { [TABLE_PARAM]: table, [FROM_PARAM]: from } });
+export function tableInviteBase(table: string, org: string, from?: string | null): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  url.searchParams.set(TABLE_PARAM, table);
+  if (from) url.searchParams.set(FROM_PARAM, from);
+  return url.toString();
 }
 
 /** The key this app kept its pending invite under before the shared store: `{ token, table }`. */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AppInfo } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import {
   appSource,
   askAnOwnerCopy,
@@ -9,8 +9,9 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { decideSelfName, lastUsedName, orgMemberName, setOrgName } from "@calimero-apps/names";
-import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
@@ -116,23 +117,22 @@ export function App({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
+  // is pending (`InvitationSignIn`), redeemed only on "Join" in the shared dialog.
   // The store drops it once joined, refused or declined, and on sign-out.
   const pending = usePendingInvite(invites);
   const invite = pending?.token ?? null;
   const [inviteLater, setInviteLater] = useState(false);
   // The invitation a signed-in account is asked about stays on screen until it
-  // closes: `JoinInvitation` drops the token before it says "already in" or
-  // "used up", and the store would take the page away with it.
+  // closes, though the store drops the token once it is joined or refused.
   const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
 
   // The org an invite joined (or the account was already in): its team opens
   // once there is a client to list it with. `org: null` when nothing said which.
-  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  const [landing, setLanding] = useState<{ org: string | null; alreadyMember?: boolean } | null>(null);
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org } = landing;
+    const { org, alreadyMember } = landing;
     void (async () => {
       setPickerKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -146,7 +146,7 @@ export function App({
       open(null);
       // In the org, but with no team there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("a team") : "Invitation accepted: the team is in your list.");
+      setNotice(may === false ? askAnOwnerCopy("a team") : alreadyMember ? "You're already in this team." : "Invitation accepted: the team is in your list.");
     })();
   }, [client, landing, source, key, storage, after, open]);
 
@@ -194,34 +194,34 @@ export function App({
     void api.signOut();
   };
 
-  if (asking) {
-    return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
-        <JoinInvitation
-          {...ONBOARDING}
-          client={session.client}
-          key={asking.token}
-          token={asking.token}
-          org={asking.org}
-          drop={invites.drop}
-          after={after}
-          onJoined={({ org }) => {
-            closeInvite();
-            setJoinedOrg(org);
-            setLanding({ org });
-          }}
-          onClose={({ member }) => {
-            closeInvite();
-            if (member) setLanding({ org: member });
-          }}
-        />
-      </Shell>
-    );
-  }
+  const accept = (
+    <AcceptInviteDialog
+      open={asking !== null}
+      client={session.client}
+      passkey={deps.passkey()}
+      token={asking?.token ?? ""}
+      org={asking?.org ?? undefined}
+      appName="Mero Standup"
+      labels={{ noun: "team" }}
+      onError={invites.drop}
+      onClose={() => {
+        invites.drop();
+        closeInvite();
+      }}
+      onJoined={({ org, alreadyMember }) => {
+        invites.drop();
+        closeInvite();
+        setJoinedOrg(org);
+        setLanding({ org, alreadyMember });
+        after();
+      }}
+    />
+  );
 
   if (!opened) {
     return (
       <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
+        {accept}
         {notice && (
           <div className="card">
             <p className="empty">{notice}</p>
@@ -261,21 +261,24 @@ export function App({
   }
 
   return (
-    // Keyed, so a team opened in place starts from nothing of the last one's.
-    <TeamView
-      key={opened.appId}
-      transport={session.client}
-      opened={opened}
-      after={after}
-      inviteClient={session.client}
-      orgClient={session.client}
-      accountId={session.accountId}
-      passkey={deps.passkey}
-      theme={theme}
-      setTheme={setTheme}
-      onSwitchTeam={() => open(null)}
-      onLogout={signOut}
-    />
+    <>
+      {accept}
+      {/* Keyed, so a team opened in place starts from nothing of the last one's. */}
+      <TeamView
+        key={opened.appId}
+        transport={session.client}
+        opened={opened}
+        after={after}
+        inviteClient={session.client}
+        orgClient={session.client}
+        accountId={session.accountId}
+        passkey={deps.passkey}
+        theme={theme}
+        setTheme={setTheme}
+        onSwitchTeam={() => open(null)}
+        onLogout={signOut}
+      />
+    </>
   );
 }
 
@@ -338,7 +341,7 @@ function TeamView({
   transport: TeamTransport;
   opened: Opened;
   after: () => void;
-  inviteClient: Parameters<typeof InviteCard>[0]["client"];
+  inviteClient: CalimeroClient;
   orgClient: OrgClient;
   accountId: string;
   passkey: SessionDeps["passkey"];

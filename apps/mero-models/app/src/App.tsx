@@ -63,7 +63,7 @@ export function App({
   );
   // Signed up with the invite: the account is in its studio already, which
   // the studio page opens once the session is signed in.
-  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  const [landing, setLanding] = useState<{ org: string | null; alreadyMember?: boolean } | null>(null);
   const api = useSession(sessionDeps, invites, (joined, pending) =>
     setLanding({ org: joined.org ?? pending?.org ?? null }),
   );

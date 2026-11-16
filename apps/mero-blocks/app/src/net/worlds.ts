@@ -3,18 +3,15 @@
 // org invites.
 //
 // Every world gets an organization of its own, so its creator can invite
-// friends: an invite is an org membership (`client.invite(org, "member",
-// passkey)`, a passkey step-up for the inviter), carried in a link to this
-// frontend and redeemed after the invitee signs in and says Join.
+// friends: an invite is an org membership, made and redeemed through the
+// shared dialogs (`ui/inviteDialogs.tsx`) and carried in a link to this frontend.
 
-import { passkeyConfirm, type AppInfo, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import {
   appSource,
   appTarget,
   createInviteStore,
-  inviteLink,
-  isSpentInvite,
-  joinedOrg,
+  INVITE_PARAMS,
   listAppInfos,
   targetKey,
   type AppSource,
@@ -62,25 +59,14 @@ export async function createWorld(
   return { appId, org, name };
 }
 
-/** An invitation into the world's org as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-): Promise<string> {
-  return client.orgs
-    .inviteCreate({ org, role: "member", teams: [] }, { confirm: passkeyConfirm(passkey) })
-    .then((r) => r.token);
-}
-
 /** The link parameter naming the world an invite opens. */
 const WORLD_PARAM = "world";
-/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
+/** The link parameter naming who sent the invite. */
 const FROM_PARAM = "from";
 
 /**
  * This game's pending invite (`createInviteStore` in `@calimero-apps/connect`),
- * with the world its link names (`&world=`) and who sent it (`&from=`).
+ * with the world its link names (`&world=`).
  * Captured in `main.ts` before anything renders; the launcher binds it to the
  * cluster, holds it for the account that signs in (another account's sign-in
  * drops it) and drops it on sign-out (`ui/landing.ts`).
@@ -101,21 +87,17 @@ export function inviter(invite: PendingInvite | null): string | null {
 export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
 
 /**
- * The link that opens this frontend with `token` to redeem.
- *
- * `org` names the world's org. The token itself does not say, and without it
- * the launcher cannot tell an invitation into a world the player is already
- * in: redeeming that spends the link's single use on nobody. `world` is the
- * world to enter after joining, `from` the inviter's name for the question the
- * invitee is asked. Pinned to the served `/{version}/` until every cluster
- * keeps the query on its root redirect.
+ * The page an invite link opens (`InviteDialog`'s `linkBase`): this frontend,
+ * naming `org` (so a member is told so, not charged the link's single use),
+ * the `world` to enter and the inviter's name. Pinned to the served `/{version}/`
+ * until every cluster keeps the query on its root redirect.
  */
-export function worldInviteLink(
-  token: string,
-  org: string,
-  { world, from, root = basename() }: { world?: string | null; from?: string | null; root?: string } = {},
-): string {
-  return inviteLink(token, { org, root, extra: { [WORLD_PARAM]: world, [FROM_PARAM]: from } });
+export function worldLinkBase(org: string, world: string, from?: string): string {
+  const url = new URL(basename(), window.location.origin);
+  url.searchParams.set(INVITE_PARAMS.org, org);
+  url.searchParams.set(WORLD_PARAM, world);
+  if (from) url.searchParams.set(FROM_PARAM, from);
+  return url.toString();
 }
 
 /** The keys this game kept its pending invite under before the shared store. */
@@ -156,59 +138,6 @@ export function worldIn(worlds: AppInfo[], org: string | null, named?: string | 
   const asked = named ? worlds.find((w) => w.appId === named) : undefined;
   if (asked) return asked;
   return org ? (worlds.find((w) => w.org === org) ?? null) : null;
-}
-
-/**
- * The world a pending invitation names, when this account already plays in
- * it: the token is then dropped UNSPENT. Redeeming it would spend the link's
- * single use on nobody, and leave the player it was meant for with "unknown
- * invite". `null` when the link names no org (or world) the account reaches.
- */
-export async function alreadyInInvitedWorld(
-  client: ClientRoutes<{ apps: "list" }>,
-  source: AppSource,
-  store: InviteStore = invites,
-): Promise<AppInfo | null> {
-  const invite = store.pending();
-  if (!invite || (!invite.org && !invitedWorld(invite))) return null;
-  const world = worldIn(await listWorlds(client, source).catch(() => []), invite.org, invitedWorld(invite));
-  if (world) store.drop();
-  return world;
-}
-
-/**
- * Redeem the pending invitation and answer the world it opens: the world the
- * link named, else the first in the org the invite joined. `null` when there
- * is no invite, or the org holds no world this frontend plays.
- *
- * The token is dropped once redeemed, or when the node refuses the invite for
- * good (`isSpentInvite`: unknown, used up, expired, its org gone). Anything
- * else (a lapsed session, a rate limit, the cluster or the network down)
- * keeps it for another try, and the error is thrown for the caller to say so
- * (`describeRedeemFailure`).
- */
-export async function redeemPendingInvite(
-  client: ClientRoutes<{ orgs: "inviteRedeem"; apps: "list" }>,
-  source: AppSource,
-  store: InviteStore = invites,
-): Promise<AppInfo | null> {
-  const invite = store.pending();
-  if (!invite) return null;
-  let answer: unknown;
-  try {
-    answer = await client.orgs.inviteRedeem({ token: invite.token });
-  } catch (e) {
-    if (isSpentInvite(e)) store.drop();
-    throw e;
-  }
-  store.drop();
-  const org = joinedOrg(answer) ?? invite.org;
-  return worldIn(await listWorlds(client, source).catch(() => []), org, invitedWorld(invite));
-}
-
-/** `head…tail` of an account id, as the invitation question names the account that joins. */
-export function shortAccount(id: string): string {
-  return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
 }
 
 /** Storage key of the world last played on this target by this account. */

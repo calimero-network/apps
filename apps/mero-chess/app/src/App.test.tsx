@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CalimeroError, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
+import { type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -48,6 +48,30 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
               { "data-testid": "create-done", onClick: () => void p.onCreated({ orgId: "org-1", name: "Friday blitz", selfName: "Ada" }) },
               "done",
             ),
+          )
+        : null,
+    InviteDialog: (p: Parameters<typeof actual.InviteDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog", "data-org": p.org, "data-base": p.linkBase, "data-noun": p.labels?.noun, "data-inviter": p.inviterName },
+            createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement(
+              "button",
+              { "data-testid": "invite-done", onClick: () => p.onInvited?.({ token: "tok-123", link: `${p.linkBase}#invite=tok-123` }) },
+              "done",
+            ),
+          )
+        : null,
+    AcceptInviteDialog: (p: Parameters<typeof actual.AcceptInviteDialog>[0]) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-title": p.labels?.title, "data-noun": p.labels?.noun },
+            createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-9", alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: "org-9", alreadyMember: true }) }, "member"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
   };
@@ -196,12 +220,16 @@ describe("App", () => {
     );
     await waitFor(() => expect(client.events).toHaveBeenCalledWith("app-new", 2, expect.anything()));
 
-    fireEvent.click(screen.getByText("Create invite link"));
-    const link = await screen.findByLabelText("invitation link");
-    // The link names the org (a member is told so instead of spending it) and
-    // the inviter (a seatless inviter by a short account id).
-    expect(link.textContent).toMatch(/invite=tok-123&org=org-1&table=app-new&from=Ada/);
-    expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
+    fireEvent.click(screen.getByText("Invite"));
+    expect(screen.getByTestId("invite-title").textContent).toBe("Invite to this table");
+    // The link names the org (a member is told so instead of spending it), the
+    // table to open and the inviter (a seatless inviter by a short account id).
+    const dialog = screen.getByTestId("invite-dialog");
+    expect(dialog.dataset.org).toBe("org-1");
+    expect(dialog.dataset).toMatchObject({ noun: "table", inviter: "Ada" });
+    expect(new URL(dialog.dataset.base ?? "").searchParams.toString()).toBe("org=org-1&table=app-new&from=Ada");
+    fireEvent.click(screen.getByTestId("invite-done"));
+    expect(client.invite).not.toHaveBeenCalled();
   });
 
   it("shows why the table could not be made once its organization exists", async () => {
@@ -289,31 +317,35 @@ describe("App", () => {
       new SessionStore(APP, LOCAL, storage).save(SESSION);
     }
 
-    it("asks which account joins whose game, and redeems nothing until Join", async () => {
+    it("asks in the shared dialog, and opens the table the link named once joined", async () => {
       at("/play");
       const theirs: AppInfo[] = [];
       const client = fakeClient(theirs);
-      client.redeemInvite.mockImplementation(async () => {
-        theirs.push(THEIRS);
-        return { org: "org-9" };
-      });
       const storage = new Memory();
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9", extra: { table: "app-9", from: "Bob" } });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
 
-      expect((await screen.findByTestId("invitation-prompt")).textContent).toContain(
-        "Join Bob's game as acct-alice?",
-      );
+      expect((await screen.findByTestId("accept-dialog")).dataset.token).toBe("tok-9");
       expect(client.redeemInvite).not.toHaveBeenCalled();
-      expect(screen.queryByText("Sit down at a table")).toBeNull();
 
-      fireEvent.click(screen.getByTestId("invitation-join"));
-      // Joined: the table the link named opens.
+      theirs.push(THEIRS);
+      fireEvent.click(screen.getByTestId("accept-done"));
       await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "table", expect.anything()));
-      expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
       expect(invites.token()).toBeNull();
       expect(JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null")).toMatchObject({ appId: "app-9" });
+    });
+
+    it("says the player is already in when they continue as a member", async () => {
+      at("/play");
+      const client = fakeClient();
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("accept-member"));
+      expect(await screen.findByText("You're already in this table.")).toBeTruthy();
+      expect(screen.queryByText(/Invitation accepted/)).toBeNull();
     });
 
     it("an invitation link opened later asks too: a session already there does not join on its own", async () => {
@@ -325,92 +357,54 @@ describe("App", () => {
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
       await screen.findByText("Sit down at a table");
       invites.put({ token: "tok-9", org: null, team: null, doc: null, route: null, extra: {} });
-      expect((await screen.findByTestId("invitation-prompt")).textContent).toContain(
-        "Join the game as acct-alice?",
-      );
+      expect((await screen.findByTestId("accept-dialog")).dataset.token).toBe("tok-9");
       expect(client.redeemInvite).not.toHaveBeenCalled();
     });
 
-    it("Not now joins nothing and forgets the invite", async () => {
+    it("closing the dialog joins nothing and forgets the invite", async () => {
       at("/play");
       const client = fakeClient();
       const storage = new Memory();
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9", extra: { table: "app-9", from: "Bob" } });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      fireEvent.click(await screen.findByTestId("invitation-dismiss"));
+      fireEvent.click(await screen.findByTestId("accept-close"));
       await screen.findByText("Sit down at a table");
+      expect(screen.queryByTestId("accept-dialog")).toBeNull();
       expect(client.redeemInvite).not.toHaveBeenCalled();
       expect(invites.token()).toBeNull();
     });
 
-    it("drops an invitation the cluster refuses, and says so", async () => {
+    it("hands the dialog the link's org and the inviter's wording", async () => {
       at("/play");
-      const client = fakeClient();
-      // Core's answer for a used, revoked or unknown invite.
-      client.redeemInvite.mockRejectedValue(
-        new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"),
-      );
       const storage = new Memory();
       signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-used" });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      fireEvent.click(await screen.findByTestId("invitation-join"));
-      // The answer stays on screen although the token is gone.
-      await screen.findByText(
-        "This invite was already used or has expired. Ask the person who invited you for a new link.",
-      );
-      expect(invites.token()).toBeNull();
-      fireEvent.click(screen.getByTestId("invitation-continue"));
-      await screen.findByText("Sit down at a table");
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9", extra: { table: "app-9", from: "Bob" } });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      const dialog = await screen.findByTestId("accept-dialog");
+      expect(dialog.dataset).toMatchObject({ org: "org-9", noun: "table", title: "Join Bob's game" });
     });
 
-    it.each([
-      [401, "UNAUTHORIZED", "session expired"],
-      [429, "RATE_LIMITED", "too many requests"],
-    ])("keeps the invite when the redemption fails with %i", async (status, code, message) => {
+    it("words the dialog by the table alone when the link names no inviter", async () => {
       at("/play");
-      const client = fakeClient();
-      client.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message));
       const storage = new Memory();
       signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-9" });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      fireEvent.click(await screen.findByTestId("invitation-join"));
-      await screen.findByText(/Your invite is kept/);
-      expect(invites.token()).toBe("tok-9");
-      expect(screen.getByTestId("invitation-join")).toBeTruthy();
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      const dialog = await screen.findByTestId("accept-dialog");
+      expect(dialog.dataset.noun).toBe("table");
+      expect(dialog.dataset.title).toBeUndefined();
     });
 
-    it("does not spend the link of a table this account already reaches", async () => {
+    it("forgets a spent link when the node refuses it, and keeps the dialog open", async () => {
       at("/play");
-      const client = fakeClient([
-        { appId: "app-1", name: "Table 1", owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      ]);
       const storage = new Memory();
       signedIn(storage);
-      const invites = pendingIn(storage, { token: "tok-1", extra: { table: "app-1" } });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await screen.findByText(/You already reach this table/);
-      expect(client.redeemInvite).not.toHaveBeenCalled();
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
+      render(<App deps={deps(fakeClient([]))} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("accept-fail"));
       expect(invites.token()).toBeNull();
-    });
-
-    it("tells a member of the invited org so, without spending it, and opens the table", async () => {
-      at("/play");
-      const client = Object.assign(fakeClient([{ ...THEIRS }]), {
-        me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-9" }] })),
-      });
-      const storage = new Memory();
-      signedIn(storage);
-      // A link to another table of the org than the account reaches.
-      const invites = pendingIn(storage, { token: "tok-9", org: "org-9", extra: { table: "app-gone", from: "Bob" } });
-      render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in Bob's game");
-      expect(invites.token()).toBeNull();
-      fireEvent.click(screen.getByTestId("invitation-continue"));
-      await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "table", expect.anything()));
-      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(screen.getByTestId("accept-dialog")).toBeTruthy();
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {
@@ -420,7 +414,7 @@ describe("App", () => {
       signedIn(storage);
       const invites = pendingIn(storage, { token: "tok-9" });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
-      await screen.findByTestId("invitation-join");
+      await screen.findByTestId("accept-dialog");
       fireEvent.click(screen.getByText("Log out"));
       await screen.findByTestId("signin-passkey");
       expect(invites.token()).toBeNull();
@@ -440,7 +434,7 @@ describe("App", () => {
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" });
     // Joined at sign-up: nothing left to ask or redeem.
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("invitation-prompt")).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
     expect(invites.token()).toBeNull();
   });
 
@@ -451,7 +445,7 @@ describe("App", () => {
     const invites = pendingIn(storage, { token: "tok-9", extra: { from: "Bob" } });
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("invitation-prompt")).textContent).toContain("Join Bob's game as acct-alice?");
+    expect((await screen.findByTestId("accept-dialog")).dataset.token).toBe("tok-9");
     expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 

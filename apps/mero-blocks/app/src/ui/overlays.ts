@@ -50,8 +50,8 @@ const FOV_MAX = 110;
 
 export interface PauseCallbacks {
   onLeave: () => void;
-  /** mint a copyable invite for the current world (online sessions only) */
-  onInvite?: () => Promise<string>;
+  /** open the invite dialog for the current world (online sessions only) */
+  onInvite?: () => void;
   /** live-apply the FOV slider to the camera */
   onFovChange?: (fov: number) => void;
 }
@@ -121,7 +121,7 @@ export class PauseMenu {
         <h3 class="mbo-title">Game menu</h3>
         <button class="mbo-btn primary" data-testid="resume-btn">Back to game</button>
         <button class="mbo-btn ghost" data-testid="options-btn">Options…</button>
-        ${this.callbacks.onInvite ? `<button class="mbo-btn ghost" data-testid="invite-btn">Copy world invite</button>` : ""}
+        ${this.callbacks.onInvite ? `<button class="mbo-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
         <button class="mbo-btn danger" data-testid="leave-btn">Save &amp; leave world</button>
       </div>`;
     this.root.querySelector("[data-testid=resume-btn]")!.addEventListener("click", () => this.hide());
@@ -132,27 +132,7 @@ export class PauseMenu {
     this.root.querySelector("[data-testid=leave-btn]")!.addEventListener("click", () =>
       this.callbacks.onLeave(),
     );
-    const inviteBtn = this.root.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
-    if (inviteBtn && this.callbacks.onInvite) {
-      inviteBtn.addEventListener("click", async () => {
-        inviteBtn.disabled = true;
-        inviteBtn.textContent = "Creating invite…";
-        try {
-          const code = await this.callbacks.onInvite!();
-          await navigator.clipboard.writeText(code);
-          // Each link lets one person in: say so where it is copied.
-          inviteBtn.textContent = "Invite copied: single use";
-        } catch {
-          inviteBtn.textContent = "Invite failed — try again";
-        } finally {
-          // brief confirmation, then back to normal — mint as many as you like
-          setTimeout(() => {
-            inviteBtn.textContent = "Copy world invite";
-            inviteBtn.disabled = false;
-          }, 2500);
-        }
-      });
-    }
+    this.root.querySelector("[data-testid=invite-btn]")?.addEventListener("click", () => this.callbacks.onInvite?.());
   }
 
   private renderOptions(): void {

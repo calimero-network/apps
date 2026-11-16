@@ -7,12 +7,13 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { instanceIn, listScenes, readSelection, selectionKey, writeSelection } from "./scenes";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, NodeShield, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, NodeShield, reviewRelease, usePendingInvite, useInstanceRelease, useResolvedSource, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
@@ -49,8 +50,8 @@ export function StudioPage({
   /** The app's pending-invite store. */
   invites: InviteStore;
   /** The studio an invite joined (or the account was already in), to open once signed in. */
-  landing: { org: string | null } | null;
-  setLanding: (landing: { org: string | null } | null) => void;
+  landing: { org: string | null; alreadyMember?: boolean } | null;
+  setLanding: (landing: { org: string | null; alreadyMember?: boolean } | null) => void;
 }) {
   const { session, store } = api;
   const navigate = useNavigate();
@@ -82,20 +83,18 @@ export function StudioPage({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
-  // The store drops it once joined, refused or declined, and on sign-out.
+  // is pending (`InvitationSignIn`), redeemed only on "Join" in the shared
+  // dialog. The store drops it once joined, refused or declined, and on sign-out.
   const pending = usePendingInvite(invites);
   // The invitation a signed-in account is asked about stays on screen until it
-  // closes: `JoinInvitation` drops the token before it says "already in" or
-  // "used up", and the store would take the page away with it.
+  // closes, though the store drops the token once it is joined or refused.
   const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
-
   // The studio an invite joined (or the account was already in): its scene
   // (the one opened last when it is there) opens once there is a client.
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org } = landing;
+    const { org, alreadyMember } = landing;
     void (async () => {
       setPickerKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -109,7 +108,7 @@ export function StudioPage({
       open(null);
       // In the studio, but with no scene there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("a scene") : "Invitation accepted: the studio's scenes are in your list.");
+      setNotice(may === false ? askAnOwnerCopy("a scene") : alreadyMember ? "You're already in this studio." : "Invitation accepted: the studio's scenes are in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -175,37 +174,34 @@ export function StudioPage({
     );
   }
 
-  if (asking) {
-    return (
-      <div className="page">
-        <TopBar onHome={home} onLogout={logout} />
-        <main className="wrap">
-          <JoinInvitation
-            {...ONBOARDING}
-            client={session.client}
-            key={asking.token}
-            token={asking.token}
-            org={asking.org}
-            drop={invites.drop}
-            after={after}
-            onJoined={({ org }) => {
-              closeInvite();
-              setLanding({ org });
-            }}
-            onClose={({ member }) => {
-              closeInvite();
-              if (member) setLanding({ org: member });
-            }}
-          />
-        </main>
-      </div>
-    );
-  }
+  const accept = (
+    <AcceptInviteDialog
+      open={asking !== null}
+      client={session.client}
+      passkey={deps.passkey()}
+      token={asking?.token ?? ""}
+      org={asking?.org ?? undefined}
+      appName="Mero Models"
+      labels={{ noun: "studio" }}
+      onError={invites.drop}
+      onClose={() => {
+        invites.drop();
+        closeInvite();
+      }}
+      onJoined={({ org, alreadyMember }) => {
+        invites.drop();
+        closeInvite();
+        setLanding({ org, alreadyMember });
+        after();
+      }}
+    />
+  );
 
   if (!scene) {
     return (
       <div className="page">
         <TopBar onHome={home} onLogout={logout} />
+        {accept}
         <main className="wrap">
           <ScenePicker
             key={pickerKey}
@@ -225,6 +221,7 @@ export function StudioPage({
 
   return (
     <Suspense fallback={<Loading label="Loading the studio…" />}>
+      {accept}
       <SceneContext.Provider value={scene}>
         {/* Keyed, so a scene opened in place starts from nothing of the last one's. */}
         <Studio key={scene.appId} contextId={scene.appId} />

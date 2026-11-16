@@ -134,10 +134,23 @@ export interface InviteLinkOptions extends InviteTarget {
 
 /** The link that opens this app with `token` to redeem, and where it points. */
 export function inviteLink(token: string, options: InviteLinkOptions = {}): string {
+  return build(token, options);
+}
+
+/**
+ * {@link inviteLink} without its token: the page a shared invite dialog's
+ * `linkBase` names, which adds the token itself (in the fragment, which
+ * {@link InviteStore.capture} reads).
+ */
+export function inviteLinkBase(options: InviteLinkOptions = {}): string {
+  return build(null, options);
+}
+
+function build(token: string | null, options: InviteLinkOptions): string {
   const origin = options.origin ?? globalThis.location?.origin;
   if (!origin) throw new Error("inviteLink needs an origin outside a browser");
   const url = new URL(options.root ?? "/", origin);
-  url.searchParams.set(INVITE_PARAMS.token, token);
+  if (token !== null) url.searchParams.set(INVITE_PARAMS.token, token);
   for (const key of ["org", "team", "doc"] as const) {
     const v = options[key];
     if (v) url.searchParams.set(INVITE_PARAMS[key], v);
@@ -201,7 +214,7 @@ export interface CaptureOptions {
  * ({@link InviteStore.bind}); from then it is kept under that cluster's key.
  */
 export interface InviteStore {
-  /** Takes `?invite=` (and what the link names) off the address bar into storage. `null` when the page has no invite. */
+  /** Takes `?invite=` or `#invite=` (and what the link names) off the address bar into storage. `null` when the page has no invite. */
   capture(location?: Pick<Location, "href">, options?: CaptureOptions): PendingInvite | null;
   /** Keep the invite under `target`'s key: one captured on this load moves there. */
   bind(target: Target): void;
@@ -316,7 +329,9 @@ export function createInviteStore(app: string, options: InviteStoreOptions = {})
     capture(location = globalThis.location, { basename = "/", history = globalThis.history } = {}) {
       if (!location) return null;
       const url = new URL(location.href);
-      const token = url.searchParams.get(INVITE_PARAMS.token)?.trim();
+      // The shared invite dialogs put the token in the fragment, which servers never see.
+      const fragment = new URLSearchParams(url.hash.slice(1));
+      const token = (url.searchParams.get(INVITE_PARAMS.token) ?? fragment.get(INVITE_PARAMS.token))?.trim();
       if (!token) return null;
       const param = (name: string) => text(url.searchParams.get(name)?.trim());
       const extra: Record<string, string> = {};
@@ -343,6 +358,10 @@ export function createInviteStore(app: string, options: InviteStoreOptions = {})
       // otherwise a reload still finds it there.
       if (stored && history) {
         for (const k of [...Object.values(INVITE_PARAMS), ...keep]) url.searchParams.delete(k);
+        if (fragment.has(INVITE_PARAMS.token)) {
+          fragment.delete(INVITE_PARAMS.token);
+          url.hash = fragment.toString();
+        }
         history.replaceState(null, "", url.toString());
       }
       return invite;

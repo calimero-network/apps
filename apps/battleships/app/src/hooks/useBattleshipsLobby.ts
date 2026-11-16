@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppInfo, CalimeroClient } from '@calimero-network/mero-js';
 import type { AppSource } from '@calimero-apps/connect';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { lobby, messageOf, type Lobby } from '../battleships';
 import {
   createLobby as createLobbyApp,
-  inviteToken,
   listLobbies,
-  lobbyInviteLink,
   orgMembers,
   saveMemberName,
   type LobbyMember,
 } from '../lobbies';
-import { formatKey } from '../utils/playerName';
 
 /**
  * A lobby as the screens list it. v1 named a lobby by its namespace and found
@@ -71,10 +68,6 @@ export interface UseBattleshipsLobbyReturn {
   /** Set this account's display name in the lobby's organization. */
   saveName: (name: string) => Promise<void>;
 
-  /** An invitation link into the lobby's organization (a passkey step-up). */
-  invitePlayer: () => Promise<string | null>;
-  inviteLoading: boolean;
-
   /** The selected lobby's contract, or `null` before one is selected. */
   api: Lobby | null;
 }
@@ -83,7 +76,6 @@ export interface LobbyDeps {
   client: CalimeroClient | null;
   accountId: string | null;
   source: AppSource;
-  passkey: () => PasskeyProvider;
   /** Run after every request (the session store syncs a refreshed session). */
   after: () => void;
   /** Where the selection is remembered; `null` keeps it for this page only. */
@@ -122,7 +114,6 @@ export function useBattleshipsLobby({
   client,
   accountId,
   source,
-  passkey,
   after,
   selectionKey,
 }: LobbyDeps): UseBattleshipsLobbyReturn {
@@ -299,19 +290,6 @@ export function useBattleshipsLobby({
     [client, accountId, source, selectionKey, refetchLobbies, after],
   );
 
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const invitePlayer = useCallback(async () => {
-    if (!client || !org || !namespaceId) return null;
-    setInviteLoading(true);
-    try {
-      const token = await inviteToken(client, org, passkey());
-      return lobbyInviteLink(token, namespaceId, org, (accountId && nameOf(accountId)) || (accountId && formatKey(accountId)));
-    } finally {
-      setInviteLoading(false);
-      after();
-    }
-  }, [client, org, namespaceId, passkey, after, accountId, nameOf]);
-
   return {
     lobbies,
     lobbiesLoading: lobbiesLoading && !lobbiesAnswered,
@@ -343,8 +321,6 @@ export function useBattleshipsLobby({
     nameOf,
     saveName,
 
-    invitePlayer,
-    inviteLoading,
 
     api,
   };

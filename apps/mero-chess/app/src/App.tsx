@@ -8,7 +8,8 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { appSource, type InviteStore, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, NodeShield, PasskeySignIn, useNodeShieldApp, reviewRelease, useInstanceRelease, useResolvedSource, usePendingInvite, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -17,7 +18,6 @@ import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
   LISTING,
-  ONBOARDING,
   defaultDeps,
   describeTarget,
   useInviteState,
@@ -30,6 +30,7 @@ import {
   basename,
   deferInvite,
   inviteDeferred,
+  acceptLabels,
   invitedTable,
   inviter,
   invites as appInvites,
@@ -37,7 +38,6 @@ import {
   selectionKey,
   tableIn,
 } from "./tables";
-import { shortAccount } from "./useSeatNames";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -201,52 +201,13 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // closes: `JoinInvitation` drops the token before it says "already in" or
   // "used up", and the store would take the question away with it.
   const { invite, close: closeInvite } = useAskedInvite(invites, !!client);
-  // The token checked against the tables this account reaches already.
-  const [checked, setChecked] = useState<string | null>(null);
-
-  // ⚠️ Not asked of someone who already reaches the table the link names:
-  // redeeming spends the link's single use, so the owner trying their own link
-  // used to leave the opponent it was meant for with "unknown invite". The
-  // table opens and the token is dropped unspent.
-  const pendingToken = pending?.token ?? null;
-  const pendingTable = invitedTable(pending);
-  useEffect(() => {
-    if (!client || !pendingToken) return;
-    if (!pendingTable) {
-      setChecked(pendingToken);
-      return;
-    }
-    let live = true;
-    void client.apps.list({}).then((r) => r.apps)
-      .then(
-        (apps) => apps.find((a) => a.appId === pendingTable) ?? null,
-        () => null,
-      )
-      .then((table) => {
-        if (!live) return;
-        if (table) {
-          invites.drop();
-          closeInvite();
-          open({ appId: table.appId, name: table.name, org: table.org });
-          setNotice(
-            "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
-          );
-        }
-        setChecked(pendingToken);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, pendingToken, pendingTable, invites, open, after, closeInvite]);
-
   // Where an invite landed: the table its link named, else one in the org it
   // joined (or the account was already in), once there is a client to list
   // them with.
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org, table: named } = landing;
+    const { org, table: named, alreadyMember } = landing;
     void (async () => {
       setLobbyKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -258,7 +219,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         return;
       }
       open(null);
-      setNotice("Invitation accepted: the table is in your list.");
+      setNotice(alreadyMember ? "You're already in this table." : "Invitation accepted: the table is in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -306,41 +267,28 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (invite) {
-    if (checked !== invite.token) {
-      return (
-        <div className="loading-state">
-          <span className="spinner" aria-hidden="true" />
-          <p className="empty">Reading the invitation…</p>
-        </div>
-      );
-    }
-    const from = inviter(invite);
-    return (
-      <JoinInvitation
-        {...ONBOARDING}
-        key={invite.token}
-        joining={from ? `${from}'s game` : "the game"}
-        account={shortAccount(session.accountId)}
-        client={session.client}
-        token={invite.token}
-        org={invite.org}
-        drop={invites.drop}
-        after={after}
-        onJoined={({ org }) => {
-          closeInvite();
-          setLanding({ org, table: invitedTable(invite) });
-        }}
-        onClose={({ member }) => {
-          closeInvite();
-          if (member) setLanding({ org: member, table: invitedTable(invite) });
-        }}
-      />
-    );
-  }
-
   return (
     <>
+      <AcceptInviteDialog
+        open={invite !== null}
+        client={session.client}
+        passkey={deps.passkey()}
+        token={invite?.token ?? ""}
+        org={invite?.org ?? undefined}
+        appName="Mero Chess"
+        labels={acceptLabels(inviter(invite))}
+        onError={invites.drop}
+        onClose={() => {
+          invites.drop();
+          closeInvite();
+        }}
+        onJoined={({ org, alreadyMember }) => {
+          invites.drop();
+          closeInvite();
+          setLanding({ org, table: invitedTable(invite), alreadyMember });
+          after();
+        }}
+      />
       {notice && (
         <div className="card alert" role="status">
           <p className="empty">{notice}</p>

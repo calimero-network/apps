@@ -1,14 +1,14 @@
 import { useState } from "react";
-import type { PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, inviteLink, type ClientRoutes } from "@calimero-apps/connect";
-import { inviteRoot, inviteToken } from "./scenes";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { InviteDialog } from "@calimero-network/mero-react";
+import { inviteBase } from "./scenes";
+
+const LABELS = { noun: "studio", title: "Invite to this scene", subtitle: "Choose what the people you invite can do in this studio." };
 
 /**
- * Mint a shareable invitation to this scene's studio (its organization; v1: a
- * namespace invitation). Making one is approved with the inviter's passkey
- * (the node answers 412 CONFIRM_REQUIRED and mero-js asks for it); redeeming
- * it is not. One link, HTTPS: whoever opens it signs in with a passkey and
- * joins the organization, which reaches every scene in it.
+ * Invite someone to this scene's studio (its organization). One link: whoever
+ * opens it signs in with a passkey and joins the organization, which reaches
+ * every scene in it. The shared dialog asks the node to approve it.
  */
 export function InviteCard({
   client,
@@ -16,41 +16,12 @@ export function InviteCard({
   passkey,
   after = () => {},
 }: {
-  client: ClientRoutes<{ orgs: "inviteCreate" }>;
+  client: CalimeroClient;
   org: string | null;
   passkey: () => PasskeyProvider;
   after?: () => void;
 }) {
-  const [link, setLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  async function mint(org: string) {
-    setBusy(true);
-    setFailed(null);
-    setCopied(false);
-    try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), { org, root: inviteRoot() }));
-    } catch (e) {
-      setFailed(describeError(e));
-    } finally {
-      setBusy(false);
-      after();
-    }
-  }
-
-  async function copy() {
-    if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      // Clipboard access can be denied; the link is on screen and selectable,
-      // so this is a convenience failing, not the feature failing.
-      setCopied(false);
-    }
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="card invite-card">
@@ -60,37 +31,28 @@ export function InviteCard({
       {!org ? (
         <p className="hint">This scene has no organization, so nobody can be invited to it.</p>
       ) : (
-        <p className="hint">
-          One link, for one person: it is single use, so create another for each member. Whoever opens it signs
-          in with a passkey and joins this scene&apos;s studio, so this scene and every other scene in it open for
-          them. Creating it asks for your passkey.
-        </p>
+        <>
+          <p className="hint">
+            One link, for one person: it is single use, so create another for each member. Whoever opens it signs
+            in with a passkey and joins this scene&apos;s studio, so this scene and every other scene in it open for
+            them.
+          </p>
+          <div className="row">
+            <button onClick={() => setOpen(true)}>Invite</button>
+          </div>
+          <InviteDialog
+            open={open}
+            onClose={() => setOpen(false)}
+            org={org}
+            appName="Mero Models"
+            labels={LABELS}
+            linkBase={inviteBase(org)}
+            onInvited={after}
+            client={client}
+            passkey={passkey()}
+          />
+        </>
       )}
-
-      {link && (
-        /*
-          One line, truncated, with Copy as the real affordance: nobody
-          transcribes an invite link by eye. `title` holds the full value and
-          the Copy button writes `link`, not what is painted.
-        */
-        <div className="link-row">
-          <code className="invite-link mono" title={link} aria-label="invitation link">
-            {link}
-          </code>
-          <button className="small" onClick={() => void copy()}>
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-      )}
-
-      {org && (
-        <div className="row">
-          <button className={link ? "ghost small" : ""} onClick={() => void mint(org)} disabled={busy}>
-            {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-          </button>
-        </div>
-      )}
-      {failed && <pre className="err">{failed}</pre>}
     </div>
   );
 }

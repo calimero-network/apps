@@ -7,7 +7,8 @@ import {
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, InvitationSignIn, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { KvStoreClient } from "./generated/client";
@@ -109,23 +110,21 @@ export function App({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
-  // The store drops it once joined, refused or declined, and on sign-out.
+  // is pending (`InvitationSignIn`). Signed in, `AcceptInviteDialog` asks and
+  // joins only on "Join"; the store drops it once joined, declined, and on sign-out.
   const pending = usePendingInvite(invites);
   const invite = pending?.token ?? null;
-  // The invitation a signed-in account is asked about stays on screen until it
-  // closes: `JoinInvitation` drops the token before it says "already in" or
-  // "used up", and the store would take the page away with it.
-  const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
   const [inviteLater, setInviteLater] = useState(false);
+  // The asked invite outlives the dropped token, so a refusal stays on screen in the dialog.
+  const { invite: asked, close: closeAsked } = useAskedInvite(invites, session.status === "signed-in");
 
   // The org an invite joined (or the account was already in): its store opens
   // once there is a client to list it with. `org: null` when nothing said which.
-  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  const [landing, setLanding] = useState<{ org: string | null; alreadyMember?: boolean } | null>(null);
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org } = landing;
+    const { org, alreadyMember } = landing;
     void (async () => {
       setPickerKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -139,7 +138,7 @@ export function App({
       open(null);
       // In the org, but with no store there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("a store") : "Invitation accepted: the shared store is in your list.");
+      setNotice(may === false ? askAnOwnerCopy("a store") : alreadyMember ? "You're already in this store" : "Invitation accepted: the shared store is in your list.");
     })();
   }, [client, landing, source, key, storage, after, open]);
 
@@ -189,22 +188,24 @@ export function App({
           </section>
         ))}
 
-      {session.status === "signed-in" && asking && (
-        <JoinInvitation
-          {...ONBOARDING}
-          key={asking.token}
+      {session.status === "signed-in" && asked && (
+        <AcceptInviteDialog
           client={session.client}
-          token={asking.token}
-          org={asking.org}
-          drop={invites.drop}
-          after={after}
-          onJoined={({ org }) => {
-            closeInvite();
-            setLanding({ org });
+          passkey={deps.passkey()}
+          open
+          onClose={() => {
+            invites.drop();
+            closeAsked();
           }}
-          onClose={({ member }) => {
-            closeInvite();
-            if (member) setLanding({ org: member });
+          token={asked.token}
+          org={asked.org ?? undefined}
+          appName="KV Store"
+          labels={{ noun: "store" }}
+          onError={() => invites.drop()}
+          onJoined={({ org, alreadyMember }) => {
+            invites.drop();
+            closeAsked();
+            setLanding({ org, alreadyMember });
           }}
         />
       )}
@@ -215,7 +216,7 @@ export function App({
         </div>
       )}
 
-      {session.status === "signed-in" && !asking && !opened && (
+      {session.status === "signed-in" && !opened && (
         <StorePicker
           key={pickerKey}
           client={session.client}
@@ -227,7 +228,7 @@ export function App({
         />
       )}
 
-      {session.status === "signed-in" && !asking && opened && kv && (
+      {session.status === "signed-in" && opened && kv && (
         <>
           <div className="card context-bar">
             <div className="row" style={{ justifyContent: "space-between" }}>
@@ -245,7 +246,6 @@ export function App({
             client={session.client}
             org={opened.org}
             passkey={deps.passkey}
-            after={after}
           />
         </>
       )}

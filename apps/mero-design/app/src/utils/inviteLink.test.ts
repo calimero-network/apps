@@ -1,8 +1,5 @@
-import { CalimeroError } from "@calimero-network/mero-js";
 import { beforeEach, describe, expect, it } from "vitest";
-import { captureInvite, inviteDestination, inviteFailure, inviteLink, invites, migrateLegacyInvite } from "./inviteLink";
-
-const SPENT = "This invite was already used or has expired. Ask the person who invited you for a new link.";
+import { captureInvite, inviteDestination, inviteLinkBase, invites, migrateLegacyInvite } from "./inviteLink";
 
 beforeEach(() => {
   localStorage.clear();
@@ -17,10 +14,16 @@ const at = (href: string) => {
 
 describe("invite links", () => {
   it("name the team, so a member is not offered Join", () => {
-    const url = new URL(inviteLink("tok", { origin: "https://x.example" }, "/1.2.0/", "org-1"));
+    const url = new URL(inviteLinkBase("org-1", { origin: "https://x.example" }, "/1.2.0/"));
     expect(url.pathname).toBe("/1.2.0/");
-    expect(url.searchParams.get("invite")).toBe("tok");
     expect(url.searchParams.get("org")).toBe("org-1");
+    expect(url.searchParams.has("invite")).toBe(false);
+  });
+
+  it("capture the token the shared dialog puts in the fragment, with the team the link names", () => {
+    captureInvite(at(`${inviteLinkBase("org-1", { origin: window.location.origin }, "/")}#invite=tok`));
+    expect(invites.pending()).toMatchObject({ token: "tok", org: "org-1" });
+    expect(window.location.hash).toBe("");
   });
 
   it("capture the token, the team and a deep-linked route, and clean the address bar", () => {
@@ -43,11 +46,5 @@ describe("invite links", () => {
     migrateLegacyInvite();
     expect(invites.pending()).toMatchObject({ token: "old", org: "o", route: "/boards/b" });
     expect(localStorage.getItem("mero-design:pending-invite")).toBeNull();
-  });
-
-  it("say plainly when a token is refused for good, and keep it otherwise", () => {
-    expect(inviteFailure(new CalimeroError(404, "NOT_FOUND", "unknown invite"))).toBe(SPENT);
-    expect(inviteFailure(new CalimeroError(503, "UNAVAILABLE", "try later"))).toMatch(/could not be accepted/);
-    expect(inviteFailure(new CalimeroError(429, "RATE_LIMITED", "slow"))).toMatch(/invite is kept/);
   });
 });

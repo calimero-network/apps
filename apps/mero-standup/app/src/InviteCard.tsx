@@ -1,12 +1,13 @@
 import { useState } from "react";
-import type { PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError, inviteLink, type ClientRoutes } from "@calimero-apps/connect";
-import { inviteRoot, inviteToken } from "./teams";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { InviteDialog } from "@calimero-network/mero-react";
+import { inviteBase } from "./teams";
+
+const LABELS = { noun: "team", title: "Invite to this team", subtitle: "Choose what your teammates can do." };
 
 /**
- * Mint a link that makes whoever opens it a member of this team's
- * organization. Making one is approved with the inviter's passkey (the node
- * answers 412 CONFIRM_REQUIRED and mero-js asks for it); redeeming it is not.
+ * Invite someone to this team's organization. Whoever opens the link signs in
+ * with a passkey and joins it. The shared dialog asks the node to approve it.
  */
 export function InviteCard({
   client,
@@ -14,40 +15,12 @@ export function InviteCard({
   passkey,
   after,
 }: {
-  client: ClientRoutes<{ orgs: "inviteCreate" }>;
+  client: CalimeroClient;
   org: string | null;
   passkey: () => PasskeyProvider;
   after: () => void;
 }) {
-  const [link, setLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  async function mint(org: string) {
-    setBusy(true);
-    setFailed(null);
-    setCopied(false);
-    try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), { org, root: inviteRoot() }));
-    } catch (e) {
-      setFailed(describeError(e));
-    } finally {
-      setBusy(false);
-      after();
-    }
-  }
-
-  async function copy() {
-    if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      // Clipboard access can be denied; the link is on screen and selectable.
-      setCopied(false);
-    }
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="card">
@@ -59,26 +32,24 @@ export function InviteCard({
           <p className="empty" style={{ marginBottom: 14 }}>
             One link, for one person: it is single use, so create another for each teammate. Whoever opens
             it signs in with a passkey, joins this team&apos;s organization and sees its standups and
-            decisions; nobody without one can. Creating it asks for your passkey.
+            decisions; nobody without one can.
           </p>
           <div className="row">
-            <button onClick={() => void mint(org)} disabled={busy}>
-              {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-            </button>
-            {link && (
-              <button className="ghost" onClick={() => void copy()}>
-                {copied ? "Copied" : "Copy"}
-              </button>
-            )}
+            <button onClick={() => setOpen(true)}>Invite</button>
           </div>
-          {link && (
-            <code className="invite-link mono" title={link} aria-label="invitation link">
-              {link}
-            </code>
-          )}
+          <InviteDialog
+            open={open}
+            onClose={() => setOpen(false)}
+            org={org}
+            appName="Mero Standup"
+            labels={LABELS}
+            linkBase={inviteBase(org)}
+            onInvited={after}
+            client={client}
+            passkey={passkey()}
+          />
         </>
       )}
-      {failed && <pre className="err">{failed}</pre>}
     </div>
   );
 }

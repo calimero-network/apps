@@ -14,7 +14,7 @@ import "@calimero-apps/passkey/passkey.css";
 import { GameClient, type WorldMeta } from "./net/client";
 import { PACKAGE } from "./net/merraria";
 import { connect, type Connection } from "./net/session";
-import { CURRENT_WORLD, basename, invites, inviteToken, migrateStoredInvite, worldInviteLink, writeCurrentWorld } from "./net/worlds";
+import { CURRENT_WORLD, basename, invites, migrateStoredInvite, writeCurrentWorld } from "./net/worlds";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
@@ -24,6 +24,7 @@ import { Landing } from "./ui/landing";
 import { startUnlessConsentReturn } from "./ui/createWorld";
 import { knownName } from "./net/playerName";
 import { showLandingOnce } from "./pages/landing/mount";
+import { mountInviteWorld } from "./ui/inviteDialogs";
 import { PauseMenu } from "./ui/overlays";
 import {
   applyNativeChrome,
@@ -265,21 +266,18 @@ async function boot(): Promise<void> {
   let mouseY = 0;
 
   // ---- pause menu (Esc/O — Minecraft-style game menu with options) -------
+  const inviteDialog =
+    conn && worldOrg
+      ? mountInviteWorld(conn.client, conn.approver(), worldOrg, worldId, conn.sync, choice.name)
+      : null;
   const menu = new PauseMenu(app, {
     onLeave: () => {
       save();
       void sync?.leave();
       window.location.reload(); // back to the landing/launcher
     },
-    // An invitation into the world's org, approved with this player's passkey.
-    onInvite:
-      conn && worldOrg
-        ? ((c: Connection, org: string) => async () =>
-            worldInviteLink(await inviteToken(c.client, org, c.approver()), org, { world: worldId, from: choice.name }))(
-            conn,
-            worldOrg,
-          )
-        : undefined,
+    // An invitation into the world's org, through the shared dialog.
+    onInvite: inviteDialog ? () => inviteDialog.open() : undefined,
     onZoomChange: (zoom) => renderer.setZoom(zoom),
   });
   renderer.setZoom(native?.zoom ?? menu.getZoom()); // restore the player's zoom choice

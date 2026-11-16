@@ -93,10 +93,10 @@ meroctl local dev apps/merraria  # the same with core's meroctl (1.0.0-rc.24 or 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
 `pnpm dev:local` prints how to get it when it is missing. In the browser,
 **create an account** (a passkey), **create a world** (name and seed), and
-play. **Invite friends** (on the world list, or Esc → *Copy world invite* in
-game) copies a link; a second browser profile with its own passkey that opens
-it is asked "Join {inviter}'s game as {account}?" and, on **Join**, enters the
-invited world as a second player.
+play. **Invite friends** (on the world list, or Esc → *Invite friends* in game)
+opens the shared invite dialog and gives a link; a second browser profile with
+its own passkey that opens it is asked in the shared accept dialog and, on
+**Join**, enters the invited world as a second player.
 
 **Controls:** A/D move · Space/W jump · hold LMB to dig · RMB place ·
 1–9/wheel select · torches light caves · Esc/O menu.

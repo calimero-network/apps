@@ -8,6 +8,7 @@ import {
   AppTeamAdminError,
   adoptAppTeam,
   appInvite,
+  appInviteTeams,
   appOnlyInviteNote,
   appPeople,
   appTeamIdIn,
@@ -298,6 +299,28 @@ describe("invites", () => {
     const c = cluster({ ...shared(), teams: { "team-chat": appTeam("com.calimero.chat", "invite") } });
     await expect(appInvite(c, "org", SOURCE, passkey)).rejects.toBeInstanceOf(NoAppTeamError);
     expect(c.orgs.inviteCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("appInviteTeams", () => {
+  it("names the app's team; appOnly only in a shared org", async () => {
+    expect(await appInviteTeams(cluster(standalone()), "org", SOURCE)).toEqual({ teams: ["team-crm"], appOnly: false });
+    expect(await appInviteTeams(cluster(shared()), "org", SOURCE)).toEqual({ teams: ["team-crm"], appOnly: true });
+  });
+
+  it("a legacy org, an older node and a raw bundle: no team, the org-wide invite", async () => {
+    for (const [view, source] of [
+      [legacy(), SOURCE],
+      [{ ...legacy(), mode: undefined }, SOURCE],
+      [standalone(), "bundle-hash"],
+    ] as const) {
+      expect(await appInviteTeams(cluster(structuredClone(view) as View), "org", source)).toEqual({ teams: [], appOnly: false });
+    }
+  });
+
+  it("an org with app teams but none for this app: refused, never widened to the org", async () => {
+    const c = cluster({ ...shared(), teams: { "team-chat": appTeam("com.calimero.chat", "invite") } });
+    await expect(appInviteTeams(c, "org", SOURCE)).rejects.toBeInstanceOf(NoAppTeamError);
   });
 });
 
