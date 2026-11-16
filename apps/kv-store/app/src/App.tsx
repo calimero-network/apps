@@ -4,12 +4,11 @@ import {
   appSource,
   askAnOwnerCopy,
   canCreateIn,
-  memberOf,
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
 import { AcceptInviteDialog } from "@calimero-network/mero-react";
-import { AppListing, InvitationSignIn, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, NodeShield, SignInPanel, useNodeShieldApp, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { KvStoreClient } from "./generated/client";
@@ -116,8 +115,8 @@ export function App({
   const pending = usePendingInvite(invites);
   const invite = pending?.token ?? null;
   const [inviteLater, setInviteLater] = useState(false);
-  // The token the dialog is asked about: not set for an account already in the invite's org.
-  const [asked, setAsked] = useState<string | null>(null);
+  // The asked invite outlives the dropped token, so a refusal stays on screen in the dialog.
+  const { invite: asked, close: closeAsked } = useAskedInvite(invites, session.status === "signed-in");
 
   // The org an invite joined (or the account was already in): its store opens
   // once there is a client to list it with. `org: null` when nothing said which.
@@ -142,25 +141,6 @@ export function App({
       setNotice(may === false ? askAnOwnerCopy("a store") : "Invitation accepted: the shared store is in your list.");
     })();
   }, [client, landing, source, key, storage, after, open]);
-
-  // An account already in the invite's org is told so instead of spending the single use.
-  useEffect(() => {
-    if (!client || !pending) return;
-    let live = true;
-    const { org } = pending;
-    void (org ? memberOf(client, org) : Promise.resolve(false)).then((member) => {
-      if (!live) return;
-      if (member && org) {
-        invites.drop();
-        setLanding({ org });
-      } else {
-        setAsked(pending.token);
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, [client, pending, invites]);
 
   // The store's contract, through the client `meroctl app codegen` generated
   // from logic/res/abi.json; `after` keeps the stored session current.
@@ -208,16 +188,23 @@ export function App({
           </section>
         ))}
 
-      {session.status === "signed-in" && pending && (
+      {session.status === "signed-in" && asked && (
         <AcceptInviteDialog
           client={session.client}
           passkey={deps.passkey()}
-          open={asked === pending.token}
-          onClose={() => invites.drop()}
-          token={pending.token}
+          open
+          onClose={() => {
+            invites.drop();
+            closeAsked();
+          }}
+          token={asked.token}
+          org={asked.org ?? undefined}
           appName="KV Store"
+          labels={{ noun: "store" }}
+          onError={() => invites.drop()}
           onJoined={({ org }) => {
             invites.drop();
+            closeAsked();
             setLanding({ org });
           }}
         />

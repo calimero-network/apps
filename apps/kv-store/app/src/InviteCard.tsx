@@ -5,6 +5,7 @@ import { InviteDialog } from "@calimero-network/mero-react";
 import { inviteRoot } from "./stores";
 
 const LABELS = {
+  noun: "store",
   title: "Invite to this store",
   subtitle: "Choose what the people you invite can do in this store's organization.",
   next: "Create invite link",

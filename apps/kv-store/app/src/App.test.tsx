@@ -109,21 +109,31 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             ),
           )
         : null,
-    InviteDialog: (p: { open: boolean; org: string; linkBase?: string; labels?: { title?: string } }) =>
+    InviteDialog: (p: { open: boolean; org: string; linkBase?: string; labels?: { title?: string; noun?: string } }) =>
       p.open
         ? createElement(
             "div",
             { "data-testid": "invite-dialog" },
             createElement("h2", { "data-testid": "invite-title" }, p.labels?.title),
-            createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, linkBase: p.linkBase })),
+            createElement("pre", { "data-testid": "invite-props" }, JSON.stringify({ org: p.org, linkBase: p.linkBase, noun: p.labels?.noun })),
           )
         : null,
-    AcceptInviteDialog: (p: { open: boolean; token: string; onClose: () => void; onJoined: (j: { org: string }) => void }) =>
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      labels?: { noun?: string };
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
       p.open
         ? createElement(
             "div",
             { "data-testid": "accept-dialog" },
             createElement("pre", { "data-testid": "accept-token" }, p.token),
+            createElement("pre", { "data-testid": "accept-props" }, JSON.stringify({ org: p.org, noun: p.labels?.noun })),
+            createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
             createElement("button", { "data-testid": "accept-join", onClick: () => p.onJoined({ org: joinedOrg }) }, "join"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
@@ -237,7 +247,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Create an invitation link"));
     expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to this store");
     const props = JSON.parse(screen.getByTestId("invite-props").textContent ?? "");
-    expect(props.org).toBe("org-1");
+    expect(props).toMatchObject({ org: "org-1", noun: "store" });
     expect(new URL(props.linkBase).searchParams.get("org")).toBe("org-1");
   });
 
@@ -353,19 +363,27 @@ describe("App", () => {
     expect(invites.token()).toBeNull();
   });
 
-  it("a member of the invited org lands in its store, without being asked or spending the invite", async () => {
+  it("hands the dialog the link's org and the store wording, so the dialog skips a member", async () => {
     const client = fakeClient([...TWO_ORGS]);
-    Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-2" }] })) });
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-a", name: "alpha", org: "org-1" }));
     const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
-    await screen.findByText("beta");
-    expect(screen.getByText("app-b")).toBeTruthy();
-    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+    const props = JSON.parse((await screen.findByTestId("accept-props")).textContent ?? "");
+    expect(props).toEqual({ org: "org-2", noun: "store" });
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
+  });
+
+  it("a refused join forgets the token but keeps the dialog on screen", async () => {
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    const invites = pendingIn(storage, { token: "tok-9" });
+    render(<App deps={deps(fakeClient())} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("accept-fail"));
+    await waitFor(() => expect(invites.token()).toBeNull());
+    expect(screen.getByTestId("accept-dialog")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull());
   });
 
   it("an org with no store this member may add says to ask an owner", async () => {
