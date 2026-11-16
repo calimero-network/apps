@@ -89,13 +89,12 @@ meroctl local dev apps/mero-blocks  # the same with core's meroctl (1.0.0-rc.24 
 `merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
 `pnpm dev:local` prints how to get it when it is missing. In the browser,
 **create an account** (a passkey), **create a world** (name + seed), and play.
-**Invite friends** (or **Copy world invite** in the in-game menu) copies a link
-carrying an org invite (approved with your passkey); a second browser profile
-with its own passkey opening it signs in, is asked "Join {inviter}'s game as
-{account}?" and, on **Join**, lands in the same world (an account made from the
-invitation joins in that one step). A lapsed session, a rate limit or a network
-failure keeps the invite to try again; only the node's word that it is used up
-or expired drops it.
+**Invite friends** (also in the in-game menu) opens the shared invite dialog
+(default or custom permissions, approved on the node's consent page) and gives a
+link; a second browser profile with its own passkey opening it signs in, is asked
+in the shared accept dialog and, on **Join**, lands in the same world (an account
+made from the invitation joins in that one step). The dialog shows the node's own
+refusal when the invite is used up or expired.
 
 **Controls:** click to lock the mouse · WASD + Space · LMB **or Q** break ·
 RMB **or E** place · 1–9/wheel select · **M** live world map · **O** options
@@ -182,7 +181,7 @@ Playwright from `package.json`. **Now:** the target comes from the build
 `vite build`), sign-in is a **passkey**, worlds are **app instances** (v1's
 contexts) each in an **organization** of its own (v1's namespace), sharing is an
 **org invite link** (kept in `@calimero-apps/connect`'s invite store) redeemed
-after sign-in once the player says Join, and the game calls the contract
+after sign-in once the player says Join (the shared invite dialogs), and the game calls the contract
 through `MeroBlocksClient` (`src/generated/client.ts`), which `meroctl app
 codegen` writes from `logic/res/abi.json` (`pnpm -F mero-blocks codegen` after a
 contract change; CI fails when the committed copy is stale), adapted to the

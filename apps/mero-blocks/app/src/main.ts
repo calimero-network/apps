@@ -21,13 +21,14 @@ import { followInstanceRelease } from "@calimero-apps/connect";
 import { connect, defaultDeps, deviceLabel, type SignedIn } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { knownName } from "./net/playerName";
-import { basename, forgetWorld, invites, inviteToken, migrateStoredInvite, worldInviteLink } from "./net/worlds";
+import { basename, forgetWorld, invites, migrateStoredInvite } from "./net/worlds";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing } from "./ui/landing";
 import { startUnlessConsentReturn } from "./ui/createWorld";
 import { showLandingOnce } from "./pages/landing/mount";
+import { mountInviteWorld } from "./ui/inviteDialogs";
 import { PauseMenu, WorldMap } from "./ui/overlays";
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
@@ -202,22 +203,19 @@ async function boot(): Promise<void> {
   if (choice.notice) hud.toast(choice.notice);
 
   // ---- overlays (Esc/O = game menu, M = map — trackpad-friendly) --------
+  const inviteDialog = choice.world.org
+    ? mountInviteWorld(session.client, defaultDeps.passkey(), choice.world.org, worldId, () =>
+        session.sessions.sync(session.client),
+      )
+    : null;
   const options = new PauseMenu(app, {
     onLeave: () => {
       save();
       void sync?.leave();
       window.location.reload(); // back to the landing/launcher
     },
-    // An org invite for the world, approved with the inviter's passkey.
-    ...(choice.world.org
-      ? {
-          onInvite: async () => {
-            const token = await inviteToken(session.client, choice.world.org as string, defaultDeps.passkey());
-            session.sessions.sync(session.client);
-            return worldInviteLink(token, choice.world.org as string, { world: worldId, from: choice.name });
-          },
-        }
-      : {}),
+    // An org invite for the world, through the shared dialog.
+    ...(inviteDialog ? { onInvite: () => inviteDialog.open() } : {}),
     onFovChange: (fov) => renderer.setFov(fov),
   });
   renderer.setFov(options.getFov()); // restore the player's FOV choice
