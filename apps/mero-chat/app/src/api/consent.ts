@@ -24,6 +24,7 @@ import {
   type ConsentRequest,
   type ConsentResult,
 } from "@calimero-network/mero-js";
+import { confirmConsentHandoff } from "@calimero-apps/passkey";
 
 import { run } from "./platform";
 import { nodeBasename } from "../utils/servedByNode";
@@ -193,6 +194,18 @@ export function consentRequest(
   }
 }
 
+/** What `intent` asks the node to approve, in the words the person used. */
+export function consentAction(intent: ConsentIntent): string {
+  switch (intent.kind) {
+    case "createOrg":
+      return `Create the workspace “${intent.name}”`;
+    case "createInvite":
+      return "Create an invitation to this workspace";
+    case "acceptInvite":
+      return "Join the workspace you were invited to";
+  }
+}
+
 /**
  * Keeps `intent` and sends the person to the node's consent page for
  * `request`. They first see the confirmation code the page will show, so a
@@ -206,11 +219,8 @@ export async function askOnConsentPage(intent: ConsentIntent, request: ChatConse
     await run((c: CalimeroClient) =>
       // The organization kinds are sent as they are; this mero-js types only the first three.
       c.openConsentPage(request as ConsentRequest, {
-        confirm: (started) => {
-          went = window.confirm(
-            "Your Calimero node will ask you to approve this with your passkey on its own page.\n\n" +
-              `Check that the page shows the code ${started.code ?? ""}.`,
-          );
+        confirm: async (started) => {
+          went = await confirmConsentHandoff({ code: started.code ?? "", action: consentAction(intent) });
           return went;
         },
       }),

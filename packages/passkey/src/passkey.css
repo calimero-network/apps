@@ -455,3 +455,187 @@
   font-weight: 600;
   color: var(--_ink);
 }
+
+/*
+ * "Approve on your Calimero node" (`<ConsentHandoff>`, `confirmConsentHandoff`):
+ * the code the node's consent page will show, before the app sends the person
+ * there. Mounted on `document.body`, so it reads the `--passkey-*` tokens from
+ * `:root` (then glass, then literals; the literals follow the system's dark
+ * mode when the app sets neither).
+ */
+.cp-consent {
+  --_ink: var(--passkey-ink, var(--glass-ink, #0e1222));
+  --_muted: var(--passkey-muted, var(--glass-muted, #6f7589));
+  --_line: var(--passkey-line, var(--glass-line-strong, rgba(14, 18, 34, 0.14)));
+  --_surface: var(--passkey-secondary-bg, var(--glass-surface-solid, #ffffff));
+  --_sunken: var(--passkey-sunken, var(--glass-sunken, #f3f4f8));
+  --_primary-bg: var(--passkey-primary-bg, var(--glass-ink, #0e1222));
+  --_primary-ink: var(--passkey-primary-ink, var(--glass-on-ink, #ffffff));
+  --_secondary-ink: var(--passkey-secondary-ink, var(--glass-ink, #0e1222));
+  --_focus: var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  --_radius: var(--passkey-radius, 999px);
+  --_field-radius: var(--passkey-field-radius, var(--glass-radius-sm, 10px));
+  --_scrim: var(--passkey-scrim, rgba(14, 18, 34, 0.42));
+  --_shadow: 0 30px 60px -24px rgba(14, 18, 34, 0.45);
+
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--_scrim);
+  color: var(--_ink);
+  font-family: var(--passkey-font, system-ui, -apple-system, "Segoe UI", sans-serif);
+  text-align: left;
+  animation: cp-consent-fade 0.16s ease-out;
+}
+@media (prefers-color-scheme: dark) {
+  .cp-consent {
+    --_ink: var(--passkey-ink, var(--glass-ink, #eef0f7));
+    --_muted: var(--passkey-muted, var(--glass-muted, #9aa0b4));
+    --_line: var(--passkey-line, var(--glass-line-strong, rgba(238, 240, 247, 0.16)));
+    --_surface: var(--passkey-secondary-bg, var(--glass-surface-solid, #171b2b));
+    --_sunken: var(--passkey-sunken, var(--glass-sunken, #0f1220));
+    --_primary-bg: var(--passkey-primary-bg, var(--glass-ink, #eef0f7));
+    --_primary-ink: var(--passkey-primary-ink, var(--glass-on-ink, #0e1222));
+    --_secondary-ink: var(--passkey-secondary-ink, var(--glass-ink, #eef0f7));
+    --_focus: var(--passkey-focus, var(--glass-accent-solid, #7d98ff));
+    --_scrim: var(--passkey-scrim, rgba(4, 6, 14, 0.62));
+    --_shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+.cp-consent__card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid var(--_line);
+  border-radius: 18px;
+  background: var(--_surface);
+  box-shadow: var(--_shadow);
+  animation: cp-consent-rise 0.2s ease-out;
+}
+.cp-consent__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--_sunken);
+  color: var(--_ink);
+}
+.cp-consent__title {
+  margin: 4px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--_ink);
+}
+.cp-consent__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--_muted);
+}
+.cp-consent__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--_muted);
+}
+.cp-consent__action {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--_ink);
+  overflow-wrap: anywhere;
+}
+.cp-consent__code-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 16px 12px 14px;
+  border: 1px solid var(--_line);
+  border-radius: var(--_field-radius);
+  background: var(--_sunken);
+  text-align: center;
+}
+.cp-consent__code {
+  padding: 0;
+  background: none;
+  color: var(--_ink);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.cp-consent__check {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--_muted);
+}
+.cp-consent__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cp-consent__primary,
+.cp-consent__secondary {
+  min-height: 42px;
+  padding: 0 20px;
+  border-radius: var(--_radius);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cp-consent__primary {
+  border: 1px solid transparent;
+  background: var(--_primary-bg);
+  color: var(--_primary-ink);
+  box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.55);
+}
+.cp-consent__secondary {
+  border: 1px solid var(--_line);
+  background: transparent;
+  color: var(--_secondary-ink);
+}
+.cp-consent__primary:hover { transform: translateY(-1px); }
+.cp-consent__secondary:hover { border-color: var(--_ink); }
+.cp-consent__primary:focus-visible,
+.cp-consent__secondary:focus-visible {
+  outline: 2px solid var(--_focus);
+  outline-offset: 2px;
+}
+@keyframes cp-consent-fade { from { opacity: 0; } }
+@keyframes cp-consent-rise { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@media (max-width: 480px) {
+  .cp-consent { align-items: end; padding: 12px; }
+  .cp-consent__card { padding: 20px; }
+  .cp-consent__actions { flex-direction: column-reverse; }
+  .cp-consent__primary,
+  .cp-consent__secondary { width: 100%; min-height: 46px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-consent,
+  .cp-consent__card { animation: none; }
+  .cp-consent__primary,
+  .cp-consent__secondary { transition: none; }
+}

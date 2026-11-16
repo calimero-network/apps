@@ -101,3 +101,9 @@ export { NodeShield, bindNodeShield } from "./NodeShield";
 export { openNodeShield, useNodeShieldApp } from "./nodeShieldStore";
 export { reviewRelease, type ReviewRelease } from "./nodeChecks";
 export { WorkspaceReview, WorkspaceTrust, type WorkspaceReviewProps, type WorkspaceTrustProps } from "./WorkspaceReview";
+export {
+  ConsentHandoff,
+  confirmConsentHandoff,
+  type ConsentHandoffOptions,
+  type ConsentHandoffProps,
+} from "./ConsentHandoff";
