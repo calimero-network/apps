@@ -215,9 +215,15 @@ export function useVaultSession(
     const abort = new AbortController();
     void (async () => {
       try {
+        // Where the vault's log is now: the stream starts after it rather than
+        // replaying every event since the vault began.
+        const { index } = await calimero.apps.view(
+          { app: contextId, method: 'vaultInfo', args: {} },
+          { signal: abort.signal },
+        );
         for await (const _event of calimero.events(
           contextId,
-          undefined,
+          typeof index === 'number' ? index + 1 : undefined,
           abort.signal,
         )) {
           void reloadRef.current();
