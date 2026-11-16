@@ -43,7 +43,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       labels?: object;
       onClose: () => void;
       onError?: (e: unknown) => void;
-      onJoined: (j: { org: string }) => void;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
     }) =>
       p.open
         ? createElement(
@@ -53,7 +53,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             createElement("pre", { "data-testid": "accept-extra" }, JSON.stringify({ org: p.org, labels: p.labels })),
             createElement("button", { "data-testid": "accept-error", onClick: () => p.onError?.(new Error("spent")) }, "error"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
-            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "done"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1", alreadyMember: false }) }, "done"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: "org-1", alreadyMember: true }) }, "member"),
           )
         : null,
   };
@@ -162,6 +163,29 @@ describe("an invitation link opened while signed out", () => {
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
     expect(screen.queryByTestId("username-modal")).toBeNull();
     expect(client.setMemberMetadata).not.toHaveBeenCalled();
+  });
+
+  it("says the person joined the team only when the invite was redeemed", async () => {
+    localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
+    const client = fakeClient();
+    client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ada" } } });
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    expect(await screen.findByText("You joined the team.")).toBeTruthy();
+  });
+
+  it("says nothing of joining when the person continues as a member", async () => {
+    localStorage.setItem(PENDING, "tok-1");
+    migrateLegacyInvite();
+    const client = fakeClient();
+    client.getOrg.mockResolvedValue({ name: "Team", members: { [ME]: "member" }, memberMetadata: { [ME]: { name: "Ada" } } });
+    renderApp(client);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-member"));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-1"));
+    expect(screen.queryByText("You joined the team.")).toBeNull();
   });
 
   it("Not now shows the landing page and keeps the token", async () => {

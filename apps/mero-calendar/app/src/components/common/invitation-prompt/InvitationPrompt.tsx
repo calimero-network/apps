@@ -6,6 +6,7 @@ import { useAskedInvite } from "@calimero-apps/passkey";
 
 import { useSessionApi } from "../../../api/sessionContext";
 import { dropInvite, inviteRoute, invites, readOrg, setMyTeamName, takeJoinedAtSignUp } from "../../../api/teams";
+import { useToast } from "../../../contexts/ToastContext";
 import UsernameModal from "../modals/username-modal/UsernameModal";
 
 const ACCEPT_LABELS = {
@@ -36,6 +37,7 @@ const ACCEPT_LABELS = {
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { api, deps } = useSessionApi();
   const signedIn = api.session.status === "signed-in" ? api.session : null;
   /** Joined, and the team has no name for you yet: asked once, here. */
@@ -91,9 +93,10 @@ export default function InvitationPrompt() {
         dropInvite();
         close();
       }}
-      onJoined={({ org }) => {
+      onJoined={({ org, alreadyMember }) => {
         dropInvite();
         close();
+        if (!alreadyMember) showToast("You joined the team.", "success");
         api.store?.sync(signedIn.client);
         if (!org) {
           open(org);
