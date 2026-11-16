@@ -144,11 +144,13 @@ describe('Remove', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone: out of the organization, as before (the org is everyone\'s apps)', async () => {
+  it('standalone: off Mero Issue Tracker\'s team (a call the app\'s own session may make); they stay in the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     await removeWithHook(cluster, org, 'acct-bob');
-    expect(cluster.org(org).members['acct-bob']).toBeUndefined();
-    expect(cluster.callsOf('removeTeamMember')).toEqual([]);
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
+    expect(cluster.callsOf('removeMember')).toEqual([]);
+    expect(cluster.org(org).members['acct-bob']).toBe('member');
+    expect((await readMembers(cluster.client, org, SOURCE)).people).not.toContain('acct-bob');
   });
 
   it('a legacy org: out of the organization', async () => {
@@ -218,12 +220,18 @@ describe('Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBe('member');
   });
 
-  it('standalone and legacy: out of the organization, as before', async () => {
-    for (const mode of ['standalone', 'legacy'] as const) {
-      const cluster = orgCluster();
-      const org = cluster.addOrg({ mode, app: PKG, role: 'member' });
-      expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
-      expect(cluster.org(org).members['acct-me']).toBeUndefined();
-    }
+  it('standalone: off Mero Issue Tracker\'s team; still in the organization', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'standalone', app: PKG, role: 'member' });
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: false });
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-me']);
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('legacy (no team): out of the organization, as before', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'legacy', role: 'member' });
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
+    expect(cluster.org(org).members['acct-me']).toBeUndefined();
   });
 });

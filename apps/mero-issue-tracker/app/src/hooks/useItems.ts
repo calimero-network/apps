@@ -2,9 +2,11 @@
  * useIssues: the active repository's board.
  *
  * Reads go through `MeroIssueTrackerClient` (generated from logic/res/abi.json) (`listIssues` filtered on the
- * node, `getStatusCounts` from the contract's maintained counts); every write
- * refetches. Changes by teammates arrive on the app's event stream
- * (`client.events`), coalesced into one refetch. v1 waited for a joined
+ * node, `getStatusCounts` from the contract's maintained counts). Changes,
+ * teammates' and your own, arrive on the app's event stream (`client.events`),
+ * coalesced into one refetch; a write settles once the refetch its own event
+ * starts has landed, so it costs one read, not two. With no event within
+ * {@link ECHO_WAIT_MS} (the stream closed), the write refetches itself. v1 waited for a joined
  * context's state to sync before its first read ("warming up"); an app on
  * Calimero 1.0 is read from its log, so the first read answers.
  */
@@ -18,6 +20,9 @@ export type { IssueView, CommentView, IssueDetail };
 
 /** How long a burst of events is gathered into one refetch. */
 export const EVENT_COALESCE_MS = 200;
+
+/** How long a write waits for its own event before it refetches without one. */
+export const ECHO_WAIT_MS = 1500;
 
 export interface IssueFilters {
   status: string;
@@ -92,8 +97,10 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const inFlightRef = useRef(false);
+  const runningRef = useRef<Promise<void> | null>(null);
   const pendingRef = useRef(false);
+  /** Writes waiting for the refetch their own event starts ({@link write}). */
+  const echoRef = useRef(new Set<() => void>());
 
   const board: MeroIssueTrackerClient | null = useMemo(
     () => (appId ? new MeroIssueTrackerClient(client, appId, { after }) : null),
@@ -102,14 +109,8 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
 
   const { status, assignee, label } = filters;
 
-  const refresh = useCallback(async () => {
+  const readOnce = useCallback(async () => {
     if (!board) return;
-    // One read at a time; a request that arrives meanwhile runs once after it.
-    if (inFlightRef.current) {
-      pendingRef.current = true;
-      return;
-    }
-    inFlightRef.current = true;
     setLoading(true);
     try {
       const [list, statusCounts] = await Promise.all([
@@ -124,17 +125,32 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      inFlightRef.current = false;
       setLoading(false);
-      if (pendingRef.current) {
-        pendingRef.current = false;
-        void refreshRef.current();
-      }
     }
   }, [board, status, assignee, label]);
 
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
+  const readRef = useRef(readOnce);
+  readRef.current = readOnce;
+
+  /** One read at a time; asked during one, one more after it. Settles once the reads asked for have landed. */
+  const refresh = useCallback((): Promise<void> => {
+    if (runningRef.current) {
+      pendingRef.current = true;
+      return runningRef.current;
+    }
+    const run = (async () => {
+      try {
+        do {
+          pendingRef.current = false;
+          await readRef.current();
+        } while (pendingRef.current);
+      } finally {
+        runningRef.current = null;
+      }
+    })();
+    runningRef.current = run;
+    return run;
+  }, []);
 
   useEffect(() => {
     setIssues([]);
@@ -143,18 +159,33 @@ export function useIssues({ client, appId, filters, after }: UseIssuesArgs): Use
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [readOnce, refresh]);
 
   useEffect(() => {
     if (!appId) return;
-    return watchEvents(client, appId, () => void refreshRef.current());
-  }, [client, appId]);
+    return watchEvents(client, appId, () => {
+      const waiting = [...echoRef.current];
+      echoRef.current.clear();
+      void refresh().finally(() => waiting.forEach((done) => done()));
+    });
+  }, [client, appId, refresh]);
 
   const write = useCallback(
     async (op: (t: MeroIssueTrackerClient) => Promise<unknown>) => {
       if (!board) return;
       await op(board);
-      await refresh();
+      // The write's own event refetches; without one in time, refetch here.
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          echoRef.current.delete(done);
+          void refresh().finally(resolve);
+        }, ECHO_WAIT_MS);
+        echoRef.current.add(done);
+      });
     },
     [board, refresh],
   );

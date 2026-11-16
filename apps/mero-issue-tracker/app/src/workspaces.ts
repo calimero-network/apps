@@ -12,10 +12,13 @@ import {
   listAppInfos,
   orgInstanceOptions,
   orgsWithApp,
+  removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
+  type ConsentClient,
   type InviteStore,
   type KeyValueStorage,
   type LeftApp,
@@ -25,6 +28,7 @@ import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME, APP_ROUTE, PRODUCT_NAME } from './config';
 import { MeroIssueTrackerClient } from './generated/client';
+import { consentOptions } from './orgConsent';
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -200,30 +204,65 @@ export async function readMembers(
 }
 
 /**
- * The signed-in account leaves the workspace (`leaveApp`, a passkey step-up).
- * In an org that keeps its apps apart that is Mero Issue Tracker only, with
- * `lastApp` set when it was their last app there (offer
- * {@link leaveWorkspaceOrg}); elsewhere it is the organization, as before.
+ * Takes `account` out of the workspace. Where the org has Mero Issue Tracker's own team
+ * that is off the team, which a session bound to the app's frontend may do
+ * itself; they stay in the organization. An org without one (a legacy org)
+ * removes them from the organization: on a bound session, on the node's
+ * consent page. Answers which it was.
  */
-export function leaveWorkspace(
+export async function removeFromWorkspace(
   client: Pick<CalimeroClient, 'session'> &
-    ClientRoutes<{ orgs: 'get' | 'appTeamList' | 'teamRemoveMember' | 'removeMember' }>,
+    ClientRoutes<{ orgs: 'get' | 'teamRemoveMember' | 'removeMember' }> &
+    ConsentClient,
+  org: string,
+  source: AppSource | null,
+  account: string,
+  passkey: () => PasskeyProvider,
+): Promise<'app' | 'org'> {
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  if (appTeamIdIn(view, sourcePackage(source))) {
+    await removeFromAppTeam(client, org, source, account, passkey);
+    return 'app';
+  }
+  return removeFromApp(client, org, source, account, passkey, {
+    consent: consentOptions('Remove them from this workspace'),
+  });
+}
+
+/**
+ * The signed-in account leaves the workspace. In an org that keeps its apps
+ * apart that is Mero Issue Tracker only, with `lastApp` set when it was their last app
+ * there (offer {@link leaveWorkspaceOrg}); in an org with Mero Issue Tracker's team it
+ * is off that team, staying in the organization. An org without one (a
+ * legacy org) is left altogether: on a bound session, on the consent page.
+ */
+export async function leaveWorkspace(
+  client: Pick<CalimeroClient, 'session'> &
+    ClientRoutes<{ orgs: 'get' | 'appTeamList' | 'teamRemoveMember' | 'removeMember' }> &
+    ConsentClient,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
-  self?: string,
+  self: string | undefined = client.session?.accountId,
 ): Promise<LeftApp> {
-  return leaveApp(client, org, source, passkey, self ? { self } : {});
+  if (!self) throw new Error('Sign in to leave.');
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  const pkg = sourcePackage(source);
+  if (appTeamIdIn(view, pkg) && !isAppOnly(view, pkg)) {
+    await removeFromAppTeam(client, org, source, self, passkey);
+    return { left: 'app', lastApp: false };
+  }
+  return leaveApp(client, org, source, passkey, { self, consent: consentOptions('Leave this workspace') });
 }
 
-/** The signed-in account leaves the organization altogether, every app in it. A passkey step-up. */
+/** The signed-in account leaves the organization altogether, every app in it. On a bound session, on the consent page. */
 export function leaveWorkspaceOrg(
-  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ orgs: 'removeMember' }>,
+  client: Pick<CalimeroClient, 'session'> & ClientRoutes<{ orgs: 'removeMember' }> & ConsentClient,
   org: string,
   passkey: () => PasskeyProvider,
   self?: string,
 ): Promise<void> {
-  return leaveOrg(client, org, passkey, self);
+  return leaveOrg(client, org, passkey, self, { consent: consentOptions('Leave this organization') });
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────
