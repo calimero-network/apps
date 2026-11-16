@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AppInfo } from "@calimero-network/mero-js";
 import { createInviteStore, type InviteStore } from "@calimero-apps/connect";
 
 import {
-  alreadyInInvitedWorld,
   createWorld,
   invitedWorld,
   listWorlds,
@@ -78,6 +76,8 @@ describe("invitations", () => {
     expect(base.origin + base.pathname).toBe(`${window.location.origin}/`);
     expect(base.searchParams.get("org")).toBe("org-1");
     expect(base.searchParams.get("world")).toBe("w-1");
+    expect(base.searchParams.has("from")).toBe(false);
+    expect(new URL(worldLinkBase("org-1", "w-1", "Ada")).searchParams.get("from")).toBe("Ada");
     // The shared dialog puts the token in the fragment.
     const s = store();
     window.history.replaceState(null, "", "/?org=org-1&world=w-1&x=1#invite=tok-1");
@@ -86,16 +86,6 @@ describe("invitations", () => {
     expect(invitedWorld(s.pending())).toBe("w-1");
     expect(window.location.search).toBe("?x=1");
     expect(window.location.hash).toBe("");
-  });
-
-  it("are not spent by a player already in the world they name", async () => {
-    const listApps = vi.fn(async () => [app("1", "a", "org-1")] as AppInfo[]);
-    const mine = holding("tok1", "org-1");
-    expect((await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", mine))?.appId).toBe("1");
-    expect(mine.token()).toBeNull();
-    const theirs = holding("tok2", "org-9");
-    expect(await alreadyInInvitedWorld(withRoutes({ listApps }), "abc", theirs)).toBeNull();
-    expect(theirs.token()).toBe("tok2");
   });
 
   it("stored by an older build move into the shared store", () => {

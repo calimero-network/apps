@@ -45,9 +45,9 @@ import { decideSelfName, rememberLastUsedName } from "@calimero-apps/names";
 
 import {
   CURRENT_WORLD,
-  alreadyInInvitedWorld,
   createWorld,
   invitedWorld,
+  inviter,
   invites as gameInvites,
   listWorlds,
   readCurrentWorld,
@@ -650,7 +650,14 @@ export class Landing {
 
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
     if (inviteBtn && current?.org) {
-      const invite = mountInviteWorld(this.conn.client, this.conn.approver(), current.org, current.appId, this.conn.sync);
+      const invite = mountInviteWorld(
+        this.conn.client,
+        this.conn.approver(),
+        current.org,
+        current.appId,
+        this.conn.sync,
+        knownName() || undefined,
+      );
       this.inviteDialogs.push(invite);
       inviteBtn.addEventListener("click", () => invite.open());
     }
@@ -689,25 +696,18 @@ export class Landing {
         noticeEl.textContent = "Invitation accepted: the world is in your list.";
         noticeEl.hidden = false;
       }
-      // An invitation: asked, never redeemed on its own. A player already in
-      // the invited world (the inviter opening their own link) enters it, and
-      // the link stays unspent for the player it was meant for.
-      if (this.invites.pending()) {
-        const mine = await alreadyInInvitedWorld(this.conn.client, this.source, this.invites);
-        this.conn.sync();
-        if (mine) return enter(mine);
-        const pending = this.invites.pending();
-        if (pending) {
-          const answer = await this.askToJoin(pending);
-          if (answer.world) return enter(answer.world, { joined: true });
-          if (answer.note) {
-            noticeEl.textContent = answer.note;
-            noticeEl.hidden = false;
-          }
-          listEl.innerHTML = "";
-          if (current) listEl.appendChild(this.worldCard(current, true, -1, enter));
-          listEl.appendChild(loading);
+      // An invitation: asked, never redeemed on its own (the dialog skips a member).
+      const pending = this.invites.pending();
+      if (pending) {
+        const answer = await this.askToJoin(pending);
+        if (answer.world) return enter(answer.world, { joined: true });
+        if (answer.note) {
+          noticeEl.textContent = answer.note;
+          noticeEl.hidden = false;
         }
+        listEl.innerHTML = "";
+        if (current) listEl.appendChild(this.worldCard(current, true, -1, enter));
+        listEl.appendChild(loading);
       }
       try {
         const worlds = await listWorlds(this.conn.client, this.source);
@@ -735,6 +735,9 @@ export class Landing {
     return new Promise((resolve) => {
       const dialog = mountAcceptInvite(this.conn.client, this.conn.approver(), {
         token: pending.token,
+        org: pending.org ?? undefined,
+        from: inviter(pending),
+        onError: () => this.invites.drop(),
         onJoined: ({ org }) => {
           this.invites.drop();
           void (async () => {

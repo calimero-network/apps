@@ -267,7 +267,9 @@ async function boot(): Promise<void> {
 
   // ---- pause menu (Esc/O — Minecraft-style game menu with options) -------
   const inviteDialog =
-    conn && worldOrg ? mountInviteWorld(conn.client, conn.approver(), worldOrg, worldId, conn.sync) : null;
+    conn && worldOrg
+      ? mountInviteWorld(conn.client, conn.approver(), worldOrg, worldId, conn.sync, choice.name)
+      : null;
   const menu = new PauseMenu(app, {
     onLeave: () => {
       save();

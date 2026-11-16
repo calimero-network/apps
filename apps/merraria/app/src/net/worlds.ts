@@ -56,6 +56,8 @@ export async function createWorld(
 
 /** The link parameter naming the world an invite opens. */
 const WORLD_PARAM = "world";
+/** The link parameter naming who sent the invite. */
+const FROM_PARAM = "from";
 
 /**
  * This game's pending invite (`createInviteStore` in `@calimero-apps/connect`),
@@ -64,11 +66,16 @@ const WORLD_PARAM = "world";
  * cluster, holds it for the account that signs in (another account's sign-in
  * drops it) and drops it on sign-out (`ui/landing.ts`).
  */
-export const invites: InviteStore = createInviteStore(APP, { keep: [WORLD_PARAM] });
+export const invites: InviteStore = createInviteStore(APP, { keep: [WORLD_PARAM, FROM_PARAM] });
 
 /** The world a pending invite's link names. */
 export function invitedWorld(invite: PendingInvite | null): string | null {
   return invite?.extra[WORLD_PARAM] ?? null;
+}
+
+/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
+export function inviter(invite: PendingInvite | null): string | null {
+  return invite?.extra[FROM_PARAM] ?? null;
 }
 
 /** Where this frontend is served: `/`, or the node's `/{version}/`. */
@@ -76,15 +83,15 @@ export const basename = (): string => nodeBasename(new URL(window.location.href)
 
 /**
  * The page an invite link opens (`InviteDialog`'s `linkBase`): this frontend,
- * naming `org`, so a player already in it (the inviter opening their own link,
- * say) is not made to spend the token's single use, and the `world` to enter.
- * Pinned to the served `/{version}/` until every cluster keeps the query on its
- * root redirect.
+ * naming `org` (so a member is told so, not charged the token's single use),
+ * the `world` to enter and the inviter's name. Pinned to the served
+ * `/{version}/` until every cluster keeps the query on its root redirect.
  */
-export function worldLinkBase(org: string, world: string): string {
+export function worldLinkBase(org: string, world: string, from?: string): string {
   const url = new URL(basename(), window.location.origin);
   url.searchParams.set(INVITE_PARAMS.org, org);
   url.searchParams.set(WORLD_PARAM, world);
+  if (from) url.searchParams.set(FROM_PARAM, from);
   return url.toString();
 }
 
@@ -126,24 +133,6 @@ export function worldIn(worlds: World[], org: string | null, named?: string | nu
   const asked = named ? worlds.find((w) => w.appId === named) : undefined;
   if (asked) return asked;
   return org ? (worlds.find((w) => w.org === org) ?? null) : null;
-}
-
-/**
- * The world a pending invitation names, when this account already plays in
- * it: the token is then dropped UNSPENT. Redeeming it would spend the link's
- * single use on nobody, and leave the player it was meant for unable to join.
- * `null` when the link names no org (or world) the account reaches.
- */
-export async function alreadyInInvitedWorld(
-  client: ClientRoutes<{ apps: "list" }>,
-  source: AppSource,
-  store: InviteStore = invites,
-): Promise<World | null> {
-  const invite = store.pending();
-  if (!invite || (!invite.org && !invitedWorld(invite))) return null;
-  const world = worldIn(await listWorlds(client, source).catch(() => []), invite.org, invitedWorld(invite));
-  if (world) store.drop();
-  return world;
 }
 
 /** The name of the stored key the world last played is kept under (`Connection.scopedKey`). */

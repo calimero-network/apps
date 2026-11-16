@@ -23,27 +23,37 @@ vi.mock("../src/ui/createWorld", async () => {
 
 // The shared invite dialogs are mero-react's to test: here only what the launcher hands them and does after.
 const dialogs = vi.hoisted(() => ({
-  invite: [] as { org: string; world: string; opened: boolean }[],
+  invite: [] as { org: string; world: string; opened: boolean; inviterName?: string }[],
+  accept: [] as { org?: string; from: string | null }[],
   joinOrg: "org-9",
   beforeJoin: () => {},
 }));
 vi.mock("../src/ui/inviteDialogs", () => ({
-  mountInviteWorld: (_c: unknown, _p: unknown, org: string, world: string) => {
-    const d = { org, world, opened: false, open: () => void (d.opened = true), unmount: () => {} };
+  mountInviteWorld: (_c: unknown, _p: unknown, org: string, world: string, _after: unknown, inviterName?: string) => {
+    const d = { org, world, inviterName, opened: false, open: () => void (d.opened = true), unmount: () => {} };
     dialogs.invite.push(d);
     return d;
   },
   mountAcceptInvite: (
     _c: unknown,
     _p: unknown,
-    props: { token: string; onJoined: (j: { org: string }) => void; onClose: () => void },
+    props: {
+      token: string;
+      org?: string;
+      from: string | null;
+      onJoined: (j: { org: string }) => void;
+      onClose: () => void;
+      onError: () => void;
+    },
   ) => {
+    dialogs.accept.push({ org: props.org, from: props.from });
     const el = document.createElement("div");
     el.dataset.testid = "accept-dialog";
     el.dataset.token = props.token;
     for (const [id, run] of [
       ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg }))],
       ["accept-close", () => props.onClose()],
+      ["accept-fail", () => props.onError()],
     ] as const) {
       const b = document.createElement("button");
       b.dataset.testid = id;
@@ -128,6 +138,7 @@ function invited(token: string, more: Partial<PendingInvite> = {}) {
 
 beforeEach(() => {
   dialogs.invite.length = 0;
+  dialogs.accept.length = 0;
   dialogs.joinOrg = "org-9";
   dialogs.beforeJoin = () => {};
   localStorage.clear();
@@ -376,16 +387,21 @@ describe("the launcher", () => {
       expect(invites.token()).toBeNull();
     });
 
-    it("enters the invited world without spending the link when the player is in it already", async () => {
-      invited("tok-1", { org: "org-1" });
-      const { client, chosen } = launcher(true, (c) => {
-        c.members["org-1"] = { "acct-ada": { name: "Grace" } };
-      });
-      const choice = await chosen;
-      expect(choice.world.appId).toBe("w-1");
-      expect(choice.name).toBe("Grace");
+    it("hands the dialog the link's org and the inviter, so the dialog skips a member", async () => {
+      invited("tok-1", { org: "org-1", extra: { from: "Ada" } });
+      const { client } = launcher(true);
+      await until(asked);
+      expect(dialogs.accept).toEqual([{ org: "org-1", from: "Ada" }]);
       expect(client.redeemInvite).not.toHaveBeenCalled();
+    });
+
+    it("a refused join forgets the token but keeps the dialog on screen", async () => {
+      invited("tok-1");
+      launcher(true);
+      await until(asked);
+      acceptClick("accept-fail");
       expect(invites.token()).toBeNull();
+      expect(asked()).toBe(true);
     });
 
     it("signing out drops the pending invite, so the next person is not asked to join", async () => {
@@ -442,10 +458,11 @@ describe("the launcher", () => {
     const first = launcher(true);
     localStorage.setItem(first.conn.scopedKey("current-world")!, JSON.stringify({ appId: "w-1", name: "caves", org: "org-1" }));
     document.body.innerHTML = "";
+    localStorage.setItem("calimero-names:last", "Grace");
     const { $ } = launcher(true);
     await settle();
     $("invite-btn")!.click();
-    expect(dialogs.invite.at(-1)).toMatchObject({ org: "org-1", world: "w-1", opened: true });
+    expect(dialogs.invite.at(-1)).toMatchObject({ org: "org-1", world: "w-1", opened: true, inviterName: "Grace" });
   });
 });
 
