@@ -16,7 +16,7 @@ because a package has to hold a component; it answers `about` and nothing else.
 apps/mero-home/
 ├── logic/                 the stub component (about), its scenario and ABI
 └── app/
-    ├── src/home.ts        what Home reads and decides (no React): org view, apps, rosters, who may do what
+    ├── src/homeOrg.ts     what Home reads and decides (no React): org view, apps, rosters, who may do what
     ├── src/Home.tsx       org picker, then the screens the person gets
     ├── src/move.ts        moving an app to another org, and merging orgs (no React)
     ├── src/screens/       Your apps, People, Invitations, Admin, Merge, Organization

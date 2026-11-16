@@ -15,7 +15,7 @@
 import { describeError, type ClientRoutes, type MyOrg } from "@calimero-apps/connect";
 import { passkeyConfirm, type CalimeroClient, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
 
-import { peopleOf, type Person, type Role } from "./home";
+import { peopleOf, type Person, type Role } from "./homeOrg";
 
 /** An app id no node holds: what {@link movesSupported} asks to move. */
 export const MOVE_PROBE = "mero-home-move-probe";

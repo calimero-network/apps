@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { passkeyConfirm, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import { describeError, type ClientRoutes, type MyOrg } from "@calimero-apps/connect";
 
-import { displayName, roleLabel, type OrgView } from "../home";
+import { displayName, roleLabel, type OrgView } from "../homeOrg";
 import {
   confirmsName,
   loadMergePlan,

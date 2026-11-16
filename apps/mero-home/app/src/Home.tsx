@@ -8,7 +8,7 @@ import { MergeOrgs } from "./screens/MergeOrgs";
 import { OrgSettings } from "./screens/OrgSettings";
 import { People } from "./screens/People";
 import { YourApps } from "./screens/YourApps";
-import { loadOrg, modeLabel, orgName, roleLabel, screensFor, type OrgView, type Screen } from "./home";
+import { loadOrg, modeLabel, orgName, roleLabel, screensFor, type OrgView, type Screen } from "./homeOrg";
 import { movesSupported } from "./move";
 
 const SCREEN_LABEL: Record<Screen, string> = {

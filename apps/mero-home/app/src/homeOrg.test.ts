@@ -15,7 +15,7 @@ import {
   peopleOf,
   screensFor,
   yourApps,
-} from "./home";
+} from "./homeOrg";
 import { BLOCKS, CHAT, CRM, ORG, fakeOrg } from "./test/fakeOrg";
 
 async function view(opts: Parameters<typeof fakeOrg>[0] = {}) {

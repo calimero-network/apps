@@ -3,7 +3,7 @@ import { passkeyConfirm, type OrgInvite, type PasskeyProvider } from "@calimero-
 import { describeError, inviteLink, inviteToApp, type ClientRoutes } from "@calimero-apps/connect";
 
 import { inviteRoot } from "../invites";
-import { TTL_CHOICES, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../home";
+import { TTL_CHOICES, inviteApps, inviteExpiry, invitableApps, isAdmin, roleLabel, type OrgView } from "../homeOrg";
 
 type Pending = { kind: "loading" } | { kind: "ready"; invites: OrgInvite[] } | { kind: "failed"; error: string };
 

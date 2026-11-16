@@ -9,7 +9,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 
-import { PACKAGE } from "./home";
+import { PACKAGE } from "./homeOrg";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 

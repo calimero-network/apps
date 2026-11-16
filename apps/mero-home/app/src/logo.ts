@@ -1,4 +1,4 @@
-import { MAX_LOGO_CHARS } from "./home";
+import { MAX_LOGO_CHARS } from "./homeOrg";
 
 /** The side, in pixels, a logo is scaled down to fit. */
 const SIDE = 96;
