@@ -63,9 +63,9 @@ const DMHeader = memo(function DMHeader({
 }: DMHeaderProps) {
   const permissions = useCurrentGroupPermissions(getGroupId());
   // Show while loading / before identity resolves; once resolved, allow
-  // admins or members holding CAN_CREATE_SUBGROUP. A DM is a restricted
-  // root-level subgroup + context (see createDmContextInGroup), same
-  // primitive as channel creation.
+  // admins or members whose row in Chat's app team holds CREATE_CHILD_TEAM
+  // (`canCreateSubgroup`): a DM is a closed team below it, as a private
+  // channel is.
   const resolved = !permissions.loading && permissions.memberIdentity !== "";
   const canShowCreate =
     !resolved || permissions.isAdmin || permissions.canCreateSubgroup;

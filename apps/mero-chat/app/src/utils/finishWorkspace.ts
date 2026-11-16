@@ -1,6 +1,11 @@
 /**
- * What "Create workspace" does once its organization exists: Chat's team and
- * the members' default capabilities, its name, #general, and entering it.
+ * What "Create workspace" does once its organization exists: name it, make
+ * #general, and enter it. What members may do is on their rows in Chat's
+ * app team, whose default lets them create channels and DMs.
+ *
+ * Shared by the picker's own create (`NamespaceEntryPopup`) and by the return
+ * from the node's consent page (`ConsentReturn`), where the organization was
+ * created on the page for a session opened on Chat's frontend.
  */
 import type { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import { finishOrg } from "../api/platform";
@@ -8,7 +13,6 @@ import type { ToastNotification } from "../components/common/ToastManager";
 import { setStoredGroupAlias, setGroupMemberIdentity } from "../constants/config";
 import { createChannel, GENERAL_CHANNEL } from "./createChannel";
 import { enterWorkspace } from "./enterWorkspace";
-import { DEFAULT_MEMBER_CAPABILITIES } from "./groupCapabilities";
 import { setMessengerDisplayName } from "./messengerName";
 
 type Toast = (toast: Omit<ToastNotification, "id">) => string;
@@ -23,7 +27,7 @@ export async function finishWorkspace(
   selfName: string,
   addToast: Toast,
 ): Promise<void> {
-  await finishOrg(groupId, DEFAULT_MEMBER_CAPABILITIES);
+  await finishOrg(groupId);
   setStoredGroupAlias(groupId, name);
   // Before #general, so the channel is made under your name in it.
   setMessengerDisplayName(selfName, groupId);

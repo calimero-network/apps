@@ -30,7 +30,6 @@ import type {
   ManageAllowlistRequest,
   MemberCapabilities,
   SetContextVisibilityRequest,
-  SetDefaultCapabilitiesRequest,
   SetSubgroupVisibilityRequest,
   SubgroupEntry,
   CreateSubgroupRequest,
@@ -46,6 +45,8 @@ import {
   addToChat,
   appMembers,
   changeAppAccounts,
+  chatRole,
+  chatRowIn,
   chatMembers,
   chatTeamId,
   createOrg,
@@ -58,9 +59,9 @@ import {
   leaveChatOrg,
   invalidate,
   isOrg,
+  isOrgAdmin,
   listChatApps,
   memberName,
-  memberRole,
   chatOrgs,
   otherChatOrgs,
   pendingChannel,
@@ -68,13 +69,14 @@ import {
   removeFromChat,
   run,
   setCapabilities,
+  setChatRow,
   setMemberName,
   setMemberRole,
   setOrgName,
   setVisibility,
   visibilityOf,
 } from "../platform";
-import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
+import { CAN_CREATE_CONTEXT, CAN_CREATE_SUBGROUP } from "../../utils/groupCapabilities";
 
 type Result<T> = Awaited<ApiResponse<T>>;
 
@@ -92,8 +94,8 @@ function catchError<T>(context: string, error: unknown): Result<T> {
   return fail(typeof status === "number" ? status : 500, describeError(error));
 }
 
-/** Every capability: what an owner or admin holds. */
-const ALL_CAPABILITIES = 0xff;
+/** Every capability: what an owner or admin, or a lead of chat's app team, holds. */
+const ALL_CAPABILITIES = 0xfff;
 
 /**
  * Bytes as a blob of conversation `contextId` (its app instance), in the
@@ -111,7 +113,7 @@ export async function uploadBlobDirect(
 }
 
 export class GroupApiDataSource implements GroupApi {
-  /** A workspace: an org whose members may create channels and invite. */
+  /** A workspace: an org with chat's app team, whose members create channels and DMs by its default. */
   async createGroup(request: CreateGroupRequest): ApiResponse<CreateGroupResponse> {
     try {
       const name = (request.name ?? "").trim();
@@ -119,12 +121,9 @@ export class GroupApiDataSource implements GroupApi {
         const problem = groupNameError(name);
         if (problem) return fail(400, problem);
       }
-      // v1 gave members these capabilities on a new namespace; on 1.0 it is a
-      // passkey step-up. Declined, the workspace stays, and only its owner and
-      // admins create channels and invite until an admin allows members to.
       // Chat's own app team comes with it, open; declined, or a node without
       // app teams, the workspace is a legacy one, as every workspace was before.
-      const groupId = await createOrg(name || "Workspace", DEFAULT_MEMBER_CAPABILITIES);
+      const groupId = await createOrg(name || "Workspace");
       return ok({ groupId });
     } catch (error) {
       return catchError("createGroup", error);
@@ -271,8 +270,9 @@ export class GroupApiDataSource implements GroupApi {
         const org = await getOrgRecord(groupId);
         const members = chatMembers(org).map((identity) => ({
           identity,
-          role: memberRole(org.members[identity]),
+          role: chatRole(org, identity),
           alias: memberName(org, identity),
+          ...(isOrgAdmin(org, identity) ? { orgAdmin: true } : {}),
         }));
         return ok({ members, teeMembers: [], selfIdentity: self });
       }
@@ -289,7 +289,7 @@ export class GroupApiDataSource implements GroupApi {
       const org = app.org ? await getOrgRecord(app.org).catch(() => null) : null;
       const members = (await appMembers(app)).map((identity) => ({
         identity,
-        role: identity === app.owner ? ("Admin" as const) : memberRole(org?.members[identity]),
+        role: identity === app.owner ? ("Admin" as const) : org ? chatRole(org, identity) : ("Member" as const),
         alias: org ? memberName(org, identity) : undefined,
       }));
       return ok({ members, teeMembers: [], selfIdentity: self });
@@ -353,14 +353,20 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** Admin or member of the workspace (a passkey step-up). */
+  /**
+   * A Chat admin or member: a lead of chat's app team or not (a passkey
+   * step-up). A workspace without chat's app team (legacy, a dev bundle)
+   * keeps the org role.
+   */
   async updateMemberRole(
     groupId: string,
     identity: string,
     role: "Admin" | "Member",
   ): ApiResponse<void> {
     try {
-      await setMemberRole(groupId, identity, role === "Admin" ? "admin" : "member");
+      const org = await getOrgRecord(groupId);
+      if (chatTeamId(org)) await setChatRow(groupId, identity, { lead: role === "Admin" });
+      else await setMemberRole(groupId, identity, role === "Admin" ? "admin" : "member");
       return ok(undefined);
     } catch (error) {
       return catchError("updateMemberRole", error);
@@ -509,24 +515,48 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  /**
+   * What `identity` may do in Chat: the capabilities on their row in chat's
+   * app team (every one for an org admin or a lead). A workspace without
+   * that team reads them org-wide, where creating a channel is `CREATE_APP`.
+   */
   async getMemberCapabilities(groupId: string, identity: string): ApiResponse<MemberCapabilities> {
     try {
       const org = await getOrgRecord(groupId);
-      const role = org.members[identity];
-      if (role === "owner" || role === "admin") return ok({ capabilities: ALL_CAPABILITIES });
-      return ok({ capabilities: org.capabilities[identity] ?? org.defaultCapabilities });
+      if (isOrgAdmin(org, identity)) return ok({ capabilities: ALL_CAPABILITIES });
+      const team = chatTeamId(org);
+      if (team) {
+        const row = chatRowIn(org, team, identity);
+        return ok({ capabilities: row.lead ? ALL_CAPABILITIES : row.capabilities });
+      }
+      const caps = org.capabilities[identity] ?? org.defaultCapabilities;
+      return ok({ capabilities: caps & CAN_CREATE_CONTEXT ? caps | CAN_CREATE_SUBGROUP : caps });
     } catch (error) {
       return catchError("getMemberCapabilities", error);
     }
   }
 
+  /**
+   * Sets what `identity` may do in Chat: their row in chat's app team, its
+   * lead and role kept (a passkey step-up). A workspace without that team
+   * sets them org-wide.
+   */
   async setMemberCapabilities(
     groupId: string,
     identity: string,
     request: SetMemberCapabilitiesRequest,
   ): ApiResponse<void> {
     try {
-      await setCapabilities(groupId, request.capabilities, identity);
+      const org = await getOrgRecord(groupId);
+      const team = chatTeamId(org);
+      if (team) {
+        // "Create channels" is CREATE_CHILD_TEAM on chat's team. CREATE_APP
+        // there (an instance on chat's team itself) is never granted from
+        // this screen: whatever the row holds is kept as it is.
+        const held = chatRowIn(org, team, identity).capabilities & CAN_CREATE_CONTEXT;
+        const capabilities = (request.capabilities & ~CAN_CREATE_CONTEXT) | held;
+        await setChatRow(groupId, identity, { capabilities });
+      } else await setCapabilities(groupId, request.capabilities & ~CAN_CREATE_SUBGROUP, identity);
       return ok(undefined);
     } catch (error) {
       return catchError("setMemberCapabilities", error);
@@ -581,18 +611,6 @@ export class GroupApiDataSource implements GroupApi {
       return ok(undefined);
     } catch (error) {
       return catchError("setContextAlias", error);
-    }
-  }
-
-  async setDefaultCapabilities(
-    groupId: string,
-    request: SetDefaultCapabilitiesRequest,
-  ): ApiResponse<void> {
-    try {
-      await setCapabilities(groupId, request.defaultCapabilities);
-      return ok(undefined);
-    } catch (error) {
-      return catchError("setDefaultCapabilities", error);
     }
   }
 

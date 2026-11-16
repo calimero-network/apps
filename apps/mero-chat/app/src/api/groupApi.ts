@@ -66,6 +66,8 @@ export interface GroupMember {
   identity: string;
   alias?: string;
   role: GroupMemberRole;
+  /** An owner or admin of the organization: an Admin in Chat whom Chat cannot make a member. */
+  orgAdmin?: boolean;
 }
 
 export interface GroupUpgradeStatus {
@@ -181,10 +183,6 @@ export interface SetMemberMetadataRequest {
 
 export interface MemberCapabilities {
   capabilities: number;
-}
-
-export interface SetDefaultCapabilitiesRequest {
-  defaultCapabilities: number;
 }
 
 export interface SubgroupEntry {
@@ -308,10 +306,6 @@ export interface GroupApi {
     groupId: string,
     identity: string,
     request: SetMemberMetadataRequest,
-  ): ApiResponse<void>;
-  setDefaultCapabilities(
-    groupId: string,
-    request: SetDefaultCapabilitiesRequest,
   ): ApiResponse<void>;
   setSubgroupVisibility(
     groupId: string,

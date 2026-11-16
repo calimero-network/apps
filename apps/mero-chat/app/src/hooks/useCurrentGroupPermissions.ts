@@ -70,7 +70,8 @@ export function useCurrentGroupPermissions(groupId: string) {
     // an admin grants or revokes a member's permissions, and there's no
     // SSE channel for governance ops, so the hook must re-fetch to reflect
     // server state (e.g. the "+" channel button reappearing after an admin
-    // re-grants CAN_CREATE_SUBGROUP).
+    // gives back "Create channels" on the member's row in Chat's app team,
+    // which `getMemberCapabilities` reads).
     //
     // `silent=true` on polled refreshes: don't flip `loading` back to true
     // mid-session, otherwise consumers that gate on `!loading` would

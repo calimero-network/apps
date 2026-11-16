@@ -78,8 +78,9 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
   const permissions = useCurrentGroupPermissions(permissionsGroupId);
   // Optimistic gate: while loading, on API failure, or before memberIdentity
   // is known, show the button — the create API enforces the real check.
-  // Once resolved, show for admins or members holding CAN_CREATE_SUBGROUP
-  // (rc.37+: regular namespace members can start root-level channel-groups).
+  // Once resolved, show for admins (an org admin or a lead of Chat's app
+  // team) or members whose row in Chat's app team holds CREATE_CHILD_TEAM
+  // (`canCreateSubgroup`), which the team's default gives every member.
   const resolved = !permissions.loading && permissions.memberIdentity !== "";
   const canShowCreate =
     !resolved || permissions.isAdmin || permissions.canCreateSubgroup;
