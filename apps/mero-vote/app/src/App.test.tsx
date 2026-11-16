@@ -149,7 +149,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       token: string;
       org?: string;
       labels?: { noun?: string };
-      onJoined: (j: { org: string }) => void;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
       onClose: () => void;
       onError?: (e: unknown) => void;
     }) =>
@@ -158,7 +158,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             "div",
             { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-noun": p.labels?.noun },
             createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
-            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: true }) }, "member"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
@@ -286,6 +287,17 @@ describe("App", () => {
     fireEvent.click(screen.getByTestId("accept-done"));
     await screen.findByText(/Invitation accepted/);
     expect(invites.token()).toBeNull();
+  });
+
+  it("says the person is already in when they continue as a member", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9" });
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-member"));
+    await screen.findByText("You're already in this voting group.");
+    expect(screen.queryByText(/Invitation accepted/)).toBeNull();
   });
 
   it("hands the accept dialog the link's org and the group wording", async () => {

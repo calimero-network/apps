@@ -131,12 +131,12 @@ export function App({
 
   // The org an invite joined (or the account was already in): its voting group opens
   // once there is a client to list it with. `org: null` when nothing said which.
-  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  const [landing, setLanding] = useState<{ org: string | null; alreadyMember?: boolean } | null>(null);
 
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org } = landing;
+    const { org, alreadyMember } = landing;
     void (async () => {
       setPickerKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -150,7 +150,7 @@ export function App({
       open(null);
       // In the org, but with no voting group there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("a voting group") : "Invitation accepted: the voting group is in your list.");
+      setNotice(may === false ? askAnOwnerCopy("a voting group") : alreadyMember ? "You're already in this voting group." : "Invitation accepted: the voting group is in your list.");
     })();
   }, [client, landing, source, key, storage, after, open]);
 
@@ -259,10 +259,10 @@ export function App({
               invites.drop();
               closeInvite();
             }}
-            onJoined={({ org }) => {
+            onJoined={({ org, alreadyMember }) => {
               invites.drop();
               closeInvite();
-              setLanding({ org });
+              setLanding({ org, alreadyMember });
               after();
             }}
           />
