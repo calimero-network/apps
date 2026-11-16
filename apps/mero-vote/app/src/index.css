@@ -554,18 +554,6 @@ td.mono { font-family: var(--mono); }
 .ns-strip { display: flex; align-items: center; gap: 8px; }
 .join-head { margin-top: 40px; }
 
-/* ── the invite link ──────────────────────────────────────────────────────
-   One ellipsised line; `min-width: 0` is load-bearing in the flex row, and
-   truncation is visual only — textContent is still the whole link. */
-.link-field {
-  display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 5px 5px 5px 14px;
-  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface);
-}
-.invite-link {
-  display: block; flex: 1; color: var(--text-dim); font-size: 12.5px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
-}
-
 /* ── context bar (legacy name kept) ────────────────────────────────────── */
 .card.context-bar { padding: 12px 18px; }
 

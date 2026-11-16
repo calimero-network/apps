@@ -4,10 +4,12 @@ import {
   appSource,
   askAnOwnerCopy,
   canCreateIn,
+  memberOf,
   type InviteStore,
   type KeyValueStorage,
 } from "@calimero-apps/connect";
-import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvite, useInstanceRelease, useAskedInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
@@ -119,19 +121,41 @@ export function App({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
+  // is pending (`InvitationSignIn`), redeemed only on "Join" in the shared dialog.
   // The store drops it once joined, refused or declined, and on sign-out.
   const pending = usePendingInvite(invites);
   const invite = pending?.token ?? null;
   const [inviteLater, setInviteLater] = useState(false);
   // The invitation a signed-in account is asked about stays on screen until it
-  // closes: `JoinInvitation` drops the token before it says "already in" or
-  // "used up", and the store would take the page away with it.
+  // closes, though the store drops the token once it is joined or refused.
   const { invite: asking, close: closeInvite } = useAskedInvite(invites, !!client);
+  // The token checked against the account's orgs already.
+  const [checked, setChecked] = useState<string | null>(null);
 
   // The org an invite joined (or the account was already in): its voting group opens
   // once there is a client to list it with. `org: null` when nothing said which.
   const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+
+  // Not asked of a member of the org the link names: redeeming spends the
+  // link's single use, so it is left unused for the person it was meant for.
+  const askingToken = asking?.token ?? null;
+  const askingOrg = asking?.org ?? null;
+  useEffect(() => {
+    if (!client || !askingToken) return;
+    let live = true;
+    void (askingOrg ? memberOf(client, askingOrg) : Promise.resolve(null)).then((member) => {
+      if (!live) return;
+      if (member && askingOrg) {
+        invites.drop();
+        closeInvite();
+        setLanding({ org: askingOrg });
+      }
+      setChecked(askingToken);
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, askingToken, askingOrg, invites, closeInvite]);
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
@@ -244,6 +268,25 @@ export function App({
       </header>
 
       <main className="wrap">
+        {session.status === "signed-in" && (
+          <AcceptInviteDialog
+            open={asking !== null && checked === asking.token}
+            client={session.client}
+            passkey={deps.passkey()}
+            token={asking?.token ?? ""}
+            appName="Mero Vote"
+            onClose={() => {
+              invites.drop();
+              closeInvite();
+            }}
+            onJoined={({ org }) => {
+              invites.drop();
+              closeInvite();
+              setLanding({ org });
+              after();
+            }}
+          />
+        )}
         {notice && (
           <Callout tone="success" icon={<CheckIcon size={18} />}>
             {notice}
@@ -269,24 +312,6 @@ export function App({
           ) : (
             <Welcome api={api} where={describeTarget(session.target)} />
           )
-        ) : asking ? (
-          <JoinInvitation
-            {...ONBOARDING}
-            client={session.client}
-            key={asking.token}
-            token={asking.token}
-            org={asking.org}
-            drop={invites.drop}
-            after={after}
-            onJoined={({ org }) => {
-              closeInvite();
-              setLanding({ org });
-            }}
-            onClose={({ member }) => {
-              closeInvite();
-              if (member) setLanding({ org: member });
-            }}
-          />
         ) : !opened || !group ? (
           <>
             <GroupPicker
