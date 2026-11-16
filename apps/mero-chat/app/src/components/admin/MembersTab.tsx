@@ -22,10 +22,14 @@ const List = styled.div`
   gap: 2px;
 `;
 
+// Wraps rather than squeezes: with a role select and three buttons the
+// actions are wider than a narrow dialog, and the name must stay readable.
 const MemberRow = styled.div`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 0.375rem 0.75rem;
   padding: 0.5rem 0.625rem;
   border-radius: 10px;
   transition: background 0.12s ease;
@@ -38,7 +42,8 @@ const MemberInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-width: 0;
+  flex: 1 1 140px;
+  min-width: 140px;
 `;
 
 const Identity = styled.span`
@@ -73,9 +78,11 @@ const RoleBadge = styled.span<{ $admin: boolean }>`
 
 const Actions = styled.div`
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.375rem;
-  flex-shrink: 0;
+  margin-left: auto;
 `;
 
 const SmallButton = styled.button`
