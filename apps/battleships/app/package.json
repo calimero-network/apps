@@ -16,10 +16,12 @@
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-react": "catalog:component",
     "@calimero-network/mero-ui": "catalog:",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "react": "catalog:",

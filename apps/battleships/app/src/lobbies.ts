@@ -28,18 +28,14 @@ export async function listLobbies(client: ClientRoutes<{ apps: 'list' }>, source
   return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
-/**
- * A new lobby named `name`: an organization for it first, so players can be
- * invited, then the app instance in it.
- */
+/** The app instance of a new lobby, in the organization the node just created for it. */
 export async function createLobby(
-  client: ClientRoutes<{ apps: 'create'; orgs: 'create' }>,
+  client: ClientRoutes<{ apps: 'create' }>,
   source: AppSource,
+  org: string,
   name: string,
-): Promise<{ appId: string; org: string }> {
-  const org = (await client.orgs.create({ name })).orgId;
-  const appId = (await client.apps.create({ name, ...appTarget(source), org })).appId;
-  return { appId, org };
+): Promise<string> {
+  return (await client.apps.create({ name, ...appTarget(source), org })).appId;
 }
 
 /** An org member as the lobby lists it. `role` is v1's `Admin` / `Member` wording. */

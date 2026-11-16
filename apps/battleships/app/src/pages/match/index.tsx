@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appSource, targetKey } from '@calimero-apps/connect';
-import { AppListing, JoinInvitation, useAskedInvite } from '@calimero-apps/passkey';
+import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { lastUsedName } from '@calimero-apps/names';
+import { AppListing, JoinInvitation, reviewRelease, useAskedInvite, useResolvedSource } from '@calimero-apps/passkey';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -45,6 +47,16 @@ import ShotGrid from '../../components/ShotGrid';
 import PlacementGrid from '../../components/PlacementGrid';
 import ShipSelector from '../../components/ShipSelector';
 
+const CREATE_LABELS = {
+  title: 'New lobby',
+  subtitle: 'Name your lobby, and choose how the players in it will see you.',
+  nameLabel: 'Lobby name',
+  namePlaceholder: 'e.g. Friday fleet',
+  selfLabel: 'Your name',
+  selfPlaceholder: 'e.g. Ada',
+  next: 'Continue',
+};
+
 export default function MatchPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,7 +69,8 @@ export default function MatchPage() {
   // Where "the lobby you had open last" is remembered: per target and account,
   // as v1 kept it per node.
   const scope = session.status === 'signed-in' ? `${targetKey(session.target)}:${session.accountId}` : null;
-  const source = useMemo(() => appSource(sessionApi.env, PACKAGE), [sessionApi.env]);
+  const base = useMemo(() => appSource(sessionApi.env, PACKAGE), [sessionApi.env]);
+  const { source, pending: sourcePending } = useResolvedSource(client, accountId, base);
   const after = useCallback(() => {
     if (client) store?.sync(client);
   }, [client, store]);
@@ -88,8 +101,7 @@ export default function MatchPage() {
   const [view, setView] = useState<'lobby-select' | 'lobby' | 'game'>('lobby-select');
   const manualLobbySelect = useRef(false);
 
-  // Lobby creation form
-  const [newLobbyName, setNewLobbyName] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const [invitationLink, setInvitationLink] = useState<string | null>(null);
 
   // Match management
@@ -712,17 +724,19 @@ export default function MatchPage() {
     navigate('/');
   }, [sessionApi, navigate, scope]);
 
-  const handleCreateLobby = useCallback(async () => {
-    const name = newLobbyName.trim();
-    try {
-      await lobby.createLobby(name || undefined);
-    } catch (e) {
-      show({ title: messageOf(e, 'Failed to create lobby'), variant: 'error' });
-      return;
-    }
-    setNewLobbyName('');
-    show({ title: 'Lobby created', variant: 'success' });
-  }, [lobby, newLobbyName, show]);
+  const handleLobbyCreated = useCallback(
+    async (created: { orgId: string; name: string; selfName: string }) => {
+      setCreateOpen(false);
+      try {
+        await lobby.lobbyCreated(created);
+      } catch (e) {
+        show({ title: messageOf(e, 'Failed to create lobby'), variant: 'error' });
+        return;
+      }
+      show({ title: 'Lobby created', variant: 'success' });
+    },
+    [lobby, show],
+  );
 
   const handleCreateInvitation = useCallback(async () => {
     try {
@@ -777,6 +791,20 @@ export default function MatchPage() {
     onLogout: doLogout,
   };
 
+  // Mounted in every signed-in view: it also finishes a lobby approved on a full-page trip to the node.
+  const createDialog = client && (
+    <CreateWorkspaceDialog
+      client={client}
+      passkey={sessionApi.passkey()}
+      release={sourcePending ? null : (reviewRelease(source) ?? { package: PACKAGE })}
+      defaultSelfName={lastUsedName()}
+      open={createOpen}
+      onClose={() => setCreateOpen(false)}
+      onCreated={handleLobbyCreated}
+      labels={CREATE_LABELS}
+    />
+  );
+
   // --- Not signed in: where the build connects, and a passkey ---
   if (session.status !== 'signed-in') {
     return (
@@ -807,6 +835,7 @@ export default function MatchPage() {
     return (
       <div className="app-bg">
         <NavBar {...navProps} />
+        {createDialog}
         <div className="page-shell">
           <div className="page-content">
             <JoinInvitation
@@ -840,6 +869,7 @@ export default function MatchPage() {
     return (
       <div className="app-bg">
         <NavBar {...navProps} />
+        {createDialog}
         <div className="page-shell">
           <div className="page-content">
             <LobbySelect
@@ -850,11 +880,8 @@ export default function MatchPage() {
               selectedNamespaceId={lobby.selectedLobby?.namespaceId || null}
               lobbyContextId={lobby.lobbyContextId}
               namespaceId={lobby.namespaceId}
-              createLobbyLoading={lobby.createLobbyLoading}
-              newLobbyName={newLobbyName}
-              onNewLobbyNameChange={setNewLobbyName}
               onSelectLobby={lobby.selectLobby}
-              onCreateLobby={handleCreateLobby}
+              onCreateLobby={() => setCreateOpen(true)}
               onEnter={handleEnterLobby}
             />
             {/* Inside `.page-content`, NOT beside it: `.page-shell` is a flex
@@ -872,6 +899,7 @@ export default function MatchPage() {
     return (
       <div className="app-bg">
         <NavBar {...navProps} />
+        {createDialog}
         <div className="page-shell">
           <div className="page-content">
             {/* Back belongs with the content it backs out of, not in the bar:
@@ -927,6 +955,7 @@ export default function MatchPage() {
   return (
     <div className="app-bg">
       <NavBar {...navProps} />
+      {createDialog}
       <div className="page-shell">
         <div className="page-content page-content-wide">
           <button type="button" className="page-back" onClick={resetToLobby}>

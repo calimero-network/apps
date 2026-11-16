@@ -127,6 +127,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -139,6 +142,9 @@ importers:
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 35.3.0
+      '@calimero-network/mero-react':
+        specifier: catalog:component
+        version: 11.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

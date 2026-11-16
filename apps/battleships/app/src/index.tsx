@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import '@fontsource-variable/jetbrains-mono';
 import './index.css';
+import { ConsentPopupReturn } from '@calimero-network/mero-react';
 import App from './App';
 import { basename, invites, migrateStoredInvite } from './lobbies';
 
@@ -24,6 +25,8 @@ if (!root) throw new Error('#root is missing from index.html');
 
 ReactDOM.createRoot(root).render(
   <Wrapper>
-    <App />
+    <ConsentPopupReturn>
+      <App />
+    </ConsentPopupReturn>
   </Wrapper>,
 );
