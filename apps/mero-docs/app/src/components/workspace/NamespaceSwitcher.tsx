@@ -19,7 +19,19 @@ import {
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { peopleCount } from '@/lib/roles';
-import { NamespaceCreateDialog } from './NamespaceCreateDialog';
+import { WorkspaceCreator } from '@calimero-apps/passkey';
+import { toast } from 'sonner';
+import { useLive } from '@/calimero/react';
+import { useSession } from '@/calimero/session';
+import { PACKAGE_NAME } from '@/constants/config';
+
+const CREATE_LABELS = {
+  title: 'New workspace',
+  nameLabel: 'Workspace name',
+  namePlaceholder: 'Workspace name',
+  selfLabel: 'Your name in this workspace',
+  selfPlaceholder: 'Your name in this workspace',
+};
 
 export function NamespaceSwitcher() {
   const {
@@ -30,7 +42,10 @@ export function NamespaceSwitcher() {
     loading,
     error,
     refetch,
+    workspaceCreated,
   } = useDriveWorkspace();
+  const { session, passkey, source, resolvingSource } = useSession();
+  const client = useLive()?.client ?? null;
   const [showCreate, setShowCreate] = useState(false);
   // A menu hands focus back to its trigger as it closes, which lands AFTER a
   // dialog it opened has mounted, so the first keys typed into the dialog
@@ -141,12 +156,25 @@ export function NamespaceSwitcher() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {showCreate && (
-        <NamespaceCreateDialog
+      {client && session.status === 'signed-in' && (
+        <WorkspaceCreator
+          client={client}
+          target={session.target}
+          passkey={passkey}
+          source={source}
+          pending={resolvingSource}
+          appPackage={PACKAGE_NAME}
+          open={showCreate}
           onClose={() => setShowCreate(false)}
-          onCreated={async () => {
-            await refetch();
+          onCreated={async (created) => {
+            setShowCreate(false);
+            try {
+              await workspaceCreated(created);
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : String(e));
+            }
           }}
+          labels={CREATE_LABELS}
         />
       )}
     </>

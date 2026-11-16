@@ -23,7 +23,7 @@ export type { CapabilityName, CapabilityBit } from '@/calimero/capabilities';
  *  (namespace) by invite - the "Editor" preset: join open folders +
  *  create folders + create document contexts. Set via
  *  `setCapabilities(org, DEFAULT_NEW_MEMBER_CAPS)`
- *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
+ *  at workspace-creation time (see `useDriveWorkspace.workspaceCreated`),
  *  and re-used as the Editor grant in `WORKSPACE_ROLE_GRANTS`. Equals 37
  *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).
  *  See design spec §5.2 / §5.3. */
