@@ -271,10 +271,11 @@ catalog:
 # mero-react 11.4.0 adds CreateWorkspaceDialog, the one create-workspace dialog the pilot apps render.
 # 11.5.0 adds `labels.noun` and the `fields` slot, so a game words the dialog and asks for its own inputs.
 # 11.6.0 adds InviteDialog and AcceptInviteDialog (mero-js ^35.6.0), the shared invite and join dialogs.
+# 11.7.0 gives them app wording (noun, inviter, note) and the already-a-member skip.
 catalogs:
   component:
     "@calimero-network/mero-js": ^35.6.0
-    "@calimero-network/mero-react": ^11.6.0
+    "@calimero-network/mero-react": ^11.7.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
