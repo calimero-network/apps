@@ -40,7 +40,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             "div",
             { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-noun": p.labels?.noun },
             createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
-            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: true }) }, "member"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
@@ -296,6 +297,17 @@ describe("the studio's front door", () => {
     fireEvent.click(screen.getByTestId("accept-done"));
     expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
     expect(invites.token()).toBeNull();
+  });
+
+  it("says the person is already in when they continue as a member", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9" });
+    renderPage(client, storage, invites);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-member"));
+    expect(await screen.findByText("You're already in this studio.")).toBeTruthy();
+    expect(screen.queryByText(/Invitation accepted/)).toBeNull();
   });
 
   it("creates an account with a new passkey, no name needed", async () => {

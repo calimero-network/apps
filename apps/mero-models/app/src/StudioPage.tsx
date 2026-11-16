@@ -50,8 +50,8 @@ export function StudioPage({
   /** The app's pending-invite store. */
   invites: InviteStore;
   /** The studio an invite joined (or the account was already in), to open once signed in. */
-  landing: { org: string | null } | null;
-  setLanding: (landing: { org: string | null } | null) => void;
+  landing: { org: string | null; alreadyMember?: boolean } | null;
+  setLanding: (landing: { org: string | null; alreadyMember?: boolean } | null) => void;
 }) {
   const { session, store } = api;
   const navigate = useNavigate();
@@ -94,7 +94,7 @@ export function StudioPage({
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org } = landing;
+    const { org, alreadyMember } = landing;
     void (async () => {
       setPickerKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -108,7 +108,7 @@ export function StudioPage({
       open(null);
       // In the studio, but with no scene there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("a scene") : "Invitation accepted: the studio's scenes are in your list.");
+      setNotice(may === false ? askAnOwnerCopy("a scene") : alreadyMember ? "You're already in this studio." : "Invitation accepted: the studio's scenes are in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -188,10 +188,10 @@ export function StudioPage({
         invites.drop();
         closeInvite();
       }}
-      onJoined={({ org }) => {
+      onJoined={({ org, alreadyMember }) => {
         invites.drop();
         closeInvite();
-        setLanding({ org });
+        setLanding({ org, alreadyMember });
         after();
       }}
     />
