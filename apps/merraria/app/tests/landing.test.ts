@@ -26,6 +26,7 @@ const dialogs = vi.hoisted(() => ({
   invite: [] as { org: string; world: string; opened: boolean; inviterName?: string }[],
   accept: [] as { org?: string; from: string | null }[],
   joinOrg: "org-9",
+  joinMember: false,
   beforeJoin: () => {},
 }));
 vi.mock("../src/ui/inviteDialogs", () => ({
@@ -41,7 +42,7 @@ vi.mock("../src/ui/inviteDialogs", () => ({
       token: string;
       org?: string;
       from: string | null;
-      onJoined: (j: { org: string }) => void;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
       onClose: () => void;
       onError: () => void;
     },
@@ -51,7 +52,7 @@ vi.mock("../src/ui/inviteDialogs", () => ({
     el.dataset.testid = "accept-dialog";
     el.dataset.token = props.token;
     for (const [id, run] of [
-      ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg }))],
+      ["accept-join", () => (dialogs.beforeJoin(), props.onJoined({ org: dialogs.joinOrg, alreadyMember: dialogs.joinMember }))],
       ["accept-close", () => props.onClose()],
       ["accept-fail", () => props.onError()],
     ] as const) {
@@ -140,6 +141,7 @@ beforeEach(() => {
   dialogs.invite.length = 0;
   dialogs.accept.length = 0;
   dialogs.joinOrg = "org-9";
+  dialogs.joinMember = false;
   dialogs.beforeJoin = () => {};
   localStorage.clear();
   invites = createInviteStore("merraria", { storage: localStorage, keep: ["world"] });
@@ -385,6 +387,17 @@ describe("the launcher", () => {
       await until(() => $("world-card-0") !== null);
       expect($("notice")?.textContent).toContain("Invitation accepted");
       expect(invites.token()).toBeNull();
+    });
+
+    it("continuing as an existing member of an org holding no world claims no acceptance", async () => {
+      invited("tok-1");
+      dialogs.joinOrg = "org-empty";
+      dialogs.joinMember = true;
+      const { $ } = launcher(true);
+      await until(asked);
+      acceptClick("accept-join");
+      await until(() => $("world-card-0") !== null);
+      expect($("notice")?.textContent).toBe("You're already in this world");
     });
 
     it("hands the dialog the link's org and the inviter, so the dialog skips a member", async () => {

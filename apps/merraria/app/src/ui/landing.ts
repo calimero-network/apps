@@ -738,14 +738,14 @@ export class Landing {
         org: pending.org ?? undefined,
         from: inviter(pending),
         onError: () => this.invites.drop(),
-        onJoined: ({ org }) => {
+        onJoined: ({ org, alreadyMember }) => {
           this.invites.drop();
           void (async () => {
             const worlds = await listWorlds(this.conn.client, this.source).catch(() => []);
             this.conn.sync();
             const world = worldIn(worlds, org, invitedWorld(pending));
             dialog.unmount();
-            resolve({ world, note: world ? "" : "Invitation accepted: the world is in your list." });
+            resolve({ world, note: world ? "" : alreadyMember ? "You're already in this world" : "Invitation accepted: the world is in your list." });
           })();
         },
         onClose: () => {
