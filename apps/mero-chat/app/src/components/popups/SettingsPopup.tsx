@@ -16,10 +16,12 @@ import { clearMessengerDisplayName, getMessengerDisplayName } from "../../utils/
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import { useWorkspaceName } from "../../hooks/useWorkspaceName";
 import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { useResolvedName } from "../../repositories/names/useNames";
 import { downloadBlob, isDelegatedSession } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
-import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
+import { avatarOf, invalidateAvatarCache } from "../../hooks/useAvatarUrl";
+import { setMemberAvatar } from "../../api/platform";
+import { GENERAL_CHANNEL } from "../../utils/createChannel";
 import { useTheme, type Theme } from "../../theme/theme";
 // ─── Animations ────────────────────────────────────────────────────────────────
 
@@ -499,8 +501,10 @@ export default function SettingsPopup({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const avatarObjectUrlRef = useRef<string | null>(null);
 
-  const username = getMessengerDisplayName() || "";
   const identity = getExecutorPublicKey() || "";
+  // Your name in the workspace (its member metadata); this browser's copy of
+  // it until that loads.
+  const username = useResolvedName(identity) || getMessengerDisplayName() || "";
   const identityShort = identity.length > 16
     ? `${identity.slice(0, 8)}…${identity.slice(-6)}`
     : identity;
@@ -517,19 +521,16 @@ export default function SettingsPopup({
     </svg>
   );
 
-  // Load current avatar from the active context on open.
+  // Your picture, from the workspace's member metadata (as your name).
   useEffect(() => {
-    if (!isOpen || !identity) return;
-    const contextId = getContextId();
-    if (!contextId) return;
+    if (!isOpen || !identity || !groupId) return;
 
     let cancelled = false;
     (async () => {
       try {
-        const res = await new ClientApiDataSource().getProfiles(contextId, identity);
-        const myProfile = res.data?.find((p) => p.identity === identity);
-        if (!myProfile?.avatar || cancelled) return;
-        const blob = await downloadBlob(myProfile.avatar, contextId);
+        const avatar = await avatarOf(groupId, identity);
+        if (!avatar || cancelled) return;
+        const blob = await downloadBlob(avatar.blob, avatar.app);
         if (cancelled) return;
         const url = URL.createObjectURL(blob);
         avatarObjectUrlRef.current = url;
@@ -547,7 +548,7 @@ export default function SettingsPopup({
         avatarObjectUrlRef.current = null;
       }
     };
-  }, [isOpen, identity]);
+  }, [isOpen, identity, groupId]);
 
   // Revoke object URL on unmount.
   useEffect(() => {
@@ -589,26 +590,37 @@ export default function SettingsPopup({
 
       setUploading(true);
       try {
-        // The avatar is announced to the active context, same as any other
-        // blob: without one the bytes never leave this node and every other
-        // member keeps seeing the old avatar (or none) with nothing to
-        // indicate why. See api/blobs.ts.
-        const uploadContextId = getContextId();
-        if (!uploadContextId) {
+        // The bytes go to a conversation every member reaches (#general where
+        // there is one, else the one open), and the workspace's member metadata
+        // names them, beside your name.
+        const conversations = await new GroupApiDataSource().listSubgroups(groupId);
+        const general = conversations.data?.find((c) => c.alias === GENERAL_CHANNEL)?.groupId;
+        const holder = general || getContextId();
+        if (!holder || !identity) {
           addToast({
             title: "Avatar",
-            message: "Open a workspace first — an avatar is published to the conversation you are in.",
+            message: "Open a workspace first.",
             type: "channel",
             duration: 4000,
           });
           return;
         }
-        const uploadRes = await uploadBlobDirect(file, uploadContextId);
+        const uploadRes = await uploadBlobDirect(file, holder);
         if (!uploadRes.data?.blobId) {
           addToast({ title: "Avatar", message: uploadRes.error?.message || "Upload failed", type: "channel", duration: 3000 });
           return;
         }
-        const blobId = uploadRes.data.blobId;
+        try {
+          await setMemberAvatar(groupId, identity, { blob: uploadRes.data.blobId, app: holder });
+        } catch (e) {
+          addToast({
+            title: "Avatar",
+            message: e instanceof Error ? e.message : "Could not save your picture",
+            type: "channel",
+            duration: 4000,
+          });
+          return;
+        }
 
         // Show the new image immediately.
         const newUrl = URL.createObjectURL(file);
@@ -616,49 +628,13 @@ export default function SettingsPopup({
         avatarObjectUrlRef.current = newUrl;
         setAvatarObjectUrl(newUrl);
 
-        // Always update the currently-active context first (fallback when
-        // listGroupContexts is stale or returns empty — e.g. after make stop).
-        const currentContextId = getContextId();
-        const currentIdentity = getExecutorPublicKey();
-        const clientDs = new ClientApiDataSource();
-        if (currentContextId && currentIdentity) {
-          try {
-            await clientDs.updateProfile(currentContextId, currentIdentity, username, blobId);
-          } catch {
-            // best-effort
-          }
-        }
-
-        // Best-effort: propagate to every other conversation in the workspace.
-        // A blob belongs to one app instance, so the same bytes are stored in
-        // each (same content, same id) before its profile names them.
-        const conversations = await new GroupApiDataSource().listSubgroups(groupId);
-        for (const sg of conversations.data ?? []) {
-          const ctxId = sg.groupId;
-          if (ctxId === currentContextId || !currentIdentity) continue; // already done above
-          try {
-            const stored = await uploadBlobDirect(file, ctxId);
-            if (!stored.data?.blobId) continue;
-            const profilesRes = await clientDs.getProfiles(ctxId, currentIdentity);
-            const myProfile = profilesRes.data?.find((p) => p.identity === currentIdentity);
-            await clientDs.updateProfile(
-              ctxId,
-              currentIdentity,
-              myProfile?.username || username,
-              stored.data.blobId,
-            );
-          } catch {
-            // best-effort per conversation
-          }
-        }
-
         invalidateAvatarCache();
         addToast({ title: "Avatar updated", message: "Your profile picture has been saved.", type: "channel", duration: 3000 });
       } finally {
         setUploading(false);
       }
     },
-    [addToast, groupId, username],
+    [addToast, groupId, identity],
   );
 
   // ── Session handlers ────────────────────────────────────────────────────────

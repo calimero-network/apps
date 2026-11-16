@@ -114,7 +114,7 @@ describe("an invitation link opened while signed out", () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(
-      await screen.findByRole("button", { name: /join workspace/i }),
+      await screen.findByRole("button", { name: /^join$/i }),
     ).toBeInTheDocument();
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok-1");
   });

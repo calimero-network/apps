@@ -1,8 +1,6 @@
 import { ContextApiDataSource } from "../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
-import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { getApplicationId, setContextMemberIdentity } from "../constants/config";
-import { getMessengerDisplayName } from "./messengerName";
 import { log } from "./logger";
 
 /** The channel every workspace starts with, so a member who joins lands somewhere. */
@@ -13,7 +11,6 @@ export interface ChannelCreationApi {
   createSubgroup: GroupApiDataSource["createSubgroup"];
   setSubgroupVisibility: GroupApiDataSource["setSubgroupVisibility"];
   createGroupContext: ContextApiDataSource["createGroupContext"];
-  joinChat: ClientApiDataSource["joinChat"];
 }
 
 export interface CreatedChannel {
@@ -25,12 +22,10 @@ export interface CreatedChannel {
 function defaultApi(): ChannelCreationApi {
   const groupApi = new GroupApiDataSource();
   const nodeApi = new ContextApiDataSource();
-  const clientApi = new ClientApiDataSource();
   return {
     createSubgroup: (...args) => groupApi.createSubgroup(...args),
     setSubgroupVisibility: (...args) => groupApi.setSubgroupVisibility(...args),
     createGroupContext: (...args) => nodeApi.createGroupContext(...args),
-    joinChat: (...args) => clientApi.joinChat(...args),
   };
 }
 
@@ -100,74 +95,8 @@ export async function createChannel(
 
   const contextId = createResp.data.contextId;
   const memberKey = createResp.data.memberPublicKey ?? "";
-  if (memberKey) {
-    setContextMemberIdentity(contextId, memberKey);
-    // Your name in THIS workspace — not the one you are looking at, which is
-    // still the previous workspace while a new one is being created.
-    const username = getMessengerDisplayName(namespaceId);
-    if (username) {
-      api
-        .joinChat({ contextId, executorPublicKey: memberKey, username })
-        .catch((e) => log.warn("createChannel", "set_profile failed on new channel", e));
-    } else {
-      // No name in this workspace yet (it is asked right after creating it):
-      // the profile is written once it is chosen (`joinPendingChannels`).
-      addPending(namespaceId, { contextId, memberKey });
-    }
-  }
+  // No profile is written into the channel: names are the workspace's member
+  // metadata, read by account (`nameRepository`).
+  if (memberKey) setContextMemberIdentity(contextId, memberKey);
   return { contextId, memberKey };
-}
-
-// ── Channels made before your name in the workspace was chosen ───────────────
-
-interface Pending {
-  contextId: string;
-  memberKey: string;
-}
-
-const PENDING_KEY = (namespaceId: string) => `chat-pending-profiles:${namespaceId}`;
-
-function readPending(namespaceId: string): Pending[] {
-  try {
-    const raw = localStorage.getItem(PENDING_KEY(namespaceId));
-    const list = raw ? (JSON.parse(raw) as Pending[]) : [];
-    return Array.isArray(list) ? list.filter((p) => p && p.contextId && p.memberKey) : [];
-  } catch {
-    return [];
-  }
-}
-
-function addPending(namespaceId: string, entry: Pending): void {
-  try {
-    const list = readPending(namespaceId).filter((p) => p.contextId !== entry.contextId);
-    localStorage.setItem(PENDING_KEY(namespaceId), JSON.stringify([...list, entry]));
-  } catch {
-    /* storage unavailable: the channel shows you by identity until you rename */
-  }
-}
-
-/**
- * Write `username` as your profile in the channels this workspace got before
- * you chose a name there (#general, made with the workspace). Best effort.
- */
-export async function joinPendingChannels(
-  namespaceId: string,
-  username: string,
-  api: Pick<ChannelCreationApi, "joinChat"> = defaultApi(),
-): Promise<void> {
-  const name = username.trim();
-  const pending = readPending(namespaceId);
-  if (!name || pending.length === 0) return;
-  try {
-    localStorage.removeItem(PENDING_KEY(namespaceId));
-  } catch {
-    /* ignore */
-  }
-  await Promise.all(
-    pending.map((p) =>
-      api
-        .joinChat({ contextId: p.contextId, executorPublicKey: p.memberKey, username: name })
-        .catch((e) => log.warn("createChannel", "set_profile failed on a channel made before the name", e)),
-    ),
-  );
 }

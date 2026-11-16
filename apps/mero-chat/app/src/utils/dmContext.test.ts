@@ -82,14 +82,11 @@ describe("dmContext", () => {
       data: undefined,
       error: null,
     });
-    const setMemberMetadata = vi.fn().mockResolvedValue({ data: undefined, error: null });
-
     const result = await createDmContextInGroup({
       applicationId: "app-1",
       groupId: "namespace-1",
       myIdentity: "member-b",
       otherIdentity: "member-a",
-      otherUsername: "Alice",
       contextApi: {
         createGroupContext,
       },
@@ -97,7 +94,6 @@ describe("dmContext", () => {
         createSubgroup,
         setSubgroupVisibility,
         addGroupMember,
-        setMemberMetadata,
       },
     });
 
@@ -119,25 +115,19 @@ describe("dmContext", () => {
         groupId: "dm-sg-1",
         initializationParams: expect.objectContaining({
           context_type: "Dm",
-          name: "DM: Alice",
+          name: "DM",
         }),
       }),
     );
   });
 
-  it("encodes both participant names in the WASM description field", async () => {
+  it("writes no names: not into the DM, not into anyone's member metadata", async () => {
     const createGroupContext = vi.fn().mockResolvedValue({
       data: { contextId: "ctx-2", memberPublicKey: "member-b" },
       error: null,
     });
-    const createSubgroup = vi.fn().mockResolvedValue({
-      data: { groupId: "dm-sg-2" },
-      error: null,
-    });
-    const setSubgroupVisibility = vi.fn().mockResolvedValue({
-      data: undefined,
-      error: null,
-    });
+    const createSubgroup = vi.fn().mockResolvedValue({ data: { groupId: "dm-sg-2" }, error: null });
+    const setSubgroupVisibility = vi.fn().mockResolvedValue({ data: undefined, error: null });
     const addGroupMember = vi.fn().mockResolvedValue({ data: undefined, error: null });
     const setMemberMetadata = vi.fn().mockResolvedValue({ data: undefined, error: null });
 
@@ -145,104 +135,21 @@ describe("dmContext", () => {
       applicationId: "app-1",
       groupId: "namespace-1",
       myIdentity: "member-b",
-      myUsername: "Bob",
       otherIdentity: "member-a",
-      otherUsername: "Alice",
       contextApi: { createGroupContext },
-      groupApi: { createSubgroup, setSubgroupVisibility, addGroupMember, setMemberMetadata },
+      groupApi: { createSubgroup, setSubgroupVisibility, addGroupMember, setMemberMetadata } as never,
     });
 
-    const callArgs = createGroupContext.mock.calls[0][0];
-    const description = callArgs.initializationParams.description;
-    const parsed = JSON.parse(description) as { c: string; o: string };
-    expect(parsed.c).toBe("Bob");
-    expect(parsed.o).toBe("Alice");
-    expect(callArgs.initializationParams.creator_username).toBe("Bob");
+    const params = createGroupContext.mock.calls[0][0].initializationParams;
+    expect(params.description).toBe("");
+    expect(params.creator_username).toBe("");
+    expect(params.name).toBe("DM");
+    expect(setMemberMetadata).not.toHaveBeenCalled();
   });
 
-  it("calls setMemberMetadata with the namespace groupId, not the subgroup/context ID", async () => {
-    const createGroupContext = vi.fn().mockResolvedValue({
-      data: { contextId: "ctx-3", memberPublicKey: "member-b" },
-      error: null,
-    });
-    const createSubgroup = vi.fn().mockResolvedValue({
-      data: { groupId: "dm-sg-3" },
-      error: null,
-    });
-    const setSubgroupVisibility = vi.fn().mockResolvedValue({
-      data: undefined,
-      error: null,
-    });
-    const addGroupMember = vi.fn().mockResolvedValue({ data: undefined, error: null });
-    const setMemberMetadata = vi.fn().mockResolvedValue({ data: undefined, error: null });
-
-    await createDmContextInGroup({
-      applicationId: "app-1",
-      groupId: "namespace-1",
-      myIdentity: "member-b",
-      myUsername: "Bob",
-      otherIdentity: "member-a",
-      otherUsername: "Alice",
-      contextApi: { createGroupContext },
-      groupApi: { createSubgroup, setSubgroupVisibility, addGroupMember, setMemberMetadata },
-    });
-
-    // setMemberMetadata must be called with "namespace-1" (groupId param),
-    // NOT "dm-sg-3" (the new DM subgroup) or any context ID.
-    for (const call of setMemberMetadata.mock.calls) {
-      expect(call[0]).toBe("namespace-1");
-    }
-    // Both parties should have metadata set
-    const identitiesAliased = setMemberMetadata.mock.calls.map((c) => c[1]);
-    expect(identitiesAliased).toContain("member-a");
-    expect(identitiesAliased).toContain("member-b");
-  });
-
-  // Precedence deliberately inverted: namespace member metadata (`otherAlias`)
-  // is the live, renameable, governance-replicated name and now wins.
-  // `otherUsername` is a snapshot — the DM description's `{c,o}`, frozen when
-  // the DM was created, or the per-context WASM profile seeded from it — so
-  // preferring it meant a rename showed in the channel list and never in the
-  // DM list. It stays as a fallback only because it arrives earlier, with
-  // `get_info`, before governance sync delivers the member list.
-  it("prefers the namespace alias, falls back to the snapshot username, then truncated identity", () => {
-    expect(
-      getDmDisplayName({
-        contextId: "ctx-1",
-        otherUsername: "Alice",
-        otherAlias: "Alice Alias",
-        otherIdentity: "member-a",
-      }),
-    ).toBe("Alice Alias");
-
-    // The snapshot bridges the gap before the member list has synced.
-    expect(
-      getDmDisplayName({
-        contextId: "ctx-1",
-        otherUsername: "Alice",
-        otherAlias: "",
-        otherIdentity: "member-a",
-      }),
-    ).toBe("Alice");
-
-    expect(
-      getDmDisplayName({
-        contextId: "ctx-1",
-        otherUsername: "",
-        otherAlias: "Alice Alias",
-        otherIdentity: "member-a",
-      }),
-    ).toBe("Alice Alias");
-
-    // Both sources empty → truncated identity (first4…last4 if len >= 8,
-    // otherwise the full id). "member-a" is 8 chars so gets truncated.
-    expect(
-      getDmDisplayName({
-        contextId: "ctx-1",
-        otherUsername: "",
-        otherAlias: "",
-        otherIdentity: "member-a",
-      }),
-    ).toBe("memb…er-a");
+  it("names a DM after the other person's workspace name, else a truncated account", () => {
+    expect(getDmDisplayName({ contextId: "ctx-1", otherAlias: "Alice", otherIdentity: "member-a" })).toBe("Alice");
+    expect(getDmDisplayName({ contextId: "ctx-1", otherAlias: "", otherIdentity: "member-a" })).toBe("memb…er-a");
+    expect(getDmDisplayName({ contextId: "ctx-1234567" })).toBe("ctx-1234");
   });
 });

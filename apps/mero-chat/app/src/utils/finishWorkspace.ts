@@ -13,7 +13,6 @@ import type { ToastNotification } from "../components/common/ToastManager";
 import { setStoredGroupAlias, setGroupMemberIdentity } from "../constants/config";
 import { createChannel, GENERAL_CHANNEL } from "./createChannel";
 import { enterWorkspace } from "./enterWorkspace";
-import { setMessengerDisplayName } from "./messengerName";
 
 type Toast = (toast: Omit<ToastNotification, "id">) => string;
 
@@ -29,8 +28,6 @@ export async function finishWorkspace(
 ): Promise<void> {
   await finishOrg(groupId);
   setStoredGroupAlias(groupId, name);
-  // Before #general, so the channel is made under your name in it.
-  setMessengerDisplayName(selfName, groupId);
 
   // Every workspace starts with #general: someone who joins from an
   // invitation lands in a channel rather than an empty workspace, and the
@@ -54,6 +51,6 @@ export async function finishWorkspace(
   if (memberIdentity) setGroupMemberIdentity(groupId, memberIdentity);
 
   // Named in the same step: straight in. `enterWorkspace` publishes the name
-  // to the org's member record, and loads the app on this workspace.
-  enterWorkspace(api, groupId, selfName, memberIdentity);
+  // to the org's member record, and loads the app on #general.
+  await enterWorkspace(api, groupId, selfName, memberIdentity);
 }

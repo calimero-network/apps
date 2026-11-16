@@ -35,8 +35,11 @@ export type OrgRoleName = "admin" | "member" | "guest";
 export type ConsentIntent =
   /** "Invite" in the workspace `org`. */
   | { kind: "createInvite"; org: string }
-  /** "Join workspace" for the pending invitation (its token stays where `captureInvite` put it). */
-  | { kind: "acceptInvite"; org: string | null }
+  /**
+   * "Join" on the pending invitation (its token stays where `captureInvite`
+   * put it), with the name the person chose for the workspace.
+   */
+  | { kind: "acceptInvite"; org: string | null; selfName?: string }
   /** "Make organization admin" (or take it back) for `account`. */
   | { kind: "setMemberRole"; org: string; account: string; role: OrgRoleName }
   /** "Remove" `account` from the workspace's organization. */

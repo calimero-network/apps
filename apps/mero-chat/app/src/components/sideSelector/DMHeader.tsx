@@ -76,12 +76,9 @@ const DMHeader = memo(function DMHeader({
         .map((dm) => dm.namespaceMemberIdentity || dm.otherIdentity)
         .filter(Boolean),
     );
-    const existingDmUsernames = new Set(
-      privateDMs.map((dm) => dm.otherUsername).filter(Boolean),
-    );
     const filtered = new Map<string, string>();
     for (const [identity, label] of availableMembers) {
-      if (!existingDmIdentities.has(identity) && !existingDmUsernames.has(label)) {
+      if (!existingDmIdentities.has(identity)) {
         filtered.set(identity, label);
       }
     }

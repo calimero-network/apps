@@ -11,17 +11,14 @@ import {
 import { getGroupMemberIdentity, setGroupMemberIdentity } from "../constants/config";
 import { resolveDmCounterpart } from "../utils/dmDiscovery";
 import { resolveSharedDmDiscovery } from "../utils/dmContext";
-import { isSelfSender } from "../utils/selfIdentity";
 
 export interface DMContextInfo extends GroupContextChannel {
-  otherUsername: string;
+  /** The other person's name in the workspace (member metadata), "" when they chose none. */
   otherAlias: string;
   otherIdentity: string;
   myIdentity: string;
-  // The namespace group member identity of the other person — always the
-  // value parsed from the DM subgroup alias, never overwritten by the
-  // context executor key from get_profiles. Used for deduplication checks
-  // in the New DM dropdown (which keys members by namespace identity).
+  // The other person's account as the workspace lists it. Used for
+  // deduplication checks in the New DM dropdown.
   namespaceMemberIdentity: string;
 }
 
@@ -181,70 +178,14 @@ export function useDMs() {
             return null;
           }
 
-          let otherUsername = "";
-          // namespaceMemberIdentity is from the DM alias — always a namespace
-          // group member identity. Kept separate because otherIdentity gets
-          // overwritten by the context executor key when get_profiles succeeds,
-          // making it useless for membership/dedup lookups.
+          // The other person, by account; their name is the workspace's
+          // member metadata for that account, nothing the DM itself carries.
           const namespaceMemberIdentity =
             discovery?.otherIdentity || counterpartFromMembers || "";
-          let otherIdentity = namespaceMemberIdentity;
-          let otherAlias = otherIdentity
+          const otherIdentity = namespaceMemberIdentity;
+          const otherAlias = otherIdentity
             ? memberAliasByIdentity.get(otherIdentity) || ""
             : "";
-
-          // Primary: description encodes { c: creatorName, o: otherName } at
-          // DM creation time. Work out which slot is ours by asking whether
-          // info.creator is one of OUR identities. This works as soon as
-          // get_info works (context joined + WASM state gossiped) — no
-          // set_profile needed.
-          //
-          // `creator` is stamped `UserId::new(env::account_id())` in the
-          // contract — an ACCOUNT id — while `joinedIdentity` comes from
-          // `contexts/{id}/identities`, which returns DEVICE keys. A direct
-          // `===` between the two never matches, so the creator fell through
-          // to slot "c" and saw their OWN name as the DM title. isSelfSender
-          // compares against every identity this node owns, account ids
-          // included.
-          if (joinedIdentity && info?.description) {
-            try {
-              const meta = JSON.parse(info.description) as { c?: string; o?: string };
-              if (meta && (meta.c || meta.o)) {
-                const isCreator = isSelfSender(info.creator, ctxId, joinedIdentity);
-                otherUsername = (isCreator ? meta.o : meta.c)?.trim() || "";
-              }
-            } catch {
-              // not our format — old DM or channel, fall through
-            }
-          }
-
-          // Fallback: get_profiles (requires both sides to have called set_profile)
-          if (!otherUsername && joinedIdentity) {
-            try {
-              const profilesResp = await clientApi.getProfiles(ctxId, joinedIdentity);
-              if (profilesResp.data && Array.isArray(profilesResp.data)) {
-                // `p.identity` is an ACCOUNT (the contract keys profiles by
-                // `env::account_id()`), `joinedIdentity` is a device key, so
-                // `p.identity !== joinedIdentity` is true for EVERY profile —
-                // including our own, which `.find` would then return as the
-                // counterpart. Ask whether the profile is ours instead.
-                const other = profilesResp.data.find(
-                  (p: { identity: string; username: string }) =>
-                    !isSelfSender(p.identity, ctxId, joinedIdentity),
-                );
-                if (other) {
-                  otherUsername = other.username;
-                  otherIdentity = other.identity;
-                  // memberAliasByIdentity is keyed by namespace identity, not context
-                  // identity — so the get() here always misses. Preserve the alias
-                  // resolved from the namespace member list before get_profiles ran.
-                  otherAlias = otherAlias || memberAliasByIdentity.get(other.identity) || "";
-                }
-              }
-            } catch {
-              log.debug("useDMs", `get_profiles failed for ${ctxId}`);
-            }
-          }
 
           // Hide DMs whose counterpart is no longer in the namespace member
           // list. The server's MemberRemoved cascade strips the kicked user
@@ -263,7 +204,6 @@ export function useDMs() {
             contextId: ctxId,
             alias,
             info,
-            otherUsername,
             otherAlias,
             otherIdentity,
             namespaceMemberIdentity,

@@ -47,8 +47,8 @@ export default function GroupInviteIcon() {
     <>
       <GroupInviteIconWrapper
         type="button"
-        title="Invite members"
-        aria-label="Invite members"
+        title="Invite people"
+        aria-label="Invite people"
         onClick={() => setIsOpen(true)}
       >
         <svg

@@ -163,52 +163,38 @@ const CopyBtn = styled.button<{ $copied: boolean }>`
   }
 `;
 
-const DoneBtn = styled.button`
-  width: 100%;
-  padding: 0.65rem 1rem;
-  border-radius: 12px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--glass-ink);
-  color: var(--glass-on-ink);
-  border: none;
-  transition: opacity 0.15s;
-  &:hover { opacity: 0.88; }
-`;
-
 interface GroupInviteModalProps {
   groupId: string;
   isOpen: boolean;
   onClose: () => void;
+  /** The token the consent page minted (`ConsentReturn`): shown, not minted again. */
   initialInvitationPayload?: string;
-  title?: string;
-  subtitle?: string;
-  successMessage?: string;
-  doneLabel?: string;
 }
 
+/**
+ * "Invite people": one link. Opening it mints an org invite token naming
+ * Chat's app team (on the node's consent page when the session is bound to
+ * Chat's frontend; `ConsentReturn` reopens this with the token) and offers
+ * the link to copy. Whoever opens the link chooses their name and joins.
+ */
 export default function GroupInviteModal({
   groupId,
   isOpen,
   onClose,
   initialInvitationPayload,
-  title = "Invite to workspace",
-  subtitle = "Share this link with anyone you want to invite.",
-  doneLabel = "Done",
 }: GroupInviteModalProps) {
   const [invitationPayload, setInvitationPayload] = useState(
     initialInvitationPayload ?? "",
   );
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [copiedTarget, setCopiedTarget] = useState<"web" | "desktop" | "">("");
+  const [copied, setCopied] = useState(false);
   const [chatOnly, setChatOnly] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
       setErrorMessage("");
-      setCopiedTarget("");
+      setCopied(false);
       return;
     }
 
@@ -243,7 +229,7 @@ export default function GroupInviteModal({
           },
         );
         if (!went && !cancelled) {
-          setErrorMessage((m) => m || "Invitations are approved on your Calimero node's page. Open this again to go there.");
+          setErrorMessage((m) => m || "A link needs your approval on your Calimero node. Try again to go there.");
           setLoading(false);
         }
         return;
@@ -255,9 +241,7 @@ export default function GroupInviteModal({
 
       if (response.error || !response.data) {
         setInvitationPayload("");
-        setErrorMessage(
-          response.error?.message || "Failed to generate invitation",
-        );
+        setErrorMessage(response.error?.message || "Could not make a link");
         setLoading(false);
         return;
       }
@@ -273,9 +257,7 @@ export default function GroupInviteModal({
     return () => { cancelled = true; };
   }, [groupId, initialInvitationPayload, isOpen]);
 
-  // One shareable link: the HTTPS universal link works everywhere — it opens the
-  // web/PWA app directly, and on a device with the desktop installed + associated
-  // hands off to the launcher. The old calimero:// "desktop link" is redundant.
+  // One link: it opens this frontend, which offers the invitation.
   const webUrl = useMemo(
     // The link names the workspace, so someone already in it is not offered Join.
     () => (invitationPayload ? generateInvitationUrl(invitationPayload, window.location, groupId) : ""),
@@ -286,8 +268,8 @@ export default function GroupInviteModal({
     if (!webUrl) return;
     try {
       await navigator.clipboard.writeText(webUrl);
-      setCopiedTarget("web");
-      setTimeout(() => setCopiedTarget(""), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       prompt("Copy this invite link:", webUrl);
     }
@@ -308,8 +290,8 @@ export default function GroupInviteModal({
             </svg>
           </IconBox>
           <HeaderText>
-            <ModalTitle>{title}</ModalTitle>
-            <ModalSub>{subtitle}</ModalSub>
+            <ModalTitle>Invite people</ModalTitle>
+            <ModalSub>Anyone with the link can join this workspace.</ModalSub>
           </HeaderText>
           <CloseBtn onClick={onClose} aria-label="Close">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -322,7 +304,7 @@ export default function GroupInviteModal({
           {loading && (
             <LoadingRow>
               <Spinner />
-              Generating invitation…
+              Making a link…
             </LoadingRow>
           )}
 
@@ -337,21 +319,15 @@ export default function GroupInviteModal({
 
           {!loading && invitationPayload && (
             <>
-              <CopyBtn $copied={copiedTarget === "web"} onClick={() => void handleCopy()}>
-                {copiedTarget === "web" ? "✓ Copied!" : "Copy invite link"}
+              <CopyBtn $copied={copied} onClick={() => void handleCopy()}>
+                {copied ? "Copied" : "Copy invite link"}
               </CopyBtn>
               <SingleUse data-testid="invite-single-use">
-                Single use: one person can join with this link. Generate another for each person you invite.
+                Works once. Make a new link for each person.
+                {chatOnly && " It opens Mero Chat only."}
               </SingleUse>
-              {chatOnly && (
-                <SingleUse data-testid="invite-chat-only">
-                  Invites to Mero Chat only: this organization&apos;s other apps are managed in Calimero Home.
-                </SingleUse>
-              )}
             </>
           )}
-
-          <DoneBtn onClick={onClose}>{doneLabel}</DoneBtn>
         </Body>
       </Modal>
     </Overlay>
