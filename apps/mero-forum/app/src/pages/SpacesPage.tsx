@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  ConsentNotStarted,
+  describeError,
+  otherOrgs,
+  type OtherOrg,
+} from "@calimero-apps/connect";
 import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
@@ -109,7 +116,8 @@ export default function SpacesPage() {
       try {
         await fn(setStatus);
       } catch (e) {
-        setError(describeError(e));
+        // They chose not to go to the approval page: nothing changed, nothing to say.
+        if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
       } finally {
         setPending(null);
         setStatus(null);
@@ -210,7 +218,7 @@ export default function SpacesPage() {
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the deletion with your passkey…");
-        await deleteSpace(client, ns.namespaceId, passkey);
+        await deleteSpace(client, ns.namespaceId, passkey, ns.name);
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);

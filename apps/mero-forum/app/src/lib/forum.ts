@@ -41,6 +41,9 @@ export function useForumClient(): MeroForumClient | null {
  * Calls `onChange` (at most every 250 ms) for each event of the open forum, so
  * a peer's post or reply shows without a refresh. Events carry ids only; the
  * screens re-read what they show.
+ *
+ * The stream starts after the log index a view answers at, so it never
+ * replays the forum's history: the screens' first read already holds it.
  */
 export function useForumEvents(onChange: (kind: string) => void): void {
   const signedIn = useMaybeSignedIn();
@@ -54,7 +57,10 @@ export function useForumEvents(onChange: (kind: string) => void): void {
     let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
       try {
-        for await (const event of client.events(contextId, 0, abort.signal)) {
+        // Where the state a read sees ends: events after it are news.
+        const { index } = await client.apps.view({ app: contextId, method: "moderators", args: {} });
+        if (abort.signal.aborted) return;
+        for await (const event of client.events(contextId, index + 1, abort.signal)) {
           clearTimeout(timer);
           timer = setTimeout(() => latest.current(event.kind), 250);
         }

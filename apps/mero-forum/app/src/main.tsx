@@ -6,6 +6,7 @@ import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import App from "./App";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { invites, migrateLegacyInvite } from "./lib/spaces";
+import { setupConsent } from "./lib/orgConsent";
 import "./index.css";
 import { registerServiceWorker } from "@calimero-apps/install";
 
@@ -18,6 +19,10 @@ registerServiceWorker();
 // fresh link wins.
 migrateLegacyInvite();
 invites.capture(window.location, { basename: nodeBasename(new URL(window.location.href), "/") });
+
+// Organization-wide changes from this frontend go through the node's consent
+// page, after the shared handoff dialog.
+setupConsent();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
