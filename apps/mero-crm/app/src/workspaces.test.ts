@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { APP_NAME } from './config';
-import { inviteLink, inviteRoute, invites, migrateLegacyInvite } from './workspaces';
+import { inviteLinkBase, inviteRoute, invites, migrateLegacyInvite } from './workspaces';
 
 /** A host a Calimero node serves an installed app on: `{label}.{domain}`, routes under `/{version}/`. */
 const SERVED = `https://${'a'.repeat(52)}.apps.calimero.network`;
@@ -13,13 +13,22 @@ beforeEach(() => {
 });
 
 describe('invitation links', () => {
-  it('name the org and the page they were made on, under the served version root', () => {
-    const link = new URL(inviteLink('inv_1', 'org-1', { href: `${SERVED}/1.2.0/crm/members` }));
+  it('name the org and the page they were made on, under the served version root, without a token', () => {
+    const link = new URL(inviteLinkBase('org-1', { href: `${SERVED}/1.2.0/crm/members` }));
     expect(link.origin).toBe(SERVED);
     expect(link.pathname).toBe('/1.2.0/');
-    expect(link.searchParams.get('invite')).toBe('inv_1');
+    expect(link.searchParams.has('invite')).toBe(false);
     expect(link.searchParams.get('org')).toBe('org-1');
     expect(link.searchParams.get('to')).toBe('/crm/members');
+  });
+
+  it('are captured from the fragment the shared dialog puts the token in', () => {
+    window.history.replaceState(null, '', '/?org=org-1&to=%2Fcrm%2Fmembers#invite=inv_1');
+    invites.capture(window.location);
+    expect(invites.token()).toBe('inv_1');
+    expect(invites.pending()?.org).toBe('org-1');
+    expect(inviteRoute(invites.pending())).toBe('/crm/members');
+    expect(window.location.href).not.toContain('inv_1');
   });
 
   it('keep the token, the org and the route, and leave the address bar clean', () => {

@@ -17,7 +17,6 @@ import { useMemberRoles } from './hooks/useMemberRoles';
 import {
   addPipeline,
   finishWorkspace,
-  inviteToken,
   leaveWorkspace,
   leaveWorkspaceOrg,
   readMembers,
@@ -86,26 +85,25 @@ describe('a new workspace gets Mero CRM\'s own app team', () => {
 });
 
 describe('invites name the app team', () => {
-  it('standalone: the team is named; the link is not app-only', async () => {
+  it('standalone: the team is read for the invite dialog; the link is not app-only', async () => {
     const { cluster, org } = await workspace();
-    const made = await inviteToken(cluster.client, org, passkey(), SOURCE);
-    expect(made.appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]!.slice(0, 2)).toEqual([org, 'member']);
-    expect(cluster.callsOf('invite')[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
+    const read = await readMembers(cluster.client, org, SOURCE);
+    expect(read.appTeam).toBe(cluster.teamOf(org, PKG));
+    expect(read.appOnly).toBe(false);
   });
 
-  it('apps kept apart: the same call, and the link gives Mero CRM only', async () => {
+  it('apps kept apart: the same team, and the invite gives Mero CRM only', async () => {
     const { cluster, org } = await workspace();
     cluster.keepAppsApart(org);
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(true);
-    expect(cluster.callsOf('invite')[0]![3]).toEqual([cluster.teamOf(org, PKG)]);
+    const read = await readMembers(cluster.client, org, SOURCE);
+    expect(read.appTeam).toBe(cluster.teamOf(org, PKG));
+    expect(read.appOnly).toBe(true);
   });
 
-  it('a legacy org: the org-wide invite, as before', async () => {
+  it('a legacy org: no team, the org-wide invite as before', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'legacy' });
-    expect((await inviteToken(cluster.client, org, passkey(), SOURCE)).appOnly).toBe(false);
-    expect(cluster.callsOf('invite')[0]![3]).toBeUndefined();
+    expect((await readMembers(cluster.client, org, SOURCE)).appTeam).toBeNull();
   });
 });
 
