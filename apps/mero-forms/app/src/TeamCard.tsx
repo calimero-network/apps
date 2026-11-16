@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { appOnlyInviteNote, describeError } from "@calimero-apps/connect";
-import { PRODUCT_NAME, inviteLink, inviteToken } from "./lib/orgs";
+import { InviteDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, describeError } from "@calimero-apps/connect";
+import { PRODUCT_NAME, inviteLinkBase } from "./lib/orgs";
 import { PersonName, useOrg } from "./names";
 import { useSignedIn } from "./sessionContext";
 import { Avatar } from "./ui";
@@ -115,43 +116,22 @@ export function TeamCard({
 }
 
 /**
- * Make a shareable invitation into this workspace's organization: an org
- * invite token, approved with your passkey, in a link that opens this app and
- * lands in this workspace. Whoever opens it joins the org; add them to the
- * team above to give them the forms.
+ * Make a shareable invitation into this workspace's organization through the
+ * shared dialog: an org invite approved by the node's consent page, in a link
+ * that opens this app and lands in this workspace. Whoever opens it joins the
+ * org; add them to the team above to give them the forms.
  */
 export function InviteCard({ org, appId }: { org: string; appId: string }) {
-  const { client, passkey, after, source } = useSignedIn();
-  const [link, setLink] = useState<string | null>(null);
-  const [appOnly, setAppOnly] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const { client, passkey, source } = useSignedIn();
+  const [teams, setTeams] = useState<string[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
-  async function mint() {
-    setBusy(true);
+  async function open() {
     setFailed(null);
-    setCopied(false);
     try {
-      const made = await inviteToken(client, org, passkey(), source);
-      setLink(inviteLink(made.token, appId, window.location, org));
-      setAppOnly(made.appOnly);
+      setTeams((await appInviteTeams(client, org, source)).teams);
     } catch (e) {
       setFailed(describeError(e));
-    } finally {
-      setBusy(false);
-      after();
-    }
-  }
-
-  async function copy() {
-    if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      // The link is on screen and selectable; the clipboard is a convenience.
-      setCopied(false);
     }
   }
 
@@ -159,31 +139,25 @@ export function InviteCard({ org, appId }: { org: string; appId: string }) {
     <div className="card">
       <h2>Invite a teammate</h2>
       <p className="empty" style={{ marginBottom: 14 }}>
-        One link, approved with your passkey. Whoever opens it signs in with a passkey and joins
+        One link, approved by your node. Whoever opens it signs in with a passkey and joins
         this workspace&apos;s organization; add them to the team above to give them the forms.
         Single use: one person can join with this link. Generate another for each person you invite.
       </p>
       <div className="row">
-        <button onClick={() => void mint()} disabled={busy}>
-          {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-        </button>
-        {link && (
-          <button className="ghost" onClick={() => void copy()}>
-            {copied ? "Copied" : "Copy"}
-          </button>
-        )}
+        <button onClick={() => void open()}>Create invite link</button>
       </div>
-      {link && (
-        <code className="invite-link mono" title={link}>
-          {link}
-        </code>
-      )}
-      {link && appOnly && (
-        <p className="empty" data-testid="invite-app-only">
-          {appOnlyInviteNote(PRODUCT_NAME)}
-        </p>
-      )}
       {failed && <pre className="err">{failed}</pre>}
+      <InviteDialog
+        client={client}
+        passkey={passkey()}
+        open={teams !== null}
+        onClose={() => setTeams(null)}
+        org={org}
+        teams={teams ?? undefined}
+        appName={PRODUCT_NAME}
+        labels={{ title: "Invite to this workspace", subtitle: "Choose what the people you invite can do in this organization." }}
+        linkBase={inviteLinkBase(appId, org)}
+      />
     </div>
   );
 }

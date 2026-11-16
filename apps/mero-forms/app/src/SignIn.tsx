@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  SPENT_INVITE_COPY,
-  describeRedeemFailure,
-  isSpentInvite,
-  joinedOrg,
-  memberOf,
-  type PendingInvite,
-} from "@calimero-apps/connect";
-import { SignInPanel as SharedSignInPanel, usePendingInvite } from "@calimero-apps/passkey";
+import { AcceptInvitation, SignInPanel as SharedSignInPanel, useAskedInvite, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { inviteWorkspace, invites } from "./lib/orgs";
@@ -79,8 +71,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
   );
 }
 
-/** What the screen says once the invitation can no longer be accepted. */
-type Outcome = { kind: "member"; invite: PendingInvite } | { kind: "spent" };
+const ALREADY_IN = { root: "dialog dialog-body", text: "empty" };
 
 /**
  * The invitation screens, wrapped around the app because a link can land on
@@ -92,23 +83,22 @@ type Outcome = { kind: "member"; invite: PendingInvite } | { kind: "spent" };
  *  - signed out: "You're invited", with the same passkey sign-in and sign-up
  *    as the landing page's popup. "Not now" shows the landing page and keeps
  *    the token, so signing in later still asks.
- *  - signed in: "Join this workspace?" straight away. It asks rather than
- *    joins: joining puts you in someone's organization.
+ *  - signed in: the shared join dialog (`AcceptInvitation`, through the node's
+ *    consent page) straight away. It asks rather than joins: joining puts you
+ *    in someone's organization.
  *
  * Redeeming spends one of the invite's uses even for someone already in the
  * org, so a link that names its org is checked against the account's orgs
- * first, and a member is told so instead of being asked. A spent invite (used,
- * expired, revoked) is said plainly, never dropped silently.
+ * first, and a member is told so instead of being asked.
  */
 export function InvitationHost({ onJoined, children }: { onJoined: () => void; children: ReactNode }) {
   const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
-  const invite = usePendingInvite(invites);
+  const pending = usePendingInvite(invites);
+  // The invite the dialog asks about stays held until it closes, though the store drops it first.
+  const { invite: asked, close } = useAskedInvite(invites, signedIn !== null);
+  const invite = asked ?? pending;
   const [deferred, setDeferred] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const client = signedIn?.client ?? null;
   // Signed up from a page holding the invite: already joined, and the
@@ -119,56 +109,6 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
     if (joined.workspace) setActive(joined.workspace);
     onJoined();
   }, [client, onJoined]);
-
-  const token = invite?.token ?? null;
-  useEffect(() => {
-    const current = invites.pending();
-    const org = current?.org;
-    if (!client || !current || !org) return;
-    let live = true;
-    setChecking(true);
-    // Unknown membership (`null`): ask, as for a link that names no org.
-    void memberOf(client, org)
-      .then((member) => {
-        if (!live || !member) return;
-        invites.drop();
-        setOutcome({ kind: "member", invite: current });
-      })
-      .finally(() => {
-        if (live) setChecking(false);
-      });
-    return () => {
-      live = false;
-      setChecking(false);
-    };
-  }, [client, token]);
-
-  if (outcome) {
-    const member = outcome.kind === "member";
-    const done = () => {
-      const workspace = outcome.kind === "member" ? inviteWorkspace(outcome.invite) : null;
-      if (outcome.kind === "member" && workspace) {
-        setActive({ appId: workspace, org: outcome.invite.org });
-        onJoined();
-      }
-      setOutcome(null);
-    };
-    return (
-      <main className="invitation-page">
-        <section className="dialog dialog-body" aria-labelledby="invite-outcome-title" data-testid="invitation-outcome">
-          <h2 id="invite-outcome-title">{member ? "You're already in this workspace" : "This invite cannot be used"}</h2>
-          <p className="empty">
-            {member
-              ? "The invitation was for a workspace you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for."
-              : SPENT_INVITE_COPY}
-          </p>
-          <button type="button" onClick={done} data-testid="invitation-continue">
-            {member ? "Open the workspace" : "Continue"}
-          </button>
-        </section>
-      </main>
-    );
-  }
 
   if (!invite) return <>{children}</>;
   if (api.session.status === "connecting") return <>{children}</>;
@@ -193,55 +133,35 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
     );
   }
 
-  const dismiss = () => {
-    invites.drop();
-    setError(null);
-  };
-
-  const join = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const org = joinedOrg(await signedIn.client.orgs.inviteRedeem({ token: invite.token })) ?? invite.org;
-      invites.drop();
-      const workspace = inviteWorkspace(invite);
-      if (workspace) setActive({ appId: workspace, org });
-      onJoined();
-    } catch (e) {
-      // Only the node's word that the invite is done drops it: a lapsed
-      // session, a rate limit or the cluster unreachable keeps it to try again.
-      if (isSpentInvite(e)) {
-        invites.drop();
-        setOutcome({ kind: "spent" });
-      } else {
-        setError(describeRedeemFailure(e));
-      }
-    } finally {
-      setBusy(false);
-      signedIn.after();
-    }
+  const open = (org: string | null) => {
+    const workspace = inviteWorkspace(invite);
+    if (workspace) setActive({ appId: workspace, org });
+    onJoined();
   };
 
   return (
-    <main className="invitation-page">
-      <section className="dialog dialog-body" aria-labelledby="invite-join-title" data-testid="invitation-dialog">
-        <h2 id="invite-join-title">Join this workspace?</h2>
-        <p className="empty">
-          You were invited to a workspace on Mero Forms. Joining makes you a member of the organization it lives
-          in. An admin then adds you to the team to give you its forms and responses.
-        </p>
-        {error && (
-          <pre className="err" role="alert" data-testid="invitation-error">
-            {error}
-          </pre>
-        )}
-        <button type="button" onClick={() => void join()} disabled={busy || checking} data-testid="invitation-join">
-          {busy || checking ? "Joining…" : error ? "Try again" : "Join"}
-        </button>
-        <button type="button" className="ghost" onClick={dismiss} disabled={busy}>
-          Not now
-        </button>
-      </section>
-    </main>
+    <>
+      {children}
+      <AcceptInvitation
+        key={invite.token}
+        client={signedIn.client}
+        token={invite.token}
+        org={invite.org}
+        appName="Mero Forms"
+        joining="this workspace"
+        drop={() => invites.drop()}
+        after={signedIn.after}
+        onJoined={({ org }) => {
+          close();
+          open(org ?? invite.org);
+        }}
+        onClose={({ member }) => {
+          close();
+          if (member) open(invite.org);
+        }}
+        overlay="invitation-overlay"
+        classNames={ALREADY_IN}
+      />
+    </>
   );
 }

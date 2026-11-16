@@ -1,16 +1,14 @@
 import { type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   isAppOnly,
   listAppInfos,
   orgInstanceOptions,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -27,7 +25,7 @@ import { nodeBasename } from "@calimero-apps/node-served";
  * |---|---|
  * | a workspace: a context of the app | an **app instance** (`createApp(name, source, { org })`) |
  * | the namespace it lives in | an **organization** (`createOrg`) |
- * | a namespace invitation link (deflate + base58) | an **org invite** token in `?invite=` (`invite` is a passkey step-up; `redeemInvite` after sign-in) |
+ * | a namespace invitation link (deflate + base58) | an **org invite** token in `?invite=` or `#invite=` (the shared invite dialogs mint and redeem it) |
  * | the name a person set for the namespace (`@calimero-apps/names`) | org **member metadata** `{ name }` |
  * | joining the context and waiting for it to sync | nothing: everyone in the app's team reaches its instances |
  *
@@ -169,37 +167,18 @@ export async function publishName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming this app's team (`appInvite`): `appOnly` when it gives
- * Mero Forms only (an org that keeps its apps apart). Org-wide in a legacy org.
- */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/**
- * The link that opens this frontend with `token` to redeem, landing in
- * `workspace`. It also names `org`: the token does not say which org it is for
- * until it is redeemed, and redeeming spends it, so the link carries the org
- * for the app to tell an existing member "you are already in" without
+ * The page an invitation link opens (the shared invite dialog adds the token),
+ * landing in `workspace`. It also names `org`: the token does not say which org
+ * it is for until it is redeemed, and redeeming spends it, so the link carries
+ * the org for the app to tell an existing member "you are already in" without
  * spending a use.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
-  workspace: string,
-  location: Pick<Location, "href"> = window.location,
-  org?: string,
-): string {
+export function inviteLinkBase(workspace: string, org: string, location: Pick<Location, "href"> = window.location): string {
   const url = new URL(location.href);
-  return sharedInviteLink(token, { org, extra: { workspace }, root: nodeBasename(url, "/"), origin: url.origin });
+  return sharedInviteLinkBase({ org, extra: { workspace }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), with the workspace its link lands in. */
