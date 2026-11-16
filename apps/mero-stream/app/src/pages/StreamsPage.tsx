@@ -240,6 +240,11 @@ export default function StreamsPage() {
         )}
         <ConnectExistingOrg appName="Mero Stream" load={loadOtherOrgs} onConnect={connectOrg} />
 
+        {(location.state as { lostStream?: boolean } | null)?.lostStream && (
+          <StatusNote tone="info" testId="stream-lost">
+            You no longer have access to that stream.
+          </StatusNote>
+        )}
         {status && (
           <StatusNote tone="pending" testId="streams-status">
             {status}

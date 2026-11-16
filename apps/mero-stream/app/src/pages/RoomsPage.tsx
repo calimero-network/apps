@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError, isNotFound } from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
 import { confirmConsentHandoff } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
@@ -115,13 +115,19 @@ export default function RoomsPage() {
         setNames(info.names);
         setRooms(list);
       } catch (e) {
+        // Not in the stream any more (taken out of it, or it was deleted): back
+        // to your streams, saying so, instead of its page failing every read.
+        if (isNotFound(e)) {
+          navigate("/streams", { replace: true, state: { lostStream: true } });
+          return;
+        }
         setError(describeError(e));
       } finally {
         conn.after();
         setListing(false);
       }
     },
-    [conn, orgId],
+    [conn, orgId, navigate],
   );
 
   useEffect(() => {

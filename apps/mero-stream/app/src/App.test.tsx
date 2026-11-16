@@ -516,6 +516,16 @@ describe("App", () => {
     return client;
   }
 
+  it("sends someone no longer in the stream back to their streams, saying so", async () => {
+    const client = asMember();
+    client.getOrg.mockImplementation(async () => {
+      throw new CalimeroError(404, "NOT_FOUND", "no such organization");
+    });
+    renderApp(client, "/streams/org-1", true);
+    expect((await screen.findByTestId("stream-lost")).textContent).toMatch(/no longer have access/);
+    expect(screen.queryByTestId("rooms-error")).toBeNull();
+  });
+
   it("offers Create room to a member of a stream made here (members may create rooms)", async () => {
     const client = asMember(MEMBER_DEFAULTS);
     renderApp(client, "/streams/org-1", true);
