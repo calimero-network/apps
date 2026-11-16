@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
 import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
@@ -18,10 +19,17 @@ export function NewFeedDialog() {
   const { session, passkey } = useSessionApi();
   const live = signedIn(session);
   const { open } = useNewFeedState();
+  // A fresh dialog once it closes: mounted once, it would otherwise reopen on
+  // the last feed's review step, with that feed's name.
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!open) setRound((r) => r + 1);
+  }, [open]);
   const { source, pending } = useResolvedSource(live?.client ?? null, live?.accountId ?? null, feedSource());
   if (!live) return null;
   return (
     <CreateWorkspaceDialog
+      key={round}
       client={live.client}
       passkey={passkey()}
       release={pending ? null : (reviewRelease(source) ?? { package: PACKAGE })}
