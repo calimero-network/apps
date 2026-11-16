@@ -6,12 +6,11 @@ import {
   type PasskeyProvider,
 } from "@calimero-network/mero-js";
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase as sharedInviteLinkBase,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -20,7 +19,6 @@ import {
   orgsWithApp,
   removeFromApp,
   sourcePackage,
-  type AppInviteToken,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -294,37 +292,16 @@ export async function publishSpaceName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * An invitation into `org` as a member, approved with the inviter's passkey
- * (412 step-up), naming this app's team (`appInvite`): `appOnly` when it gives
- * Mero Forum only (an org that keeps its apps apart). Org-wide in a legacy org.
- */
-export function inviteToken(
-  client: ClientRoutes<{ orgs: "appTeamList" | "inviteCreate" }>,
-  org: string,
-  passkey: PasskeyProvider,
-  source: AppSource | null = null,
-): Promise<AppInviteToken> {
-  return appInvite(client, org, source, passkey);
-}
-
-/**
- * The link that opens this frontend with `token` to redeem; with `forum`, the
- * joiner lands in that forum instead of on the space's forum list.
+ * The page the shared invite dialog puts its token on (in the fragment): this
+ * frontend's root, naming the space so an existing member is told "you are
+ * already in" without spending a use, and with `forum` the forum to land in.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
-  forum?: string,
-  location: Pick<Location, "href"> = window.location,
-  org?: string,
-): string {
+export function inviteLinkBase(org: string, forum?: string, location: Pick<Location, "href"> = window.location): string {
   const url = new URL(location.href);
-  // The token does not say which space it is for until it is redeemed, and
-  // redeeming spends it: the link names the space so the app can tell an
-  // existing member "you are already in" without spending a use.
-  return sharedInviteLink(token, { org, extra: { forum }, root: nodeBasename(url, "/"), origin: url.origin });
+  return sharedInviteLinkBase({ org, extra: { forum }, root: nodeBasename(url, "/"), origin: url.origin });
 }
 
 /** This app's pending invite (`@calimero-apps/connect`), with the forum its link lands in. */

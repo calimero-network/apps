@@ -33,6 +33,18 @@ vi.mock("@calimero-apps/passkey", async (importOriginal) => {
       actual.useInstanceRelease(client, app, release.href ? { href: release.href, navigate: release.navigate } : {}),
   };
 });
+// A shared org (`appOnly`) is Calimero Home's to set up; here only what the invite dialog is handed.
+const teamsAnswer = vi.hoisted(() => ({ appOnly: null as boolean | null }));
+vi.mock("@calimero-apps/connect", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calimero-apps/connect")>();
+  return {
+    ...actual,
+    appInviteTeams: (...args: Parameters<typeof actual.appInviteTeams>) =>
+      teamsAnswer.appOnly === null
+        ? actual.appInviteTeams(...args)
+        : Promise.resolve({ teams: [], appOnly: teamsAnswer.appOnly }),
+  };
+});
 // The shared dialog is mero-react's to test: here only what the app hands it and does after.
 vi.mock("@calimero-network/mero-react", async (importOriginal) => {
   const { createElement } = await import("react");
@@ -56,6 +68,59 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
               "button",
               { "data-testid": "create-done", onClick: () => p.onCreated({ orgId: "org-new", name: "Fresh", selfName: "Ana" }) },
               "done",
+            ),
+          )
+        : null,
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      labels?: { noun?: string };
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "accept-dialog" },
+            createElement("p", { "data-testid": "accept-token" }, `${p.token}|${p.appName}|${p.org}|${p.labels?.noun}`),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: "org-1" }) }, "join"),
+            createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "not now"),
+            createElement(
+              "button",
+              {
+                "data-testid": "accept-spent",
+                onClick: () => p.onError?.(new CalimeroError(400, "REJECTED", "this invite was used up, revoked or never existed")),
+              },
+              "spent",
+            ),
+            createElement(
+              "button",
+              { "data-testid": "accept-lapsed", onClick: () => p.onError?.(new CalimeroError(401, "UNAUTHORIZED", "session ended")) },
+              "lapsed",
+            ),
+          )
+        : null,
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      linkBase?: string;
+      appName?: string;
+      labels?: { title?: string; noun?: string; note?: string };
+    }) =>
+      p.open
+        ? createElement(
+            "div",
+            { "data-testid": "invite-dialog" },
+            createElement("p", { "data-testid": "invite-title" }, p.labels?.title),
+            createElement("p", { "data-testid": "invite-labels" }, `${p.labels?.noun}|${p.labels?.note ?? ""}`),
+            createElement(
+              "pre",
+              { "data-testid": "invite-props" },
+              JSON.stringify({ org: p.org, teams: p.teams, linkBase: p.linkBase, appName: p.appName }),
             ),
           )
         : null,
@@ -233,10 +298,52 @@ describe("App", () => {
     hold({ token: "tok-1", forum: "forum-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1|Mero Forum|undefined|space");
+    fireEvent.click(screen.getByTestId("accept-done"));
     await screen.findByText("Namespaces vs contexts");
     expect(invites.token()).toBeNull();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+  });
+
+  it("drops the invitation on Not now and shows the app", async () => {
+    remember();
+    hold({ token: "tok-1", forum: null });
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("accept-close"));
+    await screen.findByText("Your Spaces");
+    expect(invites.token()).toBeNull();
+    expect(screen.queryByTestId("accept-dialog")).toBeNull();
+  });
+
+  it("adds the app-only note to the invite of a shared org, and none otherwise", async () => {
+    remember();
+    teamsAnswer.appOnly = true;
+    try {
+      render(<App deps={deps(fakeClient())} />);
+      fireEvent.click(await screen.findByLabelText("More options"));
+      fireEvent.click(await screen.findByTestId("invite-btn"));
+      expect((await screen.findByTestId("invite-labels")).textContent).toBe(
+        "space|Invites to Mero Forum only: this organization's other apps are managed in Calimero Home.",
+      );
+      cleanup();
+      teamsAnswer.appOnly = false;
+      render(<App deps={deps(fakeClient())} />);
+      fireEvent.click(await screen.findByLabelText("More options"));
+      fireEvent.click(await screen.findByTestId("invite-btn"));
+      expect((await screen.findByTestId("invite-labels")).textContent).toBe("space|");
+    } finally {
+      teamsAnswer.appOnly = null;
+    }
+  });
+
+  it("opens the shared invite dialog for a space, naming its link and app", async () => {
+    remember();
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByLabelText("More options"));
+    fireEvent.click(await screen.findByTestId("invite-btn"));
+    const props = JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "null");
+    expect(props).toMatchObject({ org: "org-1", teams: [], appName: "Mero Forum" });
+    expect(props.linkBase).toMatch(/\?org=org-1$/);
   });
 
   it("shows an invitation page, not the landing page, to a signed-out visitor with an invite", async () => {
@@ -257,9 +364,9 @@ describe("App", () => {
     await waitFor(() => expect(client.signIn).toHaveBeenCalled());
     // No second click to reach the prompt, and nothing redeemed before it.
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    fireEvent.click(await screen.findByTestId("accept-done"));
     await screen.findByText("Namespaces vs contexts");
+    expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 
   it('"Not now" on the invitation page shows the landing page and keeps the invitation', async () => {
@@ -283,43 +390,50 @@ describe("App", () => {
     expect(invites.token()).toBeNull();
   });
 
-  it.each([
-    [429, "RATE_LIMITED", /Too many tries/],
-    [401, "UNAUTHENTICATED", /sign in again/],
-  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+  it("invites to a space from its page, naming the space and its link", async () => {
     remember();
-    hold({ token: "tok-1", forum: null });
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
-    expect(invites.token()).toBe("tok-1");
+    window.history.replaceState(null, "", "/spaces/org-1");
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("invite-space"));
+    expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to Team");
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "null").linkBase).toMatch(/\?org=org-1$/);
   });
 
-  it("tells a member of the invited space they are already in it, without spending the invite", async () => {
+  it("hands the link's space to the dialog, which tells a member without spending the invite", async () => {
     remember();
     hold({ token: "tok-own", forum: null, org: "org-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(await screen.findByText("You're already in this space")).toBeTruthy();
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-own|Mero Forum|org-1|space");
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(invites.token()).toBeNull();
-    fireEvent.click(screen.getByTestId("invitation-continue"));
-    await waitFor(() => expect(window.location.pathname).toBe("/spaces/org-1"));
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
+  it("a member who continues drops the invite and opens the space", async () => {
+    remember();
+    hold({ token: "tok-own", forum: null, org: "org-1" });
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("accept-done"));
+    await waitFor(() => expect(window.location.pathname).toBe("/spaces/org-1"));
+    expect(invites.token()).toBeNull();
+  });
+
+  it("a spent invite is dropped from storage but stays on screen until Not now", async () => {
     remember();
     hold({ token: "tok-spent", forum: null });
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect(
-      await screen.findByText("This invite was already used or has expired. Ask the person who invited you for a new link."),
-    ).toBeTruthy();
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("accept-spent"));
     expect(invites.token()).toBeNull();
+    expect(screen.getByTestId("accept-dialog")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("accept-close"));
+    await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull());
+  });
+
+  it("keeps the invite when the failure is a lapsed session, not the invite", async () => {
+    remember();
+    hold({ token: "tok-keep", forum: null });
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("accept-lapsed"));
+    expect(invites.token()).toBe("tok-keep");
   });
 
   it("tells a member who may not add a forum to ask an owner, instead of offering Create (B8)", async () => {

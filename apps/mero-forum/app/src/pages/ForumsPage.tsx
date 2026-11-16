@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { InviteDialog } from "@calimero-network/mero-react";
+import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 
 import { PRODUCT_NAME } from "../config";
 import { useToast } from "../contexts/ToastContext";
@@ -9,8 +10,7 @@ import { setActiveForum, setForumName } from "../lib/session";
 import {
   createForum,
   deleteForum,
-  inviteLink,
-  inviteToken,
+  inviteLinkBase,
   isSpaceAdmin,
   listForums,
   readMembers,
@@ -18,7 +18,6 @@ import {
   roleIn,
   type ForumRow,
 } from "../lib/spaces";
-import InviteModal from "../components/InviteModal";
 import SpacePeople, { type SpacePerson } from "../components/SpacePeople";
 import SessionMenu from "../components/SessionMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
@@ -84,13 +83,7 @@ export default function ForumsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{
-    key: string;
-    code: string;
-    scope: string;
-    hint: React.ReactNode;
-    appOnly?: boolean;
-  } | null>(null);
+  const [invite, setInvite] = useState<{ forum?: ForumRow; teams: string[]; appOnly: boolean } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ForumRow | null>(null);
@@ -183,53 +176,15 @@ export default function ForumsPage() {
     });
   }, [name, client, source, passkey, namespaceId, accountId, run, open]);
 
-  const inviteToForum = useCallback(
-    (forum: ForumRow) => {
-      void run(`invite:${forum.forumId}`, async (onStatus) => {
-        onStatus("Approve the invitation with your passkey…");
-        const { token, appOnly } = await inviteToken(client, namespaceId, passkey(), source);
-        setInvite({
-          appOnly,
-          key: `forum:${forum.forumId}`,
-          code: inviteLink(token, forum.forumId, window.location, namespaceId),
-          scope: `Opens ${forum.name}`,
-          hint: (
-            <>
-              Opening the link puts them straight into{" "}
-              <strong>{forum.name}</strong>. Note what it grants: joining{" "}
-              <strong>{nsName}</strong>, which is what makes any forum in it
-              reachable, so this is <em>not</em> narrower than the space link.
-              It just lands them in this forum instead of the forum list.
-            </>
-          ),
-        });
-        showToast(`Invite ready for “${forum.name}”.`);
+  const openInvite = useCallback(
+    (forum?: ForumRow) => {
+      void run(`invite:${forum ? forum.forumId : "namespace"}`, async () => {
+        const { teams, appOnly } = await appInviteTeams(client, namespaceId, source);
+        setInvite({ forum, teams, appOnly });
       });
     },
-    [client, passkey, source, namespaceId, nsName, run, showToast],
+    [client, source, namespaceId, run],
   );
-
-  const inviteToNamespace = useCallback(() => {
-    void run("invite:namespace", async (onStatus) => {
-      onStatus("Approve the invitation with your passkey…");
-      const { token, appOnly } = await inviteToken(client, namespaceId, passkey(), source);
-      setInvite({
-        appOnly,
-        key: "namespace",
-        code: inviteLink(token, undefined, window.location, namespaceId),
-        scope: `Whole space · ${nsName}`,
-        hint: (
-          <>
-            This link joins <strong>{nsName}</strong> and every forum in it,
-            including forums made later. It lands them on the forum list — to
-            drop someone directly into one forum, use <strong>Invite</strong> on
-            that forum.
-          </>
-        ),
-      });
-      showToast(`Invite ready for “${nsName}”.`);
-    });
-  }, [client, passkey, source, namespaceId, nsName, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -289,7 +244,7 @@ export default function ForumsPage() {
             <NavItem
               icon={<UserPlusIcon size={24} />}
               label={pending === "invite:namespace" ? "Inviting…" : "Invite people"}
-              onClick={inviteToNamespace}
+              onClick={() => openInvite()}
               disabled={pending === "invite:namespace"}
               testId="invite-space"
             />
@@ -373,7 +328,7 @@ export default function ForumsPage() {
                   type="button"
                   className="ui-btn ui-btn-dark ui-btn-block"
                   style={{ height: 40 }}
-                  onClick={inviteToNamespace}
+                  onClick={() => openInvite()}
                   disabled={pending === "invite:namespace"}
                 >
                   <UserPlusIcon size={16} />
@@ -550,7 +505,7 @@ export default function ForumsPage() {
                       data-testid="invite-forum"
                       onClick={() => {
                         setMenuOpenId(null);
-                        inviteToForum(forum);
+                        openInvite(forum);
                       }}
                     >
                       <UserPlusIcon size={17} />
@@ -619,13 +574,30 @@ export default function ForumsPage() {
         </div>
       </dialog>
 
-      <InviteModal
+      <InviteDialog
+        client={client}
+        passkey={passkey()}
         open={!!invite}
-        code={invite?.code ?? ""}
-        scope={invite?.scope ?? ""}
-        hint={invite?.hint}
-        appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
+        org={namespaceId}
+        teams={invite?.teams}
+        appName={PRODUCT_NAME}
+        labels={
+          invite?.forum
+            ? {
+                noun: "space",
+                note: invite.appOnly ? appOnlyInviteNote(PRODUCT_NAME) : undefined,
+                title: `Invite to ${invite.forum.name}`,
+                subtitle: `The link opens ${invite.forum.name}. It still joins ${nsName}, so it is not narrower than the space link.`,
+              }
+            : {
+                noun: "space",
+                note: invite?.appOnly ? appOnlyInviteNote(PRODUCT_NAME) : undefined,
+                title: `Invite to ${nsName}`,
+                subtitle: "The link joins the space and every forum in it, including forums made later.",
+              }
+        }
+        linkBase={inviteLinkBase(namespaceId, invite?.forum?.forumId)}
       />
     </>
   );
