@@ -69,6 +69,21 @@ describe('a session bound to Docs', () => {
     });
   });
 
+  it('keeps the permissions that come with a role, to ask for once the role is back', async () => {
+    const { admin, org, open } = await workspace(true);
+    void admin.updateMemberRole(org, 'acct-bob', { role: 'Member', thenCapabilities: 37 });
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(open.mock.calls[0]![0]).toMatchObject({ kind: 'setMemberRole', subject: { org, account: 'acct-bob', role: 'member' } });
+    expect(open.mock.calls[0]![0]).not.toHaveProperty('then');
+    expect(consentIntent()).toEqual({
+      kind: 'setMemberRole',
+      org,
+      account: 'acct-bob',
+      role: 'member',
+      then: { kind: 'setCapabilities', org, account: 'acct-bob', capabilities: 37 },
+    });
+  });
+
   it('removes from Docs\' own team itself, without the consent page', async () => {
     const { cluster, admin, open } = await workspace(true);
     // As the consent page makes it: Docs' team in the same step.

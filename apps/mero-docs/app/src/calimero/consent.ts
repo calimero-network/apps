@@ -23,8 +23,12 @@ export type OrgRoleName = 'admin' | 'member' | 'guest';
 
 /** What Docs was doing when it sent the person to the consent page. */
 export type ConsentIntent =
-  /** A workspace member's role: the organization's. */
-  | { kind: 'setMemberRole'; org: string; account: string; role: OrgRoleName }
+  /**
+   * A workspace member's role: the organization's. `then`: the permissions
+   * the workspace role comes with, asked for once the role is approved (a
+   * second request: one consent page approves one change).
+   */
+  | { kind: 'setMemberRole'; org: string; account: string; role: OrgRoleName; then?: CapabilitiesIntent }
   /** Member defaults (no `account`) or one member's permissions, organization-wide. */
   | { kind: 'setCapabilities'; org: string; account?: string; capabilities: number }
   /** Removing `account` from the workspace's organization. */
@@ -35,6 +39,9 @@ export type ConsentIntent =
   | { kind: 'deleteOrg'; org: string };
 
 export type ConsentKind = ConsentIntent['kind'];
+
+/** One member's permissions, organization-wide. */
+export type CapabilitiesIntent = { kind: 'setCapabilities'; org: string; account: string; capabilities: number };
 
 /** Where the intent waits while the person is on the consent page (this tab only). */
 export const CONSENT_INTENT_KEY = 'mero-docs:consent-intent';

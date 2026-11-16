@@ -93,11 +93,15 @@ export function useGroupRoleAdmin(
         // nowhere - no error, no effect.
         const grant = WORKSPACE_ROLE_GRANTS[nextRole];
         const roleMoves = grant.role !== currentRole;
+        const capsMove = grant.caps !== null && grant.caps !== currentCaps;
         if (roleMoves) {
-          await updateMemberRole(groupId, memberAccount, { role: grant.role });
+          await updateMemberRole(groupId, memberAccount, {
+            role: grant.role,
+            ...(capsMove && grant.caps !== null ? { thenCapabilities: grant.caps } : {}),
+          });
         }
 
-        if (grant.caps !== null && grant.caps !== currentCaps) {
+        if (capsMove && grant.caps !== null) {
           try {
             await admin.setMemberCapabilities(groupId, memberAccount, {
               capabilities: grant.caps,

@@ -8,7 +8,7 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { consentReturn } from '@calimero-network/mero-js';
-import { consentIntent, returnFromConsent } from '@/calimero/consent';
+import { askOrgConsent, consentIntent, returnFromConsent, stayedInDocs } from '@/calimero/consent';
 import { useMero } from '@/calimero/react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 
@@ -48,6 +48,20 @@ export function ConsentReturn() {
         return;
       }
       const { intent } = back;
+      // A role whose permissions differ too: those are a request of their own.
+      if (intent?.kind === 'setMemberRole' && intent.then) {
+        toast.success('Their role was changed. Next, approve the permissions that come with it.');
+        try {
+          await askOrgConsent(client, intent.then);
+        } catch (e) {
+          if (!stayedInDocs(e)) console.warn('[ConsentReturn] the permissions were not asked for', e);
+          toast('Permissions not changed', {
+            description: 'Their role changed; pick the role again to set the permissions that come with it.',
+          });
+          await current.current.refetch().catch(() => undefined);
+        }
+        return;
+      }
       if (DONE[back.kind]) toast.success(DONE[back.kind]);
       const here = current.current;
       // Out of the workspace this tab was in: back to the workspace list.

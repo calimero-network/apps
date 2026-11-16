@@ -632,12 +632,19 @@ export class OrgAdmin {
     account: string,
     role: GroupRoleName | undefined,
     capabilities: number | undefined,
+    thenCapabilities?: number,
   ): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) {
       if (role) {
         const orgRole = role === 'Admin' ? 'admin' : role === 'ReadOnly' ? 'guest' : 'member';
-        await askOrgConsent(this.client, { kind: 'setMemberRole', org, account, role: orgRole });
+        // On the consent page's path this page unloads here: the permissions
+        // the caller sets next go along, asked for when the role comes back.
+        const then =
+          thenCapabilities === undefined
+            ? undefined
+            : { kind: 'setCapabilities' as const, org, account, capabilities: thenCapabilities };
+        await askOrgConsent(this.client, { kind: 'setMemberRole', org, account, role: orgRole, ...(then ? { then } : {}) });
         await this.client.orgs.setMember({ org, account, role: orgRole }, { confirm: passkeyConfirm(this.passkey()) });
       }
       if (capabilities !== undefined) {
@@ -696,9 +703,18 @@ export class OrgAdmin {
     this.changed(org);
   }
 
-  async updateMemberRole(groupId: string, account: string, input: { role: string }): Promise<void> {
+  /**
+   * `thenCapabilities`: the permissions the caller sets right after (the
+   * workspace role's), for the consent page's path, where the role's request
+   * unloads the page before the caller gets to them.
+   */
+  async updateMemberRole(
+    groupId: string,
+    account: string,
+    input: { role: string; thenCapabilities?: number },
+  ): Promise<void> {
     const role = (input.role === 'Admin' || input.role === 'ReadOnly' ? input.role : 'Member') as GroupRoleName;
-    await this.row(groupId, account, role, undefined);
+    await this.row(groupId, account, role, undefined, input.thenCapabilities);
   }
 
   async setMemberCapabilities(groupId: string, account: string, input: { capabilities: number }): Promise<void> {
