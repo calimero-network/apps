@@ -87,6 +87,24 @@ import {
 
 type Result<T> = Awaited<ApiResponse<T>>;
 
+/**
+ * core's org-wide `CREATE_TEAM`. Without Chat's app team, a channel or DM is a
+ * team at the top of the organization, which a member makes only with this.
+ */
+const ORG_CREATE_TEAM = 1 << 5;
+
+/** Chat's toggles as org-wide capabilities (a workspace without Chat's team): "Create channels" is `CREATE_APP` and `CREATE_TEAM`. */
+export function toOrgCaps(capabilities: number): number {
+  const caps = capabilities & ~CAN_CREATE_SUBGROUP;
+  return capabilities & CAN_CREATE_SUBGROUP ? caps | ORG_CREATE_TEAM : caps & ~ORG_CREATE_TEAM;
+}
+
+/** Org-wide capabilities as Chat's toggles: "Create channels" only with both `CREATE_APP` and `CREATE_TEAM`. */
+export function fromOrgCaps(caps: number): number {
+  const creates = (caps & CAN_CREATE_CONTEXT) !== 0 && (caps & ORG_CREATE_TEAM) !== 0;
+  return creates ? caps | CAN_CREATE_SUBGROUP : caps & ~CAN_CREATE_SUBGROUP & ~CAN_CREATE_CONTEXT;
+}
+
 function ok<T>(data: T): Result<T> {
   return { data, error: null };
 }
@@ -558,7 +576,8 @@ export class GroupApiDataSource implements GroupApi {
   /**
    * What `identity` may do in Chat: the capabilities on their row in chat's
    * app team (every one for an org admin or a lead). A workspace without
-   * that team reads them org-wide, where creating a channel is `CREATE_APP`.
+   * that team reads them org-wide, where creating a channel is `CREATE_APP`
+   * and `CREATE_TEAM` (its channels and DMs are teams at the top).
    */
   async getMemberCapabilities(groupId: string, identity: string): ApiResponse<MemberCapabilities> {
     try {
@@ -570,7 +589,7 @@ export class GroupApiDataSource implements GroupApi {
         return ok({ capabilities: row.lead ? ALL_CAPABILITIES : row.capabilities });
       }
       const caps = org.capabilities[identity] ?? org.defaultCapabilities;
-      return ok({ capabilities: caps & CAN_CREATE_CONTEXT ? caps | CAN_CREATE_SUBGROUP : caps });
+      return ok({ capabilities: fromOrgCaps(caps) });
     } catch (error) {
       return catchError("getMemberCapabilities", error);
     }
@@ -596,7 +615,7 @@ export class GroupApiDataSource implements GroupApi {
         const held = chatRowIn(org, team, identity).capabilities & CAN_CREATE_CONTEXT;
         const capabilities = (request.capabilities & ~CAN_CREATE_CONTEXT) | held;
         await setChatRow(groupId, identity, { capabilities });
-      } else await setCapabilities(groupId, request.capabilities & ~CAN_CREATE_SUBGROUP, identity);
+      } else await setCapabilities(groupId, toOrgCaps(request.capabilities), identity);
       return ok(undefined);
     } catch (error) {
       return catchError("setMemberCapabilities", error);
