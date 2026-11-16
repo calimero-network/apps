@@ -74,7 +74,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             "div",
             { "data-testid": "accept-dialog", "data-token": p.token, "data-org": p.org, "data-noun": p.labels?.noun },
             createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
-            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG }) }, "join"),
+            createElement("button", { "data-testid": "accept-done", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: JOINED_ORG, alreadyMember: true }) }, "member"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
@@ -353,6 +354,18 @@ describe("App", () => {
     await screen.findByText("Their ring");
     expect(invites.token()).toBeNull();
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "arena", expect.anything()));
+  });
+
+  it("says the player is already in when they continue as a member", async () => {
+    at("/play");
+    const client = fakeClient();
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9" });
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-member"));
+    expect(await screen.findByText("You're already in this arena.")).toBeTruthy();
+    expect(screen.queryByText(/Invitation accepted/)).toBeNull();
   });
 
   it("an invited newcomer creates the account and joins in one click, and the arena opens", async () => {

@@ -166,7 +166,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   useEffect(() => {
     if (!client || !landing) return;
     setLanding(null);
-    const { org, arena: named } = landing;
+    const { org, arena: named, alreadyMember } = landing;
     void (async () => {
       setLobbyKey((k) => k + 1);
       const remembered = key ? readSelection(storage, key)?.appId : null;
@@ -180,7 +180,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
       open(null);
       // In the org, but with no arena there to open: say who may add one.
       const may = org ? await canCreateIn(client, org) : null;
-      setNotice(may === false ? askAnOwnerCopy("an arena") : "Invitation accepted: the arena is in your list.");
+      setNotice(may === false ? askAnOwnerCopy("an arena") : alreadyMember ? "You're already in this arena." : "Invitation accepted: the arena is in your list.");
     })();
   }, [client, landing, setLanding, source, key, storage, after, open]);
 
@@ -234,10 +234,10 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
           invites.drop();
           closeInvite();
         }}
-        onJoined={({ org }) => {
+        onJoined={({ org, alreadyMember }) => {
           invites.drop();
           closeInvite();
-          setLanding({ org, arena: inviteArena });
+          setLanding({ org, arena: inviteArena, alreadyMember });
           after();
         }}
       />
