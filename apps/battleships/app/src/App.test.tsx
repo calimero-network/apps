@@ -244,6 +244,9 @@ describe('App', () => {
     expect(await screen.findByText('Bob')).toBeVisible();
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('app-1', 'getPlayers', expect.anything()));
     expect(client.call).not.toHaveBeenCalledWith('app-1', 'registerPlayer', expect.anything());
+    // The stream starts past the roster read, not at the start of the lobby's log.
+    await waitFor(() => expect(client.events).toHaveBeenCalled());
+    for (const [, from] of client.events.mock.calls as unknown as [string, number][]) expect(from).toBeGreaterThan(1);
   });
 
   it('opens a lobby: registers, lists the org with names, challenges, and deploys a fleet', async () => {

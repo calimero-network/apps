@@ -502,10 +502,12 @@ export default function MatchPage() {
   // Subscriptions: the lobby instance's one event stream
   // ---------------------------------------------------------------------------
 
+  // Opened once the lobby's roster has been read, so the stream starts just
+  // past that answer's log index instead of replaying the lobby's history.
   const fromIndex = useCallback(() => lobbyApi?.index() ?? 0, [lobbyApi]);
   const { isSubscribed: isEventSubscribed } = useGameSubscriptions({
     client,
-    appId: view === 'lobby-select' ? null : lobby.namespaceId,
+    appId: view === 'lobby-select' || !lobby.lobbyJoined ? null : lobby.namespaceId,
     fromIndex,
     matchId: view === 'game' ? effectiveMatchId : undefined,
     onBoardUpdate: handleBoardUpdate,
