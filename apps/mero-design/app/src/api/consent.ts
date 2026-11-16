@@ -134,7 +134,8 @@ export async function askOrgConsent(intent: ConsentIntent): Promise<boolean> {
   let went = false;
   try {
     // The organization kinds are not in mero-js's `ConsentRequest` yet; the node takes them.
-    await client.openConsentPage(consentRequest(intent) as unknown as ConsentRequest, {
+    const request: ConsentRequest | OrgConsentRequest = consentRequest(intent);
+    await client.openConsentPage(request as ConsentRequest, {
       confirm: async (started) => {
         went = await confirmConsentHandoff({ code: started.code ?? "", action: consentAction(intent) });
         return went;
