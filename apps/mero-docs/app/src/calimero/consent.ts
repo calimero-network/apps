@@ -82,8 +82,22 @@ export function consentReturnTo(location: Pick<Location, 'origin' | 'pathname'> 
   return `${location.origin}${location.pathname}`;
 }
 
+/**
+ * The organization kinds' requests (core's consent page). mero-js types only
+ * the release, upgrade and invite kinds so far; these are the node's shapes.
+ */
+export type OrgConsentRequest =
+  | { kind: 'setMemberRole'; subject: { org: string; account: string; role: OrgRoleName }; returnTo: string }
+  | {
+      kind: 'setCapabilities';
+      subject: { org: string; account?: string; capabilities: number };
+      returnTo: string;
+    }
+  | { kind: 'removeMember'; subject: { org: string; account: string }; returnTo: string }
+  | { kind: 'leaveOrg' | 'deleteOrg'; subject: { org: string }; returnTo: string };
+
 /** The consent page's request for `intent`. */
-export function consentRequest(intent: ConsentIntent, returnTo: string = consentReturnTo()) {
+export function consentRequest(intent: ConsentIntent, returnTo: string = consentReturnTo()): OrgConsentRequest {
   switch (intent.kind) {
     case 'setMemberRole':
       return { kind: intent.kind, subject: { org: intent.org, account: intent.account, role: intent.role }, returnTo };
@@ -147,7 +161,8 @@ export async function askOrgConsent(client: ConsentClient, intent: ConsentIntent
   let went = false;
   try {
     // The organization kinds are sent as they are; this mero-js types only some.
-    await client.openConsentPage(consentRequest(intent) as unknown as ConsentRequest, {
+    const request: ConsentRequest | OrgConsentRequest = consentRequest(intent);
+    await client.openConsentPage(request as ConsentRequest, {
       confirm: async (started) => {
         went = await confirmConsentHandoff({ code: started.code ?? '', appName: 'Mero Docs', action: consentAction(intent) });
         return went;
