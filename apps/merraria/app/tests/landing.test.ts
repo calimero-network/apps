@@ -8,11 +8,11 @@ vi.mock("../src/ui/createWorld", async () => {
   const actual = await vi.importActual<typeof import("../src/ui/createWorld")>("../src/ui/createWorld");
   return {
     ...actual,
-    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, onCreated: (c: unknown) => void) => ({
+    mountCreateWorld: (_c: unknown, _p: unknown, base: unknown, _seed: number, onCreated: (c: unknown, seed: number) => void) => ({
       open: () => {
         const done = document.createElement("button");
         done.dataset.testid = "create-done";
-        done.onclick = () => onCreated({ orgId: "org-new", name: "mesa", selfName: "Grace" });
+        done.onclick = () => onCreated({ orgId: "org-new", name: "mesa", selfName: "Grace" }, 42);
         document.body.appendChild(done);
       },
       source: () => base,
@@ -78,7 +78,7 @@ function launcher(
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   const landing = new Landing(parent, conn, "bundle-hash", invites);
-  const chosen = landing.show({ name: "Ada", seed: 1337 });
+  const chosen = landing.show({ name: "Ada", seed: 42 });
   const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     parent.querySelector<T>(`[data-testid="${id}"]`);
   return { client, conn, parent, chosen, $ };
@@ -410,7 +410,7 @@ describe("the launcher", () => {
     expect(choice.world).toEqual({ appId: "w-new", name: "mesa", org: "org-new" });
     expect(client.createOrg).not.toHaveBeenCalled();
     expect(client.createApp).toHaveBeenCalledWith("mesa", "bundle-hash", { org: "org-new" });
-    expect(client.call).toHaveBeenCalledWith("w-new", "createWorld", expect.objectContaining({ name: "mesa", seed: 1337 }));
+    expect(client.call).toHaveBeenCalledWith("w-new", "createWorld", expect.objectContaining({ name: "mesa", seed: 42 }));
   });
 
   it("says why the world could not be made once its org exists", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { MerrariaClient } from "../src/generated/client";
-import { indexed, nowSecs, readAllOverrides } from "../src/net/merraria";
+import { indexed, nowSecs, readAllOverrides, toSeed } from "../src/net/merraria";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
 describe("the world's clock and log index", () => {
@@ -29,6 +29,16 @@ describe("the world's clock and log index", () => {
     expect(onIndex.mock.calls).toEqual([[3], [4]]);
     await expect(m.worldMeta()).rejects.toThrow("boom");
     expect(after).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("toSeed", () => {
+  it("keeps a seed the contract takes (a u32), else the fallback", () => {
+    expect(toSeed("42", 1337)).toBe(42);
+    expect(toSeed("-42", 1337)).toBe(42);
+    expect(toSeed("abc", 1337)).toBe(1337);
+    expect(toSeed("0", 1337)).toBe(1337);
+    expect(toSeed(2 ** 32 + 5, 1)).toBe(5);
   });
 });
 

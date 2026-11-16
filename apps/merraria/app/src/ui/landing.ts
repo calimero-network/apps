@@ -629,10 +629,10 @@ export class Landing {
       void this.conn.signOut().then(() => this.renderPlayCard(defaults, done));
     });
     // A refused create says so here, with the node's own words.
-    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }) => {
+    const created = async ({ orgId, name, selfName }: { orgId: string; name: string; selfName: string }, seed: number) => {
       errEl.textContent = "";
       try {
-        const world = await createWorld(this.conn.client, dialog.source(), name, defaults.seed, orgId, this.conn.sync);
+        const world = await createWorld(this.conn.client, dialog.source(), name, seed, orgId, this.conn.sync);
         // The world's org holds the player's name from here on. Best effort:
         // a refused write leaves it unset, and the next entry adopts the name
         // remembered here instead of asking.
@@ -645,7 +645,7 @@ export class Landing {
         errEl.textContent = `Could not create world: ${describeError(e)}`;
       }
     };
-    const dialog = mountCreateWorld(this.conn.client, this.conn.approver(), this.source, (c) => void created(c));
+    const dialog = mountCreateWorld(this.conn.client, this.conn.approver(), this.source, defaults.seed, (c, seed) => void created(c, seed));
     this.createDialog = dialog;
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () => dialog.open());
 
