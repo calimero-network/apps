@@ -4,6 +4,8 @@ import { timestampToDate } from "../../utils/time";
 import Loader from "../loader/Loader";
 
 interface AboutDetailsProps {
+  /** `info`: when and by whom; `actions`: delete (the owner's). Both when absent. */
+  part?: "info" | "actions";
   channelName: string;
   dateCreated: string;
   manager: string;
@@ -84,17 +86,19 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
 const AboutDetails: React.FC<AboutDetailsProps> = (props) => {
   return (
     <>
-      <InfoCard>
-        <InfoRow>
-          <InfoLabel>Created</InfoLabel>
-          <InfoValue>{props.dateCreated ? timestampToDate(props.dateCreated) : "N/A"}</InfoValue>
-        </InfoRow>
-        <InfoRow>
-          <InfoLabel>Managed by</InfoLabel>
-          <InfoValue>{props.manager || "—"}</InfoValue>
-        </InfoRow>
-      </InfoCard>
-      {props.isOwner && (
+      {props.part !== "actions" && (
+        <InfoCard>
+          <InfoRow>
+            <InfoLabel>Created</InfoLabel>
+            <InfoValue>{props.dateCreated ? timestampToDate(props.dateCreated) : "N/A"}</InfoValue>
+          </InfoRow>
+          <InfoRow>
+            <InfoLabel>Managed by</InfoLabel>
+            <InfoValue>{props.manager || "—"}</InfoValue>
+          </InfoRow>
+        </InfoCard>
+      )}
+      {props.part !== "info" && props.isOwner && (
         <ActionButton
           type="button"
           onClick={props.handleDeleteChannel}

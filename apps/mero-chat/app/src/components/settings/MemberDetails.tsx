@@ -5,7 +5,6 @@ import { Button, Input } from "@calimero-network/mero-ui";
 import { IdentityAvatar } from "../IdentityAvatar";
 import type { Role, UserId } from "../../api/clientApi";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import BaseModal from "../common/popups/BaseModal";
 
 
 const UserListItem = styled.div`
@@ -136,26 +135,17 @@ const RemoveButton = styled.button`
   }
 `;
 
-const AddMemberButton = styled.div`
+const AddMemberRow = styled.div`
   display: flex;
-  align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
-  color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
-  background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
-  border: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  align-items: stretch;
+  margin-bottom: 0.75rem;
+`;
 
-  &:hover {
-    background: color-mix(in srgb, var(--glass-accent) 6%, transparent);
-    border-color: color-mix(in srgb, var(--glass-accent) 20%, transparent);
-    color: var(--glass-accent);
-  }
+const AddMemberField = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 0;
 `;
 
 const SuggestionsDropdown = styled.div`
@@ -183,20 +173,6 @@ const SuggestionItem = styled.div`
   &:hover { background: color-mix(in srgb, var(--glass-ink) 6%, transparent); }
 `;
 
-const InviteField = styled.div`
-  margin-bottom: 1rem;
-  position: relative;
-`;
-
-const InviteLabel = styled.div`
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.4rem;
-`;
-
 const MembersNote = styled.p`
   margin: 0 0 1rem;
   font-size: 0.78rem;
@@ -204,30 +180,14 @@ const MembersNote = styled.p`
   color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
 `;
 
-const ModalContent = styled.div`
-  min-width: 280px;
-  padding: 0.25rem 0;
-`;
-
-const ModalTitle = styled.h3`
-  color: var(--glass-ink);
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0 0 1.25rem;
-`;
-
-interface AddUserDialogProps {
-  addMember: (account: string, channel: string) => void;
+interface AddMemberInputProps {
+  addMember: (account: string, channel: string) => void | Promise<void>;
   channelName: string;
   nonChannelMembers?: Map<string, string>;
 }
 
-const AddUserDialog = ({
-  addMember,
-  channelName,
-  nonChannelMembers,
-}: AddUserDialogProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+/** "Add member" in place: pick a workspace member from the suggestions, then Add. */
+const AddMemberInput = ({ addMember, channelName, nonChannelMembers }: AddMemberInputProps) => {
   const [inputValue, setInputValue] = useState("");
   const [selectedIdentity, setSelectedIdentity] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -244,91 +204,79 @@ const AddUserDialog = ({
       })
     : memberOptions;
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-    setSelectedIdentity("");
-    setShowSuggestions(true);
-  };
-
-  const handleInputContainerClick = () => {
-    if (!selectedIdentity) setShowSuggestions(filteredSuggestions.length > 0);
-  };
-
-  const handleSuggestionClick = (identity: string, label: string) => {
+  const pick = (identity: string, label: string) => {
     setSelectedIdentity(identity);
-    // Show the human-readable label in the visible input. Identity stays
-    // internal (selectedIdentity), used as the actual add target. Never
-    // surface the raw public key in the UI.
+    // The label in the input; the identity stays internal, the add's target.
     setInputValue(label || "");
     setShowSuggestions(false);
   };
 
-  const handleInvite = useCallback(async () => {
-    // Require a real identity from the suggestion list — typing a
-    // username and submitting without picking sends the typed string
-    // as `identity` to the server, which fails to parse it as a
-    // PublicKey and rejects the request.
-    if (!selectedIdentity) return;
+  const handleAdd = useCallback(async () => {
+    // Only someone picked from the suggestions: a typed name is not an account.
+    if (!selectedIdentity || isProcessing) return;
     setIsProcessing(true);
-    addMember(selectedIdentity, channelName);
-    setInputValue("");
-    setSelectedIdentity("");
-    setIsOpen(false);
-    setIsProcessing(false);
-  }, [selectedIdentity, addMember, channelName]);
-
-  const content = (
-    <ModalContent>
-      <ModalTitle>Add member to #{channelName}</ModalTitle>
-      <InviteField>
-        <InviteLabel>Member</InviteLabel>
-        <div style={{ position: "relative" }} onClick={handleInputContainerClick}>
-          <Input
-            value={inputValue}
-            placeholder="Search by username..."
-            onChange={handleInputChange}
-          />
-          {showSuggestions && filteredSuggestions.length > 0 && (
-            <SuggestionsDropdown>
-              {filteredSuggestions.map((s) => (
-                <SuggestionItem
-                  key={s.identity}
-                  onMouseDown={(e) => { e.preventDefault(); handleSuggestionClick(s.identity, s.label); }}
-                >
-                  {s.label || "Unnamed member"}
-                </SuggestionItem>
-              ))}
-            </SuggestionsDropdown>
-          )}
-        </div>
-      </InviteField>
-      <Button
-        type="button"
-        variant="primary"
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
-        onClick={() => void handleInvite()}
-        disabled={isProcessing || !selectedIdentity}
-      >
-        Invite
-      </Button>
-    </ModalContent>
-  );
+    try {
+      await addMember(selectedIdentity, channelName);
+      setInputValue("");
+      setSelectedIdentity("");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedIdentity, isProcessing, addMember, channelName]);
 
   return (
-    <BaseModal
-      toggle={
-        <AddMemberButton onClick={() => setIsOpen(true)}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add member
-        </AddMemberButton>
-      }
-      content={content}
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      isChild={true}
-    />
+    <AddMemberRow>
+      <AddMemberField
+        onFocus={() => setShowSuggestions(true)}
+        onBlur={() => setShowSuggestions(false)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (!selectedIdentity && filteredSuggestions.length === 1) {
+            const only = filteredSuggestions[0]!;
+            pick(only.identity, only.label);
+            return;
+          }
+          void handleAdd();
+        }}
+      >
+        <Input
+          aria-label="Add member"
+          value={inputValue}
+          placeholder="Add member"
+          disabled={isProcessing}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setInputValue(e.target.value);
+            setSelectedIdentity("");
+            setShowSuggestions(true);
+          }}
+        />
+        {showSuggestions && filteredSuggestions.length > 0 && (
+          <SuggestionsDropdown>
+            {filteredSuggestions.map((s) => (
+              <SuggestionItem
+                key={s.identity}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(s.identity, s.label);
+                }}
+              >
+                {s.label || "Unnamed member"}
+              </SuggestionItem>
+            ))}
+          </SuggestionsDropdown>
+        )}
+        {showSuggestions && memberOptions.length === 0 && (
+          <SuggestionsDropdown>
+            <SuggestionItem style={{ cursor: "default", opacity: 0.6 }}>
+              Everyone in the workspace is in this channel
+            </SuggestionItem>
+          </SuggestionsDropdown>
+        )}
+      </AddMemberField>
+      <Button type="button" variant="primary" onClick={() => void handleAdd()} disabled={isProcessing || !selectedIdentity}>
+        {isProcessing ? "Adding…" : "Add"}
+      </Button>
+    </AddMemberRow>
   );
 };
 
@@ -450,7 +398,7 @@ interface MemberDetailsProps {
   selectedUser: User | null;
   setSelectedUser: (user: User | null) => void;
   userList: Map<string, string>;
-  addMember: (account: string, channel: string) => void;
+  addMember: (account: string, channel: string) => void | Promise<void>;
   channelName: string;
   getNonInvitedUsers: (value: string) => UserId[];
   nonInvitedUserList: UserId[];
@@ -560,7 +508,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
       {optionsOpen !== -1 && <OverLay onClick={() => setOptionsOpen(-1)} />}
       {props.membersNote && <MembersNote>{props.membersNote}</MembersNote>}
       {props.isOwner && (
-        <AddUserDialog
+        <AddMemberInput
           addMember={props.addMember}
           channelName={props.channelName}
           nonChannelMembers={props.nonChannelMembers}

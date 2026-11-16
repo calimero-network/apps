@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import AboutDetails from "./AboutDetails";
 import MemberDetails from "./MemberDetails";
-import TabSwitch from "./TabSwitch";
 import type { ChannelMeta } from "../../types/Common";
 import type { UserId } from "../../api/clientApi";
 import { getContextIdentity } from "../../api/calimero";
@@ -12,6 +11,27 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDisplayName } from "../../repositories/names/useNames";
 
 const Wrapper = styled.div``;
+
+const SectionTitle = styled.h3`
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 1.25rem 0 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+`;
+
+const Count = styled.span`
+  font-weight: 500;
+  color: color-mix(in srgb, var(--glass-ink) 35%, transparent);
+`;
+
+const Actions = styled.div`
+  margin-top: 1rem;
+`;
 
 const ChannelHeader = styled.div`
   display: flex;
@@ -51,6 +71,7 @@ interface DetailsContainerProps {
   groupId?: string;
   contextId?: string;
   contextSubgroupId?: string;
+  /** Kept for callers; details and members are one view now. */
   selectedTabIndex?: number;
   userList: Map<string, string>;
   nonInvitedUserList: UserId[];
@@ -66,7 +87,6 @@ interface DetailsContainerProps {
 
 const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const channelName = props.channelName;
-  const initialTabIndex = props.selectedTabIndex ? 0 : 1;
   const userList = props.userList;
   const channelMeta = props.channelMeta;
   const isOwner = props.isOwner ?? false;
@@ -76,7 +96,6 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const reFetchChannelMembers = props.reFetchChannelMembers;
   const userCount = userList.size;
 
-  const [selectedTabIndex, setSelectedTabIndex] = useState(initialTabIndex);
   const { addToast } = useToast();
 
   // Resolved from the creator's ACCOUNT, like every other name in the app.
@@ -155,43 +174,48 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   return (
     <Wrapper>
       <ChannelName />
-      <TabSwitch
-        selectedTabIndex={selectedTabIndex}
-        setSelectedTabIndex={setSelectedTabIndex}
-        userCount={userCount}
+      <AboutDetails
+        part="info"
+        dateCreated={channelMeta.createdAt}
+        manager={creatorName}
+        channelName={channelName}
       />
-      {selectedTabIndex === 0 && (
-        <AboutDetails
-          dateCreated={channelMeta.createdAt}
-          manager={creatorName}
-          isOwner={isOwner}
-          handleDeleteChannel={handleDeleteChannel}
-          isDeleting={props.isDeleting}
-          channelName={channelName}
-        />
-      )}
-      {selectedTabIndex === 1 && (
-        <MemberDetails
-          id={0}
-          user={getContextIdentity() as unknown as UserId}
-          promoteModerator={() => {}}
-          removeUserFromChannel={removeUserFromChannel}
-          channelOwner={channelMeta.createdBy}
-          optionsOpen={0}
-          setOptionsOpen={() => {}}
-          selectedUser={null}
-          setSelectedUser={() => {}}
-          userList={userList}
-          addMember={addMember}
-          channelName={channelName}
-          getNonInvitedUsers={getNonInvitedUsers}
-          nonInvitedUserList={nonInvitedUserList}
-          nonChannelMembers={props.nonChannelMembers}
-          isOwner={canManageMembers && !managedInHome}
-          membersNote={canManageMembers && managedInHome ? "Members of this channel are managed in Calimero Home." : undefined}
-          contextId={props.contextId}
-          myContextIdentity={getContextIdentity() ?? undefined}
-        />
+      <SectionTitle>
+        Members <Count>{userCount}</Count>
+      </SectionTitle>
+      <MemberDetails
+        id={0}
+        user={getContextIdentity() as unknown as UserId}
+        promoteModerator={() => {}}
+        removeUserFromChannel={removeUserFromChannel}
+        channelOwner={channelMeta.createdBy}
+        optionsOpen={0}
+        setOptionsOpen={() => {}}
+        selectedUser={null}
+        setSelectedUser={() => {}}
+        userList={userList}
+        addMember={addMember}
+        channelName={channelName}
+        getNonInvitedUsers={getNonInvitedUsers}
+        nonInvitedUserList={nonInvitedUserList}
+        nonChannelMembers={props.nonChannelMembers}
+        isOwner={canManageMembers && !managedInHome}
+        membersNote={canManageMembers && managedInHome ? "Members of this channel are managed in Calimero Home." : undefined}
+        contextId={props.contextId}
+        myContextIdentity={getContextIdentity() ?? undefined}
+      />
+      {isOwner && (
+        <Actions>
+          <AboutDetails
+            part="actions"
+            dateCreated={channelMeta.createdAt}
+            manager={creatorName}
+            isOwner={isOwner}
+            handleDeleteChannel={handleDeleteChannel}
+            isDeleting={props.isDeleting}
+            channelName={channelName}
+          />
+        </Actions>
       )}
     </Wrapper>
   );
