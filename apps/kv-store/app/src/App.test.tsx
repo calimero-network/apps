@@ -125,7 +125,7 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
       labels?: { noun?: string };
       onClose: () => void;
       onError?: (e: unknown) => void;
-      onJoined: (j: { org: string }) => void;
+      onJoined: (j: { org: string; alreadyMember: boolean }) => void;
     }) =>
       p.open
         ? createElement(
@@ -134,7 +134,8 @@ vi.mock("@calimero-network/mero-react", async (importOriginal) => {
             createElement("pre", { "data-testid": "accept-token" }, p.token),
             createElement("pre", { "data-testid": "accept-props" }, JSON.stringify({ org: p.org, noun: p.labels?.noun })),
             createElement("button", { "data-testid": "accept-fail", onClick: () => p.onError?.(new Error("spent")) }, "fail"),
-            createElement("button", { "data-testid": "accept-join", onClick: () => p.onJoined({ org: joinedOrg }) }, "join"),
+            createElement("button", { "data-testid": "accept-join", onClick: () => p.onJoined({ org: joinedOrg, alreadyMember: false }) }, "join"),
+            createElement("button", { "data-testid": "accept-member", onClick: () => p.onJoined({ org: joinedOrg, alreadyMember: true }) }, "member"),
             createElement("button", { "data-testid": "accept-close", onClick: p.onClose }, "close"),
           )
         : null,
@@ -345,6 +346,19 @@ describe("App", () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("accept-join"));
     await screen.findByText(/Invitation accepted/);
+    expect(invites.token()).toBeNull();
+  });
+
+  it("continuing as an existing member claims no acceptance", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    const invites = pendingIn(storage, { token: "tok-9" });
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
+    await screen.findByTestId("invitation-page");
+    fireEvent.click(screen.getByTestId("signin-passkey"));
+    fireEvent.click(await screen.findByTestId("accept-member"));
+    await screen.findByText("You're already in this store");
+    expect(screen.queryByText(/Invitation accepted/)).toBeNull();
     expect(invites.token()).toBeNull();
   });
 
