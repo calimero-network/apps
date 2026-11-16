@@ -36,12 +36,15 @@ export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps
  * once the contract has taken it, which is the only point at which it is true.
  */
 export function useTeam(transport: TeamTransport, appId: string, after: () => void = () => {}, onLost?: () => void) {
-  const client = useMemo(() => new MeroStandupClient(transport, appId, { after }), [transport, appId, after]);
+  const lost = useRef(onLost);
+  lost.current = onLost;
+  const client = useMemo(
+    () => new MeroStandupClient(admitted(transport, () => lost.current?.()), appId, { after }),
+    [transport, appId, after],
+  );
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
-  const lost = useRef(onLost);
-  lost.current = onLost;
 
   useEffect(() => visibleInterval(bump, POLL_MS), [bump]);
 
@@ -52,6 +55,7 @@ export function useTeam(transport: TeamTransport, appId: string, after: () => vo
   useEffect(() => {
     const abort = new AbortController();
     void (async () => {
+      let ended = false;
       try {
         const from = (await client.raw.whoami()).index + 1;
         streaming.current = true;
@@ -64,12 +68,16 @@ export function useTeam(transport: TeamTransport, appId: string, after: () => vo
             bump();
           }, 250);
         }
+        ended = true;
       } catch (e) {
         // Not admitted any more: close it. Anything else (sign-out, network): the poll still runs.
         if (!abort.signal.aborted && e instanceof NotFound) lost.current?.();
       } finally {
         streaming.current = false;
       }
+      // A stream that ends without a refusal (the node may just close it on a
+      // removal): read again, and a read the node refuses closes the team (`admitted`).
+      if (ended && !abort.signal.aborted) bump();
     })();
     return () => {
       abort.abort();
@@ -101,6 +109,25 @@ export function useTeam(transport: TeamTransport, appId: string, after: () => vo
 }
 
 export type Team = ReturnType<typeof useTeam>;
+
+/**
+ * `transport` with `onLost` run when the node refuses a call because the team
+ * is not there for this account any more (`404` from the node, not a contract's
+ * own refusal): taken out of its organization, or it was deleted.
+ */
+function admitted(transport: TeamTransport, onLost: () => void): TeamTransport {
+  const check = (e: unknown): never => {
+    if (e instanceof NotFound && typeof (e as { appCode?: unknown }).appCode !== "string") onLost();
+    throw e;
+  };
+  return {
+    apps: {
+      call: (args, options) => transport.apps.call(args, options).catch(check),
+      view: (args, options) => transport.apps.view(args, options).catch(check),
+    },
+    events: transport.events.bind(transport),
+  } as TeamTransport;
+}
 
 /**
  * Read `load` whenever `version` (or anything in `deps`) moves. Keeps the last
