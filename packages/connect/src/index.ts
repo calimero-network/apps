@@ -152,6 +152,7 @@ export {
   acceptAppInvite,
   adoptAppTeam,
   appInvite,
+  appInviteTeams,
   appOnlyInviteNote,
   appPeople,
   appTeamIdIn,

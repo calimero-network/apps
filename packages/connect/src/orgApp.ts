@@ -31,7 +31,7 @@
  */
 import { passkeyConfirm, type CalimeroClient, type OrgMode, type PasskeyProvider } from "@calimero-network/mero-js";
 
-import { appTeamMembers, appTeamOf, appTeams, createAppTeam, inviteToApp } from "./appTeams";
+import { NoAppTeamError, appTeamMembers, appTeamOf, appTeams, createAppTeam, inviteToApp } from "./appTeams";
 import { goToConsent, isFrontendBound, type ConsentClient, type ConsentOptions, type MaybeMe } from "./consent";
 import { joinedOrg, type OrgAccessView, type OrgTeamView } from "./invite";
 import { markOrgFor } from "./orgs";
@@ -394,6 +394,25 @@ export async function acceptAppInvite(
   }
   const redeemed = await client.orgs.inviteRedeem({ token });
   return { org: joinedOrg(redeemed), redeemed };
+}
+
+/**
+ * The app team(s) an invite to `source`'s app names, for the shared invite
+ * dialog's `teams`: `[]` (an org-wide invite) in a legacy org, on an older
+ * node or under a raw bundle; refused ({@link NoAppTeamError}) where the org
+ * has app teams but none for this app. `appOnly` as in {@link AppInviteToken}.
+ */
+export async function appInviteTeams(
+  client: ClientRoutes<{ orgs: "appTeamList" }>,
+  org: string,
+  source: AppSource | null | undefined,
+): Promise<{ teams: string[]; appOnly: boolean }> {
+  const pkg = sourcePackage(source);
+  const answer = pkg ? await appTeams(client, org) : null;
+  if (!pkg || !answer || answer.appTeams.length === 0) return { teams: [], appOnly: false };
+  const team = answer.appTeams.find((t) => t.package === pkg);
+  if (!team) throw new NoAppTeamError(pkg);
+  return { teams: [team.teamId], appOnly: answer.mode === "shared" };
 }
 
 // ── removing and leaving ────────────────────────────────────────────────────
