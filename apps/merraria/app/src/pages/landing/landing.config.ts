@@ -67,7 +67,7 @@ export const CONFIG: LandingConfig = {
         { term: "Namespace", def: "A world you own. Invite people and they dig in the same one." },
         { term: "Seed", def: "One number. Terrain is generated from it deterministically on every machine, so no terrain is ever sent over the network." },
         { term: "Tile override", def: "One changed tile, keyed by coordinate. Mining or placing writes an override; the override map is the only terrain data that syncs." },
-        { term: "Presence", def: "Other players’ positions, refreshed by heartbeat and kept apart from the world itself." },
+        { term: "Presence", def: "Other players’ positions, streamed over the node’s ephemeral presence channel and kept apart from the world itself." },
         { term: "Offline mode", def: "The game runs with no node at all, persisted to your browser. Nothing shared, nothing to set up." },
       ],
     },

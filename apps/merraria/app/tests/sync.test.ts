@@ -7,15 +7,19 @@ import {
   HEARTBEAT_IDLE_MS,
   HEARTBEAT_MOVING_MS,
   PLAYERS_POLL_MS,
+  PRESENCE_MOVING_MS,
+  PRESENCE_REFRESH_MS,
   quantize,
   RemotePlayer,
   SyncEngine,
   Transform,
+  type PresenceChannel,
 } from "../src/net/sync";
+import { decodeSlice } from "../src/net/presence";
 
 const T: Transform = { name: "P", x: 1, y: 2, dir: 1, sel: 0, action: "walking" };
 
-function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
+function makeSync(overrides: Partial<Record<string, unknown>> = {}, presence: PresenceChannel | null = null) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
   const world = new TileStore();
   const exec = vi.fn(async (method: string, args: Record<string, unknown>) => {
@@ -34,10 +38,16 @@ function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
   const client = new MerrariaClient({ apps: { call: answer, view: answer }, async *events() {} }, "w");
   const players: RemotePlayer[][] = [];
   const toasts: string[] = [];
-  const sync = new SyncEngine(client, world, () => "me", {
-    onPlayers: (p) => players.push(p),
-    onToast: (m) => toasts.push(m),
-  });
+  const sync = new SyncEngine(
+    client,
+    world,
+    () => "me",
+    {
+      onPlayers: (p) => players.push(p),
+      onToast: (m) => toasts.push(m),
+    },
+    presence,
+  );
   return { sync, world, exec, calls, players, toasts };
 }
 
@@ -75,6 +85,14 @@ describe("SyncEngine (merraria)", () => {
     sync.handleEvent({ kind: "TilesChanged", value: "peer" });
     await vi.waitFor(() => expect(exec).toHaveBeenCalled());
     await vi.waitFor(() => expect(world.getTile(1, 2)).toBe(STONE));
+  });
+
+  it("reads the edits once more, not once per event, for a burst of TilesChanged", async () => {
+    const { sync, exec } = makeSync({ getOverrides: { items: [], next: null } });
+    for (let i = 0; i < 5; i++) sync.handleEvent({ kind: "TilesChanged", value: "peer" });
+    await vi.waitFor(() => expect(exec).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(exec).toHaveBeenCalledTimes(2);
   });
 
   it("keeps locally-pending edits over remote state", async () => {
@@ -193,5 +211,76 @@ describe("SyncEngine.connect (a world not founded yet)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("SyncEngine over presence", () => {
+  function makePresenceSync() {
+    const published: unknown[] = [];
+    let push: (players: RemotePlayer[]) => void = () => {};
+    const stop = vi.fn();
+    const presence: PresenceChannel = {
+      publish: (slice) => published.push(slice),
+      subscribe: (onPlayers) => {
+        push = onPlayers;
+        return stop;
+      },
+    };
+    const made = makeSync({ getOverrides: { items: [], next: null }, getPlayers: [] }, presence);
+    return { ...made, published, push: (p: RemotePlayer[]) => push(p), stop };
+  }
+
+  it("sends no contract heartbeat and polls no roster", () => {
+    const { sync, exec, published } = makePresenceSync();
+    for (let i = 0; i < 20; i++) sync.tick(PLAYERS_POLL_MS, { ...T, x: i }, true);
+    expect(exec.mock.calls.filter((c) => c[0] === "heartbeat" || c[0] === "getPlayers")).toHaveLength(0);
+    expect(published[0]).toMatchObject({ id: "me", x: 0, action: "walking" });
+  });
+
+  it("throttles a moving transform and refreshes an unchanged one", () => {
+    const { sync, published } = makePresenceSync();
+    sync.tick(PRESENCE_MOVING_MS, T, true);
+    expect(published).toHaveLength(1);
+    sync.tick(PRESENCE_MOVING_MS - 1, { ...T, x: 2 }, true);
+    expect(published).toHaveLength(1);
+    sync.tick(1, { ...T, x: 2 }, true);
+    expect(published).toHaveLength(2);
+    // Standing still: nothing until the refresh is due.
+    sync.tick(PRESENCE_REFRESH_MS - 1, { ...T, x: 2 }, false);
+    expect(published).toHaveLength(2);
+    sync.tick(1, { ...T, x: 2 }, false);
+    expect(published).toHaveLength(3);
+  });
+
+  it("takes the roster from presence, without itself", async () => {
+    const { sync, players, push, exec } = makePresenceSync();
+    await sync.connect("P", 1_000);
+    push([
+      { ...T, id: "me", online: true },
+      { ...T, id: "peer", online: true },
+    ]);
+    expect(players.at(-1)!.map((p) => p.id)).toEqual(["peer"]);
+    sync.handleEvent({ kind: "PlayerJoined", value: "peer" });
+    expect(exec.mock.calls.filter((c) => c[0] === "getPlayers")).toHaveLength(0);
+  });
+
+  it("retracts its entry and stops following on leave", async () => {
+    const { sync, published, stop } = makePresenceSync();
+    await sync.connect("P", 1_000);
+    await sync.leave();
+    expect(stop).toHaveBeenCalled();
+    expect(published.at(-1)).toBeNull();
+  });
+});
+
+describe("decodeSlice", () => {
+  const hex = (v: unknown) =>
+    Array.from(new TextEncoder().encode(JSON.stringify(v)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+  it("reads a slice and skips a retracted or malformed one", () => {
+    expect(decodeSlice(hex({ ...T, id: "acc" }))).toMatchObject({ id: "acc", x: 1, action: "walking" });
+    expect(decodeSlice(hex({ ...T, id: "acc", action: "flying" }))?.action).toBe("idle");
+    expect(decodeSlice(null)).toBeNull();
+    expect(decodeSlice(hex(T))).toBeNull();
   });
 });
