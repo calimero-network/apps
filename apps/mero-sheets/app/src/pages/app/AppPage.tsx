@@ -23,18 +23,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { targetKey, type OtherOrg } from '@calimero-apps/connect';
-import { CreateWorkspaceDialog } from '@calimero-network/mero-react';
+import { appInviteTeams, appOnlyInviteNote, targetKey, type OtherOrg } from '@calimero-apps/connect';
+import { CreateWorkspaceDialog, InviteDialog } from '@calimero-network/mero-react';
 import { lastUsedName } from '@calimero-apps/names';
 import { ConnectExistingOrg, ManageInHomeLink, NodeShield, reviewRelease, useResolvedSource } from '@calimero-apps/passkey';
 import { useSessionApi, useSignedIn } from '../../sessionContext';
 import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
+import InviteQr from '../../components/InviteQr';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
 import { APP_DISPLAY_NAME, APP_PACKAGE } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
-import { leaveWorkspace, leaveWorkspaceOrg, removeFromWorkspace } from '../../lib/workspaces';
+import { inviteBase, leaveWorkspace, leaveWorkspaceOrg, removeFromWorkspace } from '../../lib/workspaces';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
@@ -48,7 +49,6 @@ import FormulaBar from '../../components/FormulaBar';
 import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
 import FunctionHelpPanel from '../../components/FunctionHelpPanel';
-import InviteModal from '../../components/InviteModal';
 import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
@@ -93,6 +93,11 @@ const CREATE_LABELS = {
   namePlaceholder: 'e.g. Finance team',
   selfLabel: 'Your name in this workspace',
   selfPlaceholder: 'e.g. Alice',
+};
+
+const INVITE_LABELS = {
+  title: 'Invite to this workspace',
+  subtitle: 'One link joins one person to the workspace and every spreadsheet in it. Choose what they can do.',
 };
 
 export default function AppPage() {
@@ -150,27 +155,23 @@ export default function AppPage() {
 
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
-  // The minted code lives here rather than inside InviteModal, because minting
-  // is a network call against the namespace and the modal is a presentation of
-  // its result — keeping them together made the dialog either mint on every open
-  // or show a stale invitation from a previous one.
-  const [inviteCode, setInviteCode] = useState('');
-  const [inviteAppOnly, setInviteAppOnly] = useState(false);
+  const [inviteTeams, setInviteTeams] = useState<{ teams: string[]; appOnly: boolean }>({ teams: [], appOnly: false });
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  // The team is read when the dialog opens: an org that keeps its apps apart
+  // gives this app only, and one with no team for it is refused, not widened.
   const openInvite = useCallback(async () => {
-    setShowInvite(true);
-    setInviteCode('');
-    setInviteAppOnly(false);
+    if (!ws.namespaceId) return;
     setInviteError(null);
     try {
-      const made = await ws.invite({ contextId: ws.contextId });
-      setInviteCode(made.link);
-      setInviteAppOnly(made.appOnly);
+      setInviteTeams(await appInviteTeams(client, ws.namespaceId, source));
+      setShowInvite(true);
     } catch (err) {
       setInviteError(describeError(err));
+    } finally {
+      after();
     }
-  }, [ws]);
+  }, [client, ws.namespaceId, source, after]);
 
   // ── Your name ───────────────────────────────────────────────────
   // One per workspace: the org's member metadata. A spreadsheet copies it into
@@ -1849,18 +1850,26 @@ export default function AppPage() {
           onClose={() => setShowHelp(false)}
         />
       )}
-      {showInvite && (
-        <InviteModal
-          code={inviteCode}
-          // Says what the invitation actually grants. The grant is the
-          // NAMESPACE — one membership covers every spreadsheet in it — so the
-          // UI says that rather than implying a narrower scope than it gives.
-          scope={`${ws.namespaceName} · all ${ws.workspaces.length} spreadsheet${ws.workspaces.length === 1 ? '' : 's'}, opening “${activeWorkspaceName}”`}
-          loading={ws.inviteLoading && !inviteCode}
-          appOnly={inviteAppOnly}
-          error={inviteError}
-          onClose={() => setShowInvite(false)}
-        />
+      {inviteError && (
+        <ErrorToast role="alert" data-testid="toast-invite-error">
+          <span>{inviteError}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setInviteError(null)}>×</button>
+        </ErrorToast>
+      )}
+      {ws.namespaceId && (
+      <InviteDialog
+        client={client}
+        passkey={passkey()}
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        org={ws.namespaceId}
+        teams={inviteTeams.teams}
+        appName={APP_DISPLAY_NAME}
+        uses={1}
+        shareExtra={(link) => <InviteQr link={link} />}
+        linkBase={inviteBase(ws.namespaceId, ws.contextId)}
+        labels={inviteTeams.appOnly ? { ...INVITE_LABELS, note: appOnlyInviteNote(APP_DISPLAY_NAME) } : INVITE_LABELS}
+      />
       )}
       {selfName.kind === 'ask' && (
         <NicknameModal

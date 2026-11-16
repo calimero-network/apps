@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
@@ -6,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import App from './App';
 import { APP, type SessionDeps } from './session';
+import { APP_PACKAGE } from './config';
 import { invites, migrateLegacyInvite } from './lib/workspaces';
 import { withRoutes } from '@calimero-apps/connect/testing';
 
@@ -39,6 +41,53 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
               'button',
               { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Mero Sheets', selfName: 'Alice' }) },
               'done',
+            ),
+          )
+        : null,
+    InviteDialog: (p: {
+      open: boolean;
+      org: string;
+      teams?: string[];
+      linkBase?: string;
+      appName?: string;
+      uses?: number;
+      labels?: { note?: string };
+      shareExtra?: (link: string) => ReactNode;
+      onClose: () => void;
+    }) =>
+      p.open
+        ? createElement(
+            'div',
+            null,
+            createElement('pre', { 'data-testid': 'invite-dialog' }, JSON.stringify({ org: p.org, teams: p.teams, linkBase: p.linkBase, appName: p.appName, uses: p.uses, note: p.labels?.note })),
+            createElement('div', { 'data-testid': 'invite-extra' }, p.shareExtra?.('https://x.test/?org=o#invite=tok')),
+          )
+        : null,
+    AcceptInviteDialog: (p: {
+      open: boolean;
+      token: string;
+      org?: string;
+      appName?: string;
+      onClose: () => void;
+      onError?: (e: unknown) => void;
+      onJoined: (j: { org: string }) => void;
+    }) =>
+      p.open
+        ? createElement(
+            'div',
+            { 'data-testid': 'accept-dialog' },
+            createElement('p', { 'data-testid': 'accept-token' }, `${p.token} ${p.appName} ${p.org}`),
+            createElement('button', { 'data-testid': 'accept-join', onClick: () => p.onJoined({ org: 'org-1' }) }, 'join'),
+            createElement('button', { 'data-testid': 'accept-close', onClick: p.onClose }, 'close'),
+            createElement(
+              'button',
+              { 'data-testid': 'accept-spent', onClick: () => p.onError?.(new CalimeroError(400, 'REJECTED', 'this invite was used up, revoked or never existed')) },
+              'spent',
+            ),
+            createElement(
+              'button',
+              { 'data-testid': 'accept-lapsed', onClick: () => p.onError?.(new CalimeroError(401, 'UNAUTHORIZED', 'session ended')) },
+              'lapsed',
             ),
           )
         : null,
@@ -152,7 +201,7 @@ function fakeClient(
     events: vi.fn(async function* () {}),
     presenceStream: vi.fn(async function* () {}),
     publishPresence: vi.fn(async () => undefined),
-    redeemInvite: vi.fn(async () => ({ org: 'org-1' })),
+    listAppTeams: vi.fn(async () => ({ mode: 'standalone', appTeams: [] as { package: string; teamId: string }[] })),
     setMemberMetadata: vi.fn(async (_org: string, _account: string, _meta: unknown): Promise<void> => undefined),
   });
 }
@@ -163,6 +212,11 @@ function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
     makeClient: vi.fn(async () => withRoutes(client)),
     passkey: () => ({ create: vi.fn(), get: vi.fn() }),
   };
+}
+
+/** The app served as its package: invites name its app team. */
+function packageDeps(client: ReturnType<typeof fakeClient>): SessionDeps {
+  return { ...deps(client), env: { DEV: true, VITE_CALIMERO_PACKAGE: APP_PACKAGE } };
 }
 
 /** A session an earlier visit left behind. */
@@ -279,9 +333,18 @@ describe('App', () => {
     hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
+    expect((await screen.findByTestId('accept-token')).textContent).toMatch(/^tok-1 Mero Sheets undefined$/);
+    fireEvent.click(screen.getByTestId('accept-join'));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
+    expect(invites.token()).toBeNull();
+  });
+
+  it('"Close" on the join dialog drops the invite and joins nothing', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId('accept-close'));
+    expect(screen.queryByTestId('accept-dialog')).toBeNull();
     expect(invites.token()).toBeNull();
   });
 
@@ -290,13 +353,8 @@ describe('App', () => {
     localStorage.setItem('calimero-names:last', 'Ali');
     hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
     const client = fakeClient();
-    // Not in the workspace until the invite is redeemed.
-    let joined = false;
-    client.me.mockImplementation(async () => ({ orgs: joined ? [{ orgId: 'org-1', name: 'Team', role: 'member' }] : [] }));
-    client.redeemInvite.mockImplementation(async () => {
-      joined = true;
-      return { org: 'org-1' };
-    });
+    // Not in the workspace until the dialog reports the join.
+    client.me.mockImplementation(async () => ({ orgs: [] }));
     const meta: Record<string, unknown> = {};
     client.getOrg.mockImplementation(async () => ({ name: 'Team', members: { [ME]: 'member' }, memberMetadata: { ...meta } }));
     client.setMemberMetadata.mockImplementation(async (_org: string, account: string, m: unknown) => {
@@ -307,7 +365,8 @@ describe('App', () => {
       result: method === 'getMembers' ? [] : (VIEWS[method] ?? []),
     }));
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
+    fireEvent.click(await screen.findByTestId('accept-join'));
+    client.me.mockImplementation(async () => ({ orgs: [{ orgId: 'org-1', name: 'Team', role: 'member' }] }));
     const field = (await screen.findByTestId('field-nickname')) as HTMLInputElement;
     expect(field.value).toBe('Ali');
     expect(client.view).not.toHaveBeenCalledWith('sheet-1', 'listSheets', {});
@@ -349,8 +408,7 @@ describe('App', () => {
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-page');
     fireEvent.click(screen.getByTestId('signin-passkey'));
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
+    fireEvent.click(await screen.findByTestId('accept-join'));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
     expect(screen.queryByTestId('invitation-page')).toBeNull();
   });
@@ -365,8 +423,7 @@ describe('App', () => {
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
     expect(client.signIn).not.toHaveBeenCalled();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('invitation-dialog')).toBeNull();
+    expect(screen.queryByTestId('accept-dialog')).toBeNull();
     expect(screen.queryByTestId('invitation-page')).toBeNull();
     expect(invites.token()).toBeNull();
   });
@@ -380,27 +437,40 @@ describe('App', () => {
     expect(invites.token()).not.toBeNull();
   });
 
-  it('does not redeem an invite into a workspace the account is already in', async () => {
+  it("hands the link's workspace to the dialog, which tells a member without spending the invite", async () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', sheet: null, org: 'org-1' }));
+    render(<App deps={deps(fakeClient())} />);
+    expect((await screen.findByTestId('accept-token')).textContent).toBe('tok-1 Mero Sheets org-1');
+  });
+
+  it('a member who continues drops the invite and opens the workspace', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1', org: 'org-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    await screen.findByTestId('invitation-member');
-    expect(screen.getByRole('heading', { name: /already in this workspace/ })).toBeTruthy();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('accept-join'));
+    await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
     expect(invites.token()).toBeNull();
   });
 
-  it('says plainly when the invite was already used or has expired', async () => {
+  it('a spent invite is dropped from storage but stays on screen until Close', async () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', sheet: null }));
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    const error = await screen.findByTestId('invitation-error');
-    expect(error.textContent).toBe('This invite was already used or has expired. Ask the person who invited you for a new link.');
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId('accept-spent'));
     expect(invites.token()).toBeNull();
+    expect(screen.getByTestId('accept-dialog')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('accept-close'));
+    await waitFor(() => expect(screen.queryByTestId('accept-dialog')).toBeNull());
+  });
+
+  it('keeps the invite when the failure is a lapsed session, not the invite', async () => {
+    remember();
+    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId('accept-lapsed'));
+    expect(invites.token()).toBe('tok-1');
   });
 
   it('takes an invitation link off the address bar before the first render', async () => {
@@ -411,18 +481,47 @@ describe('App', () => {
     expect(window.location.search).toBe('');
   });
 
-  it.each([
-    [429, 'RATE_LIMITED', /Too many tries/],
-    [401, 'UNAUTHENTICATED', /sign in again/],
-  ])('keeps the invite when redeeming answers %i, and says to try again (B6)', async (status, code, says) => {
+  it('takes an invitation link the shared dialog made (token in the fragment) off the address bar', async () => {
+    const { captureInvite, pendingInvite } = await import('./lib/workspaces');
+    window.history.replaceState(null, '', '/?org=org-3&sheet=sheet-9#invite=tok-3');
+    captureInvite();
+    expect(pendingInvite()).toEqual({ token: 'tok-3', sheet: 'sheet-9', org: 'org-3' });
+    expect(window.location.search + window.location.hash).toBe('');
+  });
+
+  it('Invite opens the shared dialog for this workspace, naming the app team and a link to the open spreadsheet', async () => {
     remember();
-    hold(JSON.stringify({ token: 'tok-1', sheet: null }));
     const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
-    render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    expect((await screen.findByTestId('invitation-error')).textContent).toMatch(says);
-    expect(invites.token()).toBe('tok-1');
-    expect(screen.getByTestId('invitation-join')).toBeTruthy();
+    client.listAppTeams.mockImplementation(async () => ({ mode: 'standalone', appTeams: [{ package: APP_PACKAGE, teamId: 'team-1' }] }));
+    render(<App deps={packageDeps(client)} />);
+    fireEvent.click(await screen.findByText('Q3 Budget'));
+    fireEvent.click(await screen.findByLabelText('Invite collaborators'));
+    const shown = JSON.parse((await screen.findByTestId('invite-dialog')).textContent ?? '');
+    expect(shown).toMatchObject({ org: 'org-1', teams: ['team-1'], appName: 'Mero Sheets', uses: 1 });
+    expect(shown.note).toBeUndefined();
+    expect(screen.getByTestId('invite-extra').querySelector('svg')).not.toBeNull();
+    expect(new URL(shown.linkBase).searchParams.get('sheet')).toBe('sheet-1');
+  });
+
+  it('a shared org adds the app-only note to the invite', async () => {
+    remember();
+    const client = fakeClient();
+    client.listAppTeams.mockImplementation(async () => ({ mode: 'shared', appTeams: [{ package: APP_PACKAGE, teamId: 'team-1' }] }));
+    render(<App deps={packageDeps(client)} />);
+    fireEvent.click(await screen.findByText('Q3 Budget'));
+    fireEvent.click(await screen.findByLabelText('Invite collaborators'));
+    const shown = JSON.parse((await screen.findByTestId('invite-dialog')).textContent ?? '');
+    expect(shown.note).toBe("Invites to Mero Sheets only: this organization's other apps are managed in Calimero Home.");
+  });
+
+  it('an org with app teams but none for this app: Invite says so and opens no dialog', async () => {
+    remember();
+    const client = fakeClient();
+    client.listAppTeams.mockImplementation(async () => ({ mode: 'shared', appTeams: [{ package: 'com.calimero.other', teamId: 'team-9' }] }));
+    render(<App deps={packageDeps(client)} />);
+    fireEvent.click(await screen.findByText('Q3 Budget'));
+    fireEvent.click(await screen.findByLabelText('Invite collaborators'));
+    expect((await screen.findByTestId('toast-invite-error')).textContent).toMatch(/not set up/);
+    expect(screen.queryByTestId('invite-dialog')).toBeNull();
   });
 });

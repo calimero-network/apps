@@ -12,21 +12,18 @@
  */
 import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import {
-  appInvite,
   appPeople,
   appTarget,
   finishAppOrg,
   createInviteStore,
-  inviteLink as sharedInviteLink,
+  inviteLinkBase,
   isAppOnly,
-  isSpentInvite,
   leaveApp,
   leaveOrg,
   listAppInfos,
   orgInstanceOptions,
   removeFromApp,
   sourcePackage,
-  SPENT_INVITE_COPY,
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
@@ -255,38 +252,17 @@ export async function publishWorkspaceName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /**
- * The link that opens this frontend with `token` to redeem; with `sheet`, the
- * joiner lands in that spreadsheet instead of on the workspace's list. `org`
- * names the workspace the token admits to, so someone already in it (the
- * inviter opening their own link, say) is told so instead of spending the
- * token's single use.
+ * The page the invite link opens, before the token: this frontend's root, with
+ * `org` named so someone already in the workspace is told so instead of
+ * spending the token's single use, and `sheet` so the joiner lands in that
+ * spreadsheet. The shared dialog adds the token.
  *
  * The link stays under the served `/{version}/` root until every cluster's
  * served-host redirect keeps the query string (core's served-redirect fix).
  */
-export function inviteLink(
-  token: string,
-  sheet?: string | null,
-  location: Pick<Location, 'href'> = window.location,
-  org?: string | null,
-): string {
+export function inviteBase(org: string, sheet?: string | null, location: Pick<Location, 'href'> = window.location): string {
   const url = new URL(location.href);
-  return sharedInviteLink(token, { org, extra: { sheet }, root: nodeBasename(url, '/'), origin: url.origin });
-}
-
-/**
- * A workspace invitation as a link: an org invite naming Mero Sheets' team
- * (`appInvite`), approved with the inviter's passkey (412 step-up). `appOnly`
- * when it gives Mero Sheets only (an org that keeps its apps apart).
- */
-export async function mintInvite(
-  client: ClientRoutes<{ orgs: 'appTeamList' | 'inviteCreate' }>,
-  opts: { org: string; sheet: string | null; passkey: () => PasskeyProvider; source?: AppSource | null },
-  onStatus: StatusFn = noop,
-): Promise<{ link: string; appOnly: boolean }> {
-  onStatus('Approve the invitation with your passkey…');
-  const { token, appOnly } = await appInvite(client, opts.org, opts.source, opts.passkey);
-  return { link: inviteLink(token, opts.sheet, window.location, opts.org), appOnly };
+  return inviteLinkBase({ org, extra: { sheet }, root: nodeBasename(url, '/'), origin: url.origin });
 }
 
 export interface PendingInvite {
@@ -303,7 +279,7 @@ export const invites = createInviteStore(APP_NAME, { keep: ['sheet'] });
 const LEGACY_PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&sheet=`, `&org=`) off the address bar into the
+ * Takes `invite=` (and `&sheet=`, `&org=`) off the address bar into the
  * store, before anything renders: a person opening a link is usually not
  * signed in yet, and the token must survive the sign-up. Redeemed (and
  * dropped) once a session exists and the person says yes. An invite an
@@ -348,44 +324,8 @@ export function dropInvite(): void {
   invites.drop();
 }
 
-/** The org an invitation redeemed into, from whichever field the node named it. */
-export function joinedOrg(redeemed: Record<string, unknown>): string | null {
-  for (const key of ['org', 'orgId']) {
-    const v = redeemed[key];
-    if (typeof v === 'string' && v) return v;
-  }
-  return null;
-}
-
 /** What a join landed in, for the app page to open. */
 export interface AcceptedInvite {
   namespaceId: string | null;
   contextId: string | null;
-}
-
-/** What to say when the node refused an invitation: it is unknown, already used, expired or revoked. */
-export const INVITE_REFUSED = SPENT_INVITE_COPY;
-
-/**
- * True when `e` is the node refusing the invitation itself (see
- * `INVITE_REFUSED`): the caller drops the token. A lapsed session, a rate
- * limit or the cluster unreachable keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  return isSpentInvite(e);
-}
-
-/**
- * Whether this account is already in the workspace an invitation admits to:
- * `true` or `false` when the link names its org, `null` when it cannot be
- * told (an older link). Redeeming as an existing member spends the token's
- * single use, which then leaves the person it was meant for unable to join.
- */
-export async function alreadyMember(client: ClientRoutes<{ auth: 'me' }>, invite: PendingInvite): Promise<boolean | null> {
-  if (!invite.org) return null;
-  try {
-    return (await listOrgs(client)).some((o) => o.orgId === invite.org);
-  } catch {
-    return null;
-  }
 }
