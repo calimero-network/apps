@@ -40,6 +40,7 @@ import AppFooter from '../../components/AppFooter';
 import ConnectCard from '../../components/ConnectCard';
 import { useToast } from '../../contexts/ToastContext';
 import { forgetLastLobby, pickResumeLobby, readLastLobby, rememberLobby } from '../../utils/lastLobby';
+import { visibleInterval } from '../../utils/visibleInterval';
 import LobbyView from '../../components/LobbyView';
 import { playerName } from '../../utils/playerName';
 import GameBoard from '../../components/GameBoard';
@@ -409,16 +410,16 @@ export default function MatchPage() {
 
   /**
    * Keep the member list fresh while the lobby is on screen. Someone joining
-   * the organization is no event of this app's, so the roster is polled.
+   * the organization is no event of this app's, so the roster is polled
+   * (not while the tab is hidden).
    */
   useEffect(() => {
     if (view !== 'lobby-select' && view !== 'lobby') return undefined;
     if (!lobby.namespaceId) return undefined;
-    const id = setInterval(() => {
+    return visibleInterval(() => {
       void lobby.refetchMembers();
       void lobby.refetchPlayerKeys();
     }, 10_000);
-    return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the two refetchers are what matter
   }, [view, lobby.namespaceId, lobby.refetchMembers, lobby.refetchPlayerKeys]);
 
@@ -468,11 +469,11 @@ export default function MatchPage() {
 
   // A safety-net poll while a match is open: events are the fast path, but a
   // shot to answer or a reveal to make is this client's job, and a stream that
-  // was reconnecting would otherwise leave the opponent waiting.
+  // was reconnecting would otherwise leave the opponent waiting. Skipped while
+  // the tab is hidden; it runs once on return.
   useEffect(() => {
     if (view !== 'game' || !lobbyApi) return undefined;
-    const interval = setInterval(() => { void refreshMatchList(); void loadBoards(); }, 5000);
-    return () => clearInterval(interval);
+    return visibleInterval(() => { void refreshMatchList(); void loadBoards(); }, 5000);
   }, [view, lobbyApi, refreshMatchList, loadBoards]);
 
   const handleGameEvent = useCallback(
@@ -501,10 +502,12 @@ export default function MatchPage() {
   // Subscriptions: the lobby instance's one event stream
   // ---------------------------------------------------------------------------
 
+  // Opened once the lobby's roster has been read, so the stream starts just
+  // past that answer's log index instead of replaying the lobby's history.
   const fromIndex = useCallback(() => lobbyApi?.index() ?? 0, [lobbyApi]);
   const { isSubscribed: isEventSubscribed } = useGameSubscriptions({
     client,
-    appId: view === 'lobby-select' ? null : lobby.namespaceId,
+    appId: view === 'lobby-select' || !lobby.lobbyJoined ? null : lobby.namespaceId,
     fromIndex,
     matchId: view === 'game' ? effectiveMatchId : undefined,
     onBoardUpdate: handleBoardUpdate,

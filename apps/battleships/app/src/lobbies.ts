@@ -10,6 +10,7 @@ import {
   type KeyValueStorage,
   type PendingInvite,
 } from '@calimero-apps/connect';
+import { setOrgName } from '@calimero-apps/names';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP } from './session';
@@ -68,14 +69,18 @@ export async function orgMembers(client: ClientRoutes<{ orgs: 'get' }>, org: str
     .sort((a, b) => a.identity.localeCompare(b.identity));
 }
 
-/** Set the caller's display name in the lobby's organization. */
+/**
+ * Set the caller's display name in the lobby's organization: the one name
+ * every app in the org shows (`@calimero-apps/names`), keeping whatever else
+ * the member record holds.
+ */
 export async function saveMemberName(
-  client: ClientRoutes<{ orgs: 'memberMetadata' }>,
+  client: ClientRoutes<{ orgs: 'memberMetadata' | 'get' }>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.orgs.memberMetadata({ org, account, metadata: { name } });
+  await setOrgName(client, org, account, name);
 }
 
 /**
