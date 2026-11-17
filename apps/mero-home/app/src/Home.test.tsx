@@ -106,7 +106,7 @@ describe("People", () => {
     fireEvent.click(within(bob).getByTestId("remove-acct-bob"));
     const confirm = screen.getByTestId("remove-confirm");
     expect(confirm.textContent).toContain("from every app in it");
-    expect(confirm.textContent).toContain("Chat, Mero Crm");
+    expect(confirm.textContent).toContain("Chat, Hyperfeed Crm");
     expect(fake.client.removeMember).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("remove-confirm-yes"));
     await waitFor(() => expect(fake.client.removeMember).toHaveBeenCalledWith(ORG, "acct-bob", expect.anything()));
@@ -277,7 +277,7 @@ describe("Admin", () => {
     fireEvent.click(await screen.findByTestId(`scope-${CRM}`));
     await waitFor(() =>
       expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
-        apps: [{ package: CRM, name: "Mero Crm" }],
+        apps: [{ package: CRM, name: "Hyperfeed Crm" }],
         shared: false,
       }),
     );
@@ -289,7 +289,7 @@ describe("Admin", () => {
     fireEvent.click(await screen.findByTestId(`scope-${CRM}`));
     await waitFor(() =>
       expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
-        apps: [{ package: CRM, name: "Mero Crm" }],
+        apps: [{ package: CRM, name: "Hyperfeed Crm" }],
         shared: true,
       }),
     );
@@ -304,7 +304,7 @@ describe("Admin", () => {
     fireEvent.click(screen.getByTestId("add-app"));
     await waitFor(() =>
       expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
-        apps: [{ package: "com.calimero.mero-sheets", name: "Mero Sheets", instances: [] }],
+        apps: [{ package: "com.calimero.mero-sheets", name: "Hyperfeed Sheets", instances: [] }],
         shared: false,
       }),
     );
@@ -319,11 +319,11 @@ describe("Admin", () => {
     fireEvent.click(screen.getByTestId("add-app"));
     await waitFor(() =>
       expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
-        apps: [{ package: "com.calimero.mero-sheets", name: "Mero Sheets", instances: [] }],
+        apps: [{ package: "com.calimero.mero-sheets", name: "Hyperfeed Sheets", instances: [] }],
         shared: true,
       }),
     );
-    expect((await screen.findByTestId("app-added")).textContent).toContain("Open Mero Sheets");
+    expect((await screen.findByTestId("app-added")).textContent).toContain("Open Hyperfeed Sheets");
   });
 
   it("warns that adding an app to an org that keeps apps apart closes an app opened on its own", async () => {
