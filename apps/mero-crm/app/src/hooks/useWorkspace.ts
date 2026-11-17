@@ -62,7 +62,7 @@ export interface UseWorkspaceReturn {
   inviteTeams: string[];
   /**
    * The signed-in account leaves the open workspace (a passkey step-up): in
-   * an org that keeps its apps apart, Mero CRM only; when that was their last
+   * an org that keeps its apps apart, Hyperfeed CRM only; when that was their last
    * app there and `alsoOrg()` agrees, the organization too. Elsewhere the
    * organization. The workspace is closed afterwards. Throws on failure.
    */

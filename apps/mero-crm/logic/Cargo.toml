@@ -40,7 +40,7 @@ serde_json = "1"
 # from the package (or the bundle in dev), not from a named service.
 [package.metadata.calimero]
 package = "com.calimero.mero-crm"
-name = "Mero CRM"
+name = "Hyperfeed CRM"
 description = "A simple, private sales CRM - track your pipeline, work your deals, and never lose a follow-up"
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

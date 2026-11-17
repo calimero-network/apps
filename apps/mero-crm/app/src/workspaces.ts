@@ -69,7 +69,7 @@ export interface PipelineEntry {
 
 /**
  * The workspaces: the orgs this account is in that hold pipelines or were made
- * for this app. An org made for another app (a Mero Blocks world) is offered
+ * for this app. An org made for another app (a Hyperfeed Blocks world) is offered
  * only under "Connect to an existing organization" (`otherOrgs`).
  */
 export async function listWorkspaces(
@@ -216,7 +216,7 @@ export async function readMembers(
 }
 
 /**
- * Takes `account` out of the workspace. Where the org has Mero CRM's own team
+ * Takes `account` out of the workspace. Where the org has Hyperfeed CRM's own team
  * that is off the team, which a session bound to the app's frontend may do
  * itself; they stay in the organization. An org without one (a legacy org)
  * removes them from the organization: on a bound session, on the node's
@@ -243,8 +243,8 @@ export async function removeFromWorkspace(
 
 /**
  * The signed-in account leaves the workspace. In an org that keeps its apps
- * apart that is Mero CRM only, with `lastApp` set when it was their last app
- * there (offer {@link leaveWorkspaceOrg}); in an org with Mero CRM's team it
+ * apart that is Hyperfeed CRM only, with `lastApp` set when it was their last app
+ * there (offer {@link leaveWorkspaceOrg}); in an org with Hyperfeed CRM's team it
  * is off that team, staying in the organization. An org without one (a
  * legacy org) is left altogether: on a bound session, on the consent page.
  */

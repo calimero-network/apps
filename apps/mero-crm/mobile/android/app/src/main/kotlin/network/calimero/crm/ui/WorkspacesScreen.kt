@@ -316,7 +316,7 @@ private fun JoinSheet(
         action = if (busy) "Joining…" else "Join",
         busy = busy,
         enabled = link.isNotBlank(),
-        error = if (invalid) "That is not a Mero CRM invitation link." else error,
+        error = if (invalid) "That is not a Hyperfeed CRM invitation link." else error,
         onAction = {
             val invitation = CrmInvitation.parse(link)
             invalid = invitation == null
@@ -356,7 +356,7 @@ fun InvitationSheet(
         action = if (busy) "Joining…" else "Join workspace",
         busy = busy,
         enabled = invitation != null,
-        error = if (invitation == null) "That is not a Mero CRM invitation link." else error,
+        error = if (invitation == null) "That is not a Hyperfeed CRM invitation link." else error,
         cancelLabel = "Not now",
         onAction = {
             val inv = invitation ?: return@CrmSheet

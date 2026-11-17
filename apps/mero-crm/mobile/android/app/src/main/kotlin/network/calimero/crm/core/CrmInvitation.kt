@@ -39,7 +39,7 @@ class CrmInvitation(
         const val PACKAGE_NAME = "com.calimero.mero-crm"
 
         /**
-         * Read a pasted link (https or `calimero://`) or a bare token. Null when it is not a Mero CRM
+         * Read a pasted link (https or `calimero://`) or a bare token. Null when it is not a Hyperfeed CRM
          * invitation, including another app's link.
          */
         fun parse(input: String): CrmInvitation? {

@@ -3,7 +3,7 @@ import CrmCore
 import Foundation
 import MeroKit
 
-/// Mero CRM's demo: two workspaces, a "New business" pipeline full of deals in
+/// Hyperfeed CRM's demo: two workspaces, a "New business" pipeline full of deals in
 /// every stage, the people and companies behind them, a to-do list, notes,
 /// automations and a closed history for the insights. The contract answers
 /// `list_deals`, `get_deal`, ... in the generated client's wire shape, and

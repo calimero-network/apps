@@ -42,7 +42,7 @@ public struct CrmInvitation: Sendable {
     }
 
     /// Read a pasted link (https or `calimero://`) or a bare token. Nil when it
-    /// is not a Mero CRM invitation, including another app's link.
+    /// is not a Hyperfeed CRM invitation, including another app's link.
     public static func parse(_ input: String) -> CrmInvitation? {
         guard let token = InviteLink.token(fromPasted: input, expectedSlug: packageName),
             let json = InviteCodec.decode(token: token)

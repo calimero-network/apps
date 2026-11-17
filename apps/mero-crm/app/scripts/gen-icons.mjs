@@ -1,4 +1,4 @@
-// Generates Mero CRM's icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed CRM's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png, favicon.svg.
 // Same rasteriser as apps/mero-stream — see the comments there for why the

@@ -12,7 +12,7 @@ export const APP_PACKAGE = 'com.calimero.mero-crm';
 export const APP_NAME = 'mero-crm';
 /** Where the CRM lives inside the router. */
 export const APP_ROUTE = '/crm';
-export const PRODUCT_NAME = 'Mero CRM';
+export const PRODUCT_NAME = 'Hyperfeed CRM';
 export const APP_DESCRIPTION =
   'A simple, private sales CRM — track your pipeline, work your deals, and never lose a follow-up';
 export const THEME = {

@@ -90,9 +90,9 @@ object Account {
 sealed class CrmException(
     message: String,
 ) : Exception(message) {
-    class NoApplication : CrmException("Mero CRM is not installed for your account yet. Try again in a moment.")
+    class NoApplication : CrmException("Hyperfeed CRM is not installed for your account yet. Try again in a moment.")
 
-    class NotAnInvitation : CrmException("That is not a Mero CRM invitation link.")
+    class NotAnInvitation : CrmException("That is not a Hyperfeed CRM invitation link.")
 
     class InvalidValue : CrmException("Value must be a number, e.g. 12000 or 12k.")
 
@@ -122,7 +122,7 @@ object ErrorText {
             is CalimeroError -> error.nodeMessage.ifEmpty { "The node refused this (${error.code})." }
             is TeeTrustException -> "The node could not be verified: ${error.message}"
             is SerializationException ->
-                "The pipeline answered in a shape this app does not read. It may run a different version of Mero CRM."
+                "The pipeline answered in a shape this app does not read. It may run a different version of Hyperfeed CRM."
             is IOException -> "The cluster can't be reached. Check your connection and try again."
             else -> error.message ?: error.toString()
         }

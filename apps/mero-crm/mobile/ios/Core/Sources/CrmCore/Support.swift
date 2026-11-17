@@ -46,8 +46,8 @@ public enum CrmError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .noApplication: return "Mero CRM is not installed for your account yet. Try again in a moment."
-        case .notAnInvitation: return "That is not a Mero CRM invitation link."
+        case .noApplication: return "Hyperfeed CRM is not installed for your account yet. Try again in a moment."
+        case .notAnInvitation: return "That is not a Hyperfeed CRM invitation link."
         case .invalidValue: return "Value must be a number, e.g. 12000 or 12k."
         case .invalidCurrency: return "Use a three-letter currency code, e.g. USD or EUR."
         case .pipelineNotReady: return "This pipeline isn't ready yet. Try again in a moment."
@@ -86,7 +86,7 @@ public enum ErrorText {
         case let error as CalimeroError:
             return error.message.isEmpty ? "The node refused this (\(error.code))." : error.message
         case is DecodingError:
-            return "The pipeline answered in a shape this app does not read. It may run a different version of Mero CRM."
+            return "The pipeline answered in a shape this app does not read. It may run a different version of Hyperfeed CRM."
         case let error as LocalizedError:
             return error.errorDescription ?? "\(error)"
         default:

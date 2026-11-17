@@ -24,7 +24,7 @@ import { nodeBasename } from "@calimero-apps/node-served";
 
 /** The product name as people say it (the package slug is
  *  package slug, `mero-crm`); matches index.html's <title>. */
-const PRODUCT_NAME = "Mero CRM";
+const PRODUCT_NAME = "Hyperfeed CRM";
 
 export interface SidebarProps {
   openDeals: number;

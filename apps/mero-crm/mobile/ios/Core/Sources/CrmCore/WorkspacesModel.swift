@@ -18,7 +18,7 @@ public struct PipelineRef: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-/// A workspace (a namespace running Mero CRM) and its pipelines.
+/// A workspace (a namespace running Hyperfeed CRM) and its pipelines.
 public struct Workspace: Identifiable, Hashable, Sendable {
     public let id: String
     public var name: String

@@ -70,7 +70,7 @@ fun SignInScreen(
         Spacer(Modifier.height(24.dp))
         AppMark()
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mero CRM", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text("Hyperfeed CRM", fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Text(
                 "A simple, private sales CRM: deals, the people behind them, and what to do next.",
                 color = Palette.ink2,
