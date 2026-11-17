@@ -65,7 +65,7 @@ describe('workspaces', () => {
   it('are the orgs holding agreements, with their agreement and member counts, by name', async () => {
     const c = fake([app('a1', 'NDA', 'org-a'), app('a2', 'SOW', 'org-a'), app('lib', LIBRARY_NAME, null)]);
     const rows = await listWorkspaces(c as never, 'bundle');
-    // Beta holds no agreement and was not made for Mero Sign: another app's org.
+    // Beta holds no agreement and was not made for Hyperfeed Sign: another app's org.
     expect(rows.map((r) => [r.name, r.agreementCount, r.memberCount])).toEqual([['Acme', 2, 2]]);
     expect(c.listApps).toHaveBeenCalledWith({ bundle: 'bundle' });
   });

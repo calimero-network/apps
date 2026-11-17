@@ -26,7 +26,7 @@ public struct SignInvitation: Sendable {
     }
 
     /// The invitation to `namespaceId` (``OrgInvitation/namespaceId``) with
-    /// Mero Sign's hints set on it.
+    /// Hyperfeed Sign's hints set on it.
     public init(
         invitation: OrgInvitation, contextId: String?, contextName: String? = nil, workspaceName: String? = nil
     ) {
@@ -76,7 +76,7 @@ public struct SignInvitation: Sendable {
     // MARK: Decoding
 
     /// A link (https or `calimero://`), the web app's `?invite=` link, a bare
-    /// token, or raw JSON. Nil when it holds no Mero Sign invitation, and for
+    /// token, or raw JSON. Nil when it holds no Hyperfeed Sign invitation, and for
     /// another app's link.
     public static func parse(_ input: String) -> SignInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -157,7 +157,7 @@ public final class InvitationModel: ObservableObject {
     public func open(_ raw: String) -> Bool {
         guard let parsed = SignInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero Sign invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed Sign invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

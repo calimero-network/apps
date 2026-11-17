@@ -201,7 +201,7 @@ private fun SignedIn(
     if (pasting) PasteInvitationSheet(dismiss = { pasting = false }) { vm.invitation.open(it) }
 }
 
-/** The front door: what Mero Sign is, and Calimero sign-in (a Cloud passkey, or a development node). */
+/** The front door: what Hyperfeed Sign is, and Calimero sign-in (a Cloud passkey, or a development node). */
 @Composable
 private fun SignInScreen(
     vm: SignViewModel,
@@ -232,7 +232,7 @@ private fun SignInScreen(
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.Draw, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(38.dp)) }
         Spacer(Modifier.height(20.dp))
-        Text("Mero Sign", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
+        Text("Hyperfeed Sign", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
         Spacer(Modifier.height(10.dp))
         Text(
             "Review and sign agreements with the people who sign them. Documents live on your workspace's attested Calimero cluster.",
@@ -467,7 +467,7 @@ fun AccountMenu(
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Sign out of Mero Sign?") },
+            title = { Text("Sign out of Hyperfeed Sign?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false

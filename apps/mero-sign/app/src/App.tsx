@@ -85,7 +85,7 @@ function Screenful({
         <WorkspacesPage resume />
       ) : (
         // ⚠️ `onConnect` is load-bearing. The landing template leaves this hook
-        // for apps whose sign-in is not the shared popup, and Mero Sign is one
+        // for apps whose sign-in is not the shared popup, and Hyperfeed Sign is one
         // — it is on `@calimero-network/calimero-client` rather than mero-react,
         // so `landing:generate` writes it no `loginPopup`. It used to open the
         // sidebar; the sidebar is gone, so it opens a modal instead. Without

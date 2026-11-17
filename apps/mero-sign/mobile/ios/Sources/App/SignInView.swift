@@ -2,7 +2,7 @@ import MeroKitUI
 import SignCore
 import SwiftUI
 
-/// The front door: what Mero Sign is, and a passkey on the cluster. A
+/// The front door: what Hyperfeed Sign is, and a passkey on the cluster. A
 /// developer can point the app at another node (a `merod local` cluster with
 /// mock attestation).
 struct SignInView: View {
@@ -22,7 +22,7 @@ struct SignInView: View {
                     .frame(width: 84, height: 84)
                     .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Palette.lime))
                 VStack(spacing: 10) {
-                    Text("Mero Sign").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Sign").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                     Text("Review and sign agreements with the people who sign them. Documents live on your workspace's attested Calimero cluster.")
                         .font(.system(size: 17))
                         .foregroundStyle(Palette.muted)

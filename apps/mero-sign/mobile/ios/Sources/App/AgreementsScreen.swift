@@ -48,7 +48,7 @@ struct AgreementsScreen: View {
             if model.sections.isEmpty {
                 EmptyState(
                     symbol: "folder", title: "No agreements yet",
-                    message: "Agreements are created and shared from Mero Sign on the web. Open the invitation link you were sent to join one.",
+                    message: "Agreements are created and shared from Hyperfeed Sign on the web. Open the invitation link you were sent to join one.",
                     action: ("Open an invitation link", { pasting = true }))
             } else {
                 ForEach(model.sections) { section in
@@ -188,7 +188,7 @@ struct AgreementScreen: View {
         } else if model.documents.isEmpty {
             EmptyState(
                 symbol: "doc.text", title: "No documents yet",
-                message: "Documents are uploaded from Mero Sign on the web. They appear here for you to sign.")
+                message: "Documents are uploaded from Hyperfeed Sign on the web. They appear here for you to sign.")
         } else {
             Card {
                 VStack(spacing: 0) {

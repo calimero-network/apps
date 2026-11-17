@@ -1,7 +1,7 @@
 /**
  * Which of the account's organizations an app offers, the same in every app.
  *
- * An account is in organizations made for other apps (a Mero Blocks world, a
+ * An account is in organizations made for other apps (a Hyperfeed Blocks world, a
  * chat workspace). Those are not this app's: its default list holds only the
  * organizations that already hold an instance of this app's package
  * ({@link orgsWithApp}), so signing in never offers or enters one made for
@@ -49,7 +49,7 @@ export interface OtherOrg extends MyOrg {
   /**
    * What it holds, in words: its apps by name ({@link appTeamsLabel}) where the
    * node lists app teams, else the instances this account reaches
-   * ("Mero Blocks: overworld", {@link holdingsLabel}).
+   * ("Hyperfeed Blocks: overworld", {@link holdingsLabel}).
    */
   label: string;
   /** Whether this account may create an app there; `null` when it cannot be told (the node decides). */
@@ -193,12 +193,12 @@ export async function orgsWithApp(
 
 const KNOWN_TITLES: Record<string, string> = {
   chat: "Hyperfeed Chat",
-  docs: "Mero Docs",
-  "mero-drive-docs": "Mero Docs",
+  docs: "Hyperfeed Docs",
+  "mero-drive-docs": "Hyperfeed Docs",
   "kv-store": "KV Store",
 };
 
-/** A package id in words: `com.calimero.mero-blocks` is "Mero Blocks". */
+/** A package id in words: `com.calimero.mero-blocks` is "Hyperfeed Blocks". */
 export function packageTitle(pkg: string): string {
   const last = pkg.split(".").pop() || pkg;
   const known = KNOWN_TITLES[last];
@@ -206,12 +206,12 @@ export function packageTitle(pkg: string): string {
   return last
     .split(/[-_]+/)
     .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w, i) => (i === 0 && w === "mero" ? "Hyperfeed" : w.charAt(0).toUpperCase() + w.slice(1)))
     .join(" ");
 }
 
 /**
- * What an organization holds, in words: "Mero Blocks: overworld", several
+ * What an organization holds, in words: "Hyperfeed Blocks: overworld", several
  * joined by ", ", and "No apps yet" when it holds none this account reaches.
  */
 export function holdingsLabel(holds: readonly OrgHolding[]): string {
@@ -225,7 +225,7 @@ export function holdingsLabel(holds: readonly OrgHolding[]): string {
 }
 
 /**
- * An org's apps in words, from its app teams: "Hyperfeed Chat, Mero Blocks", with
+ * An org's apps in words, from its app teams: "Hyperfeed Chat, Hyperfeed Blocks", with
  * the ones this account is not in marked "(not yours)". An org whose apps
  * this account does not reach still holds them, which the instance list
  * ({@link holdingsLabel}) cannot see: it said "No apps yet" for a shared org

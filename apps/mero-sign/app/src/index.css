@@ -8,7 +8,7 @@
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Mero Sign — base styles and the app's design tokens
+   Hyperfeed Sign — base styles and the app's design tokens
 
    main.tsx imports @calimero-apps/glass first. Every colour the app uses is a
    `--sign-*` token defined here from the shared `--glass-*` values, so the

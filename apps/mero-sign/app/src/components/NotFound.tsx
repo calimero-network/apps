@@ -34,7 +34,7 @@ export default function NotFound() {
               Your agreements
             </Link>
             <Link className={styles.btnGhost} to="/landing">
-              What is Mero Sign?
+              What is Hyperfeed Sign?
             </Link>
           </div>
         </section>

@@ -44,7 +44,7 @@ class AgreementDirectory(
     /** The account's workspaces (organizations of this app), by name. */
     suspend fun workspaces(): List<AppNamespace> = backend.listNamespaces().sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { nameOf(it) })
 
-    /** The agreements in a workspace: Mero Sign's app instances in that organization, by name. */
+    /** The agreements in a workspace: Hyperfeed Sign's app instances in that organization, by name. */
     suspend fun agreements(workspace: AppNamespace): List<AgreementRef> = refs(workspace, admin.instances())
 
     /** Every agreement in every workspace. */

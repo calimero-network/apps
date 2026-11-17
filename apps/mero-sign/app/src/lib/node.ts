@@ -73,7 +73,7 @@ export function meroSignApp(appId: string): MeroSignClient {
  * but the node will not hold the bytes. Said in words the person can act on.
  */
 export const BLOBS_UNSUPPORTED =
-  'This cluster cannot store files for Mero Sign yet: its Calimero release ' +
+  'This cluster cannot store files for Hyperfeed Sign yet: its Calimero release ' +
   'predates blobs for component apps (core#4815). Documents and signature ' +
   'images need a cluster on a newer release.';
 

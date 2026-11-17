@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-// The contract's answers, as Mero Sign's component ABI (`logic/res/abi.json`) declares them:
+// The contract's answers, as Hyperfeed Sign's component ABI (`logic/res/abi.json`) declares them:
 // camelCase fields, u64s as decimal strings, ids as account-id strings. The calls and the answer
 // types are the generated `SignClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo root).
 

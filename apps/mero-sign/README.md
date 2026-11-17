@@ -85,23 +85,23 @@ browser; `searchDocumentByEmbedding` answers the assistant's questions from them
 </p>
 
 
-## Mero Sign's app team
+## Hyperfeed Sign's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Sign reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Sign reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Sign's team at once, **open**
+- A new organization made here gets Hyperfeed Sign's team at once, **open**
   (`standalone`: everyone in the org has the app). New agreements use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Sign only (the dialog says so) and only its people are shown.
+  invite gives Hyperfeed Sign only (the dialog says so) and only its people are shown.
   Sign has no organization-level Remove or Leave: an agreement's roster is
   the contract's. The private signature library stays an instance outside any
   organization.
-- Adding Mero Sign to an organization whose apps have teams makes its team
+- Adding Hyperfeed Sign to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization

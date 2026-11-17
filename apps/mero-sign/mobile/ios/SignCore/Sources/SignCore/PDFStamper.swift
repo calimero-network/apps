@@ -176,7 +176,7 @@ final class SignatureStampAnnotation: PDFAnnotation {
         setValue("Signature", forAnnotationKey: .name)
         contents = "Signature"
         // PDFKit otherwise writes the device owner's full name as the author (/T).
-        userName = "Mero Sign"
+        userName = "Hyperfeed Sign"
     }
 
     required init?(coder: NSCoder) { nil }

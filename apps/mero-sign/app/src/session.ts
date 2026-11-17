@@ -17,7 +17,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Sign",
+  name: "Hyperfeed Sign",
   description: "Document signing: upload a PDF, collect signatures from your organization, and keep every signed version.",
   package: PACKAGE_NAME,
   dir: "mero-sign",

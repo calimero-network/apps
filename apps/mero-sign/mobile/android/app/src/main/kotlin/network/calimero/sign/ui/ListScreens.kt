@@ -335,7 +335,7 @@ fun AgreementsScreen(
                         EmptyState(
                             Icons.Outlined.Folder,
                             "No agreements yet",
-                            "Agreements are created and shared from Mero Sign on the web. Open the invitation link you were sent to join one.",
+                            "Agreements are created and shared from Hyperfeed Sign on the web. Open the invitation link you were sent to join one.",
                             action = "Open an invitation link",
                             onAction = openInvitation,
                         )
@@ -453,7 +453,7 @@ fun AgreementScreen(
                             syncing && snapshot == null ->
                                 EmptyState(Icons.Outlined.Sync, "Syncing", "This agreement is still reaching your account. It opens on its own once it arrives.")
                             documents.isEmpty() ->
-                                EmptyState(Icons.Outlined.Description, "No documents yet", "Documents are uploaded from Mero Sign on the web. They appear here for you to sign.")
+                                EmptyState(Icons.Outlined.Description, "No documents yet", "Documents are uploaded from Hyperfeed Sign on the web. They appear here for you to sign.")
                             else -> CardList(documents) { entry -> DocumentRow(entry, showAgreement = false) { push(Route.Document(entry.agreement, entry.document.id)) } }
                         }
                     } else if (people.isEmpty()) {

@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// One app instance of Mero Sign the account reaches: an agreement (in a
+/// One app instance of Hyperfeed Sign the account reaches: an agreement (in a
 /// workspace organization) or the account's signature library (in none).
 public struct SignInstance: Hashable, Sendable {
     public let appId: String
@@ -19,7 +19,7 @@ public struct SignInstance: Hashable, Sendable {
     }
 }
 
-/// What Mero Sign needs beyond ``MeroAppBackend``'s screens, from the signed-in
+/// What Hyperfeed Sign needs beyond ``MeroAppBackend``'s screens, from the signed-in
 /// ``CalimeroClient``, the same calls the web makes (`app/src/lib/agreements.ts`):
 ///
 /// - blobs: a document's PDF and every signed version, the signature images
@@ -35,9 +35,9 @@ public protocol SignAdmin: Sendable {
     func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String
     /// A blob's bytes, read through the instance that holds it.
     func getBlob(_ blobId: String, contextId: String) async throws -> Data
-    /// Mero Sign's instances the account reaches.
+    /// Hyperfeed Sign's instances the account reaches.
     func instances() async throws -> [SignInstance]
-    /// Create an instance of Mero Sign named `name`, in `org` (or the account's own, in none). Returns its app id.
+    /// Create an instance of Hyperfeed Sign named `name`, in `org` (or the account's own, in none). Returns its app id.
     func createInstance(name: String, org: String?) async throws -> String
     /// The name a member set for themselves in an organization (its member metadata).
     func memberName(namespaceId: String, account: String) async throws -> String?

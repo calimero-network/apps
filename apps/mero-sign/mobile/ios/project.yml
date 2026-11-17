@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Sign app.
+# XcodeGen spec for the native iOS Hyperfeed Sign app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroSign.xcodeproj (not committed)
@@ -34,7 +34,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Sign
+        CFBundleDisplayName: Hyperfeed Sign
         UILaunchScreen: {}
         UIUserInterfaceStyle: Light
         CFBundleURLTypes:

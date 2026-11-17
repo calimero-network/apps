@@ -33,9 +33,9 @@ import {
 } from '@calimero-apps/connect';
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = 'Mero Sign';
+export const PRODUCT_NAME = 'Hyperfeed Sign';
 
-/** Where no passkey was handed over: asked for only to add Mero Sign's team to an org. */
+/** Where no passkey was handed over: asked for only to add Hyperfeed Sign's team to an org. */
 const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
@@ -86,7 +86,7 @@ export interface WorkspaceRow {
 
 /**
  * The workspaces: the orgs this account is in that hold an agreement or were
- * made for Mero Sign, with agreement and member counts. An org made for
+ * made for Hyperfeed Sign, with agreement and member counts. An org made for
  * another app is offered under "Connect to an existing organization" instead.
  */
 export async function listWorkspaces(
@@ -128,7 +128,7 @@ export const MEMBER_DEFAULTS =
  * What follows a workspace the node approved: its mark, the member defaults (a
  * passkey step-up, skipped on a session bound to the app; refused, the org
  * stays and only its owner and admins can create agreements and invite) and
- * Mero Sign's own team, open (declined, or an older node: a legacy org).
+ * Hyperfeed Sign's own team, open (declined, or an older node: a legacy org).
  */
 export async function finishWorkspace(
   client: ClientRoutes<{ orgs: 'capabilities' | 'get' | 'metadata' | 'appTeamsScope' }>,
@@ -153,9 +153,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the workspace, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Sign in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Sign in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Sign has its team: an invite gives Mero Sign only. */
+  /** The org keeps its apps apart and Hyperfeed Sign has its team: an invite gives Hyperfeed Sign only. */
   appOnly: boolean;
 }
 
@@ -268,7 +268,7 @@ export async function listAgreements(
   );
 }
 
-/** The agreement created in an org the account connects to Mero Sign ("Connect to an existing organization"). */
+/** The agreement created in an org the account connects to Hyperfeed Sign ("Connect to an existing organization"). */
 export const CONNECTED_AGREEMENT_NAME = 'Untitled agreement';
 
 /**
@@ -284,14 +284,14 @@ export async function createAgreement(
     org: string;
     name: string;
     accountId: string;
-    /** For adding Mero Sign to an org whose other apps have teams (an owner's or admin's step-up). */
+    /** For adding Hyperfeed Sign to an org whose other apps have teams (an owner's or admin's step-up). */
     passkey?: () => PasskeyProvider;
   },
   onStatus: StatusFn = noop,
   after: () => void = () => {},
 ): Promise<string> {
   onStatus('Creating the agreement…');
-  // On Mero Sign's team (made first, by an owner or admin, in an org whose
+  // On Hyperfeed Sign's team (made first, by an owner or admin, in an org whose
   // other apps have teams), or organization access in a legacy org.
   const appId = (
     await client.apps.create({

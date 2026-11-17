@@ -134,7 +134,7 @@ class InvitationModel(
     fun open(raw: String): Boolean {
         val parsed = SignInvitation.parse(raw)
         invitation = parsed
-        _stage.value = if (parsed == null) Stage.Failed("This isn't a Mero Sign invitation. Check the link and try again.") else Stage.Confirm(parsed.title)
+        _stage.value = if (parsed == null) Stage.Failed("This isn't a Hyperfeed Sign invitation. Check the link and try again.") else Stage.Confirm(parsed.title)
         return parsed != null
     }
 
