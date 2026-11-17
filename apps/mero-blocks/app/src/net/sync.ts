@@ -2,7 +2,13 @@
 // Deterministic and timer-free — the game loop calls tick(dtMs, …), so every
 // behavior (batching, heartbeats, polling) is unit-testable without fake
 // timers, and heartbeats can never die inside a stale closure (the mero-meet
-// "heartbeats never fired" lesson).
+// "heartbeats never fired" lesson). The loop is a requestAnimationFrame one,
+// so nothing ticks while the tab is hidden.
+//
+// Where a world has a presence channel (the web build), player positions
+// travel there and the contract is only told who joined and left. Without one
+// (the mobile shells' v1 worlds), they go through contract heartbeats and a
+// roster poll.
 
 import { blockKey, WorldStore, Edit } from "../engine/world";
 
@@ -12,7 +18,15 @@ export const FLUSH_MS = 150;
 export const HEARTBEAT_MOVING_MS = 500;
 export const HEARTBEAT_IDLE_MS = 2000;
 export const PLAYERS_POLL_MS = 500;
-export const OVERRIDES_POLL_MS = 5000;
+/**
+ * The safety-net re-read of every edit: events already pull a peer's edits,
+ * and a reconnect reconciles, so this only catches one missed in between.
+ */
+export const OVERRIDES_POLL_MS = 30_000;
+/** Presence: at most one publish per this while the transform changes. */
+export const PRESENCE_MOVING_MS = 150;
+/** Presence: re-publish an unchanged transform this often (an entry lapses after 7 s). */
+export const PRESENCE_REFRESH_MS = 3000;
 
 export interface Transform {
   name: string;
@@ -36,6 +50,16 @@ export interface BlockEntry {
 }
 
 /**
+ * The world's ephemeral presence channel: where each device's player stands.
+ * `publish(null)` retracts this device's entry.
+ */
+export interface PresenceChannel {
+  publish(slice: (Transform & { id: string }) | null): void;
+  /** Every present player (this device's own included), on each change, until the returned stop. */
+  subscribe(onPlayers: (players: RemotePlayer[]) => void): () => void;
+}
+
+/**
  * The contract, as the game uses it. The web build's is `net/blocks.ts`
  * (mero-js `CalimeroClient` on the component runtime); the mobile game page
  * supplies its own over the native bridge (`mobile/game/src/v1World.ts`).
@@ -48,6 +72,8 @@ export interface WorldApi {
   join(name: string, now: number): Promise<unknown>;
   heartbeat(t: Transform, now: number): Promise<unknown>;
   leave(now: number): Promise<unknown>;
+  /** Player positions over presence instead of `heartbeat` and `getPlayers` polls. */
+  presence?: PresenceChannel;
 }
 
 /** An event from the world's stream: its name and payload. */
@@ -85,6 +111,9 @@ export class SyncEngine {
   private playersClock = 0;
   private overridesClock = 0;
   private flushing = false;
+  /** The last transform published over presence, and the stop of the presence stream. */
+  private published = "";
+  private stopPresence: (() => void) | null = null;
   /** A pull in flight, and whether another was asked for meanwhile (coalesced). */
   private pulling: Promise<number> | null = null;
   private pullAgain = false;
@@ -134,13 +163,13 @@ export class SyncEngine {
       case "PlayerJoined": {
         const id = eventSubject(ev.value);
         if (id !== this.myId()) this.cb.onToast?.("A player joined");
-        void this.pullPlayers();
+        if (!this.api.presence) void this.pullPlayers();
         break;
       }
       case "PlayerLeft": {
         const id = eventSubject(ev.value);
         if (id !== this.myId()) this.cb.onToast?.("A player left");
-        void this.pullPlayers();
+        if (!this.api.presence) void this.pullPlayers();
         break;
       }
       default:
@@ -192,6 +221,7 @@ export class SyncEngine {
   }
 
   async pullPlayers(): Promise<void> {
+    if (this.api.presence) return; // the presence stream keeps the roster
     try {
       const players = await this.api.getPlayers(nowSecs());
       const me = this.myId();
@@ -207,7 +237,20 @@ export class SyncEngine {
     await this.api.join(name, nowSecs());
   }
 
+  /** Follow the presence channel, when the world has one. Idempotent. */
+  followPresence(): void {
+    const presence = this.api.presence;
+    if (!presence || this.stopPresence) return;
+    this.stopPresence = presence.subscribe((players) => {
+      const me = this.myId();
+      this.cb.onPlayers?.(players.filter((p) => p.id !== me && p.online));
+    });
+  }
+
   async leave(): Promise<void> {
+    this.stopPresence?.();
+    this.stopPresence = null;
+    this.api.presence?.publish(null);
     try {
       await this.api.leave(nowSecs());
     } catch {
@@ -228,6 +271,7 @@ export class SyncEngine {
     while (isCurrent()) {
       try {
         await this.join(name);
+        this.followPresence();
         await this.readOverrides();
         await this.pullPlayers();
         await this.flush();
@@ -258,14 +302,18 @@ export class SyncEngine {
       this.flushClock = 0;
       void this.flush();
     }
-    const hbInterval = moving ? HEARTBEAT_MOVING_MS : HEARTBEAT_IDLE_MS;
-    if (transform && this.heartbeatClock >= hbInterval) {
-      this.heartbeatClock = 0;
-      void this.api.heartbeat(quantize(transform), nowSecs()).catch((err) =>
-        this.cb.onError?.(err),
-      );
+    if (this.api.presence) {
+      this.tickPresence(this.api.presence, transform);
+    } else {
+      const hbInterval = moving ? HEARTBEAT_MOVING_MS : HEARTBEAT_IDLE_MS;
+      if (transform && this.heartbeatClock >= hbInterval) {
+        this.heartbeatClock = 0;
+        void this.api.heartbeat(quantize(transform), nowSecs()).catch((err) =>
+          this.cb.onError?.(err),
+        );
+      }
     }
-    if (this.playersClock >= PLAYERS_POLL_MS) {
+    if (!this.api.presence && this.playersClock >= PLAYERS_POLL_MS) {
       this.playersClock = 0;
       void this.pullPlayers();
     }
@@ -273,6 +321,19 @@ export class SyncEngine {
       this.overridesClock = 0;
       void this.pullOverrides();
     }
+  }
+
+  /** Publish the transform when it changed (throttled), else refresh it before it lapses. */
+  private tickPresence(presence: PresenceChannel, transform: Transform | null): void {
+    const id = this.myId();
+    if (!transform || !id) return;
+    const slice = { ...quantize(transform), id };
+    const key = JSON.stringify(slice);
+    const due = key === this.published ? PRESENCE_REFRESH_MS : PRESENCE_MOVING_MS;
+    if (this.heartbeatClock < due) return;
+    this.heartbeatClock = 0;
+    this.published = key;
+    presence.publish(slice);
   }
 }
 

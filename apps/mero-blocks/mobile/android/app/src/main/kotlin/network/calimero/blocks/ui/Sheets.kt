@@ -224,7 +224,7 @@ fun JoinSheet(
     BlocksSheet("Join ${invitation.name ?: "this world"}?", onDismiss = onDismiss, dismissible = !busy) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             AppMark(48.dp)
-            Text("You've been invited to build in Mero Blocks.", style = Type.body(14, color = BlocksColors.Muted))
+            Text("You've been invited to build in Hyperfeed Blocks.", style = Type.body(14, color = BlocksColors.Muted))
         }
         Text(
             "Joining adds your account to this world and opens it. Everyone in it sees what you build.",

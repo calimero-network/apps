@@ -1,7 +1,7 @@
 /**
  * Mount the shared landing page in front of the game launcher.
  *
- * HAND-OWNED. Mero Blocks boots from `main.ts` with no React in the entry path, and its
+ * HAND-OWNED. Hyperfeed Blocks boots from `main.ts` with no React in the entry path, and its
  * `Landing` (`src/ui/landing.ts`) is an imperative launcher resolving a
  * `LaunchChoice` the game awaits. Rather than rewrite any of that, this renders
  * the marketing page into a throwaway root and resolves when the CTA is

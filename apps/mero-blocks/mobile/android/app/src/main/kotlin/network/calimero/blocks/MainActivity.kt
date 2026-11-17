@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
         val send =
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, "Build with me in Mero Blocks")
+                putExtra(Intent.EXTRA_SUBJECT, "Build with me in Hyperfeed Blocks")
                 putExtra(Intent.EXTRA_TEXT, link)
             }
         startActivity(Intent.createChooser(send, "Invite friends"))

@@ -76,7 +76,7 @@ fun SignInScreen(
     ) {
         Column(Modifier.padding(top = 48.dp)) { AppMark(64.dp) }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mero Blocks", style = Type.heading(34))
+            Text("Hyperfeed Blocks", style = Type.heading(34))
             Text(
                 "Build together in real time. The world is a Calimero app instance: every block you place is shared state, on your attested cluster, with no game server.",
                 style = Type.body(16, color = BlocksColors.Ink2),

@@ -533,7 +533,7 @@ describe("launcher", () => {
     invited("tok-1");
     await launcher([]);
     expect(q("[data-testid=invite-note]")?.textContent).toBe(
-      "You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.",
+      "You've been invited to join a world in Hyperfeed Blocks. Sign in or create an account to accept.",
     );
   });
 
@@ -542,7 +542,7 @@ describe("launcher", () => {
     document.body.appendChild(app);
     void new Landing(app).show({ status: "listing", message: "VITE_CALIMERO_CLUSTER is not set" }, { name: "x", seed: 1 });
     const open = q("[data-testid=listing-open]") as HTMLAnchorElement | null;
-    expect(open?.textContent).toBe("Open Mero Blocks");
+    expect(open?.textContent).toBe("Open Hyperfeed Blocks");
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-blocks")`.
     expect(open?.getAttribute("href")).toBe("https://k3fyuodnomq2d2i3woo47t6blm42ur6mfy4icg4rsaxtkujph2vq.apps.calimero.network/");
     expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/v2");
@@ -734,7 +734,7 @@ describe("a new version of a world", () => {
       );
       click(q("[data-testid=sign-in-btn]"));
       await until(() => upgradePrompt() !== null);
-      expect(upgradePrompt()!.textContent).toContain("Version 1.1.0 of Mero Blocks is available (you run 1.0.0).");
+      expect(upgradePrompt()!.textContent).toContain("Version 1.1.0 of Hyperfeed Blocks is available (you run 1.0.0).");
       click(q("[data-testid=upgrade-update]"));
       await until(() => assign.mock.calls.length > 0);
       expect((client as unknown as { requestConsent: ReturnType<typeof vi.fn> }).requestConsent).toHaveBeenCalledWith({

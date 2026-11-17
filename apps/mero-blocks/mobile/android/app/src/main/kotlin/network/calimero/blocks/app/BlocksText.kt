@@ -49,8 +49,8 @@ class BlocksException(
         val message: String,
     ) {
         NO_RELAY("You're signed out. Sign in again to play."),
-        NO_APPLICATION("Mero Blocks is not published on this cluster yet."),
-        NOT_AN_INVITATION("That doesn't look like a Mero Blocks invitation link."),
+        NO_APPLICATION("Hyperfeed Blocks is not published on this cluster yet."),
+        NOT_AN_INVITATION("That doesn't look like a Hyperfeed Blocks invitation link."),
         NO_WORLD_IN_INVITATION("The invitation does not reference a world."),
     }
 }

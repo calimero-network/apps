@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// Mero Blocks' non-UI layer: the generated contract client, the bridge the game page calls the
+// Hyperfeed Blocks' non-UI layer: the generated contract client, the bridge the game page calls the
 // contract through, and the view models. A plain SwiftPM package so `swift build` / `swift test`
 // run it on macOS with no simulator; the app (project.yml) links it as a local package.
 import PackageDescription

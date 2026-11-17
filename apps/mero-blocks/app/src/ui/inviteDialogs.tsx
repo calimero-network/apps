@@ -5,7 +5,7 @@ import { AcceptInviteDialog, InviteDialog, type AcceptInviteDialogProps } from "
 
 import { worldLinkBase } from "../net/worlds";
 
-const APP_NAME = "Mero Blocks";
+const APP_NAME = "Hyperfeed Blocks";
 
 const LABELS = {
   noun: "world",

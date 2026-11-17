@@ -18,7 +18,7 @@ struct SignInView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     AppMark(size: 64).padding(.top, 48)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Mero Blocks").font(Theme.heading(34)).foregroundStyle(Theme.ink)
+                        Text("Hyperfeed Blocks").font(Theme.heading(34)).foregroundStyle(Theme.ink)
                         Text(
                             "Build together in real time. The world is a Calimero app instance: every block you place is shared state, on your attested cluster, with no game server."
                         )

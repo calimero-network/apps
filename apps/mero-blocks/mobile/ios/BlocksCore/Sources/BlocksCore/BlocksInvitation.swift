@@ -51,7 +51,7 @@ public struct BlocksInvitation: Sendable, Identifiable {
         InviteLink.invitation(token: try token(), slug: BlocksConstants.packageName)
     }
 
-    /// A pasted link, a deep link or a bare token; nil when it is not a Mero Blocks invitation
+    /// A pasted link, a deep link or a bare token; nil when it is not a Hyperfeed Blocks invitation
     /// (another app's link is refused: redeeming it would join that app's organization).
     public static func parse(_ input: String) -> BlocksInvitation? {
         if let web = parseWebLink(input) { return web }

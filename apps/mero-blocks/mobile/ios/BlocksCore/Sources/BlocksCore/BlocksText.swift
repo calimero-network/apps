@@ -28,8 +28,8 @@ public enum BlocksError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .signedOut: return "You're signed out. Sign in again to play."
-        case .noApplication: return "Mero Blocks is not published on this cluster yet."
-        case .notAnInvitation: return "That doesn't look like a Mero Blocks invitation link."
+        case .noApplication: return "Hyperfeed Blocks is not published on this cluster yet."
+        case .notAnInvitation: return "That doesn't look like a Hyperfeed Blocks invitation link."
         case .noWorldInInvitation: return "The invitation does not reference a world."
         }
     }
