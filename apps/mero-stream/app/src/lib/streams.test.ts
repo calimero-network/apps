@@ -57,7 +57,7 @@ describe("streams are organizations, rooms are app instances", () => {
     });
     const rows = await listStreams(client as never, "bundle-hash");
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
-    // Zeta holds no room and was not made for Mero Stream: another app's org.
+    // Zeta holds no room and was not made for Hyperfeed Stream: another app's org.
     expect(rows).toEqual([{ orgId: "o1", name: "Alpha", role: "owner", roomCount: 2, memberCount: 2 }]);
   });
 

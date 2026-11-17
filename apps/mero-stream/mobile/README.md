@@ -1,10 +1,10 @@
-# Mero Stream: native mobile apps
+# Hyperfeed Stream: native mobile apps
 
-Native iOS and Android clients for Mero Stream, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Stream, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-stream`). Both platforms have the same screens,
 copy, icons and flows.
 
-> Mero Stream is a **capacity probe**: it carries live video on the Calimero context's
+> Hyperfeed Stream is a **capacity probe**: it carries live video on the Calimero context's
 > ephemeral presence to measure how far that goes (see `../README.md`). Real low-latency calls
 > belong on WebRTC ("Mero Meet"). These apps do what the web app does today, on a phone, so a
 > phone and a browser can be in the same room. They do not build a WebRTC stack.

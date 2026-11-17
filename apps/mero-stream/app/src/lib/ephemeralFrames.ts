@@ -67,7 +67,7 @@ export const EPHEMERAL_MAX_BYTES = 16_384;
  */
 export const PRESENCE_MAX_BYTES = 4_096;
 
-/** `"MS"` — Mero Stream. Guards against decoding a slice we did not write. */
+/** `"MS"` — Hyperfeed Stream. Guards against decoding a slice we did not write. */
 const MAGIC_0 = 0x4d;
 const MAGIC_1 = 0x53;
 

@@ -1,6 +1,6 @@
 {
-  "name": "Mero Stream",
-  "short_name": "MeroStream",
+  "name": "Hyperfeed Stream",
+  "short_name": "Hyperfeed Stream",
   "description": "Streaming media over Calimero — an in-WASM codec capacity probe alongside browser-encoded H.264 rooms.",
   "display": "standalone",
   "background_color": "#090b10",

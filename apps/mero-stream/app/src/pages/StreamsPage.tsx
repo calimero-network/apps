@@ -187,7 +187,7 @@ export default function StreamsPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <BrandMark size={28} />
-          <h1 className={styles.brandName}>Mero Stream</h1>
+          <h1 className={styles.brandName}>Hyperfeed Stream</h1>
           <span className={styles.version}>v{__APP_VERSION__}</span>
         </div>
         <span className={styles.spacer} />
@@ -238,7 +238,7 @@ export default function StreamsPage() {
             labels={CREATE_LABELS}
           />
         )}
-        <ConnectExistingOrg appName="Mero Stream" load={loadOtherOrgs} onConnect={connectOrg} />
+        <ConnectExistingOrg appName="Hyperfeed Stream" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {(location.state as { lostStream?: boolean } | null)?.lostStream && (
           <StatusNote tone="info" testId="stream-lost">

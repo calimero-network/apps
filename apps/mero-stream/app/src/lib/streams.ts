@@ -74,21 +74,21 @@ export async function listAllRooms(client: Lister, source: AppSource): Promise<A
 }
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Stream";
+export const PRODUCT_NAME = "Hyperfeed Stream";
 
-/** Where no passkey was handed over: asked for only to add Mero Stream's team to an org. */
+/** Where no passkey was handed over: asked for only to add Hyperfeed Stream's team to an org. */
 const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
 
-/** How many have Mero Stream in the org: its app team, else the org (no guest once it has app teams). */
+/** How many have Hyperfeed Stream in the org: its app team, else the org (no guest once it has app teams). */
 function memberCount(info: Record<string, unknown>, source: AppSource): number {
   return appPeople(info as AppOrgView, sourcePackage(source)).length;
 }
 
 /**
  * The streams: the organizations the account belongs to that hold a room or
- * were made for Mero Stream, with their room and member counts. An org made
+ * were made for Hyperfeed Stream, with their room and member counts. An org made
  * for another app is offered under "Connect to an existing organization".
  */
 export async function listStreams(
@@ -127,7 +127,7 @@ export interface CreatedStream {
 
 /**
  * What follows a stream the node approved: its mark, the member defaults (a
- * passkey step-up, skipped on a session bound to the app) and Mero Stream's
+ * passkey step-up, skipped on a session bound to the app) and Hyperfeed Stream's
  * own team, open (declined, or an older node: a legacy org).
  */
 export async function finishStream(
@@ -155,7 +155,7 @@ export function membersCreateRooms(memberDefaults: number): boolean {
  * default, the other bits kept. A member an owner set capabilities for keeps
  * their own. Owner or admin only, with their passkey.
  *
- * An org's default is organization-wide: on a session bound to Mero Stream's
+ * An org's default is organization-wide: on a session bound to Hyperfeed Stream's
  * frontend it is the node's consent page (`setCapabilities`), and this never
  * settles while the page leaves for it. `consentReturned` says how it went.
  */
@@ -207,9 +207,9 @@ export async function membersCreateReturned(
 /** A stream's name, its members, and the display names they set for it. */
 export interface StreamInfo {
   name: string;
-  /** Who has Mero Stream in the org: its app team, else every member (no guest once it has app teams). */
+  /** Who has Hyperfeed Stream in the org: its app team, else every member (no guest once it has app teams). */
   members: string[];
-  /** Set when the org keeps its apps apart and Mero Stream has its team: an invite gives Mero Stream only. */
+  /** Set when the org keeps its apps apart and Hyperfeed Stream has its team: an invite gives Hyperfeed Stream only. */
   appOnly?: true;
   names: Record<string, string>;
   /** Each member's role (`owner`, `admin`, `member`, `guest`). */
@@ -277,12 +277,12 @@ export async function listRooms(client: Lister, source: AppSource, org: string):
     .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
-/** The room created in an org the account connects to Mero Stream ("Connect to an existing organization"). */
+/** The room created in an org the account connects to Hyperfeed Stream ("Connect to an existing organization"). */
 export const CONNECTED_ROOM_NAME = "General";
 
 /**
  * A new room in `org`: an app instance whose `init` names the stream, on
- * Mero Stream's team (`orgInstanceOptions`: made first, by an owner or admin,
+ * Hyperfeed Stream's team (`orgInstanceOptions`: made first, by an owner or admin,
  * in an org whose other apps have teams; organization access in a legacy org).
  */
 export async function createRoom(

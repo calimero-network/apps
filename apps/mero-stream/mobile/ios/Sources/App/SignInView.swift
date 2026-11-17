@@ -27,7 +27,7 @@ struct SignInView: View {
                     .frame(width: 64, height: 64)
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Palette.lime))
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Mero Stream").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Stream").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                     Text("Video rooms on your attested Calimero cluster. Up to two people share their camera at once; everyone else watches.")
                         .font(.body).foregroundStyle(Palette.inkSoft)
                 }

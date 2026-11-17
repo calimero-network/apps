@@ -197,7 +197,7 @@ function fakeClient() {
       if (org !== "org-1") throw new CalimeroError(404, "NOT_FOUND", "no such org");
       return {
         mode: "standalone",
-        appTeams: [{ package: "com.calimero.mero-stream", teamId: "team-stream", name: "Mero Stream", join: "everyone", memberCount: 1, defaultCapabilities: 0, member: true }],
+        appTeams: [{ package: "com.calimero.mero-stream", teamId: "team-stream", name: "Hyperfeed Stream", join: "everyone", memberCount: 1, defaultCapabilities: 0, member: true }],
       };
     }),
     redeemInvite: vi.fn(async () => ({})),
@@ -317,7 +317,7 @@ describe("App", () => {
     expect(screen.queryByTestId("connect-org-ow")).toBeNull();
     fireEvent.click(screen.getByTestId("connect-existing-org"));
     const choice = await screen.findByTestId("connect-org-ow");
-    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    expect(choice.textContent).toContain("Hyperfeed Blocks: overworld");
     fireEvent.click(choice);
     await waitFor(() =>
       expect(client.createApp).toHaveBeenCalledWith("General", "b", { org: "ow", initArgs: { name: "General" } }),
@@ -339,7 +339,7 @@ describe("App", () => {
     it("opens the shared dialog for the whole stream, with the app team of a package app", async () => {
       await openRooms(PACKAGE_ENV);
       fireEvent.click(screen.getByTestId("invite-namespace"));
-      expect(await props()).toEqual({ org: "org-1", teams: ["team-stream"], appName: "Mero Stream", linkBase: `${window.location.origin}/?org=org-1&name=Team` });
+      expect(await props()).toEqual({ org: "org-1", teams: ["team-stream"], appName: "Hyperfeed Stream", linkBase: `${window.location.origin}/?org=org-1&name=Team` });
       expect(screen.getByTestId("invite-title").textContent).toBe("Invite to Team");
       fireEvent.click(screen.getByTestId("invite-close"));
       await waitFor(() => expect(screen.queryByTestId("invite-dialog")).toBeNull());
@@ -371,7 +371,7 @@ describe("App", () => {
       fireEvent.click(screen.getByTestId("invite-namespace"));
       const labels = JSON.parse((await screen.findByTestId("invite-labels")).textContent ?? "null");
       expect(labels.noun).toBe("stream");
-      expect(labels.note).toMatch(/^Invites to Mero Stream only/);
+      expect(labels.note).toMatch(/^Invites to Hyperfeed Stream only/);
     });
 
     it("says so, and opens nothing, when the stream has no team for the app", async () => {
@@ -427,7 +427,7 @@ describe("App", () => {
     expect(JSON.parse((await screen.findByTestId("accept-props")).textContent ?? "null")).toEqual({
       token: "tok-9",
       org: "org-1",
-      appName: "Mero Stream",
+      appName: "Hyperfeed Stream",
       labels: { noun: "stream", title: "Join \u201cTeam\u201d?", body: "Joining gives you access to the stream and every room in it." },
     });
     expect(pendingInvite()?.token).toBe("tok-9");

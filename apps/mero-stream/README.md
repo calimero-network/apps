@@ -1,4 +1,4 @@
-# Mero Stream — streaming media *over* Calimero
+# Hyperfeed Stream — streaming media *over* Calimero
 
 > **Experimental capacity probe, not a shippable feature.** This app
 > deliberately does the *wrong* thing — pushing audio/video through a Calimero
@@ -10,7 +10,7 @@
 > For real, low-latency calls, media rides native WebRTC peer-to-peer and never
 > touches the contract — that is **Mero Meet**, and it remains the right answer.
 
-Mero Stream runs on Calimero 1.0: a contract on core's **component SDK**
+Hyperfeed Stream runs on Calimero 1.0: a contract on core's **component SDK**
 (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed against **`merod local`**, and a frontend that
 talks to **Calimero Cloud** in production and to the local nodes in development
@@ -152,23 +152,23 @@ renames it and sweeps departed senders' buffers. Still open, as in v1:
 approach 3's global frame seq is shared, so a member can advance it.
 
 
-## Mero Stream's app team
+## Hyperfeed Stream's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Stream reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Stream reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Stream's team at once, **open**
+- A new organization made here gets Hyperfeed Stream's team at once, **open**
   (`standalone`: everyone in the org has the app). New rooms use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Stream only (the dialog says so) and only its people are shown.
+  invite gives Hyperfeed Stream only (the dialog says so) and only its people are shown.
   Stream has no organization-level Remove or Leave: a room's roster is the
   contract's `join` list, which has no removal, so taking someone off the
   app team would leave them listed in every room they joined.
-- Adding Mero Stream to an organization whose apps have teams makes its team
+- Adding Hyperfeed Stream to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization

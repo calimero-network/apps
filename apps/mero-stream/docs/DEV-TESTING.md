@@ -1,6 +1,6 @@
-# Developing and testing Mero Stream
+# Developing and testing Hyperfeed Stream
 
-Mero Stream is a component app ([docs/COMPONENT-APPS.md](../../../docs/COMPONENT-APPS.md)).
+Hyperfeed Stream is a component app ([docs/COMPONENT-APPS.md](../../../docs/COMPONENT-APPS.md)).
 Development runs against **`merod local`**: three nodes on `127.0.0.1:2501-2503`
 in one process, mock attestation, passkey ceremonies trusted from
 `http://localhost:5173`. It replaces v1's Docker dev nodes (`make dev-nodes`)

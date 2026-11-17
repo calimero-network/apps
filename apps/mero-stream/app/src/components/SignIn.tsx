@@ -33,7 +33,7 @@ export default function SignIn({
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <BrandMark size={28} />
-          <h1 className={styles.brandName}>Mero Stream</h1>
+          <h1 className={styles.brandName}>Hyperfeed Stream</h1>
         </div>
       </header>
       <main className={styles.content}>
@@ -47,7 +47,7 @@ export default function SignIn({
                 <>
                   You&apos;ve been invited to join{" "}
                   {invite.name ? <strong>{invite.name}</strong> : "a stream"} in
-                  Mero Stream.{" "}
+                  Hyperfeed Stream.{" "}
                 </>
               ) : null}
               Accounts are passkeys: nothing to remember, nothing to leak.

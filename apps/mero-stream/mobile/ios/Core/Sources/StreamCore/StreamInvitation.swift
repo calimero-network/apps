@@ -67,7 +67,7 @@ public struct StreamInvitation: Sendable {
     }
 
     /// Read a link (https, `calimero://`, the older `?invite=` form) or a bare
-    /// token. Nil when it is not a Mero Stream invitation, including another
+    /// token. Nil when it is not a Hyperfeed Stream invitation, including another
     /// app's link.
     public static func parse(_ input: String) -> StreamInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)

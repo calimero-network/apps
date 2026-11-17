@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Stream app.
+# XcodeGen spec for the native iOS Hyperfeed Stream app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroStream.xcodeproj (not committed)
@@ -44,8 +44,8 @@ targets:
         # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
         UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
         # Asked the first time you turn the camera or the mic on in a call.
-        NSCameraUsageDescription: "Mero Stream shows your camera to the people in a call when you turn it on."
-        NSMicrophoneUsageDescription: "Mero Stream sends your voice to the people in a call when you unmute."
+        NSCameraUsageDescription: "Hyperfeed Stream shows your camera to the people in a call when you turn it on."
+        NSMicrophoneUsageDescription: "Hyperfeed Stream sends your voice to the people in a call when you unmute."
         # Keep sending audio while the screen locks mid-call.
         UIBackgroundModes: [audio]
         CFBundleURLTypes:

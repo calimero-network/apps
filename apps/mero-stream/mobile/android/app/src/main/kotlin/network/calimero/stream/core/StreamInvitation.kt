@@ -72,7 +72,7 @@ class StreamInvitation(
 
         /**
          * Read a link (https, `calimero://`, the web frontend's `?invite=` form) or a bare token. Null
-         * when it is not a Mero Stream invitation, including another app's link.
+         * when it is not a Hyperfeed Stream invitation, including another app's link.
          */
         fun parse(input: String): StreamInvitation? {
             val trimmed = input.trim()

@@ -29,7 +29,7 @@ public enum ErrorText {
         case let error as URLError:
             return "Your cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
         case is DecodingError:
-            return "The room answered in a shape this app does not read. It may run a different version of Mero Stream."
+            return "The room answered in a shape this app does not read. It may run a different version of Hyperfeed Stream."
         case let error as LocalizedError:
             return error.errorDescription ?? "\(error)"
         default:
@@ -66,9 +66,9 @@ public enum StreamError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .noApplication:
-            return "Mero Stream is not installed for your account yet. Try again in a moment."
+            return "Hyperfeed Stream is not installed for your account yet. Try again in a moment."
         case .notAnInvitation:
-            return "That is not a Mero Stream invitation link."
+            return "That is not a Hyperfeed Stream invitation link."
         case .noRoomContext(let name):
             return "“\(name)” has no call yet. It may still be replicating; refresh in a moment."
         case .noPresence:

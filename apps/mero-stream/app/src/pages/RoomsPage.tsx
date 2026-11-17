@@ -277,7 +277,7 @@ export default function RoomsPage() {
         <div className={styles.brand}>
           <BrandMark size={28} />
           <h1 className={`${styles.brandName} ${styles.hideNarrow}`}>
-            Mero Stream
+            Hyperfeed Stream
           </h1>
         </div>
         <nav className={styles.crumbs} aria-label="Breadcrumb">

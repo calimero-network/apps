@@ -8,7 +8,7 @@ BUILD := $(ROOT)/scripts/component-build.sh
 
 help:
 	@echo ""
-	@echo "  Mero Stream — streaming media OVER Calimero (Task 3 capacity probe)"
+	@echo "  Hyperfeed Stream — streaming media OVER Calimero (Task 3 capacity probe)"
 	@echo "  A component app: docs/COMPONENT-APPS.md at the repo root."
 	@echo ""
 	@echo "  dev            merod local + build + deploy + the app on http://localhost:5173/"
