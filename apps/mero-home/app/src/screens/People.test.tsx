@@ -94,7 +94,7 @@ describe("People: give all apps / remove from all apps", () => {
     fireEvent.click(screen.getByTestId("give-all-acct-cat"));
     expect(screen.getByTestId("bulk-plan").textContent).toContain("Blocks, Chat");
     expect(screen.getByTestId("bulk-plan").textContent).toContain("asked 2 times, once per app");
-    expect(skipped()).toEqual(["Mero Crm: everyone in the organization has it"]);
+    expect(skipped()).toEqual(["Hyperfeed Crm: everyone in the organization has it"]);
     fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
     expect((await screen.findByTestId("bulk-done")).textContent).toBe("Added to Blocks, Chat.");
     expect(fake.client.setTeamMember.mock.calls.map((c) => [c[1], c[2], c[4]])).toEqual([
@@ -102,7 +102,7 @@ describe("People: give all apps / remove from all apps", () => {
       ["t-chat", "acct-cat", { role: "member" }],
     ]);
     expect(onChanged).toHaveBeenCalled();
-    expect(skipped()).toEqual(["Mero Crm: everyone in the organization has it"]);
+    expect(skipped()).toEqual(["Hyperfeed Crm: everyone in the organization has it"]);
   });
 
   it("leaves an app they are in as it is", async () => {
@@ -148,7 +148,7 @@ describe("People: give all apps / remove from all apps", () => {
     expect(screen.getByTestId("bulk-plan").textContent).toBe(
       "Bob leaves: Chat. They stay in the organization. Your passkey is asked once.",
     );
-    expect(skipped()).toEqual(["Mero Crm: open to everyone in the organization: they keep it while they are in it"]);
+    expect(skipped()).toEqual(["Hyperfeed Crm: open to everyone in the organization: they keep it while they are in it"]);
     fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
     expect((await screen.findByTestId("bulk-done")).textContent).toBe("Taken out of Chat.");
     expect(fake.client.removeTeamMember).toHaveBeenCalledWith(ORG, "t-chat", "acct-bob", expect.anything());
@@ -190,7 +190,7 @@ describe("People: give all apps / remove from all apps", () => {
     expect(skipped()).toEqual([
       "Blocks: you do not manage it",
       "Chat: already in it (Member)",
-      "Mero Crm: everyone in the organization has it",
+      "Hyperfeed Crm: everyone in the organization has it",
     ]);
     expect(screen.queryByTestId("bulk-confirm-yes")).toBeNull();
     cleanup();
