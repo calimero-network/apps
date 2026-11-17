@@ -20,7 +20,7 @@ struct SignInView: View {
                 HStack(alignment: .top, spacing: 32) {
                     VStack(alignment: .leading, spacing: 18) {
                         AppMark(size: 56)
-                        Text("Mero Kombat").font(Theme.heading(34)).foregroundStyle(Theme.ink)
+                        Text("Hyperfeed Kombat").font(Theme.heading(34)).foregroundStyle(Theme.ink)
                         Text(
                             "A one-on-one fighting game where every punch is a transaction on your attested Calimero cluster. Two fighters, best of three rounds, no game server."
                         )

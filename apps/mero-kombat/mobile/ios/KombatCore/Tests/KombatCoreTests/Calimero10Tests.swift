@@ -13,7 +13,7 @@ final class Calimero10Tests: XCTestCase {
         XCTAssertEqual(parsed.namespaceId, "org1")
         XCTAssertEqual(parsed.contextId, "app1")
         XCTAssertEqual(parsed.invitation.token, "inv_abc")
-        // Without an arena it is not a Mero Kombat link; neither is a pre-1.0 signed invitation.
+        // Without an arena it is not a Hyperfeed Kombat link; neither is a pre-1.0 signed invitation.
         XCTAssertNil(KombatInvitation.parse(json: #"{"invitation":"inv_abc","namespaceId":"org1"}"#))
         let old = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"s"},"namespaceId":"aa","contextId":"cc"}"#
         XCTAssertNil(KombatInvitation.parse(json: old))

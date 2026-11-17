@@ -1,5 +1,5 @@
 /**
- * Mero Kombat, game only: the web app's engine (`app/src/game`, imported as
+ * Hyperfeed Kombat, game only: the web app's engine (`app/src/game`, imported as
  * is) on one full-screen canvas, driven by the native shell.
  *
  * Nothing here talks to a node or a relay. The native app owns the session:

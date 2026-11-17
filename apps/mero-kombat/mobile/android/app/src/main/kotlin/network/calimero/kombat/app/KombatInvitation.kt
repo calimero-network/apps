@@ -33,7 +33,7 @@ data class KombatInvitation(
         ): KombatInvitation = KombatInvitation(invitation.copy(contextId = contextId), contextId)
 
         /**
-         * A pasted link, a deep link or a bare token; null when it is not a Mero Kombat invitation
+         * A pasted link, a deep link or a bare token; null when it is not a Hyperfeed Kombat invitation
          * (another app's link is refused: redeeming it would join that app's organization).
          */
         fun parse(input: String): KombatInvitation? {

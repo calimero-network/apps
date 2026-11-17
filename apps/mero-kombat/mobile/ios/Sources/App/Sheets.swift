@@ -155,7 +155,7 @@ struct JoinSheet: View {
                 AppMark(size: 48)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Join this arena?").font(Theme.heading(22)).foregroundStyle(Theme.ink)
-                    Text("You've been invited to fight in Mero Kombat.").font(Theme.body(14)).foregroundStyle(Theme.muted)
+                    Text("You've been invited to fight in Hyperfeed Kombat.").font(Theme.body(14)).foregroundStyle(Theme.muted)
                 }
             }
             Text(
@@ -250,7 +250,7 @@ struct AccountSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .confirmationDialog("Sign out of Mero Kombat?", isPresented: $confirming, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Kombat?", isPresented: $confirming, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     onSignOut()

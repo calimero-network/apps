@@ -28,7 +28,7 @@ class Calimero10Test {
         assertEquals("org1", parsed!!.namespaceId)
         assertEquals("app1", parsed.contextId)
         assertEquals("inv_abc", parsed.invitation.token)
-        // Without an arena it is not a Mero Kombat link; neither is a pre-1.0 signed invitation.
+        // Without an arena it is not a Hyperfeed Kombat link; neither is a pre-1.0 signed invitation.
         assertNull(KombatInvitation.parseJson("""{"invitation":"inv_abc","namespaceId":"org1"}"""))
         val old = """{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"s"},"namespaceId":"aa","contextId":"cc"}"""
         assertNull(KombatInvitation.parseJson(old))

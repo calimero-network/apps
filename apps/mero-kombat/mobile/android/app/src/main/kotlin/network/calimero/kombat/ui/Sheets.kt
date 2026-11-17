@@ -243,7 +243,7 @@ fun JoinSheet(
     KombatSheet("Join this arena?", onDismiss = onDismiss, dismissible = !busy) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             AppMark(48.dp)
-            Text("You've been invited to fight in Mero Kombat.", style = Type.body(14, color = KombatColors.Muted))
+            Text("You've been invited to fight in Hyperfeed Kombat.", style = Type.body(14, color = KombatColors.Muted))
         }
         Text(
             "Joining adds your account to the organization this arena belongs to, and opens the arena. You can take a corner or watch.",
@@ -292,7 +292,7 @@ fun AccountSheet(
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text("Sign out of Mero Kombat?") },
+            title = { Text("Sign out of Hyperfeed Kombat?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = false

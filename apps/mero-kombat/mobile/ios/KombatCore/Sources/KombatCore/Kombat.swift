@@ -100,8 +100,8 @@ public enum KombatError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .noNamespace: return "This arena's organization is not known on this device yet. Open it from Arenas and try again."
-        case .noApplication: return "Mero Kombat is not published on this cluster yet."
-        case .notAnInvitation: return "That is not a Mero Kombat invitation link."
+        case .noApplication: return "Hyperfeed Kombat is not published on this cluster yet."
+        case .notAnInvitation: return "That is not a Hyperfeed Kombat invitation link."
         case .signedOut: return "You're signed out. Sign in again to fight."
         }
     }

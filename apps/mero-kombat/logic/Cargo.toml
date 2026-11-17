@@ -40,7 +40,7 @@ serde_json = "1"
 # followed by one.
 [package.metadata.calimero]
 package = "com.calimero.mero-kombat"
-name = "Mero Kombat"
+name = "Hyperfeed Kombat"
 description = "A one-on-one arcade fighting game with no game server. An arena is a Calimero app instance: every punch, kick and special is a transaction the cluster orders in one log, and health, rounds and the winner are worked out by the contract from them."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

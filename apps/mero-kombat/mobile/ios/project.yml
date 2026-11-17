@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Kombat app.
+# XcodeGen spec for the native iOS Hyperfeed Kombat app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroKombat.xcodeproj (not committed)
@@ -41,7 +41,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Kombat
+        CFBundleDisplayName: Hyperfeed Kombat
         # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
         UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
         UILaunchScreen: {}
