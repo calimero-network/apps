@@ -202,7 +202,7 @@ export function App({
       passkey={deps.passkey()}
       token={asking?.token ?? ""}
       org={asking?.org ?? undefined}
-      appName="Mero Standup"
+      appName="Hyperfeed Standup"
       labels={{ noun: "team" }}
       onError={invites.drop}
       onClose={() => {
@@ -291,7 +291,7 @@ export function App({
 function SignIn({ api, where }: { api: SessionApi; where: string }) {
   return (
     <section className="hero card">
-      <h1>Mero Standup</h1>
+      <h1>Hyperfeed Standup</h1>
       <p className="lede">
         Async standups and a decision log for your team. Post what you did, what is next and what is in your
         way; record what you decided and why.

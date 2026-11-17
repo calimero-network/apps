@@ -86,7 +86,7 @@ class ContractTest {
             val model =
                 ApprovalsModel(
                     StandupInvitation.PACKAGE_NAME,
-                    "Mero Standup",
+                    "Hyperfeed Standup",
                     fetch = { org -> checkNotNull(org) { "no account report" }.let { pending() } },
                     consent = { _, confirm ->
                         if (confirm(ConsentStarted("r1", "https://node/consent/r1", 1, "ABC-DEF"))) opened = true

@@ -76,7 +76,7 @@ fun TeamsScreen(
         remember(model) {
             ApprovalsModel(
                 packageName = StandupInvitation.PACKAGE_NAME,
-                appName = "Mero Standup",
+                appName = "Hyperfeed Standup",
                 fetch = { org -> checkNotNull(vm.session.value).client.pendingApprovals(org) },
                 consent = { request, confirm -> vm.requestConsent(request, confirm) },
                 returnTo = BuildConfig.CONSENT_CALLBACK_URL,
@@ -186,7 +186,7 @@ fun TeamsScreen(
             text = {
                 Text(
                     if (invitation == null) {
-                        "That is not a Mero Standup invitation link."
+                        "That is not a Hyperfeed Standup invitation link."
                     } else {
                         "Joining makes your account a member of the namespace this team lives in, and the team's updates and decisions sync to you from the other members."
                     },
@@ -275,7 +275,7 @@ private fun JoinTeamSheet(
             link = it
             invalid = false
         }, "Invitation link", 8_192, singleLine = true)
-        ErrorLine(if (invalid) "That is not a Mero Standup invitation link." else error)
+        ErrorLine(if (invalid) "That is not a Hyperfeed Standup invitation link." else error)
         PrimaryButton(if (busy) "Joining…" else "Join", busy = busy, enabled = link.isNotBlank(), modifier = Modifier.fillMaxWidth(), onClick = {
             val invitation = StandupInvitation.parse(link)
             if (invitation == null) {

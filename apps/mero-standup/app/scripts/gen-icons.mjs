@@ -1,4 +1,4 @@
-// Generates Mero Standup's icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Standup's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The mark — three update lines, each with a dot for "posted" — is kept in

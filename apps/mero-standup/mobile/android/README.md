@@ -1,4 +1,4 @@
-# Mero Standup for Android
+# Hyperfeed Standup for Android
 
 Jetpack Compose + Material3, minSdk 26. Same screens, copy and behaviour as the iOS app
 (`../ios`): sign in to a Calimero 1.0 cluster, teams (start, join from an invitation link,

@@ -3,7 +3,7 @@ import Foundation
 import MeroKit
 import StandupCore
 
-/// Mero Standup's demo: three teams, the open one with six people, two weeks
+/// Hyperfeed Standup's demo: three teams, the open one with six people, two weeks
 /// of standups, a couple of live blockers with offers of help, and a decision
 /// log reaching back two months. The contract answers `getDay`, `getWeek`,
 /// `currentBlockers`, `listDecisions`, ... from them in the generated
@@ -414,7 +414,7 @@ private enum Seed {
               "We keep Postgres for the relay index. Revisit at 10x current load.",
               "The migration is a quarter of work for a problem we don't have yet.", ["infra"], [daniel, lukas]),
             d("async", me, 68 * day, "Standups are async; the daily call is cancelled",
-              "Everyone posts in Mero Standup by 11:00 their time. Blockers get a thread, not a meeting.",
+              "Everyone posts in Hyperfeed Standup by 11:00 their time. Blockers get a thread, not a meeting.",
               "Three time zones. The call cost 6 people 15 minutes a day and half of them were muted.",
               ["process"], [tomas, daniel, priya, ines, lukas]),
         ]

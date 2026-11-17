@@ -224,7 +224,7 @@ function deps(client: ReturnType<typeof fakeClient>["client"], env: SessionDeps[
 describe("App", () => {
   it("shows the listing on a production copy no cluster serves", async () => {
     render(<App deps={deps(fakeClient().client, { DEV: false })} storage={new Memory()} />);
-    const open = await screen.findByRole("link", { name: "Open Mero Standup" });
+    const open = await screen.findByRole("link", { name: "Open Hyperfeed Standup" });
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-standup")`.
     expect(open.getAttribute("href")).toBe("https://qhccatngyvytjdczbj4ffuikquvmcffnf7kwju6uyr3cmp652uxa.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
@@ -371,7 +371,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join the team in Mero Standup.",
+      "You've been invited to join the team in Hyperfeed Standup.",
     );
     expect(screen.queryByText(/Async standups and a decision log/)).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();

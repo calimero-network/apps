@@ -62,7 +62,7 @@ object ErrorText {
             is UnavailableError -> "Your cluster is unavailable right now (${error.reason}). Try again shortly."
             is CalimeroError -> "The node refused this (${error.status}): ${error.nodeMessage.ifEmpty { error.code }}"
             is SerializationException ->
-                "The team answered in a shape this app does not read. It may run a different version of Mero Standup."
+                "The team answered in a shape this app does not read. It may run a different version of Hyperfeed Standup."
             is IOException -> "Your cluster can't be reached. Check your connection and try again."
             else -> error.message ?: error.toString()
         }

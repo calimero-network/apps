@@ -1,6 +1,6 @@
-# Mero Standup: native mobile apps
+# Hyperfeed Standup: native mobile apps
 
-Native iOS and Android clients for Mero Standup, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Standup, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-standup`). Both platforms have the same screens,
 copy, icons and flows.
 
@@ -24,7 +24,7 @@ Both apps talk to a Calimero 1.0 cluster over the SDKs' sealed channel and sign 
   `https://links.calimero.network/com.calimero.mero-standup/join?invitation=<base58(deflate(json))>`
   with `{invitation: "inv_…", namespaceId, contextId, name}`, redeemed at
   `POST /invites/{token}/redeem`. Pre-1.0 signed links are refused.
-- **Approvals** (an update of Mero Standup, a node release) show the node's confirmation code, then
+- **Approvals** (an update of Hyperfeed Standup, a node release) show the node's confirmation code, then
   open its consent page in the system browser (a Custom Tab on Android).
 - **Contract calls** go through `StandupClient`, generated from the **component contract**'s ABI
   (`logic/res/abi.json`) by core's `meroctl app codegen` (`scripts/mobile-codegen.sh` at the repo

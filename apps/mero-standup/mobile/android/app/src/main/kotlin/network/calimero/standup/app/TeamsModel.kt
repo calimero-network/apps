@@ -132,7 +132,7 @@ class TeamsModel(
 sealed class StandupException(
     message: String,
 ) : Exception(message) {
-    class NoApplication : StandupException("Mero Standup is not installed for your account yet. Try again in a moment.")
+    class NoApplication : StandupException("Hyperfeed Standup is not installed for your account yet. Try again in a moment.")
 
-    class NotAnInvitation : StandupException("That is not a Mero Standup invitation link.")
+    class NotAnInvitation : StandupException("That is not a Hyperfeed Standup invitation link.")
 }

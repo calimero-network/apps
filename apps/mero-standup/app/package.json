@@ -2,7 +2,7 @@
   "name": "mero-standup",
   "private": true,
   "version": "0.1.0",
-  "description": "Mero Standup — async standups and a decision log on Calimero (component SDK)",
+  "description": "Hyperfeed Standup — async standups and a decision log on Calimero (component SDK)",
   "type": "module",
   "scripts": {
     "dev": "vite",

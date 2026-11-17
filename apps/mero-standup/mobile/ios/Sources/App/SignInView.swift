@@ -35,7 +35,7 @@ struct SignInView: View {
                     .frame(width: 64, height: 64)
                     .overlay(Image(systemName: "sun.max").font(.system(size: 30, weight: .semibold)).foregroundStyle(Palette.ink))
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Mero Standup").font(.largeTitle.weight(.bold)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Standup").font(.largeTitle.weight(.bold)).foregroundStyle(Palette.ink)
                     Text(
                         "Async standups and a decision log for your team. Post what you did, what is next and what is in your way; record what you decided and why."
                     )

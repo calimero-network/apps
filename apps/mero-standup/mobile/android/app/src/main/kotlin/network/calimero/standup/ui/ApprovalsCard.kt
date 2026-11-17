@@ -30,7 +30,7 @@ import network.calimero.standup.app.ApprovalItem
 import network.calimero.standup.app.ApprovalsModel
 
 /**
- * What waits for the person's approval (an update of Mero Standup, a node release): "Review" shows
+ * What waits for the person's approval (an update of Hyperfeed Standup, a node release): "Review" shows
  * the confirmation code first, then opens the node's consent page in a Custom Tab, where the same
  * code shows. Nothing shows when there is nothing to approve. (iOS `ApprovalsCard`.)
  */
