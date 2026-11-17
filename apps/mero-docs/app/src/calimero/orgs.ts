@@ -437,9 +437,22 @@ export class OrgAdmin {
   async listSubgroups(groupId: string): Promise<Array<{ groupId: string }>> {
     const { org, team } = await this.locate(groupId);
     const view = await this.org(org);
+    // The workspace's top level is its own and Docs' team's: folders made from
+    // Docs' page live under that team ({@link folderRoot}).
+    const root = team ? null : appTeamIdIn(view as unknown as AppOrgView, sourcePackage(this.source));
     return Object.values(view.teams)
-      .filter((t) => t.parent === team && !isAppTeam(t))
+      .filter((t) => (t.parent === team || (root !== null && t.parent === root)) && !isAppTeam(t))
       .map((t) => ({ groupId: t.teamId }));
+  }
+
+  /**
+   * Where a top-level folder goes: under Docs' own team where the workspace
+   * has one, the one place a session opened on Docs' page may make a team
+   * (core refuses one at the organization's top there), else the top.
+   */
+  private async folderRoot(orgId: string): Promise<string | undefined> {
+    const view = await this.org(orgId);
+    return appTeamIdIn(view as unknown as AppOrgView, sourcePackage(this.source)) ?? undefined;
   }
 
   /** The app instance of a folder (its docs) or of a workspace (its registry). */
@@ -547,7 +560,7 @@ export class OrgAdmin {
     input: { visibility?: string; parentId?: string | null; name?: string },
   ): Promise<{ groupId: string }> {
     const join = input.visibility === 'restricted' || input.visibility === 'Restricted' ? 'invite' : 'everyone';
-    const parent = input.parentId && input.parentId !== orgId ? input.parentId : undefined;
+    const parent = input.parentId && input.parentId !== orgId ? input.parentId : await this.folderRoot(orgId);
     const groupId = (await this.client.orgs.teamCreate({ org: orgId, name: input.name || 'New folder', join, parent }))
       .teamId;
     this.teamOrg.set(groupId, orgId);
@@ -558,7 +571,8 @@ export class OrgAdmin {
   async reparentGroup(groupId: string, input: { newParentId: string }): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) throw new Error('a workspace has no parent');
-    await this.client.orgs.teamUpdate({ org, team, parent: input.newParentId === org ? null : input.newParentId });
+    const parent = input.newParentId === org ? ((await this.folderRoot(org)) ?? null) : input.newParentId;
+    await this.client.orgs.teamUpdate({ org, team, parent });
     this.changed(org);
   }
 

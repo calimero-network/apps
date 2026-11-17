@@ -54,6 +54,26 @@ describe('a new workspace gets Docs\' own app team', () => {
     expect(foldersOf(await admin.org(org, true)).map((f) => f.id)).toEqual([groupId]);
   });
 
+  it('a top-level folder goes under Docs\' team, where a session on Docs\' page may make one, and lists at the top', async () => {
+    const { cluster, admin, org } = await workspace();
+    const { groupId } = await admin.createGroupInNamespace(org, { name: 'Eng', parentId: org });
+    const team = cluster.teamOf(org, PKG);
+    expect((await admin.org(org, true)).teams[groupId]!.parent).toBe(team);
+    expect(foldersOf(await admin.org(org, true)).find((f) => f.id === groupId)!.parent_id).toBeNull();
+    const { groupId: sub } = await admin.createGroupInNamespace(org, { name: 'Sub', parentId: groupId });
+    expect((await admin.org(org, true)).teams[sub]!.parent).toBe(groupId);
+    expect(foldersOf(await admin.org(org, true)).find((f) => f.id === sub)!.parent_id).toBe(groupId);
+    expect((await admin.listSubgroups(org)).map((g) => g.groupId)).toEqual([groupId]);
+  });
+
+  it('a legacy workspace makes top-level folders at the top, as before', async () => {
+    const { cluster, admin } = docs();
+    cluster.state.declined.add('scopeApps');
+    const org = await createNamespace({ cluster, admin });
+    const { groupId } = await admin.createGroupInNamespace(org, { name: 'Eng', parentId: org });
+    expect((await admin.org(org, true)).teams[groupId]!.parent ?? null).toBeNull();
+  });
+
   it('a declined team leaves a legacy workspace, whose registry uses organization access', async () => {
     const { cluster, admin } = docs();
     cluster.state.declined.add('scopeApps');

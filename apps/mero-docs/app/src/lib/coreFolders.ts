@@ -51,9 +51,11 @@ export function foldersOf(org: OrgView): CoreFolder[] {
   // An app's own team (Docs' or another app's, core#4890) is not a folder.
   return Object.values(teams).filter((t) => !isAppTeam(t)).map((t) => {
     const hiddenParent = !!t.parent && !teams[t.parent];
+    // A folder made from Docs' page sits under Docs' own team: a top-level one.
+    const underAppTeam = !!t.parent && !!teams[t.parent] && isAppTeam(teams[t.parent]!);
     return {
       id: t.teamId,
-      parent_id: hiddenParent ? null : t.parent,
+      parent_id: hiddenParent || underAppTeam ? null : t.parent,
       color: text(t.metadata[FOLDER_COLOR_KEY]),
       alias: t.name || null,
       context_id: text(t.metadata[DOCS_APP_KEY]),
