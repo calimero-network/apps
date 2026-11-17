@@ -1,5 +1,5 @@
 /**
- * Mero Sheets — the hero: the real app, recorded, not a drawing of it.
+ * Hyperfeed Sheets — the hero: the real app, recorded, not a drawing of it.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
@@ -28,7 +28,7 @@ export default function SheetsAnimation() {
         loop
         playsInline
         preload="auto"
-        aria-label="Two people editing the same Mero Sheets budget live: a teammate changes a cell while you type, and the totals recompute."
+        aria-label="Two people editing the same Hyperfeed Sheets budget live: a teammate changes a cell while you type, and the totals recompute."
         style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
       />
     </div>

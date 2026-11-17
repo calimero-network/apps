@@ -260,7 +260,7 @@ class WorkspaceModel(
 
     companion object {
         /** A workspace's name as people see it (`namespaceLabel`). */
-        fun displayName(ns: AppNamespace): String = ns.name?.trim()?.ifEmpty { null } ?: "Mero Sheets · ${ns.id.take(6)}"
+        fun displayName(ns: AppNamespace): String = ns.name?.trim()?.ifEmpty { null } ?: "Hyperfeed Sheets · ${ns.id.take(6)}"
 
         /** A spreadsheet whose own name has not resolved yet (`spreadsheetFallbackLabel`). */
         fun fallbackName(contextId: String): String = "Untitled · ${contextId.take(6)}"

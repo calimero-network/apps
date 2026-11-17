@@ -113,7 +113,7 @@ export const MEMBER_DEFAULTS =
 /**
  * What follows a workspace the node approved: its member defaults (a passkey
  * step-up, skipped on a session bound to the app; refused, the org stays and
- * `warning` says so) and Mero Sheets' own team, open (declined, or an older
+ * `warning` says so) and Hyperfeed Sheets' own team, open (declined, or an older
  * node: a legacy org).
  */
 export async function finishWorkspace(
@@ -137,7 +137,7 @@ export async function finishWorkspace(
 }
 
 /**
- * A new spreadsheet in `org`: an app instance, named, on Mero Sheets' team
+ * A new spreadsheet in `org`: an app instance, named, on Hyperfeed Sheets' team
  * (`orgInstanceOptions`: made first, by an owner or admin, in an org whose
  * other apps have teams; organization access in a legacy org). Answers its id.
  */
@@ -159,7 +159,7 @@ export async function createSpreadsheet(
     .then((r) => r.appId);
 }
 
-/** `getOrg` for `org`, and Mero Sheets' own team there (`null` without one, or under a raw bundle). */
+/** `getOrg` for `org`, and Hyperfeed Sheets' own team there (`null` without one, or under a raw bundle). */
 async function sheetsTeam(
   client: ClientRoutes<{ orgs: 'get' }>,
   org: string,
@@ -194,10 +194,10 @@ export async function removeFromWorkspace(
 }
 
 /**
- * The signed-in account leaves the workspace, which is leaving Mero Sheets.
+ * The signed-in account leaves the workspace, which is leaving Hyperfeed Sheets.
  * In an org that keeps its apps apart, its team only, with `lastApp` set when
  * it was their last app there (offer {@link leaveWorkspaceOrg}). Elsewhere,
- * where the org has Mero Sheets' team, off that team; Mero Sheets is the
+ * where the org has Hyperfeed Sheets' team, off that team; Hyperfeed Sheets is the
  * org's app there, so `lastApp` is set too. A workspace without that team
  * leaves the organization (on the node's consent page from the app's frontend).
  */
@@ -237,9 +237,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the workspace, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Sheets in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Sheets in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Sheets has its team: invites and Remove are its only. */
+  /** The org keeps its apps apart and Hyperfeed Sheets has its team: invites and Remove are its only. */
   appOnly: boolean;
 }
 

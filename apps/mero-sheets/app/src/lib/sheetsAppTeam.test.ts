@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Mero Sheets' own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Sheets' own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's: a new workspace gets an open app team and spreadsheets go on
  * it; invites name it; the people are its people; Remove and Leave in an org
@@ -43,7 +43,7 @@ async function workspace(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-describe("a new workspace gets Mero Sheets' own app team", () => {
+describe("a new workspace gets Hyperfeed Sheets' own app team", () => {
   it('open (made with `shared: false`), and a spreadsheet goes on it', async () => {
     const { cluster, org } = await workspace();
     expect(cluster.modeOf(org)).toBe('standalone');
@@ -76,7 +76,7 @@ describe('invites and people', () => {
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(['acct-me', 'acct-bob', 'acct-cy']);
   });
 
-  it('apps kept apart: Mero Sheets only, and only its people', async () => {
+  it('apps kept apart: Hyperfeed Sheets only, and only its people', async () => {
     const { cluster, org } = await workspace(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(['acct-me', 'acct-bob']);
@@ -98,14 +98,14 @@ describe('invite link and team edge cases', () => {
 });
 
 describe('Remove', () => {
-  it('apps kept apart: out of Mero Sheets, never out of the organization', async () => {
+  it('apps kept apart: out of Hyperfeed Sheets, never out of the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     cluster.keepAppsApart(org);
     expect(await removeFromWorkspace(cluster.client, org, SOURCE, 'acct-bob', passkey)).toBe('app');
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it("standalone: off Mero Sheets' team, a team call; they stay in the organization", async () => {
+  it("standalone: off Hyperfeed Sheets' team, a team call; they stay in the organization", async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     expect(await removeFromWorkspace(cluster.client, org, SOURCE, 'acct-bob', passkey)).toBe('app');
     expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
@@ -121,7 +121,7 @@ describe('Remove', () => {
   });
 });
 
-describe('adding Mero Sheets to an organization whose apps have teams', () => {
+describe('adding Hyperfeed Sheets to an organization whose apps have teams', () => {
   it('an admin: open in an open org, closed in one that keeps its apps apart', async () => {
     const cluster = orgCluster();
     const open = cluster.addOrg({ mode: 'standalone', role: 'admin' });
@@ -143,7 +143,7 @@ describe('adding Mero Sheets to an organization whose apps have teams', () => {
 });
 
 describe('Leave', () => {
-  it("apps kept apart: off Mero Sheets' team only; the organization is offered when it was the last app", async () => {
+  it("apps kept apart: off Hyperfeed Sheets' team only; the organization is offered when it was the last app", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member', members: { 'acct-own': 'owner' } });
     const left = await leaveWorkspace(cluster.client, org, SOURCE, passkey);
@@ -164,7 +164,7 @@ describe('Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBe('member');
   });
 
-  it("standalone: off Mero Sheets' team, the organization's app, so leaving it is offered", async () => {
+  it("standalone: off Hyperfeed Sheets' team, the organization's app, so leaving it is offered", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', app: PKG, role: 'member' });
     expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: true });

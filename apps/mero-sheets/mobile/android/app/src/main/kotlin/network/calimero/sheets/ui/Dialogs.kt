@@ -225,8 +225,8 @@ fun JoinInvitationSheet(
                 )
                 Text(
                     invitation.spreadsheetName?.let {
-                        "You were invited to a workspace on Mero Sheets, to open $it. Joining lets you see and edit its spreadsheets."
-                    } ?: "You were invited to a workspace on Mero Sheets. Joining lets you see and edit its spreadsheets.",
+                        "You were invited to a workspace on Hyperfeed Sheets, to open $it. Joining lets you see and edit its spreadsheets."
+                    } ?: "You were invited to a workspace on Hyperfeed Sheets. Joining lets you see and edit its spreadsheets.",
                     fontSize = 15.sp,
                     color = Palette.text2,
                     textAlign = TextAlign.Center,

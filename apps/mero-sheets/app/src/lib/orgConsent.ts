@@ -1,5 +1,5 @@
 /**
- * Organization-wide changes from a session bound to Mero Sheets' frontend,
+ * Organization-wide changes from a session bound to Hyperfeed Sheets' frontend,
  * done on the node's consent page.
  *
  * Served from its own origin, a passkey session is bound to the app's package
@@ -38,7 +38,7 @@ import { APP_DISPLAY_NAME, APP_NAME, APP_ROUTE } from '../config';
 /** An organization role the consent page can give. */
 export type OrgRoleName = 'admin' | 'member' | 'guest';
 
-/** What Mero Sheets asked the consent page for, beyond connect's own kinds. */
+/** What Hyperfeed Sheets asked the consent page for, beyond connect's own kinds. */
 export type OrgConsentIntent = { kind: 'setMemberRole'; org: string; account: string; role: OrgRoleName };
 
 /** Its request to the consent page (core#5018's organization kinds, not typed by mero-js yet). */

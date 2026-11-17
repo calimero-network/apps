@@ -2155,7 +2155,7 @@ export default function AppPage() {
           onRemove={async (account) => {
             if (!ws.namespaceId) return;
             try {
-              // In an org that keeps its apps apart: out of Mero Sheets only.
+              // In an org that keeps its apps apart: out of Hyperfeed Sheets only.
               await removeFromWorkspace(client, ws.namespaceId, source, account, passkey);
             } finally {
               after();
@@ -2167,7 +2167,7 @@ export default function AppPage() {
             const nsId = ws.namespaceId;
             if (!nsId) return;
             try {
-              // In an org that keeps its apps apart: Mero Sheets only, and the
+              // In an org that keeps its apps apart: Hyperfeed Sheets only, and the
               // organization is offered when it was their last app there.
               const left = await leaveWorkspace(client, nsId, source, passkey);
               if (

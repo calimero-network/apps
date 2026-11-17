@@ -1,4 +1,4 @@
-# Mero Sheets for iOS
+# Hyperfeed Sheets for iOS
 
 SwiftUI, iOS 16+. See [`../README.md`](../README.md) for the screens, features and SDK notes.
 

@@ -208,8 +208,8 @@ struct JoinInvitationSheet: View {
                 Text("Join \(invitation.workspaceName ?? "this workspace")?").font(Theme.heading(22)).foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
                 Text(
-                    invitation.spreadsheetName.map { "You were invited to a workspace on Mero Sheets, to open \($0). Joining lets you see and edit its spreadsheets." }
-                        ?? "You were invited to a workspace on Mero Sheets. Joining lets you see and edit its spreadsheets.")
+                    invitation.spreadsheetName.map { "You were invited to a workspace on Hyperfeed Sheets, to open \($0). Joining lets you see and edit its spreadsheets." }
+                        ?? "You were invited to a workspace on Hyperfeed Sheets. Joining lets you see and edit its spreadsheets.")
                     .font(.system(size: 15)).foregroundStyle(Theme.text2).multilineTextAlignment(.center)
             } else {
                 Text("This invitation cannot be read").font(Theme.heading(20)).foregroundStyle(Theme.ink)

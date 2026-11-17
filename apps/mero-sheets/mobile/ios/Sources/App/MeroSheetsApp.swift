@@ -77,7 +77,7 @@ struct SignInView: View {
                     .foregroundStyle(Theme.ink)
                     .frame(width: 76, height: 76)
                     .background(Theme.lime, in: RoundedRectangle(cornerRadius: 22))
-                Text("Mero Sheets").font(Theme.heading(28)).foregroundStyle(Theme.ink)
+                Text("Hyperfeed Sheets").font(Theme.heading(28)).foregroundStyle(Theme.ink)
                 Text("Collaborative spreadsheets for your team. Open your team\u{2019}s sheets, read the numbers and charts, and update a value on the go.")
                     .font(.system(size: 16)).foregroundStyle(Theme.text2).multilineTextAlignment(.center)
             }
