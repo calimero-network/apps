@@ -90,7 +90,7 @@ export function BrandMark({ size = 32 }: { size?: number }) {
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation();
   return (
-    <nav className={styles.nav} aria-label="Mero Sign">
+    <nav className={styles.nav} aria-label="Hyperfeed Sign">
       {NAV.map(({ id, label, to, icon: Icon, active }) => {
         const on = active(pathname);
         return (
@@ -146,10 +146,10 @@ function Identity() {
 
 function Brand() {
   return (
-    <Link to="/workspaces" className={styles.brand} aria-label="Mero Sign home">
+    <Link to="/workspaces" className={styles.brand} aria-label="Hyperfeed Sign home">
       <BrandMark />
       <span className={styles.brandText}>
-        <span className={styles.brandName}>Mero Sign</span>
+        <span className={styles.brandName}>Hyperfeed Sign</span>
         <span className={styles.brandSub}>Signatures, peer to peer</span>
       </span>
     </Link>
@@ -251,7 +251,7 @@ export function AppShell({
           >
             <Link to={bare ? '/landing' : '/workspaces'} className={styles.brandInline}>
               <BrandMark size={28} />
-              <span className={styles.brandName}>Mero Sign</span>
+              <span className={styles.brandName}>Hyperfeed Sign</span>
             </Link>
           </span>
           {back && (

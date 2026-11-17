@@ -1,6 +1,6 @@
-# Mero Sign — native mobile apps
+# Hyperfeed Sign — native mobile apps
 
-Native iOS and Android clients for Mero Sign, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Sign, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-sign`). Both apps have the same screens, copy,
 flows and (mapped) icons. Their job is the recipient's: **review and sign the agreements you were
 sent.** Uploading documents, placing fields and the semantic search stay on the web.
@@ -18,7 +18,7 @@ Neither app runs a node. Both sign in with a **passkey** on the workspace's clus
 account), over the sealed channel to an attested node, and lay things out exactly as the web app
 does (`app/src/lib/agreements.ts`, web port #726):
 
-| Mero Sign | Calimero 1.0 |
+| Hyperfeed Sign | Calimero 1.0 |
 | --- | --- |
 | workspace | organization |
 | agreement | app instance in the organization, `setup(isPrivate: false, contextName)` |
@@ -41,7 +41,7 @@ So a phone and a browser on the same account see the same agreements and share o
   for a signed version, `image/png` for a signature) and `blobContent(app, id)`; the contract stores
   the hex id.
 - **Invitations**: the SDK's `OrgInvitation` links
-  (`links.calimero.network/com.calimero.mero-sign/join?invitation=…`, plus Mero Sign's
+  (`links.calimero.network/com.calimero.mero-sign/join?invitation=…`, plus Hyperfeed Sign's
   `workspaceName`), the web app's own `?invite=inv_…&agreement=<app id>` links (pasted), and a bare
   `inv_…` token. Redeeming answers the workspace.
 - **Approvals**: when a node release or an app upgrade waits for the account (or a workspace it

@@ -29,7 +29,7 @@
 // normal SPA rewrite, and a fresh `vite build` emits no such file. The live site
 // is simply a very old build: it serves `assets/main-*.js` where this repo emits
 // `assets/index-*.js`, and its `<title>` is `MeroSign` where this repo's is
-// `Mero Sign` — which `scripts/check-live-frontends.py` has been warning about.
+// `Hyperfeed Sign` — which `scripts/check-live-frontends.py` has been warning about.
 // So the loop dies the moment this repo's build is actually deployed.
 //
 // What is fixed HERE is the part that is this app's to own, because "the deploy

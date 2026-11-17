@@ -72,11 +72,11 @@ export function SignInBody({ titleId }: { titleId: string }) {
   return (
     <>
       <h2 className={styles.modalTitle} id={titleId}>
-        {invited ? "You're invited" : 'Sign in to Mero Sign'}
+        {invited ? "You're invited" : 'Sign in to Hyperfeed Sign'}
       </h2>
       <p className={styles.modalDesc}>
         {invited
-          ? "You've been invited to join the workspace in Mero Sign. "
+          ? "You've been invited to join the workspace in Hyperfeed Sign. "
           : ''}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ''}

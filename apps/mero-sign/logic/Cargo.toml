@@ -2,7 +2,7 @@
 # Directory == cargo package == npm package. The wasm artifact is
 # mero_sign.wasm (cargo underscores the lib name).
 name = "mero-sign"
-description = "MeroSign — document signing on Calimero, on the component SDK"
+description = "Hyperfeed Sign — document signing on Calimero, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -36,7 +36,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-sign"
-name = "MeroSign"
+name = "Hyperfeed Sign"
 description = "Document signing on Calimero - upload a PDF, collect signatures from the members of your organization, and keep every signed version."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

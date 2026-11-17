@@ -57,7 +57,7 @@ final class Script: @unchecked Sendable {
     private func key(_ method: String, _ contextId: String?) -> String { "\(contextId ?? "*")|\(method)" }
 }
 
-/// ``SignAdmin`` in memory: blobs by id, Mero Sign's instances, member names.
+/// ``SignAdmin`` in memory: blobs by id, Hyperfeed Sign's instances, member names.
 final class FakeSignAdmin: SignAdmin, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var blobs: [String: (data: Data, contextId: String, contentType: String)] = [:]

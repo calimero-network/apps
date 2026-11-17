@@ -1,5 +1,5 @@
 /**
- * Mero Sign — the hero animation: a document being signed.
+ * Hyperfeed Sign — the hero animation: a document being signed.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *

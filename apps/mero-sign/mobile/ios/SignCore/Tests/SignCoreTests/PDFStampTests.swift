@@ -181,7 +181,7 @@ final class PDFStampTests: XCTestCase {
         let widget = try XCTUnwrap(annots.first { $0.0 == "Widget" }?.1)
         XCTAssertEqual(pdfString(widget, "T"), "tenant_name")
         let stamp = try XCTUnwrap(annots.first { $0.0 == "Stamp" }?.1)
-        XCTAssertEqual(pdfString(stamp, "T"), "Mero Sign")
+        XCTAssertEqual(pdfString(stamp, "T"), "Hyperfeed Sign")
         var flags: CGPDFInteger = 0
         XCTAssertTrue(CGPDFDictionaryGetInteger(stamp, "F", &flags))
         XCTAssertEqual(flags & 4, 4, "printable")

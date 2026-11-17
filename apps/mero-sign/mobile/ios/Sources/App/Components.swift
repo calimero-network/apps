@@ -134,7 +134,7 @@ struct AccountMenu: View {
                 .foregroundStyle(Palette.ink)
         }
         .accessibilityLabel("Account")
-        .confirmationDialog("Sign out of Mero Sign?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of Hyperfeed Sign?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await session.signOut() } }
         }
     }

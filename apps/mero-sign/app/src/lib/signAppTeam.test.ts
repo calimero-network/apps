@@ -1,5 +1,5 @@
 /**
- * Mero Sign's own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Sign's own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's. Sign has no organization-level Remove or Leave (an agreement's
  * roster is the contract's), so what is pinned: a new workspace gets an open
@@ -33,7 +33,7 @@ async function workspace(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-describe("a new workspace gets Mero Sign's own app team", () => {
+describe("a new workspace gets Hyperfeed Sign's own app team", () => {
   it('open (made with `shared: false`), and an agreement goes on it', async () => {
     const { cluster, org } = await workspace();
     expect(cluster.modeOf(org)).toBe('standalone');
@@ -60,7 +60,7 @@ describe('invites and people', () => {
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(['acct-me', 'acct-bob', 'acct-cy']);
   });
 
-  it('apps kept apart: Mero Sign only, and only its people', async () => {
+  it('apps kept apart: Hyperfeed Sign only, and only its people', async () => {
     const { cluster, org } = await workspace(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
     const read = await readMembers(cluster.client, org, SOURCE);
@@ -75,7 +75,7 @@ describe('invites and people', () => {
   });
 });
 
-describe('adding Mero Sign to an organization whose apps have teams', () => {
+describe('adding Hyperfeed Sign to an organization whose apps have teams', () => {
   it('an admin: open in an open org, closed in one that keeps its apps apart', async () => {
     const cluster = orgCluster();
     const open = cluster.addOrg({ mode: 'standalone', role: 'admin' });
@@ -89,7 +89,7 @@ describe('adding Mero Sign to an organization whose apps have teams', () => {
   it('a member is told only owners and admins can add it, and nothing is made', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', role: 'member' });
-    await expect(agreement(cluster, org)).rejects.toThrow(/owners and admins can add Mero Sign/);
+    await expect(agreement(cluster, org)).rejects.toThrow(/owners and admins can add Hyperfeed Sign/);
     expect(cluster.callsOf('createApp')).toEqual([]);
   });
 });

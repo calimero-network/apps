@@ -56,7 +56,7 @@ export default function ConnectGate({ what }: { what: string }) {
               Sign in
             </button>
             <Link className={styles.btnGhost} to="/landing">
-              What is Mero Sign?
+              What is Hyperfeed Sign?
             </Link>
           </div>
         </section>

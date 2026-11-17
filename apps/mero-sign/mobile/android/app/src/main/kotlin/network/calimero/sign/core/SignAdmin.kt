@@ -4,7 +4,7 @@ import com.calimero.mero.CalimeroClient
 import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.crypto.Hex
 
-/** One app instance of Mero Sign the account reaches. (Swift `SignInstance`.) */
+/** One app instance of Hyperfeed Sign the account reaches. (Swift `SignInstance`.) */
 data class SignInstance(
     val appId: String,
     val name: String,
@@ -15,7 +15,7 @@ data class SignInstance(
 )
 
 /**
- * What Mero Sign needs beyond `MeroAppBackend`, from the signed-in `CalimeroClient`, the same calls
+ * What Hyperfeed Sign needs beyond `MeroAppBackend`, from the signed-in `CalimeroClient`, the same calls
  * the web makes (`app/src/lib/agreements.ts`): blobs with their content type (the contract stores
  * the 64-hex id), this app's instances, creating the library, and member names. The app uses
  * [ClientSignAdmin]; tests use a fake. (Swift `SignAdmin`.)
@@ -34,7 +34,7 @@ interface SignAdmin {
         contextId: String,
     ): ByteArray
 
-    /** Mero Sign's instances the account reaches. */
+    /** Hyperfeed Sign's instances the account reaches. */
     suspend fun instances(): List<SignInstance>
 
     /** Create an instance named [name] in [org] (or the account's own, in none). Returns its app id. */

@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// Mero Sign's logic, outside the app target so it builds and tests on macOS
+// Hyperfeed Sign's logic, outside the app target so it builds and tests on macOS
 // with `swift test` (no simulator): the generated contract client, the
 // private-store and identity-mapping flow, the PDF stamper, the signature ink
 // model and the view models the SwiftUI screens bind.

@@ -133,7 +133,7 @@ describe('App', () => {
     it('opens the shared dialog for the workspace, with the app team of a package app', async () => {
       const client = fakeClient();
       await openInvite(client, PACKAGE_ENV);
-      expect(await props()).toEqual({ org: 'org-1', teams: ['team-sign'], appName: 'Mero Sign', linkBase: `${window.location.origin}/?org=org-1` });
+      expect(await props()).toEqual({ org: 'org-1', teams: ['team-sign'], appName: 'Hyperfeed Sign', linkBase: `${window.location.origin}/?org=org-1` });
       expect(screen.getByTestId('invite-title').textContent).toBe('Invite to Acme Legal');
       expect(JSON.parse(screen.getByTestId('invite-labels').textContent ?? 'null')).toEqual({ noun: 'workspace' });
       fireEvent.click(screen.getByTestId('invite-close'));
@@ -142,10 +142,10 @@ describe('App', () => {
 
     it('adds the app-only note when the workspace keeps its apps apart', async () => {
       const client = fakeClient();
-      client.listAppTeams.mockResolvedValue({ mode: 'shared', appTeams: [{ package: 'com.calimero.mero-sign', teamId: 'team-sign', name: 'Mero Sign', join: 'everyone', memberCount: 2, defaultCapabilities: 0, member: true }] });
+      client.listAppTeams.mockResolvedValue({ mode: 'shared', appTeams: [{ package: 'com.calimero.mero-sign', teamId: 'team-sign', name: 'Hyperfeed Sign', join: 'everyone', memberCount: 2, defaultCapabilities: 0, member: true }] });
       await openInvite(client, PACKAGE_ENV);
       const labels = JSON.parse((await screen.findByTestId('invite-labels')).textContent ?? 'null');
-      expect(labels.note).toMatch(/^Invites to Mero Sign only/);
+      expect(labels.note).toMatch(/^Invites to Hyperfeed Sign only/);
     });
 
     it('names no team for a raw bundle', async () => {
@@ -314,7 +314,7 @@ describe('App', () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', agreement: null }));
     render(<App deps={deps(fakeClient())} />);
-    expect(JSON.parse((await screen.findByTestId('accept-props')).textContent ?? 'null')).toMatchObject({ token: 'tok-1', appName: 'Mero Sign', noun: 'workspace' });
+    expect(JSON.parse((await screen.findByTestId('accept-props')).textContent ?? 'null')).toMatchObject({ token: 'tok-1', appName: 'Hyperfeed Sign', noun: 'workspace' });
     fireEvent.click(screen.getByTestId('accept-close'));
     await waitFor(() => expect(screen.queryByTestId('accept-dialog')).toBeNull());
     expect(pendingInvite()).toBeNull();

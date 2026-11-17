@@ -45,7 +45,7 @@ import styles from './AgreementsPage.module.css';
 //
 // ── Why this screen exists ──────────────────────────────────────────────────
 //
-// Not as a feature. Mero Sign was built on "one agreement is one context, and
+// Not as a feature. Hyperfeed Sign was built on "one agreement is one context, and
 // there are no namespaces", and at 0.11.0-rc.41 that model stopped being
 // legal: `CreateContextRequest.group_id` has no `Option` and no
 // `#[serde(default)]`, so a context must name a group. The app had nothing to
@@ -438,7 +438,7 @@ export default function WorkspacesPage({
             </button>
           </div>
           {status && <p className={styles.hint}>{status}</p>}
-          <ConnectExistingOrg appName="Mero Sign" load={loadOtherOrgs} onConnect={connectOrg} />
+          <ConnectExistingOrg appName="Hyperfeed Sign" load={loadOtherOrgs} onConnect={connectOrg} />
         </section>
 
         {app && (

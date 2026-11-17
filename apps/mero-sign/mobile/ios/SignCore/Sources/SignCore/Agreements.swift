@@ -65,7 +65,7 @@ public struct AgreementDirectory: Sendable {
             .sorted { Self.name(of: $0).localizedCaseInsensitiveCompare(Self.name(of: $1)) == .orderedAscending }
     }
 
-    /// The agreements in a workspace: Mero Sign's app instances in that organization, by name.
+    /// The agreements in a workspace: Hyperfeed Sign's app instances in that organization, by name.
     public func agreements(in workspace: AppNamespace) async throws -> [AgreementRef] {
         try await admin.instances()
             .filter { $0.org == workspace.id }
