@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero CRM app.
+# XcodeGen spec for the native iOS Hyperfeed CRM app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroCRM.xcodeproj (not committed)

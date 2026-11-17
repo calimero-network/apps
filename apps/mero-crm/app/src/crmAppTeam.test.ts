@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Mero CRM's own app team (core#4890), against the shared in-memory
+ * Hyperfeed CRM's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's: a new workspace gets an open team, a
  * pipeline goes on it, an invite names it, the member list is its people,
@@ -58,7 +58,7 @@ async function removeWithHook(cluster: ReturnType<typeof orgCluster>, org: strin
   return result.current;
 }
 
-describe('a new workspace gets Mero CRM\'s own app team', () => {
+describe('a new workspace gets Hyperfeed CRM\'s own app team', () => {
   it('open (standalone), made with `shared: false`, and the first pipeline is on it', async () => {
     const { cluster, org } = await workspace();
     const team = cluster.teamOf(org, PKG)!;
@@ -92,7 +92,7 @@ describe('invites name the app team', () => {
     expect(read.appOnly).toBe(false);
   });
 
-  it('apps kept apart: the same team, and the invite gives Mero CRM only', async () => {
+  it('apps kept apart: the same team, and the invite gives Hyperfeed CRM only', async () => {
     const { cluster, org } = await workspace();
     cluster.keepAppsApart(org);
     const read = await readMembers(cluster.client, org, SOURCE);
@@ -117,7 +117,7 @@ describe('the member list is the app team', () => {
     expect(read.appOnly).toBe(false);
   });
 
-  it('apps kept apart: only the people in Mero CRM; roles still cover the org', async () => {
+  it('apps kept apart: only the people in Hyperfeed CRM; roles still cover the org', async () => {
     const { cluster, org } = await workspace(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
     const read = await readMembers(cluster.client, org, SOURCE);
@@ -134,7 +134,7 @@ describe('the member list is the app team', () => {
 });
 
 describe('Remove', () => {
-  it('apps kept apart: out of Mero CRM (its team), never out of the organization', async () => {
+  it('apps kept apart: out of Hyperfeed CRM (its team), never out of the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     cluster.keepAppsApart(org);
     const roles = await removeWithHook(cluster, org, 'acct-bob');
@@ -144,11 +144,13 @@ describe('Remove', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone: out of the organization, as before (the org is everyone\'s apps)', async () => {
+  it('standalone: off Hyperfeed CRM\'s team (a call the app\'s own session may make); they stay in the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     await removeWithHook(cluster, org, 'acct-bob');
-    expect(cluster.org(org).members['acct-bob']).toBeUndefined();
-    expect(cluster.callsOf('removeTeamMember')).toEqual([]);
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
+    expect(cluster.callsOf('removeMember')).toEqual([]);
+    expect(cluster.org(org).members['acct-bob']).toBe('member');
+    expect((await readMembers(cluster.client, org, SOURCE)).people).not.toContain('acct-bob');
   });
 
   it('a legacy org: out of the organization', async () => {
@@ -159,7 +161,7 @@ describe('Remove', () => {
   });
 });
 
-describe('adding Mero CRM to an organization whose apps have teams', () => {
+describe('adding Hyperfeed CRM to an organization whose apps have teams', () => {
   it('an admin of an open org: the team is made open, the other app\'s left open', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', role: 'admin' });
@@ -181,7 +183,7 @@ describe('adding Mero CRM to an organization whose apps have teams', () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', role: 'member' });
     await expect(addPipeline(cluster.client, SOURCE, org, 'Main', 'USD', passkey)).rejects.toThrow(
-      /owners and admins can add Mero CRM/,
+      /owners and admins can add Hyperfeed CRM/,
     );
     expect(cluster.callsOf('scopeApps')).toEqual([]);
     expect(cluster.callsOf('createApp')).toEqual([]);
@@ -197,7 +199,7 @@ describe('adding Mero CRM to an organization whose apps have teams', () => {
 });
 
 describe('Leave', () => {
-  it('apps kept apart: off Mero CRM\'s team only; the organization is offered when it was the last app', async () => {
+  it('apps kept apart: off Hyperfeed CRM\'s team only; the organization is offered when it was the last app', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member', members: { 'acct-own': 'owner' } });
     const left = await leaveWorkspace(cluster.client, org, SOURCE, passkey);
@@ -218,12 +220,18 @@ describe('Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBe('member');
   });
 
-  it('standalone and legacy: out of the organization, as before', async () => {
-    for (const mode of ['standalone', 'legacy'] as const) {
-      const cluster = orgCluster();
-      const org = cluster.addOrg({ mode, app: PKG, role: 'member' });
-      expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
-      expect(cluster.org(org).members['acct-me']).toBeUndefined();
-    }
+  it('standalone: off Hyperfeed CRM\'s team; still in the organization', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'standalone', app: PKG, role: 'member' });
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: false });
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-me']);
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('legacy (no team): out of the organization, as before', async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: 'legacy', role: 'member' });
+    expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'org', lastApp: false });
+    expect(cluster.org(org).members['acct-me']).toBeUndefined();
   });
 });

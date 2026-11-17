@@ -148,7 +148,7 @@ fun MoreScreen() {
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
-            text = { Text("Sign out of Mero CRM on this device?") },
+            text = { Text("Sign out of Hyperfeed CRM on this device?") },
             confirmButton = {
                 LinkButton("Sign out", color = Palette.danger, onClick = {
                     confirmSignOut = false
@@ -214,7 +214,7 @@ private fun InviteSheet(onDismiss: () -> Unit) {
             Surface(shape = RoundedCornerShape(10.dp), color = Palette.surface, border = BorderStroke(1.dp, Palette.hairline), modifier = Modifier.fillMaxWidth()) {
                 Text(current, fontFamily = FontFamily.Monospace, fontSize = 13.sp, maxLines = 4, modifier = Modifier.padding(12.dp))
             }
-            PrimaryButton("Share link", onClick = { platform.share("Join ${name.ifEmpty { "my workspace" }} on Mero CRM", current) }, icon = Icons.Outlined.Share)
+            PrimaryButton("Share link", onClick = { platform.share("Join ${name.ifEmpty { "my workspace" }} on Hyperfeed CRM", current) }, icon = Icons.Outlined.Share)
             SecondaryButton("Copy link", onClick = {
                 platform.copy("Invitation", current)
                 model.notice.value = Notice("Invitation link copied")
@@ -503,7 +503,7 @@ fun AutomationsScreen() {
             }
             item {
                 Text(
-                    "When a deal enters a stage, these schedule an activity for the deal's owner automatically. Add and change them in Mero CRM on the web.",
+                    "When a deal enters a stage, these schedule an activity for the deal's owner automatically. Add and change them in Hyperfeed CRM on the web.",
                     fontSize = 13.sp,
                     color = Palette.ink2,
                     modifier = Modifier.padding(horizontal = 4.dp),

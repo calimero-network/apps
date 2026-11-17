@@ -23,7 +23,7 @@ data class PipelineRef(
     val workspaceName: String,
 )
 
-/** A workspace (a namespace running Mero CRM) and its pipelines. */
+/** A workspace (a namespace running Hyperfeed CRM) and its pipelines. */
 data class Workspace(
     val id: String,
     val name: String,

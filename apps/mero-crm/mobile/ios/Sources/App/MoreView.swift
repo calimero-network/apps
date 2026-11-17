@@ -55,7 +55,7 @@ struct MoreView: View {
         .screenBackground()
         .navigationTitle("More")
         .sheet(isPresented: $inviting) { InviteSheet().environmentObject(model) }
-        .confirmationDialog("Sign out of Mero CRM on this device?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of Hyperfeed CRM on this device?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive, action: onSignOut)
         }
     }
@@ -393,7 +393,7 @@ struct AutomationsView: View {
                 }
             } footer: {
                 Text(
-                    "When a deal enters a stage, these schedule an activity for the deal's owner automatically. Add and change them in Mero CRM on the web."
+                    "When a deal enters a stage, these schedule an activity for the deal's owner automatically. Add and change them in Hyperfeed CRM on the web."
                 )
             }
         }

@@ -62,7 +62,7 @@ export interface UseWorkspaceReturn {
   inviteTeams: string[];
   /**
    * The signed-in account leaves the open workspace (a passkey step-up): in
-   * an org that keeps its apps apart, Mero CRM only; when that was their last
+   * an org that keeps its apps apart, Hyperfeed CRM only; when that was their last
    * app there and `alsoOrg()` agrees, the organization too. Elsewhere the
    * organization. The workspace is closed afterwards. Throws on failure.
    */
@@ -101,12 +101,22 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [namespacesPending, setNamespacesPending] = useState(true);
   const [namespacesFailed, setNamespacesFailed] = useState(false);
   const [activeNs, setActiveNs] = useState<string | null>(null);
+  const activeRef = useRef<string | null>(null);
+  activeRef.current = activeNs;
 
   const loadNamespaces = useCallback(async (): Promise<Workspace[] | null> => {
     try {
       const list = await listWorkspaces(client, source);
       setNamespaces(list);
       setNamespacesFailed(false);
+      // Out of the open workspace (removed, or left elsewhere): close it and
+      // go back to the workspace list, rather than failing every read in it.
+      const open = activeRef.current;
+      if (open && !list.some((n) => n.namespaceId === open)) {
+        writeActiveNs(null);
+        activeRef.current = null;
+        setActiveNs(null);
+      }
       return list;
     } catch {
       setNamespacesFailed(true);

@@ -11,9 +11,14 @@ import { nodeBasename } from '@calimero-apps/node-served';
 import { invites, migrateLegacyInvite } from './workspaces';
 import { applyTheme, readStoredTheme } from './theme';
 import { registerServiceWorker } from "@calimero-apps/install";
+import { installConsentDefaults } from './orgConsent';
 
 // Installable as an app (Chrome, Edge); not in dev and not on a node.
 registerServiceWorker();
+
+// Organization-wide changes on a session bound to this frontend go to the
+// node's consent page, after the app's own "Approve on your node" dialog.
+installConsentDefaults();
 
 // index.html already put the saved theme on <html> before the first paint;
 // this re-applies it in case that inline script could not run.

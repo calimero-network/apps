@@ -211,7 +211,7 @@ function storeSession() {
 }
 
 describe('App', () => {
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   it('does not list or enter an org made for another app; connects it on request', async () => {
     const client = fakeClient({ signedIn: true });
     const blocks = { appId: 'w1', name: 'overworld', owner: 'acct-alice', org: 'ow', bundle: 'blocks', package: 'com.calimero.mero-blocks', version: null };
@@ -283,7 +283,7 @@ describe('App', () => {
 
     const dialog = await screen.findByTestId('accept-dialog', {}, SLOW);
     expect(dialog.dataset.token).toBe('tok-xyz');
-    expect(dialog.dataset.app).toBe('Mero CRM');
+    expect(dialog.dataset.app).toBe('Hyperfeed CRM');
     fireEvent.click(screen.getByTestId('invitation-join'));
     expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
     expect(invites.token()).toBeNull();
@@ -304,7 +304,7 @@ describe('App', () => {
     render(<App deps={deps(fakeClient())} />);
 
     expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join the workspace in Mero CRM/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the workspace in Hyperfeed CRM/)).toBeTruthy();
     expect(screen.getByTestId('signin-passkey')).toBeTruthy();
     // A page, not a popup over the landing hero.
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -480,7 +480,7 @@ describe('App', () => {
 
     it('opens the shared dialog on this app\'s team, and a link that opens the app', async () => {
       const props = await openMembers(true);
-      expect(props).toMatchObject({ org: 'org-1', teams: ['team-crm'], appName: 'Mero CRM' });
+      expect(props).toMatchObject({ org: 'org-1', teams: ['team-crm'], appName: 'Hyperfeed CRM' });
       const base = new URL(props.linkBase);
       expect(base.searchParams.get('org')).toBe('org-1');
       expect(base.searchParams.get('to')).toBe('/crm/members');
@@ -494,7 +494,7 @@ describe('App', () => {
 
     it('says an invite gives this app only where the org keeps its apps apart', async () => {
       await openMembers(true, 'shared');
-      expect(screen.getByTestId('invite-note').textContent).toMatch(/Invites to Mero CRM only/);
+      expect(screen.getByTestId('invite-note').textContent).toMatch(/Invites to Hyperfeed CRM only/);
     });
   });
 

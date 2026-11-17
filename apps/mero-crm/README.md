@@ -79,7 +79,7 @@ then ends the session. The theme choice survives a log out.
 | **member names** | org member metadata `{ name }` (Members → Set my alias) |
 | **roles** | the org's: owner and admins hold every capability; members get the workspace default (add pipelines, invite), which admins change per member |
 
-### Mero CRM's app team
+### Hyperfeed CRM's app team
 
 An organization can hold several apps, each with its own **app team**
 (core#4890; see Calimero Home's README). This app reaches its organization
@@ -91,13 +91,13 @@ only through `@calimero-apps/connect`'s org-app module
   on it, invites name it (`appInvite`), and the member list is its people
   (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero CRM only (the dialog says so), the member list shows its
-  people, and **Remove** takes someone out of Mero CRM (its team), never out of
+  invite gives Hyperfeed CRM only (the dialog says so), the member list shows its
+  people, and **Remove** takes someone out of Hyperfeed CRM (its team), never out of
   the organization. **Leave workspace** (Members page, anyone but the owner)
-  leaves Mero CRM only, and offers to leave the organization too when it was
+  leaves Hyperfeed CRM only, and offers to leave the organization too when it was
   your last app there. In standalone and legacy orgs Remove and Leave are out
   of the org, as before.
-- Adding Mero CRM to an organization whose apps have teams makes its team
+- Adding Hyperfeed CRM to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization
@@ -226,7 +226,7 @@ permissions, aliases, the light/dark theme. Behind them:
 v1 session, and those SDKs have no Calimero 1.0 client yet;
 `mobile/README.md` says what they wait for.
 
-**Mero Forms** (still a v1 app) hands responses to v1 CRM pipelines. Its
+**Hyperfeed Forms** (still a v1 app) hands responses to v1 CRM pipelines. Its
 generated `CrmClient` now comes from the v1 ABI frozen in
 `apps/mero-forms/app/src/fixtures/abi/mero-crm-v1.json`, and its journey's CRM
 fixture bundle is built from the last v1 commit

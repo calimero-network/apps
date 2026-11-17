@@ -18,6 +18,7 @@ import { useCrm } from "../../hooks/useCrm";
 import { useSignedIn } from "../../sessionContext";
 import { APP_PACKAGE, PRODUCT_NAME } from "../../config";
 import { inviteLinkBase } from "../../workspaces";
+import { finishOrgConsent } from "../../orgConsent";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
@@ -105,6 +106,16 @@ export default function AppPage(): React.ReactElement | null {
     lastToastRef.current = description;
     toast.show({ variant: "error", description });
   }, [data.error, toast]);
+
+  // Back from the node's consent page: say what came of the change.
+  const consentChecked = useRef(false);
+  useEffect(() => {
+    if (consentChecked.current) return;
+    consentChecked.current = true;
+    void finishOrgConsent(client).then((notice) => {
+      if (notice) toast.show({ variant: notice.variant, description: notice.description });
+    });
+  }, [client, toast]);
 
   const [newDeal, setNewDeal] = useState<NewDealDefaults | null>(null);
   const [showInvite, setShowInvite] = useState(false);

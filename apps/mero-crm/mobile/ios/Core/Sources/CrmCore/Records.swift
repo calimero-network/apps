@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-// The pipeline's answers, as Mero CRM's component ABI (`../../../../logic/res/abi.json`) declares
+// The pipeline's answers, as Hyperfeed CRM's component ABI (`../../../../logic/res/abi.json`) declares
 // them: v1's snake_case fields, every u64 a decimal string both ways. The calls and the answer
 // types are the generated `CrmClient` (`Sources/CrmGenerated`, `scripts/mobile-codegen.sh` at the
 // repo root).

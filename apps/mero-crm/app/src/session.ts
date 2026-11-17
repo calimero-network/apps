@@ -19,7 +19,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero CRM",
+  name: "Hyperfeed CRM",
   description: "A simple, private sales CRM: track your pipeline, work your deals, and never lose a follow-up.",
   package: APP_PACKAGE,
   dir: "mero-crm",
@@ -68,7 +68,7 @@ export const ONBOARDING: {
   classNames: OnboardingClassNames;
   titleAs: "h1" | "h2" | "h3" | "div";
 } = {
-  appName: "Mero CRM",
+  appName: "Hyperfeed CRM",
   joining: "the workspace",
   listing: LISTING,
   classNames: { text: "sub", error: "sub" },

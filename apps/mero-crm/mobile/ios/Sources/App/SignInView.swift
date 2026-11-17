@@ -18,7 +18,7 @@ struct SignInView: View {
                 Spacer(minLength: 40)
                 AppMark()
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Mero CRM").font(.largeTitle.weight(.bold)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed CRM").font(.largeTitle.weight(.bold)).foregroundStyle(Palette.ink)
                     Text("A simple, private sales CRM: deals, the people behind them, and what to do next.")
                         .font(.body).foregroundStyle(Palette.ink2)
                 }

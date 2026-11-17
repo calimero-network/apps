@@ -1,5 +1,5 @@
 /**
- * Mero Issue Tracker — a minimal mock of the app itself.
+ * Hyperfeed Issue Tracker — a minimal mock of the app itself.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *

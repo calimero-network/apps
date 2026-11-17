@@ -7,6 +7,7 @@ import {
   countAdmins,
 } from '@calimero-apps/members';
 import '@calimero-apps/members/members.css';
+import { ConsentNotStarted } from '@calimero-apps/connect';
 import { PRODUCT_NAME } from '../../config';
 import { tokens as t } from '../../theme';
 import { truncateKey } from '../../utils/display';
@@ -101,6 +102,11 @@ export default function MembersPage(): React.ReactElement {
     }
   }, [aliases, selfAccount]);
 
+  // Declining the node's approval page changes nothing, and is not an error.
+  const report = useCallback((err: unknown) => {
+    if (!(err instanceof ConsentNotStarted)) setError(describeError(err));
+  }, []);
+
   const run = useCallback(async (account: string, op: () => Promise<void>) => {
     setBusyAccount(account);
     setError(null);
@@ -110,11 +116,11 @@ export default function MembersPage(): React.ReactElement {
       // Surfaced, never swallowed: the common failure is the node REFUSING a
       // promotion from someone without MANAGE_MEMBERS, and a silent failure
       // there is indistinguishable from success in the promoter's browser.
-      setError(describeError(err));
+      report(err);
     } finally {
       setBusyAccount(null);
     }
-  }, []);
+  }, [report]);
 
   // The last-admin guard counts the roster's own answer. Removing or demoting
   // the only admin leaves nobody who could appoint one again, so neither is
@@ -129,7 +135,7 @@ export default function MembersPage(): React.ReactElement {
 
   // The owner keeps the workspace (core refuses the owner's own removal);
   // anyone else may leave it. In an org that keeps its apps apart that is
-  // Mero CRM only, and the organization is offered once it was their last app.
+  // Hyperfeed CRM only, and the organization is offered once it was their last app.
   const canLeave = !!selfAccount && !!ws.activeNs && roles.orgRoles.get(selfAccount) !== 'owner';
   const leave = () => {
     const prompt = roles.appOnly
@@ -142,7 +148,7 @@ export default function MembersPage(): React.ReactElement {
       .leaveWorkspace(() =>
         window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`),
       )
-      .catch((err) => setError(describeError(err)))
+      .catch(report)
       .finally(() => setLeavingWs(false));
   };
 
@@ -206,7 +212,7 @@ export default function MembersPage(): React.ReactElement {
                 setError(null);
                 void roles
                   .repairDefaultCapabilities()
-                  .catch((err) => setError(describeError(err)))
+                  .catch(report)
                   .finally(() => setRepairing(false));
               }}
             >

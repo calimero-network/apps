@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Leaving the workspace from the Members page. Anyone but the owner may
- * leave; in an org that keeps its apps apart it is Mero CRM only, and the
+ * leave; in an org that keeps its apps apart it is Hyperfeed CRM only, and the
  * organization is offered when that was the person's last app there.
  */
 import { createElement } from 'react';

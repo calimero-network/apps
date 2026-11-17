@@ -1,6 +1,6 @@
-# Mero CRM — native mobile apps
+# Hyperfeed CRM — native mobile apps
 
-Native iOS (SwiftUI) and Android (Jetpack Compose) clients for Mero CRM, next to the web app
+Native iOS (SwiftUI) and Android (Jetpack Compose) clients for Hyperfeed CRM, next to the web app
 (`../app`) and the contract (`../logic`, package `com.calimero.mero-crm`). The two apps have the
 same screens, in the same order, with the same copy and matching icons (SF Symbols on iOS,
 Material Symbols on Android).
@@ -45,7 +45,7 @@ Sign-in (iOS `ios/Sources/App/CloudAccess.swift`, Android `ui/SignInScreen.kt` +
 - On Android the Activity's passkey is handed to the session while it is on screen
   (`MeroAppSession.passkey`), so inviting someone gets its passkey step-up.
 
-**The contract** is Mero CRM's component ABI (`../logic/res/abi.json`, from the web port): methods
+**The contract** is Hyperfeed CRM's component ABI (`../logic/res/abi.json`, from the web port): methods
 and arguments in camelCase (`createDeal`, `dealId`, `expectedClose`), every u64 a decimal string
 both ways (`value`, `expectedClose`, `dueAt` in; `value`, `expected_close`, `due_at`, `created_at`
 … out), answers in v1's snake_case fields, and a refusal as `422 APP_ERROR {code, fields}`
