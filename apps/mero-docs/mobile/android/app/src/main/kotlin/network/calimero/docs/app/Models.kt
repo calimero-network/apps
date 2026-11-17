@@ -62,7 +62,7 @@ fun personName(
 
 // region Workspaces
 
-/** A workspace: an organization running Mero Docs. */
+/** A workspace: an organization running Hyperfeed Docs. */
 data class Workspace(
     val id: String,
     val name: String,

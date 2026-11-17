@@ -1,6 +1,6 @@
-# Mero Docs: native mobile apps
+# Hyperfeed Docs: native mobile apps
 
-Native iOS and Android readers for Mero Docs, next to the web editor (`../app`) and the
+Native iOS and Android readers for Hyperfeed Docs, next to the web editor (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-drive-docs`, one component on Calimero 1.0).
 They have the same screens, copy, icons (SF Symbols and the matching Material icons) and behaviour,
 and both run on Calimero 1.0: a passkey account on a Calimero Cloud cluster (or a development
@@ -22,7 +22,7 @@ editor and its CRDT binding live. What both apps do:
 - **Sign in** with a passkey on your Calimero Cloud cluster, or on a development node (see *How
   the apps reach Calimero*). The session is kept in the Keychain / encrypted preferences and
   restored at launch.
-- **Workspaces**: the account's organizations running Mero Docs. Pull to refresh.
+- **Workspaces**: the account's organizations running Hyperfeed Docs. Pull to refresh.
 - **Workspace**: search, **Recent** (the documents this phone opened last here, kept on the phone
   as the web keeps them in `localStorage`), the top-level **Folders**, and **Recently updated**
   (every document, newest change first: the web's Home table). Swipe a document to share its link.
@@ -67,7 +67,7 @@ Drawn: paragraphs, headings (levels 1 to 3), bullet, numbered and check lists (w
 BlockNote's numbering), quotes, code blocks, images (the `blob:` reference read as a blob of
 the folder's app instance), dividers, alignment and BlockNote's text and background colours; inline bold,
 italic, underline, strike, code, colours and links. Any other block kind shows the web's notice,
-"This block needs a newer version of Mero Docs."
+"This block needs a newer version of Hyperfeed Docs."
 
 Each block's text is the contract's Fugue `RichText` for it, read as the web reads it: its
 `spans` in order, each a run of equally formatted characters with its marks as strings (`"true"`
@@ -88,7 +88,7 @@ Both apps talk to a node of a Calimero 1.0 cluster over the sealed channel
 (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and sign in with a
 passkey; they run no node. `MeroAppSession` builds the SDK's `CalimeroAppBackend`:
 
-| Mero Docs | `MeroAppBackend` | Calimero 1.0 |
+| Hyperfeed Docs | `MeroAppBackend` | Calimero 1.0 |
 | --- | --- | --- |
 | workspace | namespace | organization |
 | folder | subgroup | team (its docs instance in team metadata `docsApp`) |

@@ -210,7 +210,7 @@ describe('adding Docs to an organization whose apps have teams', () => {
   it('a member is told only owners and admins can add it', async () => {
     const { cluster, admin } = docs();
     const org = cluster.addOrg({ mode: 'standalone', role: 'member' });
-    await expect(admin.createContext({ groupId: org, name: 'Registry' })).rejects.toThrow(/owners and admins can add Mero Docs/);
+    await expect(admin.createContext({ groupId: org, name: 'Registry' })).rejects.toThrow(/owners and admins can add Hyperfeed Docs/);
     expect(cluster.callsOf('createApp')).toEqual([]);
   });
 });

@@ -30,7 +30,7 @@ const unsupported = createReactBlockSpec(
         contentEditable={false}
         className="w-full rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
       >
-        This block needs a newer version of Mero Docs.
+        This block needs a newer version of Hyperfeed Docs.
       </div>
     ),
   },

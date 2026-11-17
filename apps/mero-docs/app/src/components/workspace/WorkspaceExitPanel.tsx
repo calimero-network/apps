@@ -71,7 +71,7 @@ export function WorkspaceExitPanel() {
         if (left?.left === 'app' && left.lastApp) {
           const alsoOrg = await confirm({
             title: 'Leave the organization too?',
-            body: 'Mero Docs was your last app in this organization. You can stay in it, or leave it as well.',
+            body: 'Hyperfeed Docs was your last app in this organization. You can stay in it, or leave it as well.',
             confirmLabel: 'Leave organization',
             destructive: true,
           });

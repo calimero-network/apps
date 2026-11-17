@@ -171,7 +171,7 @@ export async function askOrgConsent(client: ConsentClient, intent: ConsentIntent
     const request: ConsentRequest | OrgConsentRequest = consentRequest(intent);
     await client.openConsentPage(request as ConsentRequest, {
       confirm: async (started) => {
-        went = await confirmConsentHandoff({ code: started.code ?? '', appName: 'Mero Docs', action: consentAction(intent) });
+        went = await confirmConsentHandoff({ code: started.code ?? '', appName: 'Hyperfeed Docs', action: consentAction(intent) });
         return went;
       },
     });

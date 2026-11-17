@@ -94,7 +94,7 @@ describe('InvitationPrompt hands the invite to the shared accept dialog', () => 
     render(<InvitationPrompt onJoined={onJoined} />);
     await userEvent.setup().click(await screen.findByRole('button', { name: 'join' }));
 
-    expect(accept.props).toMatchObject({ token: 'tok', appName: 'Mero Docs', client, open: true });
+    expect(accept.props).toMatchObject({ token: 'tok', appName: 'Hyperfeed Docs', client, open: true });
     await waitFor(() => expect(onJoined).toHaveBeenCalledWith('org-1', null));
     expect(admin.joined).toHaveBeenCalledWith('org-1');
     expect(invites.token()).toBeNull();

@@ -186,7 +186,7 @@ describe('WorkspaceLayout node shield', () => {
   it('gives the workspace name the room below sm: no logo mark, no online dot', () => {
     renderLayout();
     const header = screen.getByRole('banner');
-    const logo = parentOf(within(header).getByText('Mero Docs'));
+    const logo = parentOf(within(header).getByText('Hyperfeed Docs'));
     expect(logo?.className).toContain('max-sm:hidden');
     expect(
       within(header).getByRole('img', { name: 'Online' }).className,

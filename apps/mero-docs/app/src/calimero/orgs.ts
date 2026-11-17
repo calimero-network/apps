@@ -120,7 +120,7 @@ export interface OrgView {
 }
 
 /** The name Docs is added to an organization under, in what an owner or admin is told. */
-const PRODUCT_NAME = 'Mero Docs';
+const PRODUCT_NAME = 'Hyperfeed Docs';
 
 /** Whether `team` is an app's own team (Docs' or another app's): a top-level team marked `metadata.app`. */
 export function isAppTeam(team: Pick<TeamView, 'parent' | 'metadata'>): boolean {

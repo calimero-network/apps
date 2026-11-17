@@ -41,7 +41,7 @@ fun SignInScreen(vm: DocsAppViewModel) {
         ) {
             Spacer(Modifier.height(48.dp))
             AppMark(64.dp)
-            Text("Mero Docs", style = DocsTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
+            Text("Hyperfeed Docs", style = DocsTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
             Text(
                 "Your workspace's documents, on your phone. Read them, search them and talk them through in comments.",
                 style = DocsTheme.body(17, color = DocsTheme.muted),

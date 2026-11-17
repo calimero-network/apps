@@ -115,7 +115,7 @@ describe('docTextFromBlocks', () => {
     ]);
   });
 
-  it('ignores links that are not Mero Docs doc links', () => {
+  it('ignores links that are not Hyperfeed Docs doc links', () => {
     const t = text('f1', 'd1', [
       block(
         'p',

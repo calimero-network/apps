@@ -128,12 +128,12 @@ export function InvitationPrompt({ onJoined }: Props) {
       open
       onClose={decline}
       token={invite.token}
-      appName="Mero Docs"
+      appName="Hyperfeed Docs"
       org={invite.kind === 'namespace' ? (invite.workspaceId ?? undefined) : undefined}
       labels={{
         noun,
         title: "You're invited",
-        body: `Join the ${noun}${named} in Mero Docs? ${
+        body: `Join the ${noun}${named} in Hyperfeed Docs? ${
           folderInvite
             ? "You'll only gain access to this folder, not the rest of the workspace."
             : "You'll be added to the workspace."

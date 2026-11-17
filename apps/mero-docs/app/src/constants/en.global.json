@@ -1,7 +1,7 @@
 {
   "home": {
-    "welcome": "Welcome to Mero Docs!",
-    "demoDescription": "A private file storage application built on Calimero's P2P network. Upload, organize, and share your files securely in Mero Docs.",
+    "welcome": "Welcome to Hyperfeed Docs!",
+    "demoDescription": "A private file storage application built on Calimero's P2P network. Upload, organize, and share your files securely in Hyperfeed Docs.",
     "calimeroIntro": "Calimero is a privacy-focused blockchain network that enables developers to build scalable, private applications. Our platform provides the infrastructure for creating decentralized applications with enhanced privacy and performance.",
     "learnMore": "Learn more about Calimero:",
     "documentation": "Documentation",
@@ -25,11 +25,11 @@
     }
   },
   "auth": {
-    "title": "Mero Docs",
+    "title": "Hyperfeed Docs",
     "back": "Back",
     "goToContext": "Go to context actions",
     "description": {
-      "title": "Welcome to Mero Docs",
+      "title": "Welcome to Hyperfeed Docs",
       "subtitle": "Secure file storage on the Calimero P2P network",
       "features": [
         "Upload and manage private files",

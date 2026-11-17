@@ -94,7 +94,7 @@ struct RootView: View {
             Button("Join") { Task { await join() } }
             Button("Not now", role: .cancel) { session.dismissPendingInvitation() }
         } message: {
-            Text("You were invited to a Mero Docs workspace. Its folders and documents appear here once you join.")
+            Text("You were invited to a Hyperfeed Docs workspace. Its folders and documents appear here once you join.")
         }
         .alert(
             "Couldn't join", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } })

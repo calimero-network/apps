@@ -16,7 +16,7 @@ public func personName(_ account: String, me: String) -> String {
 
 // MARK: - Workspaces
 
-/// A workspace: an organization running Mero Docs.
+/// A workspace: an organization running Hyperfeed Docs.
 public struct Workspace: Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let name: String
