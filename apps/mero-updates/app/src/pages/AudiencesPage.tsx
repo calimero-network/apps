@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  askAnOwnerCopy,
+  canCreateIn,
+  ConsentNotStarted,
+  describeError,
+} from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/active";
@@ -70,7 +77,7 @@ export default function AudiencesPage() {
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
-  /** Who has Mero Updates in the company, and whether Remove is this app's only (apps kept apart). */
+  /** Who has Hyperfeed Updates in the company, and whether Remove is this app's only (apps kept apart). */
   const [people, setPeople] = useState<{ rows: CompanyPerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   const [name, setName] = useState("");
 
@@ -91,7 +98,8 @@ export default function AudiencesPage() {
     try {
       await fn(setStatus);
     } catch (e) {
-      setError(describeError(e));
+      // They chose not to go to the approval page: nothing changed, nothing to say.
+      if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
     } finally {
       after();
       setPending(null);

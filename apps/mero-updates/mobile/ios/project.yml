@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Updates app.
+# XcodeGen spec for the native iOS Hyperfeed Updates app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroUpdates.xcodeproj (not committed)
@@ -35,7 +35,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Updates
+        CFBundleDisplayName: Hyperfeed Updates
         # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
         UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
         UILaunchScreen: {}

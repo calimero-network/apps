@@ -279,7 +279,7 @@ fun InviteSheet(
                     .padding(12.dp),
         )
         Text("Links expire after 24 hours. Anyone with the link joins as a reader.", color = Palette.ink3, fontSize = 13.sp)
-        PrimaryButton("Share link", onClick = { platform.share("Mero Updates invitation", share.link) }, icon = Icons.Outlined.Share, modifier = Modifier.fillMaxWidth())
+        PrimaryButton("Share link", onClick = { platform.share("Hyperfeed Updates invitation", share.link) }, icon = Icons.Outlined.Share, modifier = Modifier.fillMaxWidth())
         SecondaryButton(
             if (copied) "Copied" else "Copy link",
             onClick = {

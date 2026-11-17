@@ -1,6 +1,6 @@
-# Mero Updates: native mobile apps
+# Hyperfeed Updates: native mobile apps
 
-Native iOS and Android clients for Mero Updates, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Updates, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-updates`). Both platforms have the same screens,
 copy, icons (SF Symbols / Material, mapped) and flows.
 

@@ -1,8 +1,8 @@
-# Mero Updates
+# Hyperfeed Updates
 
 **Investor updates and investor relations, without the platform.** Visible, Cabal and Paperstreet do
 the same basic job: a founder writes a structured update, sends it to investors, and asks them for
-help. Mero Updates keeps that and changes where the data lives. There is no SaaS database: the
+help. Hyperfeed Updates keeps that and changes where the data lives. There is no SaaS database: the
 company and its investors share an app on [Calimero](https://calimero.network) 1.0, a contract on
 core's **component SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed on **`merod local`**, with a frontend on mero-js's **`CalimeroClient`**
@@ -160,25 +160,25 @@ write rule v1 kept in storage is a check in the method, against the caller:
   guest learns nothing from one that a read would not show.
 
 
-## Mero Updates's app team
+## Hyperfeed Updates's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Updates reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Updates reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Updates's team at once, **open**
+- A new organization made here gets Hyperfeed Updates's team at once, **open**
   (`standalone`: everyone in the org has the app). New audiences use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Updates only (the dialog says so) and only its people are shown.
-  **Leave** then leaves Mero Updates only, and offers to leave the
+  invite gives Hyperfeed Updates only (the dialog says so) and only its people are shown.
+  **Leave** then leaves Hyperfeed Updates only, and offers to leave the
   organization too when it was your last app there; in open and legacy orgs
   Leave is leaving the org, as before. The company's owners and admins
-  **Remove** people from its People list: Mero Updates only in such an org,
+  **Remove** people from its People list: Hyperfeed Updates only in such an org,
   out of the org in open and legacy ones.
-- Adding Mero Updates to an organization whose apps have teams makes its team
+- Adding Hyperfeed Updates to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization

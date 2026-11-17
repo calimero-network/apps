@@ -41,7 +41,8 @@ import {
   useSelfSpaceName,
   useUpdatesClient,
 } from "../lib/updates";
-import { getActiveNamespaceId, getAudienceName, getUsername } from "../lib/active";
+import { clearActiveAudience, getActiveNamespaceId, getAudienceName, getUsername } from "../lib/active";
+import { useToast } from "../contexts/ToastContext";
 import { useMaybeSignedIn } from "../lib/sessionContext";
 
 /** What every page inside an audience needs, loaded once by the shell. */
@@ -93,11 +94,26 @@ export default function AudienceShell() {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
+  // Access to the audience lost (taken out of the app, the audience deleted):
+  // close it and go back to the company's audiences instead of retrying.
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  // Once: the stream and every read on screen can each be the one to tell.
+  const closing = useRef<string | null>(null);
+  const onLost = useCallback(() => {
+    if (closing.current === contextId) return;
+    closing.current = contextId;
+    const ns = getActiveNamespaceId();
+    clearActiveAudience();
+    showToast("You no longer have access to that audience.", "error");
+    navigate(ns ? `/companies/${ns}` : "/companies", { replace: true });
+  }, [contextId, navigate, showToast]);
+
   // Every event of this instance, and every reconnect of the stream (events
   // missed while it was down are re-read, not replayed), bumps the revision.
-  useAudienceEvents(contextId, bump);
+  useAudienceEvents(contextId, bump, onLost);
 
-  const revisionValue = useMemo(() => ({ revision, bump }), [revision, bump]);
+  const revisionValue = useMemo(() => ({ revision, bump, lost: onLost }), [revision, bump, onLost]);
 
   return (
     <RevisionContext.Provider value={revisionValue}>
@@ -164,7 +180,7 @@ function ShellBody() {
         <aside className="sidebar" id="audience-nav" data-testid="mobile-nav" aria-label="Audience">
           <div className="sideBrand">
             <BrandMark />
-            <span className="brandName">Mero Updates</span>
+            <span className="brandName">Hyperfeed Updates</span>
             <button
               type="button"
               className="iconBtn sideClose"

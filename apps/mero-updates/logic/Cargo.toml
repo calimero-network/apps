@@ -36,7 +36,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-updates"
-name = "Mero Updates"
+name = "Hyperfeed Updates"
 description = "Investor updates without the platform: categories, KPIs, asks and two-way replies, between a company's team and its investors."
 author = "Calimero"
 slug = "com.calimero.mero-updates"

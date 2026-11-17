@@ -1,4 +1,4 @@
-# Detekt config for the Mero Updates Android app: the Calimero Kotlin SDK's own
+# Detekt config for the Hyperfeed Updates Android app: the Calimero Kotlin SDK's own
 # (kotlin-sdk/config/detekt/detekt.yml), so the app is held to the SDK's bar. Builds upon the default
 # config (buildUponDefaultConfig = true), so this file only records deliberate deviations; some of
 # the comments below describe the SDK's reasons, kept so the two files stay easy to diff.

@@ -88,7 +88,7 @@ fun SignInScreen(
         Spacer(Modifier.height(24.dp))
         IconTile(Icons.Outlined.Inbox, accent = true, size = 64.dp)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mero Updates", style = displayStyle(34.sp))
+            Text("Hyperfeed Updates", style = displayStyle(34.sp))
             Text("Investor updates and investor relations, peer to peer.", color = Palette.ink2, fontSize = 17.sp)
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {

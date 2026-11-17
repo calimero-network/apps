@@ -65,7 +65,7 @@ public struct UpdatesInvitation: Sendable {
     }
 
     /// Read a link (https or `calimero://`, current or the older `?invite=`) or
-    /// a bare token. Nil when it is not a Mero Updates invitation, including
+    /// a bare token. Nil when it is not a Hyperfeed Updates invitation, including
     /// another app's link.
     public static func parse(_ input: String) -> UpdatesInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -126,7 +126,7 @@ describe("an invitation link", () => {
     hold(JSON.stringify({ token: "tok-1", audience: null }));
     boot(fakeClient());
     const page = await screen.findByTestId("invitation-page");
-    expect(page).toHaveTextContent("You've been invited to join the company in Mero Updates");
+    expect(page).toHaveTextContent("You've been invited to join the company in Hyperfeed Updates");
     expect(screen.getByTestId("signin-passkey")).toBeInTheDocument();
     expect(screen.queryByText("landing")).toBeNull();
   });
@@ -136,7 +136,7 @@ describe("an invitation link", () => {
     const client = fakeClient();
     boot(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1 Mero Updates");
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1 Hyperfeed Updates");
     fireEvent.click(screen.getByTestId("accept-join"));
     // Joined: the company has no name for you yet, so it asks, once.
     const input = (await screen.findByTestId("invitation-name-input")) as HTMLInputElement;

@@ -72,7 +72,7 @@ class UpdatesInvitation(
 
         /**
          * Read a link (https or `calimero://`, current or the older `?invite=`) or a bare token.
-         * Null when it is not a Mero Updates invitation, including another app's link.
+         * Null when it is not a Hyperfeed Updates invitation, including another app's link.
          */
         fun parse(input: String): UpdatesInvitation? {
             val trimmed = input.trim()

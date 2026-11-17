@@ -1,4 +1,4 @@
-// Generates Mero Updates' icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Updates' icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The mark — three rising bars, a KPI chart — is kept in sync by hand with

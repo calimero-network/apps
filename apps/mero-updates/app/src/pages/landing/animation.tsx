@@ -1,5 +1,5 @@
 /**
- * Mero Updates — a minimal mock of the app itself.
+ * Hyperfeed Updates — a minimal mock of the app itself.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  * Shows REAL labels: an update with KPI tiles, an ask with an investor's

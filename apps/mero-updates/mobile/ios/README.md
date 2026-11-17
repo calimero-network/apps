@@ -1,4 +1,4 @@
-# Mero Updates for iOS
+# Hyperfeed Updates for iOS
 
 SwiftUI, iOS 16+. See [../README.md](../README.md) for what the app does and how it talks to
 Calimero.

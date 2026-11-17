@@ -1,4 +1,4 @@
-# Mero Updates for Android
+# Hyperfeed Updates for Android
 
 Jetpack Compose + Material 3, minSdk 26. Same screens, copy and behaviour as the iOS app
 (`../ios`): sign in to a Calimero 1.0 cluster with a passkey, companies (create, join from an

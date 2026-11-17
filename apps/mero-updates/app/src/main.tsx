@@ -10,6 +10,7 @@ import App from "./App";
 import "./index.css";
 import "./app.css";
 import { captureInvite } from "./lib/companies";
+import { setupConsent } from "./lib/orgConsent";
 import { SessionProvider } from "./lib/sessionContext";
 import { registerServiceWorker } from "@calimero-apps/install";
 
@@ -20,6 +21,10 @@ registerServiceWorker();
 // `&audience=<id>` to land in one audience). Taken off the address bar before
 // the router can rewrite it, and redeemed once there is a session.
 captureInvite();
+
+// Organization-wide changes from this frontend go through the node's consent
+// page, after the shared handoff dialog.
+setupConsent();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

@@ -1,7 +1,14 @@
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  ORG_CAPABILITIES,
+  passkeyConfirm,
+  type AppInfo,
+  type CalimeroClient,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 import {
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
   createInviteStore,
   inviteLinkBase,
@@ -12,6 +19,7 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -19,17 +27,19 @@ import {
   type InviteStore,
   type KeyValueStorage,
   type LeftApp,
+  type MaybeMe,
   type PendingInvite as SharedPendingInvite,
 } from "@calimero-apps/connect";
 import { setOrgName } from "@calimero-apps/names";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP_NAME } from "./config";
+import { askOrgConsent } from "./orgConsent";
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Updates";
+export const PRODUCT_NAME = "Hyperfeed Updates";
 
-/** Where no passkey was handed over: asked for only to add Mero Updates' team to an org. */
+/** Where no passkey was handed over: asked for only to add Hyperfeed Updates' team to an org. */
 const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
@@ -76,7 +86,7 @@ async function allAudiences(client: ClientRoutes<{ apps: "list" }>, source: AppS
 
 /**
  * The companies: the orgs this account is in that hold an audience or were
- * made for Mero Updates. An org made for another app is offered under
+ * made for Hyperfeed Updates. An org made for another app is offered under
  * "Connect to an existing organization" instead.
  */
 export async function listCompanies(
@@ -93,7 +103,7 @@ export async function listCompanies(
         name: o.name,
         role: o.role,
         audienceCount: apps.filter((a) => a.org === o.orgId).length,
-        // Who has Mero Updates there: its app team, else the org.
+        // Who has Hyperfeed Updates there: its app team, else the org.
         memberCount: org ? appPeople(org as AppOrgView, sourcePackage(source)).length : 0,
       };
     }),
@@ -128,7 +138,7 @@ export interface CreatedCompany {
 
 /**
  * What follows a company the node approved: its mark, the member defaults (a
- * passkey step-up, skipped on a session bound to the app) and Mero Updates'
+ * passkey step-up, skipped on a session bound to the app) and Hyperfeed Updates'
  * own team, open (declined, or an older node: a legacy org).
  */
 export async function finishCompany(
@@ -147,12 +157,42 @@ export async function finishCompany(
 }
 
 /**
- * Leaves the company (`leaveApp`, a passkey step-up). In an org that keeps
- * its apps apart that is Mero Updates only, with `lastApp` set when it was
- * the caller's last app there (offer {@link leaveCompanyOrg}); elsewhere the
- * organization, as before.
+ * Deletes the company's org and, with it, every audience in it. A passkey
+ * step-up; from the app's own frontend, on the node's consent page (the
+ * promise then never settles while the page unloads).
  */
-export function leaveCompany(
+export async function deleteCompany(
+  client: MaybeMe & Partial<Pick<CalimeroClient, "openConsentPage">> & ClientRoutes<{ orgs: "delete" }>,
+  org: string,
+  passkey: () => PasskeyProvider,
+  name = "",
+): Promise<void> {
+  if (await askOrgConsent(client, { kind: "deleteOrg", org, name })) return;
+  await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
+}
+
+/** `getOrg` for `org`, and Hyperfeed Updates' own team there (`null` without one, or under a raw bundle). */
+async function updatesTeam(
+  client: ClientRoutes<{ orgs: "get" }>,
+  org: string,
+  source: AppSource | null,
+): Promise<{ view: AppOrgView; team: string | null } | null> {
+  const pkg = sourcePackage(source);
+  if (!pkg) return null;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  return { view, team: appTeamIdIn(view, pkg) };
+}
+
+/**
+ * Leaves the company, which is leaving Hyperfeed Updates. In an org that keeps its
+ * apps apart, its team only, with `lastApp` set when it was the caller's last
+ * app there (offer {@link leaveCompanyOrg}). Elsewhere, where the org has Mero
+ * Updates' team, off that team (a team call, which a session on the app's own
+ * frontend may make); Hyperfeed Updates is the org's app there, so `lastApp` is set
+ * too. A company without that team leaves the organization (on the node's
+ * consent page from the app's frontend).
+ */
+export async function leaveCompany(
   client: Pick<CalimeroClient, "session"> &
     ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
@@ -160,6 +200,13 @@ export function leaveCompany(
   passkey: () => PasskeyProvider,
   self?: string,
 ): Promise<LeftApp> {
+  const found = await updatesTeam(client, org, source);
+  if (found?.team && !isAppOnly(found.view, sourcePackage(source))) {
+    const me = self ?? client.session?.accountId;
+    if (!me) throw new Error("Sign in to leave.");
+    await removeFromAppTeam(client, org, source, me, passkey);
+    return { left: "app", lastApp: true };
+  }
   return leaveApp(client, org, source, passkey, self ? { self } : {});
 }
 
@@ -174,26 +221,31 @@ export function leaveCompanyOrg(
 }
 
 /**
- * Takes `account` out of the company (`removeFromApp`, a passkey step-up; its
- * owners and admins). In an org that keeps its apps apart that is Mero
- * Updates only (its team), never the organization; elsewhere the org, as
- * before. Answers which it was.
+ * Takes `account` out of the company (its owners and admins), which is taking
+ * them out of Hyperfeed Updates: off its team wherever the org has one (a team
+ * call; a passkey step-up), and they stay in the organization. A company
+ * without that team removes them from the org (`removeFromApp`: on the node's
+ * consent page from the app's frontend). Answers which it was.
  */
-export function removeFromCompany(
-  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
+export async function removeFromCompany(
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
   passkey: () => PasskeyProvider,
 ): Promise<"app" | "org"> {
+  if ((await updatesTeam(client, org, source))?.team) {
+    await removeFromAppTeam(client, org, source, account, passkey);
+    return "app";
+  }
   return removeFromApp(client, org, source, account, passkey);
 }
 
-/** The audience created in an org the account connects to Mero Updates ("Connect to an existing organization"). */
+/** The audience created in an org the account connects to Hyperfeed Updates ("Connect to an existing organization"). */
 export const CONNECTED_AUDIENCE_NAME = "Everyone";
 
 /**
- * A new audience in `org`, on Mero Updates' team (`orgInstanceOptions`: made
+ * A new audience in `org`, on Hyperfeed Updates' team (`orgInstanceOptions`: made
  * first, by an owner or admin, in an org whose other apps have teams;
  * organization access in a legacy org); answers the instance id. Its creator
  * is its first admin.
@@ -217,9 +269,9 @@ export interface CompanyInfo {
   roles: Map<string, string>;
   /** account -> the name they set for the whole company. */
   names: Map<string, string>;
-  /** Who has Mero Updates in the company: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Updates in the company: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Updates has its team: invites, Remove and Leave are its only. */
+  /** The org keeps its apps apart and Hyperfeed Updates has its team: invites, Remove and Leave are its only. */
   appOnly: boolean;
 }
 

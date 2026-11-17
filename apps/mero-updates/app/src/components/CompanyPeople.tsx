@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { PRODUCT_NAME } from "../lib/companies";
 
-/** One person who has Mero Updates in the company. */
+/** One person who has Hyperfeed Updates in the company. */
 export interface CompanyPerson {
   account: string;
   /** The org role: `owner` | `admin` | `member` | `guest`. */
@@ -16,10 +16,10 @@ const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin", gue
 const short = (account: string) => (account.length > 12 ? `${account.slice(0, 12)}…` : account);
 
 /**
- * Who has Mero Updates in the company, and for its owners and admins, taking
+ * Who has Hyperfeed Updates in the company, and for its owners and admins, taking
  * someone out of it. Remove asks first; it is never offered on your own row
  * nor on the owner's. In an org that keeps its apps apart (`appOnly`) it is
- * Mero Updates only, and the prompt says the organization stays theirs.
+ * Hyperfeed Updates only, and the prompt says the organization stays theirs.
  */
 export default function CompanyPeople({
   people,

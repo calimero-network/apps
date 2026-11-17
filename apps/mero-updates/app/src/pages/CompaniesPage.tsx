@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  ConsentNotStarted,
+  describeError,
+  otherOrgs,
+  type OtherOrg,
+} from "@calimero-apps/connect";
 import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
@@ -8,6 +15,7 @@ import { useToast } from "../contexts/ToastContext";
 import {
   CONNECTED_AUDIENCE_NAME,
   createAudience,
+  deleteCompany,
   finishCompany,
   setCompanyName,
   inviteBase,
@@ -36,7 +44,6 @@ import {
   UserPlusIcon,
 } from "../components/icons";
 import styles from "./CompaniesPage.module.css";
-import { passkeyConfirm } from "@calimero-network/mero-js";
 
 const CREATE_LABELS = {
   title: "New company",
@@ -83,7 +90,8 @@ export default function CompaniesPage() {
     try {
       await fn(setStatus);
     } catch (e) {
-      setError(describeError(e));
+      // They chose not to go to the approval page: nothing changed, nothing to say.
+      if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
     } finally {
       after();
       setPending(null);
@@ -176,7 +184,7 @@ export default function CompaniesPage() {
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the deletion with your passkey…");
-        await client.orgs.delete({ org: ns.namespaceId }, { confirm: passkeyConfirm(passkey()) });
+        await deleteCompany(client, ns.namespaceId, passkey, ns.name);
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
@@ -190,7 +198,7 @@ export default function CompaniesPage() {
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve leaving with your passkey…");
         const left = await leaveCompany(client, ns.namespaceId, source, passkey, accountId);
-        // An org that keeps its apps apart: Mero Updates only. When it was the
+        // An org that keeps its apps apart: Hyperfeed Updates only. When it was the
         // last app there, the organization itself is offered too.
         if (
           left.left === "app" &&
@@ -257,7 +265,7 @@ export default function CompaniesPage() {
               {pending === "create" ? "Creating…" : "New company"}
             </button>
           </div>
-          <ConnectExistingOrg appName="Mero Updates" load={loadOtherOrgs} onConnect={connectOrg} />
+          <ConnectExistingOrg appName="Hyperfeed Updates" load={loadOtherOrgs} onConnect={connectOrg} />
         </section>
 
         {status && (
