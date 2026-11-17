@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { InviteDialog } from "@calimero-network/mero-react";
-import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  askAnOwnerCopy,
+  canCreateIn,
+  ConsentNotStarted,
+  describeError,
+} from "@calimero-apps/connect";
 
 import { PRODUCT_NAME } from "../config";
 import { useToast } from "../contexts/ToastContext";
@@ -72,7 +79,7 @@ export default function ForumsPage() {
    */
   const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
-  /** Who has Mero Forum in the space, and whether Remove is this app's only (apps kept apart). */
+  /** Who has Hyperfeed Forum in the space, and whether Remove is this app's only (apps kept apart). */
   const [people, setPeople] = useState<{ rows: SpacePerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
@@ -97,7 +104,8 @@ export default function ForumsPage() {
       try {
         await fn(setStatus);
       } catch (e) {
-        setError(describeError(e));
+        // They chose not to go to the approval page: nothing changed, nothing to say.
+        if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
       } finally {
         setPending(null);
         setStatus(null);

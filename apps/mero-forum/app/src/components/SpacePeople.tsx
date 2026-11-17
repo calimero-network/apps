@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { PRODUCT_NAME } from "../config";
 
-/** One person who has Mero Forum in the space. */
+/** One person who has Hyperfeed Forum in the space. */
 export interface SpacePerson {
   account: string;
   /** The org role: `owner` | `admin` | `member` | `guest`. */
@@ -16,10 +16,10 @@ const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin", gue
 const short = (account: string) => (account.length > 12 ? `${account.slice(0, 12)}…` : account);
 
 /**
- * Who has Mero Forum in the space, and for its owners and admins, taking
+ * Who has Hyperfeed Forum in the space, and for its owners and admins, taking
  * someone out of it. Remove asks first; it is never offered on your own row
  * nor on the owner's. In an org that keeps its apps apart (`appOnly`) it is
- * Mero Forum only, and the prompt says the organization stays theirs.
+ * Hyperfeed Forum only, and the prompt says the organization stays theirs.
  */
 export default function SpacePeople({
   people,

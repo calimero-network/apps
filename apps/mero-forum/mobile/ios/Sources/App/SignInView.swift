@@ -2,7 +2,7 @@ import ForumCore
 import MeroKitUI
 import SwiftUI
 
-/// The front door: what Mero Forum is, then sign-in to a Calimero 1.0 cluster.
+/// The front door: what Hyperfeed Forum is, then sign-in to a Calimero 1.0 cluster.
 ///
 /// - Calimero Cloud: the cluster by name (`eu-shared-1`, its nodes read from
 ///   the Cloud directory) or by a node URL from the console (or baked in as
@@ -31,7 +31,7 @@ struct SignInView: View {
                         .frame(width: 84, height: 84)
                         .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Palette.lime))
                     VStack(spacing: 10) {
-                        Text("Mero Forum").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                        Text("Hyperfeed Forum").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                         Text("Discussions for your community, on your own Calimero cluster. Sign in with a passkey.")
                             .font(.system(size: 17))
                             .foregroundStyle(Palette.muted)

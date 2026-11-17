@@ -15,7 +15,7 @@ struct SpacesScreen: View {
         _model = StateObject(wrappedValue: SpacesModel(backend: backend))
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
-                packageName: ForumConstants.packageName, appName: "Mero Forum",
+                packageName: ForumConstants.packageName, appName: "Hyperfeed Forum",
                 fetch: { [weak session] org in
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
@@ -268,7 +268,7 @@ struct JoinSheet: View {
 
     private func run() {
         guard ForumInvitation.parse(link) != nil else {
-            error = "This isn't a Mero Forum invitation. Check the link and try again."
+            error = "This isn't a Hyperfeed Forum invitation. Check the link and try again."
             Haptics.failure()
             return
         }

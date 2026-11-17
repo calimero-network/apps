@@ -121,7 +121,7 @@ class InvitationModelTest {
     fun `rejects a link that is not an invitation`() {
         val model = InvitationModel()
         assertFalse(model.open("https://example.com"))
-        assertEquals(InvitationModel.Stage.Failed("This isn't a Mero Forum invitation. Check the link and try again."), model.stage.value)
+        assertEquals(InvitationModel.Stage.Failed("This isn't a Hyperfeed Forum invitation. Check the link and try again."), model.stage.value)
     }
 
     @Test

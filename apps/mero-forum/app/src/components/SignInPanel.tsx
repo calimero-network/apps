@@ -17,7 +17,7 @@ export default function SignInPanel({ titleId, close }: { titleId: string; close
   return (
     <SharedSignInPanel
       api={api}
-      appName="Mero Forum"
+      appName="Hyperfeed Forum"
       joining="the space"
       listing={LISTING}
       titleId={titleId}

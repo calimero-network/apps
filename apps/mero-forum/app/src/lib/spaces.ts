@@ -8,6 +8,7 @@ import {
 import {
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
   createInviteStore,
   inviteLinkBase as sharedInviteLinkBase,
@@ -18,6 +19,7 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
+  removeFromAppTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -25,11 +27,13 @@ import {
   type InviteStore,
   type KeyValueStorage,
   type LeftApp,
+  type MaybeMe,
   type PendingInvite,
 } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP_NAME } from "../config";
+import { askOrgConsent } from "./orgConsent";
 
 /**
  * v1 → Calimero 1.0, for this app:
@@ -47,14 +51,14 @@ import { APP_NAME } from "../config";
  * `@calimero-apps/connect`'s org-app module: a new space's team is open
  * (everyone in the org has the app), forums use team access on it, invites
  * name it, and the member count is its people. Once an admin keeps the org's
- * apps apart in Calimero Home (`shared`), an invite gives Mero Forum only and
- * Leave leaves Mero Forum only (offering the org when it was the last app).
+ * apps apart in Calimero Home (`shared`), an invite gives Hyperfeed Forum only and
+ * Leave leaves Hyperfeed Forum only (offering the org when it was the last app).
  * An org without one (made before app teams, a node without them, a raw dev
  * bundle) is legacy: organization access, as before.
  */
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Forum";
+export const PRODUCT_NAME = "Hyperfeed Forum";
 
 /** A space this account is in. Field names are what the screens called them. */
 export interface NamespaceRow {
@@ -156,27 +160,56 @@ export async function finishSpace(
   };
 }
 
-/** Deletes the org and, with it, every forum in it. A passkey step-up. */
+/**
+ * Deletes the org and, with it, every forum in it. A passkey step-up; from
+ * the app's own frontend, on the node's consent page (the promise then never
+ * settles while the page unloads).
+ */
 export async function deleteSpace(
-  client: ClientRoutes<{ orgs: "delete" }>,
+  client: MaybeMe & Partial<Pick<CalimeroClient, "openConsentPage">> & ClientRoutes<{ orgs: "delete" }>,
   org: string,
   passkey: () => PasskeyProvider,
+  name = "",
 ): Promise<void> {
+  if (await askOrgConsent(client, { kind: "deleteOrg", org, name })) return;
   await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
 }
 
+/** `getOrg` for `org`, and Hyperfeed Forum's own team there (`null` without one, or under a raw bundle). */
+async function forumTeam(
+  client: ClientRoutes<{ orgs: "get" }>,
+  org: string,
+  source: AppSource | null,
+): Promise<{ view: AppOrgView; team: string | null } | null> {
+  const pkg = sourcePackage(source);
+  if (!pkg) return null;
+  const view = (await client.orgs.get({ org })) as AppOrgView;
+  return { view, team: appTeamIdIn(view, pkg) };
+}
+
 /**
- * Leaves the space (`leaveApp`, a passkey step-up). In an org that keeps its
- * apps apart that is Mero Forum only, with `lastApp` set when it was the
- * caller's last app there (offer {@link leaveSpaceOrg}); elsewhere the org.
+ * Leaves the space, which is leaving Hyperfeed Forum. In an org that keeps its
+ * apps apart, its team only, with `lastApp` set when it was the caller's last
+ * app there (offer {@link leaveSpaceOrg}). Elsewhere, where the org has Mero
+ * Forum's team, off that team (a team call, which a session on the app's own
+ * frontend may make); Hyperfeed Forum is the org's app there, so `lastApp` is set
+ * too. A space without that team leaves the org (on the node's consent page
+ * from the app's frontend).
  */
-export function leaveSpace(
+export async function leaveSpace(
   client: Pick<CalimeroClient, "session"> &
     ClientRoutes<{ orgs: "get" | "appTeamList" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   passkey: () => PasskeyProvider,
 ): Promise<LeftApp> {
+  const found = await forumTeam(client, org, source);
+  if (found?.team && !isAppOnly(found.view, sourcePackage(source))) {
+    const self = client.session?.accountId;
+    if (!self) throw new Error("Sign in to leave.");
+    await removeFromAppTeam(client, org, source, self, passkey);
+    return { left: "app", lastApp: true };
+  }
   return leaveApp(client, org, source, passkey);
 }
 
@@ -190,18 +223,23 @@ export function leaveSpaceOrg(
 }
 
 /**
- * Takes `account` out of the space (`removeFromApp`, a passkey step-up; the
- * space's owners and admins). In an org that keeps its apps apart that is
- * Mero Forum only (its team), never the organization; elsewhere the org, as
- * before. Answers which it was.
+ * Takes `account` out of the space (the space's owners and admins), which is
+ * taking them out of Hyperfeed Forum: off its team wherever the org has one (a
+ * team call; a passkey step-up), and they stay in the organization. A space
+ * without that team removes them from the org (`removeFromApp`: on the node's
+ * consent page from the app's frontend). Answers which it was.
  */
-export function removeFromSpace(
-  client: ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
+export async function removeFromSpace(
+  client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "teamRemoveMember" | "removeMember" }>,
   org: string,
   source: AppSource | null,
   account: string,
   passkey: () => PasskeyProvider,
 ): Promise<"app" | "org"> {
+  if ((await forumTeam(client, org, source))?.team) {
+    await removeFromAppTeam(client, org, source, account, passkey);
+    return "app";
+  }
   return removeFromApp(client, org, source, account, passkey);
 }
 
@@ -239,9 +277,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the space, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Forum in the org, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Forum in the org, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Mero Forum's only. */
+  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Hyperfeed Forum's only. */
   appOnly: boolean;
 }
 

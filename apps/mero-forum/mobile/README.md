@@ -1,6 +1,6 @@
-# Mero Forum: native mobile apps
+# Hyperfeed Forum: native mobile apps
 
-Native iOS and Android clients for Mero Forum, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Forum, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-forum`). Both apps have the same screens, copy,
 icons (SF Symbols on iOS, Material Icons on Android) and flows.
 
@@ -22,7 +22,7 @@ over the sealed channel to an attested node:
   directory) or by a node URL, then the device's passkey ("Create an account" registers a new one);
   or a **Development node** (`merod local`, mock attestation allowed, a software passkey kept on
   the device).
-- **Spaces are organizations; a forum is an app instance of Mero Forum directly in the org**, as
+- **Spaces are organizations; a forum is an app instance of Hyperfeed Forum directly in the org**, as
   on the web (`createApp(name, source, { org })`). Every member of the org reaches its forums, so
   there is nothing to join and nothing waits to sync.
 - **The contract** is the component port's (`../logic/res/abi.json`, web PR #715): camelCase
@@ -40,7 +40,7 @@ over the sealed channel to an attested node:
   `https://links.calimero.network/com.calimero.mero-forum/join?invitation=…` or `calimero://`),
   redeemed with `POST /invites/{token}/redeem`. The web app's 1.0 link (`?invite=inv_…&forum=<app>`)
   opens too. Pre-1.0 links are refused.
-- **Approvals**: newer Mero Forum releases and node releases that wait for the person show on
+- **Approvals**: newer Hyperfeed Forum releases and node releases that wait for the person show on
   Spaces. "Review" first shows the node's confirmation code, then opens the consent page in the
   system browser (Custom Tab on Android), which returns to `mero-forum://consent`.
 - **Live updates** from `MeroAppBackend.events(contextId)`, with a 10-second poll when the stream
@@ -48,7 +48,7 @@ over the sealed channel to an attested node:
 
 ## Screens
 
-1. **Sign in**: what Mero Forum is, Calimero Cloud (cluster name or URL, passkey sign-in or
+1. **Sign in**: what Hyperfeed Forum is, Calimero Cloud (cluster name or URL, passkey sign-in or
    create an account) or a development node. An invitation that arrived while signed out is named
    here.
 2. **Spaces**: what waits for approval, your spaces as cards; New space, Join with a link, Account (name, account id

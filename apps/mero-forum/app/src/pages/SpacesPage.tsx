@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appInviteTeams, appOnlyInviteNote, describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import {
+  appInviteTeams,
+  appOnlyInviteNote,
+  ConsentNotStarted,
+  describeError,
+  otherOrgs,
+  type OtherOrg,
+} from "@calimero-apps/connect";
 import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
@@ -109,7 +116,8 @@ export default function SpacesPage() {
       try {
         await fn(setStatus);
       } catch (e) {
-        setError(describeError(e));
+        // They chose not to go to the approval page: nothing changed, nothing to say.
+        if (!(e instanceof ConsentNotStarted)) setError(describeError(e));
       } finally {
         setPending(null);
         setStatus(null);
@@ -210,7 +218,7 @@ export default function SpacesPage() {
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the deletion with your passkey…");
-        await deleteSpace(client, ns.namespaceId, passkey);
+        await deleteSpace(client, ns.namespaceId, passkey, ns.name);
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
@@ -224,7 +232,7 @@ export default function SpacesPage() {
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve leaving with your passkey…");
         const left = await leaveSpace(client, ns.namespaceId, source, passkey);
-        // An org that keeps its apps apart: Mero Forum only. When it was the
+        // An org that keeps its apps apart: Hyperfeed Forum only. When it was the
         // last app there, the organization itself is offered too.
         if (
           left.left === "app" &&
@@ -336,7 +344,7 @@ export default function SpacesPage() {
         )}
 
         <div style={{ margin: "8px 0 16px" }}>
-          <ConnectExistingOrg appName="Mero Forum" load={loadOtherOrgs} onConnect={connectOrg} />
+          <ConnectExistingOrg appName="Hyperfeed Forum" load={loadOtherOrgs} onConnect={connectOrg} />
         </div>
 
         {listing ? (

@@ -2,4 +2,4 @@
 export const APP_PACKAGE = "com.calimero.mero-forum";
 /** The app's name in stored keys (sessions, selections, pending invitations). */
 export const APP_NAME = "mero-forum";
-export const PRODUCT_NAME = "Mero Forum";
+export const PRODUCT_NAME = "Hyperfeed Forum";

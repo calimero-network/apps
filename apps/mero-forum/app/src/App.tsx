@@ -8,6 +8,7 @@ import PostPage from "./pages/PostPage";
 import LandingPage from "./pages/landing/LandingPage";
 import SpacesPage from "./pages/SpacesPage";
 import ForumsPage from "./pages/ForumsPage";
+import ConsentReturn from "./components/ConsentReturn";
 import InvitationHost from "./components/InvitationHost";
 import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -107,6 +108,7 @@ function AppRoutes() {
   // screens stand in for the route (no redirect to drop it).
   return (
     <ToastProvider>
+      <ConsentReturn />
       <InvitationHost>
         <Routes>
           {/* The explainer is the front door now, not the feed. */}

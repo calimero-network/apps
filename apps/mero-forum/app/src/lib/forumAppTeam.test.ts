@@ -1,5 +1,5 @@
 /**
- * Mero Forum's own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Forum's own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's: a new space gets an open team and its forums go on it; invites
  * name it; the member count is its people; Remove and Leave in an org that
@@ -87,12 +87,19 @@ describe("Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
   });
 
-  it("standalone and legacy: leaving the space is leaving the organization, as before", async () => {
+  it("standalone: off Forum's team, the organization's app, so leaving the organization is offered", async () => {
     const { cluster, org } = await space({ "acct-ana": "owner" });
-    expect(await leaveSpace(cluster.client, org, SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
-    expect(cluster.org(org).members["acct-me"]).toBeUndefined();
+    cluster.org(org).members["acct-me"] = "member";
+    expect(await leaveSpace(cluster.client, org, SOURCE, passkey)).toEqual({ left: "app", lastApp: true });
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-me"]);
+    expect(cluster.org(org).members["acct-me"]).toBe("member");
+  });
+
+  it("a space without Forum's team (legacy): leaving the organization, as before", async () => {
+    const cluster = orgCluster();
     const legacy = cluster.addOrg({ mode: "legacy", role: "member" });
-    expect((await leaveSpace(cluster.client, legacy, SOURCE, passkey)).left).toBe("org");
+    expect(await leaveSpace(cluster.client, legacy, SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
+    expect(cluster.org(legacy).members["acct-me"]).toBeUndefined();
   });
 });
 
@@ -107,10 +114,12 @@ describe("Remove", () => {
     expect((await readMembers(cluster.client, org, SOURCE)).people).not.toContain("acct-bob");
   });
 
-  it("standalone: out of the organization, as before", async () => {
+  it("standalone: off Forum's team, a team call; they stay in the organization", async () => {
     const { cluster, org } = await space({ "acct-bob": "member" });
-    expect(await removeFromSpace(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("org");
-    expect(cluster.org(org).members["acct-bob"]).toBeUndefined();
+    expect(await removeFromSpace(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-bob"]);
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+    expect(cluster.org(org).members["acct-bob"]).toBe("member");
   });
 
   it("a legacy org: out of the organization", async () => {
@@ -136,7 +145,7 @@ describe("adding Forum to an organization whose apps have teams", () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
     await expect(createForum(cluster.client, SOURCE, org, "General", passkey)).rejects.toThrow(
-      /owners and admins can add Mero Forum/,
+      /owners and admins can add Hyperfeed Forum/,
     );
     expect(cluster.callsOf("createApp")).toEqual([]);
   });

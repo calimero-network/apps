@@ -1,4 +1,4 @@
-# Mero Forum
+# Hyperfeed Forum
 
 A discussion forum: threads, flat comments, one vote per account on posts and
 comments, display names and moderators. A component app on Calimero 1.0: the
@@ -30,25 +30,25 @@ it, including forums made later. Anyone else is refused before the contract runs
 (`404 NOT_FOUND` for an outsider, `401 UNAUTHENTICATED` for an anonymous caller).
 
 
-## Mero Forum's app team
+## Hyperfeed Forum's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Forum reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Forum reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Forum's team at once, **open**
+- A new organization made here gets Hyperfeed Forum's team at once, **open**
   (`standalone`: everyone in the org has the app). New forums use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Forum only (the dialog says so) and only its people are shown.
-  **Leave** then leaves Mero Forum only, and offers to leave the organization
+  invite gives Hyperfeed Forum only (the dialog says so) and only its people are shown.
+  **Leave** then leaves Hyperfeed Forum only, and offers to leave the organization
   too when it was your last app there; in open and legacy orgs Leave is
   leaving the org, as before. The space's owners and admins **Remove** people
-  from the People card: Mero Forum only in such an org, out of the org in open
+  from the People card: Hyperfeed Forum only in such an org, out of the org in open
   and legacy ones.
-- Adding Mero Forum to an organization whose apps have teams makes its team
+- Adding Hyperfeed Forum to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization

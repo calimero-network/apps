@@ -104,7 +104,7 @@ final class InvitationModelTests: XCTestCase {
     func testRejectsALinkThatIsNotAnInvitation() {
         let model = InvitationModel()
         XCTAssertFalse(model.open("https://example.com"))
-        XCTAssertEqual(model.stage, .failed("This isn't a Mero Forum invitation. Check the link and try again."))
+        XCTAssertEqual(model.stage, .failed("This isn't a Hyperfeed Forum invitation. Check the link and try again."))
     }
 
     func testJoinsASpace() async throws {

@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// One forum in a space: an app instance of Mero Forum in the space's org (the web
+/// One forum in a space: an app instance of Hyperfeed Forum in the space's org (the web
 /// app's `createApp(name, source, { org })`). Its id is the app instance id.
 public struct ForumRow: Identifiable, Hashable, Sendable {
     public let id: String
@@ -59,7 +59,7 @@ public final class ForumsModel: ObservableObject {
         }
     }
 
-    /// Create a forum: an app instance of Mero Forum directly in the space's
+    /// Create a forum: an app instance of Hyperfeed Forum directly in the space's
     /// org, whose `init` takes no arguments.
     @discardableResult
     public func create(name: String) async throws -> ForumRef {

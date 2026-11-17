@@ -142,11 +142,11 @@ class ForumViewModel(
     val invitation = InvitationModel()
     val names: NameStore = PrefsNameStore(app)
 
-    /** What waits for the person's approval (updates of Mero Forum, node releases). */
+    /** What waits for the person's approval (updates of Hyperfeed Forum, node releases). */
     val approvals =
         ApprovalsModel(
             packageName = ForumConstants.PACKAGE_NAME,
-            appName = "Mero Forum",
+            appName = "Hyperfeed Forum",
             returnTo = BuildConfig.CONSENT_CALLBACK_URL,
             fetch = { org -> (_session.value ?: throw SignedOutException("pendingApprovals")).client.pendingApprovals(org) },
             consent = { request, confirm ->
