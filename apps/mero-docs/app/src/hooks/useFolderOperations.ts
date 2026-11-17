@@ -86,41 +86,14 @@ export function useFolderOperations(
       let folderReady = false;
 
       try {
-        // Step ordering is load-bearing for Open subgroups. Core
-        // encrypts every GroupOp with the key chain implied by
-        // current subgroup_visibility at publish time: an Open
-        // subgroup whose chain reaches the namespace root encrypts
-        // with the namespace key (visible to all namespace members);
-        // anything else encrypts with the subgroup key (visible only
-        // to direct subgroup members). The create-time `name` stamp
-        // and any subsequent `setGroupMetadata` BEFORE
-        // `setSubgroupVisibility(Open)` therefore land subgroup-key-
-        // encrypted - namespace-only members can't decrypt them, and
-        // see the folder as unnamed.
-        //
-        // Order below: create with no name → reparent → flip
-        // visibility → set name. For Restricted subgroups the
-        // visibility flip is a no-op (Restricted is the default),
-        // and the name write still encrypts with the subgroup key -
-        // which is fine because only subgroup members ever read it.
-        //
-        // A top-level Open folder is instead created Open (core
-        // #2771) and never flipped. Created Restricted, core admits
-        // the TEE with an op sealed under the subgroup key, and the
-        // later Open flip cites it: a namespace member who is not in
-        // the subgroup can read the flip but never its ancestry, so
-        // it parks the flip - and every governance op after it in the
-        // namespace. Born Open, that subgroup-key op never exists.
-        // Nested folders keep the flip: they are created under the
-        // root and reparented, and the parent may not be Open. Both
-        // cases name their visibility rather than lean on core's
-        // default.
-        const bornOpen =
-          input.parentGroupId === rootGroupId && input.visibility === 'Open';
-        // A team under its parent folder (the org itself at the top),
-        // named as the folder.
+        // Every folder is created invite-only and opened afterwards. Core
+        // lets a member without a lead's row on the parent create only an
+        // invite-only team below it (`CREATE_CHILD_TEAM`, an app team's
+        // default), and the creator leads the new team, so they may open it
+        // themselves. An Open sub-folder also gets the parent's Read only
+        // rows before it opens, so it is never Open without them.
         const group = await createGroupInNamespace(input.namespaceId, {
-          visibility: bornOpen ? 'open' : 'restricted',
+          visibility: 'restricted',
           parentId: input.parentGroupId,
           name: input.alias,
         });
@@ -132,12 +105,8 @@ export function useFolderOperations(
           await readOnlyRowsBeforeOpen(writer, input.parentGroupId, newId);
         }
 
-        // An Open sub-folder is created invite-only and opened once the
-        // parent's Read only rows are in it.
-        if (!bornOpen) {
-          await setSubgroupVisibility(newId, {
-            subgroupVisibility: input.visibility.toLowerCase(),
-          });
+        if (input.visibility === 'Open') {
+          await setSubgroupVisibility(newId, { subgroupVisibility: 'open' });
         }
 
         // The colour lives in the team's metadata.
