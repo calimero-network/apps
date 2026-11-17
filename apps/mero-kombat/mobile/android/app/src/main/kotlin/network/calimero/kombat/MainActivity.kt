@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
         val send =
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, "Fight me in Mero Kombat")
+                putExtra(Intent.EXTRA_SUBJECT, "Fight me in Hyperfeed Kombat")
                 putExtra(Intent.EXTRA_TEXT, link)
             }
         startActivity(Intent.createChooser(send, "Invite an opponent"))

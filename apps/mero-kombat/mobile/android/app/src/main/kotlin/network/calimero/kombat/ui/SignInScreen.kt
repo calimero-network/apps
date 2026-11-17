@@ -82,7 +82,7 @@ fun SignInScreen(
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 AppMark(56.dp)
-                Text("Mero Kombat", style = Type.heading(34))
+                Text("Hyperfeed Kombat", style = Type.heading(34))
                 Text(
                     "A one-on-one fighting game where every punch is a transaction on your attested Calimero cluster. Two fighters, best of three rounds, no game server.",
                     style = Type.body(16, color = KombatColors.Ink2),

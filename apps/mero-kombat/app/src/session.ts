@@ -20,7 +20,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Kombat",
+  name: "Hyperfeed Kombat",
   description: "A one-on-one arcade fighting game with no game server.",
   package: PACKAGE,
   dir: "mero-kombat",
@@ -34,7 +34,7 @@ export const ONBOARDING: {
   listing: ListingProps;
   classNames: OnboardingClassNames;
 } = {
-  appName: "Mero Kombat",
+  appName: "Hyperfeed Kombat",
   joining: "the arena",
   listing: LISTING,
   classNames: { root: "card", text: "hint", error: "err", actions: "row", secondary: "ghost" },

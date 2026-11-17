@@ -1,6 +1,6 @@
 {
-  "name": "Mero Kombat",
-  "short_name": "Mero Kombat",
+  "name": "Hyperfeed Kombat",
+  "short_name": "Hyperfeed Kombat",
   "description": "A one-on-one arcade fighting game with no game server. Every punch, kick and special is a transaction on both fighters' own nodes.",
   "display": "standalone",
   "background_color": "#0f1013",

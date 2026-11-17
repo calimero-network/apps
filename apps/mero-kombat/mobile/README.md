@@ -1,6 +1,6 @@
-# Mero Kombat: native mobile apps
+# Hyperfeed Kombat: native mobile apps
 
-Native iOS and Android clients for Mero Kombat, next to the web frontend (`../app`) and the contract
+Native iOS and Android clients for Hyperfeed Kombat, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-kombat`). Both apps are **landscape only** and have the same
 screens, copy, icons (SF Symbols ↔ Material Symbols) and flows. The fight itself is the **web app's
 engine** (`../app/src/game`, unchanged) running in a WebView, bundled into the app as local assets.

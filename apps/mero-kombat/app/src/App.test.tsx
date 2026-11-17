@@ -186,7 +186,7 @@ describe("App", () => {
   it("shows the listing on a production copy no cluster serves, and still offers practice", async () => {
     at("/play");
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    const open = await screen.findByRole("link", { name: "Open Mero Kombat" });
+    const open = await screen.findByRole("link", { name: "Open Hyperfeed Kombat" });
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-kombat")`.
     expect(open.getAttribute("href")).toBe("https://orqxfngg5qothc2ka2egy5yxatlmyty5y26jpy37ypltr4c26ksa.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
@@ -307,7 +307,7 @@ describe("App", () => {
     render(<App deps={deps(fakeClient())} storage={storage} invites={invites} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join the arena in Mero Kombat.",
+      "You've been invited to join the arena in Hyperfeed Kombat.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(document.querySelector(".cal-lp-root")).toBeNull();

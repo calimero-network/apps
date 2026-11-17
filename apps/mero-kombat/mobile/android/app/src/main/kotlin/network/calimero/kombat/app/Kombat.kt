@@ -105,8 +105,8 @@ class KombatException(
         val message: String,
     ) {
         NO_NAMESPACE("This arena's organization is not known on this device yet. Open it from Arenas and try again."),
-        NO_APPLICATION("Mero Kombat is not published on this cluster yet."),
-        NOT_AN_INVITATION("That is not a Mero Kombat invitation link."),
+        NO_APPLICATION("Hyperfeed Kombat is not published on this cluster yet."),
+        NOT_AN_INVITATION("That is not a Hyperfeed Kombat invitation link."),
         SIGNED_OUT("You're signed out. Sign in again to fight."),
     }
 }

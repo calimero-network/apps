@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// Mero Kombat's non-UI layer: the typed contract client, the arena and lobby view models, the
+// Hyperfeed Kombat's non-UI layer: the typed contract client, the arena and lobby view models, the
 // JS bridge to the game page, the fight pad's input mapping and the presence channel. A plain
 // SwiftPM package so `swift build` / `swift test` run it on macOS with no simulator; the app
 // (project.yml) links it as a local package.

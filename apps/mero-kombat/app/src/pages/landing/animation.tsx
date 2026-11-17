@@ -1,5 +1,5 @@
 /**
- * Mero Kombat — attract mode. The real engine, two CPUs, looping: the same
+ * Hyperfeed Kombat — attract mode. The real engine, two CPUs, looping: the same
  * renderer, stage and HUD a fight uses, so the landing page shows the game
  * rather than a picture of it.
  *

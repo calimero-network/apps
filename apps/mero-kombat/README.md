@@ -1,4 +1,4 @@
-# Mero Kombat
+# Hyperfeed Kombat
 
 A one-on-one arcade fighting game where every punch is a transaction.
 

@@ -91,7 +91,7 @@ function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
         <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
         <h1>Sign in to fight</h1>
         <p className="lede">
-          Mero Kombat fights through a Calimero cluster ({where}): every punch you throw is a
+          Hyperfeed Kombat fights through a Calimero cluster ({where}): every punch you throw is a
           transaction its log orders. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
         <div className="connect-passkey">
@@ -228,7 +228,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         passkey={deps.passkey()}
         token={invite?.token ?? ""}
         org={invite?.org ?? undefined}
-        appName="Mero Kombat"
+        appName="Hyperfeed Kombat"
         labels={{ noun: "arena" }}
         onError={invites.drop}
         onClose={() => {
@@ -321,7 +321,7 @@ function AppShell({ children }: { children: ReactNode }) {
             onClick={() => navigate("/", { state: { fromApp: true } })}
           >
             <img src={`${basename()}favicon.svg`} alt="" width={28} height={28} />
-            <span>Mero Kombat</span>
+            <span>Hyperfeed Kombat</span>
           </button>
           {session.status === "signed-in" && (
             <div className="session">

@@ -52,7 +52,7 @@ export function InviteCard({
             open={open}
             onClose={() => setOpen(false)}
             org={org}
-            appName="Mero Kombat"
+            appName="Hyperfeed Kombat"
             labels={LABELS}
             linkBase={arenaInviteBase(arena.appId, org)}
             onInvited={after}
