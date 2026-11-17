@@ -134,7 +134,9 @@ describe('useFolderOperations.create - Read only', () => {
 });
 
 describe('useFolderOperations.create - visibility', () => {
-  it('creates a top-level Open folder Open, with no visibility flip', async () => {
+  // Core lets a member who does not lead the parent create only an
+  // invite-only team below it; the creator leads it and opens it after.
+  it('creates a top-level Open folder invite-only, then opens it', async () => {
     const { result } = renderHook(() =>
       useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
     );
@@ -145,13 +147,34 @@ describe('useFolderOperations.create - visibility', () => {
       visibility: 'Open',
     });
     expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', {
-      visibility: 'open',
+      visibility: 'restricted',
       parentId: ROOT,
       name: 'Open one',
     });
-    expect(setSubgroupVisibility).not.toHaveBeenCalled();
+    expect(setSubgroupVisibility).toHaveBeenCalledWith('new-folder', { subgroupVisibility: 'open' });
+    expect(createGroupInNamespace.mock.invocationCallOrder[0]).toBeLessThan(
+      setSubgroupVisibility.mock.invocationCallOrder[0],
+    );
     // No colour, nothing more to write.
     expect(setGroupMetadata).not.toHaveBeenCalled();
+  });
+
+  it('leaves a Restricted folder as created, with no visibility write', async () => {
+    const { result } = renderHook(() =>
+      useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Private',
+      visibility: 'Restricted',
+    });
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', {
+      visibility: 'restricted',
+      parentId: ROOT,
+      name: 'Private',
+    });
+    expect(setSubgroupVisibility).not.toHaveBeenCalled();
   });
 
   it('still flips a nested Open folder once it is created', async () => {
@@ -432,7 +455,7 @@ describe('useFolderOperations.create - drift on partial failure', () => {
         namespaceId: 'ns-1',
         alias: 'Docs',
         parentGroupId: ROOT,
-        visibility: 'Restricted',
+        visibility: 'Open',
         color: '#ff0000',
         members: [],
       }),
