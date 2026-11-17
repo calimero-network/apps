@@ -18,7 +18,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Stream",
+  name: "Hyperfeed Stream",
   description: "Experimental: streaming media over Calimero.",
   package: PACKAGE,
   dir: "mero-stream",

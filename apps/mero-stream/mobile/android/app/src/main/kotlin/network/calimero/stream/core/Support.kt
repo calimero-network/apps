@@ -38,7 +38,7 @@ object ErrorText {
             is AppError -> appError(error)
             is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
             is SerializationException ->
-                "The room answered in a shape this app does not read. It may run a different version of Mero Stream."
+                "The room answered in a shape this app does not read. It may run a different version of Hyperfeed Stream."
             is IOException -> "Your cluster can't be reached. Check your connection and try again."
             else -> error.message ?: error.toString()
         }
@@ -64,9 +64,9 @@ class StreamException(
     message: String,
 ) : Exception(message) {
     companion object {
-        fun noApplication() = StreamException("Mero Stream is not installed for your account yet. Try again in a moment.")
+        fun noApplication() = StreamException("Hyperfeed Stream is not installed for your account yet. Try again in a moment.")
 
-        fun notAnInvitation() = StreamException("That is not a Mero Stream invitation link.")
+        fun notAnInvitation() = StreamException("That is not a Hyperfeed Stream invitation link.")
 
         fun noRoomContext(name: String) = StreamException("“$name” has no call yet. It may still be replicating; refresh in a moment.")
 

@@ -94,7 +94,7 @@ fun SignInScreen(
             Icon(Icons.Rounded.Videocam, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(32.dp))
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mero Stream", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
+            Text("Hyperfeed Stream", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
             Text(
                 "Video rooms on your attested Calimero cluster. Up to two people share their camera at once; everyone else watches.",
                 fontSize = 16.sp,

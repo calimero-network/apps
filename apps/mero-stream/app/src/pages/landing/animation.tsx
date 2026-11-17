@@ -1,5 +1,5 @@
 /**
- * Mero Stream — a minimal mock of the app itself.
+ * Hyperfeed Stream — a minimal mock of the app itself.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  * Shows REAL labels, the way the bespoke previews this replaced did.

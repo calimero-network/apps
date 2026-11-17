@@ -19,10 +19,13 @@ import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
 import { decideSelfName } from "@calimero-apps/names";
 import {
+  clearActiveRoom,
   getActiveNamespaceId,
   getRoomName,
   storedName,
 } from "../lib/session";
+import { alreadyJoined } from "../lib/meroStream";
+import { visibleInterval } from "../lib/visibleInterval";
 import {
   DEGRADED_DELIVERY_PERCENT,
   DEGRADED_FROM_BROADCASTERS,
@@ -156,11 +159,19 @@ export default function CallPage() {
   // One attempt per name: on the component runtime a room exists as soon as
   // it is created, so v1's retry-until-synced loop has nothing to wait for. A
   // later rename supersedes an earlier join still in flight.
+  // Read first: opening a room you are already in under that name sends no write.
   const join = useCallback(async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const generation = ++joinGeneration.current;
-    const m = await streamRef.current.join(trimmed);
+    const current = streamRef.current;
+    const roster = await current.getMembers();
+    if (!alive.current || joinGeneration.current !== generation) return;
+    if (alreadyJoined(roster, current.myId, trimmed)) {
+      setJoined(true);
+      return;
+    }
+    const m = await current.join(trimmed);
     if (!alive.current || joinGeneration.current !== generation) return;
     if (m) setJoined(true);
   }, []);
@@ -247,12 +258,20 @@ export default function CallPage() {
           /* transient RPC error — the next tick retries */
         });
     void refresh();
-    const id = setInterval(refresh, 10_000);
+    const stop = visibleInterval(() => void refresh(), 10_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [joined, peerCount, stream]);
+
+  // The room was deleted, or your access to it taken away: close the call and
+  // go back to the rooms instead of failing every read.
+  useEffect(() => {
+    if (!stream.gone) return;
+    clearActiveRoom();
+    navigate(namespaceId ? `/streams/${namespaceId}` : "/streams", { replace: true });
+  }, [stream.gone, namespaceId, navigate]);
 
   // One stable ref callback per peer, cached by member id, so React does not
   // detach/reattach the canvas on every render. See the comment at the call site.

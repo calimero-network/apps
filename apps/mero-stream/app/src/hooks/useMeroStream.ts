@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, isNotFound } from "@calimero-apps/connect";
 import { useSessionApi } from "../session";
 import { MeroStreamClient } from "../generated/client";
 import {
@@ -36,7 +36,9 @@ import type { SenderCursor } from "../types";
  * - reads and `join` resolve to `null` on a refusal (v1's `useExecute` did the
  *   same, and the pages rely on it), with the message in `error`;
  * - `encodeFrame` and `postChunk` reject, because the probe times them and
- *   counts a refusal as a failed encode.
+ *   counts a refusal as a failed encode;
+ * - `gone` turns true once a read finds the room no longer there (deleted, or
+ *   your access to it taken away): the call closes instead of failing on.
  */
 export function useMeroStream() {
   const { session, store } = useSessionApi();
@@ -44,6 +46,7 @@ export function useMeroStream() {
   const accountId = session.status === "signed-in" ? session.accountId : null;
   const contextId = getContextId();
   const [error, setError] = useState<string | null>(null);
+  const [gone, setGone] = useState(false);
 
   const after = useCallback(() => {
     if (client) store?.sync(client);
@@ -63,6 +66,7 @@ export function useMeroStream() {
         setError(null);
         return out;
       } catch (e) {
+        if (isNotFound(e)) setGone(true);
         setError(describeError(e));
         return null;
       }
@@ -85,6 +89,7 @@ export function useMeroStream() {
       myId: accountId,
       loading: false,
       error,
+      gone,
       join: (username: string) => soft(async (c) => toMember(await c.join({ username, now: u64(nowSecs()) }))),
       getMembers: () => soft(async (c) => toMembers(await c.getMembers())),
       encodeFrame: (
@@ -128,9 +133,9 @@ export function useMeroStream() {
     }),
     // `error` is deliberately not a dep: it flips on every refusal, and a new
     // object identity would tear down every effect keyed on this one (the
-    // capture interval and the event drain).
+    // capture interval and the event drain). `gone` flips once, and the call closes on it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [contextId, accountId, soft, hard],
+    [contextId, accountId, soft, hard, gone],
   );
 }
 

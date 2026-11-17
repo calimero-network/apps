@@ -2,7 +2,7 @@
   "name": "mero-stream",
   "private": true,
   "version": "0.1.0",
-  "description": "Calimero Mero Stream — streaming media OVER a Calimero app (Task 3 capacity probe), on the component runtime",
+  "description": "Calimero Hyperfeed Stream — streaming media OVER a Calimero app (Task 3 capacity probe), on the component runtime",
   "keywords": [
     "calimero",
     "streaming",

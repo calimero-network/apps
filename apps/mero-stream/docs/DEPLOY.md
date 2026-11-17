@@ -1,6 +1,6 @@
-# Deploying Mero Stream
+# Deploying Hyperfeed Stream
 
-Mero Stream is a component app ([docs/COMPONENT-APPS.md](../../../docs/COMPONENT-APPS.md)).
+Hyperfeed Stream is a component app ([docs/COMPONENT-APPS.md](../../../docs/COMPONENT-APPS.md)).
 One artifact matters: the **bundle** (`.mpk`), which carries the contract
 (`app.wasm`, a `calimero:app` component) **and the production frontend**
 (`frontend-dir = "../app/dist"`).

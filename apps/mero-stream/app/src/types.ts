@@ -1,5 +1,5 @@
 // Mirrors the WASM contract's serde output (camelCase). Keep in sync with
-// logic/src/lib.rs. Mero Stream deliberately pushes media THROUGH the contract
+// logic/src/lib.rs. Hyperfeed Stream deliberately pushes media THROUGH the contract
 // (Task 3 capacity probe) — these are the read-model shapes the frontend paints.
 
 /** A member of the stream context. Membership gates `encode_frame`. */

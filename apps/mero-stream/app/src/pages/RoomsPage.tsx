@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { visibleInterval } from "../lib/visibleInterval";
 import { useNavigate, useParams } from "react-router-dom";
-import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
+import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError, isNotFound } from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
+import { confirmConsentHandoff } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
@@ -10,6 +13,7 @@ import {
   createRoom,
   inviteBase,
   listRooms,
+  membersCreateReturned,
   membersCreateRooms,
   setMembersCreateRooms,
   streamInfo,
@@ -36,6 +40,9 @@ import {
   VideoIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
+
+/** How often the rooms list is read again while the page is shown. */
+const ROOMS_POLL_MS = 30_000;
 
 /**
  * The rooms of one stream.
@@ -112,18 +119,61 @@ export default function RoomsPage() {
         setNames(info.names);
         setRooms(list);
       } catch (e) {
+        // Not in the stream any more (taken out of it, or it was deleted): back
+        // to your streams, saying so, instead of its page failing every read.
+        if (isNotFound(e)) {
+          navigate("/streams", { replace: true, state: { lostStream: true } });
+          return;
+        }
         setError(describeError(e));
       } finally {
         conn.after();
         setListing(false);
       }
     },
-    [conn, orgId],
+    [conn, orgId, navigate],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Rooms someone else adds: the list again every 30 s while the page is
+  // shown (no organization-wide event says one was made), rooms only.
+  useEffect(() => {
+    if (!conn || !orgId) return;
+    return visibleInterval(() => {
+      listRooms(conn.client, conn.source, orgId).then(
+        (list) => setRooms(list),
+        () => undefined,
+      );
+    }, ROOMS_POLL_MS);
+  }, [conn, orgId]);
+
+  // Back from the node's consent page with "Members can create rooms": say how it went.
+  const client = conn?.client ?? null;
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    membersCreateReturned(client).then(
+      (back) => {
+        if (!live || !back) return;
+        if (!back.approved) showToast("Not approved. Nothing was changed.", "error");
+        else if (back.on !== null) {
+          showToast(back.on ? "Members can now create rooms." : "Only owners and admins can create rooms now.");
+          void load(false);
+        }
+      },
+      (e: unknown) => {
+        if (live) setError(describeError(e));
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // Once per load: the return is read off the address bar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
 
   // Each room's roster, read from its contract: who has joined the call.
   useEffect(() => {
@@ -170,7 +220,16 @@ export default function RoomsPage() {
       if (!conn || memberDefaults === null) return;
       void run("members-create", async (onStatus) => {
         onStatus("Approve the change with your passkey…");
-        await setMembersCreateRooms(conn.client, orgId, memberDefaults, on, conn.passkey());
+        await setMembersCreateRooms(conn.client, orgId, memberDefaults, on, conn.passkey(), {
+          consent: {
+            confirm: (started) =>
+              confirmConsentHandoff({
+                code: started.code ?? "",
+                appName: PRODUCT_NAME,
+                action: on ? "Let members create rooms" : "Let only owners and admins create rooms",
+              }),
+          },
+        });
         conn.after();
         await load(false);
         showToast(on ? "Members can now create rooms." : "Only owners and admins can create rooms now.");
@@ -218,7 +277,7 @@ export default function RoomsPage() {
         <div className={styles.brand}>
           <BrandMark size={28} />
           <h1 className={`${styles.brandName} ${styles.hideNarrow}`}>
-            Mero Stream
+            Hyperfeed Stream
           </h1>
         </div>
         <nav className={styles.crumbs} aria-label="Breadcrumb">

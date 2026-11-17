@@ -1,6 +1,6 @@
 // ── Luma capture helpers (the frontend half of the Task-3 probe) ───────────────
 //
-// Mero Stream's whole design (approach 3) is: the browser captures a webcam
+// Hyperfeed Stream's whole design (approach 3) is: the browser captures a webcam
 // frame, DOWNSCALES it to a tiny single-channel luma buffer, and hands the RAW
 // luma to the contract, which encodes it in WASM. There is no WebRTC — the media
 // path runs entirely through the replicated contract state.

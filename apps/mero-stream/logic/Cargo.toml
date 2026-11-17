@@ -43,7 +43,7 @@ serde_json = "1"
 # followed by one.
 [package.metadata.calimero]
 package = "com.calimero.mero-stream"
-name = "Mero Stream"
+name = "Hyperfeed Stream"
 description = "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the app component (approach 3); /live carries browser-encoded H.264 over presence or the app's log (approaches 1 and 2). Experimental; not shippable media."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

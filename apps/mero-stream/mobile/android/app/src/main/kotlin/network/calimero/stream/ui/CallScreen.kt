@@ -287,9 +287,9 @@ fun CallScreen(
             text = {
                 Text(
                     if (camera) {
-                        "Turn on camera access for Mero Stream in Settings to share your camera."
+                        "Turn on camera access for Hyperfeed Stream in Settings to share your camera."
                     } else {
-                        "Turn on microphone access for Mero Stream in Settings to talk in calls."
+                        "Turn on microphone access for Hyperfeed Stream in Settings to talk in calls."
                     },
                 )
             },

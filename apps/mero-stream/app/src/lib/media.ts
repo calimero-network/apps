@@ -67,7 +67,7 @@ export function cameraUnavailableReason(): string | null {
     );
   }
   return (
-    "This window has no camera API. Mero Stream is a web app and its capture " +
+    "This window has no camera API. Hyperfeed Stream is a web app and its capture " +
     "routes need a browser — the Calimero desktop's webview does not expose " +
     "navigator.mediaDevices. Open the app in Chrome and try again."
   );

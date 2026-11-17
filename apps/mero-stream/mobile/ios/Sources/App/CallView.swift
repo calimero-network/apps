@@ -68,8 +68,8 @@ struct CallView: View {
                 title: Text(blocked == .camera ? "Camera access is off" : "Microphone access is off"),
                 message: Text(
                     blocked == .camera
-                        ? "Turn on camera access for Mero Stream in Settings to share your camera."
-                        : "Turn on microphone access for Mero Stream in Settings to talk in calls."),
+                        ? "Turn on camera access for Hyperfeed Stream in Settings to share your camera."
+                        : "Turn on microphone access for Hyperfeed Stream in Settings to talk in calls."),
                 primaryButton: .default(Text("Open Settings")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                 },

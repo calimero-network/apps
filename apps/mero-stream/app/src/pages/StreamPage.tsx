@@ -11,7 +11,7 @@ import styles from "./StreamPage.module.css";
 const RAW_BYTES = CAPTURE_WIDTH * CAPTURE_HEIGHT;
 
 /**
- * The Mero Stream capture + diagnostics route (DEV / capacity-probe only).
+ * The Hyperfeed Stream capture + diagnostics route (DEV / capacity-probe only).
  *
  * Left: the LOCAL preview canvas — the exact downscaled luma we hand to the
  * contract (not the raw webcam). Right: the REMOTE decoded canvas — frames a

@@ -1,5 +1,5 @@
 /**
- * Mero Stream's own app team (core#4890), against the shared in-memory
+ * Hyperfeed Stream's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's. Stream has no organization-level Remove
  * or Leave, so what is pinned: a new stream gets an open app team and rooms
@@ -31,7 +31,7 @@ async function stream(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-describe("a new stream gets Mero Stream's own app team", () => {
+describe("a new stream gets Hyperfeed Stream's own app team", () => {
   it("open (made with `shared: false`), and a room goes on it", async () => {
     const { cluster, org } = await stream();
     expect(cluster.modeOf(org)).toBe("standalone");
@@ -62,7 +62,7 @@ describe("invites and people", () => {
     expect((await listStreams(cluster.client, SOURCE)).find((s) => s.orgId === org)?.memberCount).toBe(3);
   });
 
-  it("apps kept apart: Mero Stream only, and only its people", async () => {
+  it("apps kept apart: Hyperfeed Stream only, and only its people", async () => {
     const { cluster, org } = await stream(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
     const info = await streamInfo(cluster.client, org, SOURCE);
@@ -77,7 +77,7 @@ describe("invites and people", () => {
   });
 });
 
-describe("adding Mero Stream to an organization whose apps have teams", () => {
+describe("adding Hyperfeed Stream to an organization whose apps have teams", () => {
   it("an admin: open in an open org, closed in one that keeps its apps apart", async () => {
     const cluster = orgCluster();
     const open = cluster.addOrg({ mode: "standalone", role: "admin" });
@@ -92,7 +92,7 @@ describe("adding Mero Stream to an organization whose apps have teams", () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
     await expect(createRoom(cluster.client, SOURCE, org, "General", passkey)).rejects.toThrow(
-      /owners and admins can add Mero Stream/,
+      /owners and admins can add Hyperfeed Stream/,
     );
     expect(cluster.callsOf("createApp")).toEqual([]);
   });

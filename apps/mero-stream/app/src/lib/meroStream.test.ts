@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MeroStreamClient } from "../generated/client";
 import {
+  alreadyJoined,
   fromBase64Url,
   num,
   toBase64Url,
@@ -151,5 +152,18 @@ describe("the generated client, with the wire shapes turned back into the screen
     const bytes = Uint8Array.from({ length: 300 }, (_, i) => (i * 37) % 256);
     expect(fromBase64Url(toBase64Url(bytes))).toEqual(bytes);
     expect(toBase64Url([251, 255])).toBe("-_8");
+  });
+});
+
+describe("alreadyJoined", () => {
+  const row = { memberId: "me", username: "Ana", joinedAt: 1, updatedAt: 1 };
+  it("is true only for your own row under the same name", () => {
+    expect(alreadyJoined([row], "me", "Ana")).toBe(true);
+    expect(alreadyJoined([row], "me", "Bo")).toBe(false);
+    expect(alreadyJoined([{ ...row, memberId: "you" }], "me", "Ana")).toBe(false);
+  });
+  it("is false when the roster or the account is unknown", () => {
+    expect(alreadyJoined(null, "me", "Ana")).toBe(false);
+    expect(alreadyJoined([row], null, "Ana")).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useClient, useMeroStream } from "./useMeroStream";
 import { subscribeEvents } from "../lib/events";
+import { visibleInterval } from "../lib/visibleInterval";
 import { captureFrameLuma, paintLuma } from "../lib/luma";
 import { acquireCamera } from "../lib/media";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
@@ -269,8 +270,7 @@ export function useStream(enabled: boolean): StreamController {
   useEffect(() => {
     if (!enabled) return;
     void drain();
-    const id = setInterval(() => void drain(), RECEIVE_POLL_MS);
-    return () => clearInterval(id);
+    return visibleInterval(() => void drain(), RECEIVE_POLL_MS);
   }, [enabled, drain]);
 
   // Recompute the aggregated §4 snapshot on a slow, fixed cadence — see
