@@ -35,6 +35,10 @@ import {
 import { errorMessage, setContextId } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import styles from './AgreementsPage.module.css';
+import { visibleInterval } from '../../lib/visibleInterval';
+
+/** How often the agreements list is read again while the page is shown. */
+const AGREEMENTS_POLL_MS = 30_000;
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //
@@ -96,7 +100,12 @@ export default function AgreementsPage() {
     void canCreateIn(app.client, workspaceId).then(setMayCreate);
     try {
       setRows(
-        await listAgreements(app.client, app.source, workspaceId, app.accountId),
+        await listAgreements(
+          app.client,
+          app.source,
+          workspaceId,
+          app.accountId,
+        ),
       );
       setGone(false);
     } catch (e) {
@@ -122,6 +131,18 @@ export default function AgreementsPage() {
   useEffect(() => {
     if (app) void load();
   }, [app, load, location.key]);
+
+  // Agreements someone else starts: the list again every 30 s while the page
+  // is shown (no workspace-wide event says one was made), quietly.
+  useEffect(() => {
+    if (!app || !workspaceId) return;
+    return visibleInterval(() => {
+      listAgreements(app.client, app.source, workspaceId, app.accountId).then(
+        (list) => setRows(list),
+        () => undefined,
+      );
+    }, AGREEMENTS_POLL_MS);
+  }, [app, workspaceId]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {
@@ -200,9 +221,9 @@ export default function AgreementsPage() {
             <span className={styles.eyebrow}>Agreements</span>
             <h1 className={styles.title}>You are not in that workspace</h1>
             <p className={styles.subtitle}>
-              It was remembered from a previous session, but your account is
-              not in it any more — you may have left, or it was deleted.
-              Nothing of yours is lost; pick a workspace to carry on.
+              It was remembered from a previous session, but your account is not
+              in it any more — you may have left, or it was deleted. Nothing of
+              yours is lost; pick a workspace to carry on.
             </p>
           </header>
           {error && (
@@ -286,8 +307,8 @@ export default function AgreementsPage() {
             <div>
               <h2 className={styles.panelTitle}>New agreement</h2>
               <p className={styles.panelText}>
-                One agreement per set of documents — an NDA, a contract, a
-                term sheet.
+                One agreement per set of documents — an NDA, a contract, a term
+                sheet.
               </p>
             </div>
           </div>
@@ -350,7 +371,11 @@ export default function AgreementsPage() {
           ) : (
             <div className={styles.grid} data-testid="agreements-grid">
               {rows.map((row) => {
-                const name = displayName([row.name], row.agreementId, 'Agreement');
+                const name = displayName(
+                  [row.name],
+                  row.agreementId,
+                  'Agreement',
+                );
                 return (
                   <div
                     key={row.agreementId}
@@ -373,10 +398,10 @@ export default function AgreementsPage() {
                       <span className={styles.cardName}>{name}</span>
                       <span className={styles.cardSub}>
                         {opening === row.agreementId
-                            ? 'Opening…'
-                            : row.joined
-                              ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
-                              : 'Not joined yet'}
+                          ? 'Opening…'
+                          : row.joined
+                            ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
+                            : 'Not joined yet'}
                       </span>
                       <span className={styles.cardFoot}>
                         Open agreement <ArrowRight size={14} />
@@ -418,9 +443,7 @@ export default function AgreementsPage() {
                           role="menuitem"
                           onClick={() => {
                             setMenuOpenId(null);
-                            void navigator.clipboard.writeText(
-                              row.contextId,
-                            );
+                            void navigator.clipboard.writeText(row.contextId);
                           }}
                         >
                           <Copy size={16} />
@@ -448,8 +471,7 @@ export default function AgreementsPage() {
                 <h2 className={styles.panelTitle}>Your signatures</h2>
                 <p className={styles.panelText}>
                   The drawings you sign with. They stay in your own private
-                  library, so they are the same in
-                  every workspace.
+                  library, so they are the same in every workspace.
                 </p>
               </div>
             </div>
@@ -475,8 +497,8 @@ export default function AgreementsPage() {
                 </h2>
                 <p className={styles.panelText}>
                   One link covers the workspace and every agreement in it, so a
-                  signer you already work with does not need a new one for
-                  each document.
+                  signer you already work with does not need a new one for each
+                  document.
                 </p>
               </div>
             </div>
