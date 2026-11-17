@@ -3,7 +3,7 @@ import MeroKitUI
 import PassCore
 import SwiftUI
 
-/// The front door: what Mero Pass is, and one way in.
+/// The front door: what Hyperfeed Pass is, and one way in.
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     var invitedTo: String?
@@ -18,7 +18,7 @@ struct SignInView: View {
                     .frame(width: 84, height: 84)
                     .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Palette.lime))
                 VStack(spacing: 10) {
-                    Text("Mero Pass").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Pass").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                     Text("Passwords shared with your team, encrypted on your phone before they leave it.")
                         .font(.system(size: 17))
                         .foregroundStyle(Palette.muted)
@@ -63,7 +63,7 @@ struct LockScreen: View {
                     .foregroundStyle(Palette.ink)
                     .frame(width: 76, height: 76)
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Palette.lime))
-                Text(keeper.hasKey ? "Mero Pass is locked" : "Protect this phone's key")
+                Text(keeper.hasKey ? "Hyperfeed Pass is locked" : "Protect this phone's key")
                     .font(Typeface.display(26)).foregroundStyle(Palette.ink)
                 Text(
                     keeper.hasKey
@@ -307,7 +307,7 @@ struct JoinSheet: View {
                     Label("Paste", systemImage: "doc.on.clipboard")
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
-                Text("Ask someone in the team to invite you from their Mero Pass.")
+                Text("Ask someone in the team to invite you from their Hyperfeed Pass.")
                     .font(.system(size: 14)).foregroundStyle(Palette.muted)
                 Spacer()
             }

@@ -1,10 +1,10 @@
-# Mero Pass
+# Hyperfeed Pass
 
 A password manager for teams on Calimero. Teams share vaults of secrets that
 are **end-to-end encrypted in the browser**: the Calimero nodes that hold a
 vault, their disks, their logs and their operators only ever see ciphertext.
 
-Mero Pass runs on Calimero 1.0: the contract is a `calimero:app` component on
+Hyperfeed Pass runs on Calimero 1.0: the contract is a `calimero:app` component on
 core's component SDK (`calimero-sdk`, the node's wasmtime runtime), the
 frontend talks to **Calimero Cloud** in production and to **`merod local`** in
 development through mero-js's `CalimeroClient`
@@ -18,7 +18,7 @@ development through mero-js's `CalimeroClient`
 | Concept | Calimero 1.0 |
 |---|---|
 | **Team** | an **organization**. Invitations are org invites. |
-| **Vault** | an **app instance** of this package in the org. *Open* vaults reach everyone in Mero Pass's app team (every org member in a legacy org); *invite-only* vaults reach the members of their own invite-only **team**. |
+| **Vault** | an **app instance** of this package in the org. *Open* vaults reach everyone in Hyperfeed Pass's app team (every org member in a legacy org); *invite-only* vaults reach the members of their own invite-only **team**. |
 | **Personal vault** | an org nobody else is invited to, marked `{ kind: "personal" }` in its metadata. |
 | **Secret** | a row whose name, fields and tags are **ciphertext**. Only its kind (login, TOTP, …) is cleartext. |
 | **Account** | a passkey: sign in, or sign up with a new one. |
@@ -71,7 +71,7 @@ manager. Anyone who reads it can do the same.
 
 **Another of your devices, or a teammate, holds it.**
 
-1. Open Mero Pass in the new or cleared browser. It has you seal a fresh
+1. Open Hyperfeed Pass in the new or cleared browser. It has you seal a fresh
    device key, and registers it in each vault you open.
 2. If your old browser is still listed, the new one waits for approval and
    shows a code. Approve it from another device of yours, or ask a vault
@@ -101,7 +101,7 @@ into a new vault even if every device is gone.
   characters.
 - **Unlocked:** they can read what you can. Auto-lock and the Lock button
   narrow that window. (A browser set up before sealing was required held an
-  unprotected key until its owner next opened Mero Pass.)
+  unprotected key until its owner next opened Hyperfeed Pass.)
 - **Using your account from another browser:** their browser has to be
   approved, and the request appears on yours.
 - Either way, revoke the device from another one (or ask an admin). That
@@ -136,27 +136,27 @@ vault's default role, Editor or Viewer, by the next admin who opens the vault.
   object (a secret id, an account, a fingerprint), never a name or a value.
 
 
-## Mero Pass's app team
+## Hyperfeed Pass's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Pass reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Pass reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Pass's team at once, **open**
+- A new organization made here gets Hyperfeed Pass's team at once, **open**
   (`standalone`: everyone in the org has the app). New open vaults use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Pass only (the dialog says so) and only its people are shown.
-  **Remove** takes someone out of Mero Pass (its team and the invite-only
+  invite gives Hyperfeed Pass only (the dialog says so) and only its people are shown.
+  **Remove** takes someone out of Hyperfeed Pass (its team and the invite-only
   vaults' teams the remover may change), never out of the organization; in
   open and legacy orgs it is out of the org, as before. An open vault's key
-  goes to Mero Pass's people, not the whole org.
-- Open vaults sit on the app team, so "open" means everyone in Mero Pass
+  goes to Hyperfeed Pass's people, not the whole org.
+- Open vaults sit on the app team, so "open" means everyone in Hyperfeed Pass
   there. Invite-only vaults keep their own top-level teams: core rc.14 lets
   only an app team's leads create teams below it.
-- Adding Mero Pass to an organization whose apps have teams makes its team
+- Adding Hyperfeed Pass to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization
@@ -196,7 +196,7 @@ through `@calimero-apps/connect`'s org-app module
 
 ## Design
 
-Mero Pass uses the fleet's light glass, the same look as Mero CRM, Calendar
+Hyperfeed Pass uses the fleet's light glass, the same look as Hyperfeed CRM, Calendar
 and Issue Tracker, from `@calimero-apps/glass`:
 
 - a cool off-white ground under soft teal-tinted colour fields, frosted

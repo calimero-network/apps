@@ -7,7 +7,7 @@ import { deviceKeeper } from '../lib/deviceKey';
 import { forgetLastVisits } from '../lib/lastVisit';
 
 /**
- * Log out of Mero Pass.
+ * Log out of Hyperfeed Pass.
  *
  * In this order, because each step is about what the NEXT person at this
  * browser can reach:

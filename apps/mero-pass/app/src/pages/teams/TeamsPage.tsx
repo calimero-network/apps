@@ -474,7 +474,7 @@ export default function TeamsPage() {
         {/* ── Start one, or join one ──────────────────────────────────────
             Side by side: creating a team and joining somebody else's are
             different intents, and a person doing one is not half-doing the
-            other. Same pairing as Mero Sign's workspaces screen.
+            other. Same pairing as Hyperfeed Sign's workspaces screen.
         */}
         <div className={styles.split}>
           <div className={styles.panel}>
@@ -501,7 +501,7 @@ export default function TeamsPage() {
                 New team
               </button>
             </div>
-            <ConnectExistingOrg appName="Mero Pass" load={loadOtherOrgs} onConnect={connectOrg} />
+            <ConnectExistingOrg appName="Hyperfeed Pass" load={loadOtherOrgs} onConnect={connectOrg} />
           </div>
         </div>
       </main>

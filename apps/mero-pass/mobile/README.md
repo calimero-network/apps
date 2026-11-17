@@ -1,6 +1,6 @@
-# Mero Pass: native mobile apps
+# Hyperfeed Pass: native mobile apps
 
-Native iOS and Android clients for Mero Pass, next to the web frontend (`../app`), the contract
+Native iOS and Android clients for Hyperfeed Pass, next to the web frontend (`../app`), the contract
 (`../logic`, package `com.calimero.mero-pass`) and the vault library (`../../../packages/mero-pass`).
 Both apps have the same screens, copy, icons (SF Symbols on iOS, Material Icons on Android) and
 flows, and they open the same vaults as the web app: everything is sealed and opened on the phone,
@@ -110,7 +110,7 @@ against an in-memory vault that enforces the contract's rules, test for test wit
 
 ## Screens
 
-1. **Sign in**: what Mero Pass is; on iOS a Calimero Cloud passkey (sign in or create an account) or
+1. **Sign in**: what Hyperfeed Pass is; on iOS a Calimero Cloud passkey (sign in or create an account) or
    a development node. An invitation that arrived while
    signed out is named here.
 2. **Unlock**: Face ID / fingerprint; the first unlock makes this phone's key.

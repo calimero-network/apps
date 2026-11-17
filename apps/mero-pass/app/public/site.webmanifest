@@ -1,6 +1,6 @@
 {
-  "name": "Mero Pass",
-  "short_name": "Mero Pass",
+  "name": "Hyperfeed Pass",
+  "short_name": "Hyperfeed Pass",
   "description": "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members.",
   "icons": [
     {

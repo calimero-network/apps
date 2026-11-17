@@ -215,10 +215,10 @@ export async function decryptExport(
   try {
     file = JSON.parse(text) as ExportFile;
   } catch {
-    throw new Error('This is not a Mero Pass export.');
+    throw new Error('This is not a Hyperfeed Pass export.');
   }
   if (file.format !== 'mero-pass-export' || file.v !== 1) {
-    throw new Error('This is not a Mero Pass export.');
+    throw new Error('This is not a Hyperfeed Pass export.');
   }
   try {
     const key = await exportKey(

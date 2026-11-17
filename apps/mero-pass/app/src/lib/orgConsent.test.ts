@@ -1,5 +1,5 @@
 /**
- * An org role from a session bound to Mero Pass's frontend goes to the node's
+ * An org role from a session bound to Hyperfeed Pass's frontend goes to the node's
  * consent page (the node refuses it otherwise), with the shared handoff dialog
  * first; an unbound session makes the change itself. On return, what was
  * asked is said from the node's decision.
@@ -69,7 +69,7 @@ describe('askRoleConsent', () => {
     forgetBoundApp(c);
   });
 
-  it('staying on Mero Pass changes nothing and keeps nothing', async () => {
+  it('staying on Hyperfeed Pass changes nothing and keeps nothing', async () => {
     handoff.answer = false;
     const c = client('com.calimero.mero-pass');
     await expect(askRoleConsent(c as never, INTENT)).rejects.toBeInstanceOf(

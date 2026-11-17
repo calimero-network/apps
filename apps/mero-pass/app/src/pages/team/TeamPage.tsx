@@ -96,7 +96,7 @@ export default function TeamPage() {
   const mayInvite = canInvite(capabilities);
   const mayCreateInviteOnly = canCreateInviteOnlyVault(capabilities);
   // An invite-only vault is made on a team of its own, and a session bound to
-  // Mero Pass's frontend may not create one (the node refuses it, and the
+  // Hyperfeed Pass's frontend may not create one (the node refuses it, and the
   // consent page has no such request), so it is offered on an unbound
   // session only.
   const [bound, setBound] = useState<boolean | null>(null);

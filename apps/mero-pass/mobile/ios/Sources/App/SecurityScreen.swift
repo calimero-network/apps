@@ -150,7 +150,7 @@ struct SecurityScreen: View {
             Text("The old code stops opening your vaults.")
         }
         .sheet(isPresented: $approvals) { ApprovalsSheet(style: .app) }
-        .confirmationDialog("Sign out of Mero Pass?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of Hyperfeed Pass?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out") {
                 keeper.lock()
                 Task { await session.signOut() }

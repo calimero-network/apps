@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Test vectors for the native Mero Pass crypto, produced by the web's own code.
+// Test vectors for the native Hyperfeed Pass crypto, produced by the web's own code.
 //
 //   node --experimental-transform-types apps/mero-pass/mobile/test-vectors/generate.mjs
 //
@@ -350,7 +350,7 @@ const shareLinks = [
 const shareRejects = [
   { why: 'expired', fragment: keyFragment, passphrase: null, now: 1_950_000_000_000, error: 'This link has expired.' },
   { why: 'wrong passphrase', fragment: passFragment, passphrase: 'not-it', now, error: 'Wrong passphrase, or the link was altered.' },
-  { why: 'not a share link', fragment: 'v=2&iv=AA&d=AA', passphrase: null, now, error: 'This is not a Mero Pass share link.' },
+  { why: 'not a share link', fragment: 'v=2&iv=AA&d=AA', passphrase: null, now, error: 'This is not a Hyperfeed Pass share link.' },
 ];
 for (const r of shareRejects) {
   let message = null;

@@ -112,7 +112,7 @@ final class ModelTests: XCTestCase {
     func testANonInvitationIsRefusedInWords() {
         let model = InvitationModel()
         XCTAssertFalse(model.open("https://example.com/nothing"))
-        XCTAssertEqual(model.stage, .failed("This isn't a Mero Pass invitation. Check the link and try again."))
+        XCTAssertEqual(model.stage, .failed("This isn't a Hyperfeed Pass invitation. Check the link and try again."))
     }
 
     // MARK: Vault

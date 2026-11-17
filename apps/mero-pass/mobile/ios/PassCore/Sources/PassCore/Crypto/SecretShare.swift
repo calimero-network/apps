@@ -65,7 +65,7 @@ public enum SecretShare {
         _ fragment: String, passphrase: String? = nil, now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
     ) throws -> Payload {
         let q = params(fragment.hasPrefix("#") ? String(fragment.dropFirst()) : fragment)
-        guard q["v"] == "1" else { throw Failure.message("This is not a Mero Pass share link.") }
+        guard q["v"] == "1" else { throw Failure.message("This is not a Hyperfeed Pass share link.") }
         guard let ivText = q["iv"], let data = q["d"] else { throw Failure.message("This link is incomplete.") }
         let key: SymmetricKey
         if q["p"] == "1" {

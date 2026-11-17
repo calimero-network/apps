@@ -1,4 +1,4 @@
-# Mero Pass contract
+# Hyperfeed Pass contract
 
 One vault, as a `calimero:app` component on core's component SDK
 (`calimero-sdk` at `component-core-tag`, `wasm32-wasip2`). The design notes

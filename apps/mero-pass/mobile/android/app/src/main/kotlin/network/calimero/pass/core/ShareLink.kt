@@ -70,7 +70,7 @@ object ShareLink {
         now: Long = System.currentTimeMillis(),
     ): Payload {
         val q = params(fragment.removePrefix("#"))
-        if (q["v"] != "1") throw Failure("This is not a Mero Pass share link.")
+        if (q["v"] != "1") throw Failure("This is not a Hyperfeed Pass share link.")
         val iv = q["iv"]
         val data = q["d"]
         if (iv == null || data == null) throw Failure("This link is incomplete.")

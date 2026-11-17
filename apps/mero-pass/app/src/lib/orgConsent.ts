@@ -1,11 +1,11 @@
-// A team's organization-wide changes from a session bound to Mero Pass's
+// A team's organization-wide changes from a session bound to Hyperfeed Pass's
 // frontend, on the node's consent page.
 //
-// On the origin the cluster serves Mero Pass from, the passkey session is bound
-// to Mero Pass's package and the node refuses organization-wide changes made
+// On the origin the cluster serves Hyperfeed Pass from, the passkey session is bound
+// to Hyperfeed Pass's package and the node refuses organization-wide changes made
 // directly: an org role, removing someone from the organization. The node's
 // consent page makes them for the person, with their passkey, on its own
-// origin. The page is a full-page redirect, so what Mero Pass was doing is kept
+// origin. The page is a full-page redirect, so what Hyperfeed Pass was doing is kept
 // in `sessionStorage` and said when the page sends the person back
 // (`returnFromOrgConsent`). An unbound session (the cluster's own page, a dev
 // node) makes the change itself, as before.
@@ -32,9 +32,9 @@ import { confirmConsentHandoff } from '@calimero-apps/passkey';
 import type { TeamRole } from './roles';
 
 /** The app as the handoff dialog names it. */
-const APP_NAME = 'Mero Pass';
+const APP_NAME = 'Hyperfeed Pass';
 
-/** What Mero Pass was doing when it sent the person to the consent page. */
+/** What Hyperfeed Pass was doing when it sent the person to the consent page. */
 export interface RoleConsentIntent {
   kind: 'setMemberRole';
   org: string;
@@ -127,7 +127,7 @@ export function orgConsentOptions(name: string): ConsentOptions {
 
 /**
  * Gives `intent.account` the org role `intent.role` on the consent page when
- * this session is bound to Mero Pass's frontend: answers `true` once the page
+ * this session is bound to Hyperfeed Pass's frontend: answers `true` once the page
  * is opening (it then unloads), `false` for an unbound session, which makes
  * the change itself. Throws `ConsentNotStarted` when the person chose to stay.
  */

@@ -5,7 +5,7 @@ import { generateDeviceKey } from '@calimero-network/mero-pass';
 
 // ── The lock screen's first-run setup ───────────────────────────────────────
 //
-// A browser may not use Mero Pass with an unprotected key, or without a
+// A browser may not use Hyperfeed Pass with an unprotected key, or without a
 // recovery key: the gate shows nothing else until both are done. This drives
 // the real gate and the real DeviceKeeper over an in-memory store; only the
 // node walks (moving vault keys, making the recovery key in every vault) are

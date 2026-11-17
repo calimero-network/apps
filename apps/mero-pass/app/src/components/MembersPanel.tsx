@@ -20,21 +20,21 @@ import styles from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
 import { returnFromOrgConsent } from '../lib/orgConsent';
 
-/** What is said once someone is out of Mero Pass in a team (`app`) or out of its organization (`org`). */
+/** What is said once someone is out of Hyperfeed Pass in a team (`app`) or out of its organization (`org`). */
 function removedNotice(
   name: string,
   left: 'app' | 'org',
   teamName: string,
 ): string {
   const who = name || 'They';
-  return `${who} ${name ? 'is' : 'are'} out of ${left === 'app' ? `Mero Pass in ${teamName} (they stay in the organization and its other apps)` : teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`;
+  return `${who} ${name ? 'is' : 'are'} out of ${left === 'app' ? `Hyperfeed Pass in ${teamName} (they stay in the organization and its other apps)` : teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`;
 }
 
 /**
  * Who is in a team (an organization), their role, and the controls to change
  * it. Role changes and removals are passkey step-ups on the node; an org role
- * (and a removal from an org without Mero Pass's team) is approved on the
- * node's consent page when the session is bound to Mero Pass's frontend, and
+ * (and a removal from an org without Hyperfeed Pass's team) is approved on the
+ * node's consent page when the session is bound to Hyperfeed Pass's frontend, and
  * said here when the page sends the person back.
  */
 export default function MembersPanel({

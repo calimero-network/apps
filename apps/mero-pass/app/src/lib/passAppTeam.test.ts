@@ -1,5 +1,5 @@
 /**
- * Mero Pass's own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Pass's own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's: a new team (org) gets an open app team and open vaults go on
  * it (still open, never mistaken for invite-only); invites name it; the
@@ -47,7 +47,7 @@ async function team(people: Record<string, string> = {}) {
   return { cluster, conn, org };
 }
 
-describe("a new team gets Mero Pass's own app team", () => {
+describe("a new team gets Hyperfeed Pass's own app team", () => {
   it('open (made with `shared: false`); an open vault is on it and still reads as open', async () => {
     const { cluster, conn, org } = await team();
     expect(cluster.modeOf(org)).toBe('standalone');
@@ -106,7 +106,7 @@ describe('invites name the app team', () => {
     expect((await inviteTeams(conn, org, 'vault-team')).teams).toEqual(['vault-team']);
   });
 
-  it('an org with app teams but none for Mero Pass is refused, not widened', async () => {
+  it('an org with app teams but none for Hyperfeed Pass is refused, not widened', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'shared', app: 'com.calimero.other' });
     const conn = { client: cluster.client, source: SOURCE, passkey };
@@ -117,7 +117,7 @@ describe('invites name the app team', () => {
 describe('people and the open vault key audience', () => {
   const people = { 'acct-bob': 'member', 'acct-cy': 'member', 'acct-gus': 'guest' };
 
-  it("apps kept apart: only Mero Pass's people, for the list and an open vault's key", async () => {
+  it("apps kept apart: only Hyperfeed Pass's people, for the list and an open vault's key", async () => {
     const { cluster, conn, org } = await team(people);
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Logins', restricted: false });
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
@@ -141,7 +141,7 @@ describe('people and the open vault key audience', () => {
 });
 
 describe('Remove', () => {
-  it('apps kept apart: out of Mero Pass and its invite-only vaults, never out of the org', async () => {
+  it('apps kept apart: out of Hyperfeed Pass and its invite-only vaults, never out of the org', async () => {
     const { cluster, conn, org } = await team({ 'acct-bob': 'member' });
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Prod', restricted: true });
     const vaultTeam = (cluster.state.apps.get(contextId)!.access as { team: string }).team;
@@ -152,7 +152,7 @@ describe('Remove', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone: off Mero Pass\'s team and its invite-only vaults, still in the org', async () => {
+  it('standalone: off Hyperfeed Pass\'s team and its invite-only vaults, still in the org', async () => {
     const { cluster, conn, org } = await team({ 'acct-bob': 'member' });
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Prod', restricted: true });
     const vaultTeam = (cluster.state.apps.get(contextId)!.access as { team: string }).team;

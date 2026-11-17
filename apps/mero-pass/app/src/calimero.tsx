@@ -35,7 +35,7 @@ export const APP = 'mero-pass';
 
 /** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: 'Mero Pass',
+  name: 'Hyperfeed Pass',
   description:
     'A secret manager for teams: vaults end-to-end encrypted in the browser.',
   package: PACKAGE,

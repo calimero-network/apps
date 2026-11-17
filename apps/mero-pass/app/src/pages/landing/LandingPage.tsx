@@ -1,7 +1,7 @@
 /**
- * Mero Pass's front door — the page a browser gets when nobody is signed in.
+ * Hyperfeed Pass's front door — the page a browser gets when nobody is signed in.
  *
- * HAND-OWNED. Mero Pass left the fleet-wide generated landing
+ * HAND-OWNED. Hyperfeed Pass left the fleet-wide generated landing
  * (`scripts/landing/`) so its page could follow the Calimero home page and the
  * Cloud marketing site — hero with a live product shot, numbered chapters, a
  * Cloud band, a comparison, an FAQ, a closing call. It is styled in the same
@@ -242,7 +242,7 @@ const FAQ: [string, string][] = [
   ],
   [
     'Do I need to run a server?',
-    'No. Mero Pass runs on Calimero Cloud: sign in with a passkey and create a vault. Developers run the same app on merod local.',
+    'No. Hyperfeed Pass runs on Calimero Cloud: sign in with a passkey and create a vault. Developers run the same app on merod local.',
   ],
   [
     'What happens when two people edit the same secret?',
@@ -282,7 +282,7 @@ export default function LandingPage() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className={`mp-ld-header ${scrolled ? 'is-scrolled' : ''}`}>
         <div className="mp-ld-header__inner">
-          <a href="/" className="mp-ld-header__brand" aria-label="Mero Pass">
+          <a href="/" className="mp-ld-header__brand" aria-label="Hyperfeed Pass">
             <Wordmark />
           </a>
           <nav className="mp-ld-header__nav" aria-label="Page">
@@ -308,7 +308,7 @@ export default function LandingPage() {
         <section className="mp-ld-hero">
           <div className="mp-ld-grid">
             <div className="mp-ld-hero__content">
-              <p className="mp-ld-eyebrow">Mero Pass · a Calimero app</p>
+              <p className="mp-ld-eyebrow">Hyperfeed Pass · a Calimero app</p>
               <h1 className="mp-ld-hero__title">
                 Your team’s passwords.
                 <span>On your devices. Nobody else’s.</span>
@@ -328,7 +328,7 @@ export default function LandingPage() {
                   Sign in
                 </button>
                 <InstallAppButton className="mp-ld-btn mp-ld-btn--secondary">
-                  Install Mero Pass
+                  Install Hyperfeed Pass
                 </InstallAppButton>
               </div>
               <p className="mp-ld-meta">
@@ -363,7 +363,7 @@ export default function LandingPage() {
               </ul>
             </div>
             <div className="mp-ld-panel mp-ld-panel--brand">
-              <p className="mp-ld-kicker">Mero Pass</p>
+              <p className="mp-ld-kicker">Hyperfeed Pass</p>
               <h3 className="mp-ld-panel__title">
                 Your team holds its own, sealed
               </h3>
@@ -472,7 +472,7 @@ export default function LandingPage() {
           </ul>
           <p className="mp-ld-note">
             What a removed member already decrypted cannot be taken back — no
-            password manager can. Mero Pass says so, and tells you which
+            password manager can. Hyperfeed Pass says so, and tells you which
             passwords to change.
           </p>
         </Chapter>
@@ -527,7 +527,7 @@ export default function LandingPage() {
                 <tr>
                   <th scope="col" />
                   <th scope="col" className="is-us">
-                    Mero Pass
+                    Hyperfeed Pass
                   </th>
                   <th scope="col">Cloud password managers</th>
                 </tr>
@@ -619,7 +619,7 @@ export default function LandingPage() {
             </div>
             <nav className="mp-ld-footer__cols" aria-label="Footer">
               <div>
-                <p className="mp-ld-footer__head">Mero Pass</p>
+                <p className="mp-ld-footer__head">Hyperfeed Pass</p>
                 <Ext href={LINKS.repo}>Source</Ext>
                 <Ext href={LINKS.security}>Security model</Ext>
                 <Ext href={LINKS.registry}>App Registry</Ext>
