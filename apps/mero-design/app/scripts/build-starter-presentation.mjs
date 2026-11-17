@@ -1,6 +1,6 @@
 /**
  * Generates the presentation starter shipped with the app — a deck about
- * Calimero, authored as a MeroDesign board.
+ * Calimero, authored as a Hyperfeed Design board.
  *
  *   node scripts/build-starter-presentation.mjs   →  src/starter/starter-presentation.json
  *
@@ -117,7 +117,7 @@ function slide(index, name, { col, row, height = H, kicker, page }) {
   text(ox + 120, oy + 320, "Apps that live on\nyour own nodes.", 104, C.ink, { bold: true, font: F.display });
   text(ox + 120, oy + 600, "Private, collaborative software — with no central\nserver holding your data.", 36, C.body);
   rule(ox + 120, oy + 780, 520);
-  text(ox + 120, oy + 810, "This deck is a MeroDesign board — itself a Calimero app.", 24, C.muted);
+  text(ox + 120, oy + 810, "This deck is a Hyperfeed Design board — itself a Calimero app.", 24, C.muted);
   text(ox + 120, oy + H - 90, "CALIMERO", 18, C.muted, { bold: true, font: F.mono });
 }
 
@@ -241,13 +241,13 @@ function slide(index, name, { col, row, height = H, kicker, page }) {
   const { ox, oy } = slide(5, "Already running", { col: 1, row: 1, kicker: "THE ECOSYSTEM", page: "06" });
   text(ox + 120, oy + 170, "Already running on Calimero.", 72, C.ink, { bold: true, font: F.display });
   const apps = [
-    ["MeroDesign", "Collaborative canvas", C.lime],
-    ["MeroSign", "Sign agreements", C.blue],
-    ["MeroDocs", "Shared documents", C.violet],
-    ["MeroPass", "Team password vault", C.amber],
-    ["MeroCalendar", "Shared calendars", C.rose],
-    ["MeroSheets", "Spreadsheets", C.lime],
-    ["MeroForum", "Discussions", C.blue],
+    ["Hyperfeed Design", "Collaborative canvas", C.lime],
+    ["Hyperfeed Sign", "Sign agreements", C.blue],
+    ["Hyperfeed Docs", "Shared documents", C.violet],
+    ["Hyperfeed Pass", "Team password vault", C.amber],
+    ["Hyperfeed Calendar", "Shared calendars", C.rose],
+    ["Hyperfeed Sheets", "Spreadsheets", C.lime],
+    ["Hyperfeed Forum", "Discussions", C.blue],
     ["Battleships", "A two-player game", C.violet],
   ];
   apps.forEach(([name, sub, accent], i) => {
@@ -306,7 +306,7 @@ const snapshot = {
   version: 1,
   exportedAt: NOW,
   boardName: "Calimero presentation",
-  boardDescription: "A presentation built as a MeroDesign board: 8 screens, one of them tall.",
+  boardDescription: "A presentation built as a Hyperfeed Design board: 8 screens, one of them tall.",
   elements: els,
   comments: [],
 };

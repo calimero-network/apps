@@ -62,7 +62,7 @@ private inline fun <T> attempt(block: () -> T): Result<T> =
 
 // region Teams
 
-/** A team: an organization running Mero Design. */
+/** A team: an organization running Hyperfeed Design. */
 data class Team(
     val id: String,
     val name: String,
@@ -96,7 +96,7 @@ class TeamsModel(
 
 // region Boards
 
-/** A board: an app instance of Mero Design in the team's organization. */
+/** A board: an app instance of Hyperfeed Design in the team's organization. */
 data class BoardSummary(
     val contextId: String,
     val groupId: String,

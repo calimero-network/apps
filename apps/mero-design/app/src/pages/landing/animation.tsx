@@ -1,5 +1,5 @@
 /**
- * Mero Design — the hero: the real editor, recorded, not a drawing of it.
+ * Hyperfeed Design — the hero: the real editor, recorded, not a drawing of it.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
@@ -31,7 +31,7 @@ export default function DesignAnimation() {
         loop
         playsInline
         preload="auto"
-        aria-label="Two people editing the same Mero Design board live: a teammate's note appears while you recolour a button."
+        aria-label="Two people editing the same Hyperfeed Design board live: a teammate's note appears while you recolour a button."
         style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
       />
     </div>

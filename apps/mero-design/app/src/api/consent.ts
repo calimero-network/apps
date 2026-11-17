@@ -1,5 +1,5 @@
 /**
- * What a session opened on Mero Design's frontend may not do itself, done on
+ * What a session opened on Hyperfeed Design's frontend may not do itself, done on
  * the node's consent page instead.
  *
  * A passkey session opened on the app's served origin is bound to its package

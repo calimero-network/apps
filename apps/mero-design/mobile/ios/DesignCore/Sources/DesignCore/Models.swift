@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Teams
 
-/// A team: an organization running Mero Design.
+/// A team: an organization running Hyperfeed Design.
 public struct Team: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
@@ -48,7 +48,7 @@ public final class TeamsModel: ObservableObject {
 
 // MARK: - Boards
 
-/// A board: an app instance of Mero Design in the team's organization.
+/// A board: an app instance of Hyperfeed Design in the team's organization.
 public struct BoardSummary: Identifiable, Equatable, Sendable {
     public var id: String { contextId }
     public let contextId: String

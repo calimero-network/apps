@@ -36,7 +36,7 @@ export interface TeamList {
   deleteTeam: (teamId: string) => Promise<void>;
   /** What a member who is not an admin does instead. The team stays listed when refused. */
   /**
-   * Leaves the team: in an org that keeps its apps apart, Mero Design only
+   * Leaves the team: in an org that keeps its apps apart, Hyperfeed Design only
    * (`lastApp` when it was the last app there: offer {@link leaveOrganization}).
    */
   leaveTeam: (teamId: string) => Promise<LeftApp>;

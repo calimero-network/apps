@@ -194,7 +194,7 @@ data class ApprovalItem(
                 pending.upgrades.filter { it.actionable && it.`package` == DesignFormat.PACKAGE_NAME }.map { u ->
                     ApprovalItem(
                         "upgrade:${u.app}:${u.to}",
-                        "Mero Design ${u.to} is available",
+                        "Hyperfeed Design ${u.to} is available",
                         "${u.name ?: "An app instance"} runs ${u.from}. Review the update to keep it current.",
                         upgrade = true,
                     ) { upgradeConsent(u.app, u.to, it) }
@@ -215,7 +215,7 @@ data class ApprovalItem(
 }
 
 /**
- * What waits for the person's approval (an update of Mero Design, a node release): "Review" shows
+ * What waits for the person's approval (an update of Hyperfeed Design, a node release): "Review" shows
  * the confirmation code, then opens the node's consent page in a Custom Tab. Nothing shows when
  * there is nothing to approve.
  */

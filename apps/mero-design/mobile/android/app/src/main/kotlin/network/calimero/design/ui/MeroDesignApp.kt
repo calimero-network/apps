@@ -61,7 +61,7 @@ fun MeroDesignApp(
             AlertDialog(
                 onDismissRequest = { vm.dismissInvitation() },
                 title = { Text(invitation?.name?.let { "Join $it?" } ?: "Join this team?") },
-                text = { Text("You were invited to a team on Mero Design. Its boards show up here once you join.") },
+                text = { Text("You were invited to a team on Hyperfeed Design. Its boards show up here once you join.") },
                 confirmButton = {
                     TextButton(onClick = {
                         joining = true

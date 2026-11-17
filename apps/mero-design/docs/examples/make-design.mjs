@@ -1,5 +1,5 @@
 /**
- * Builds a full web-application design as a Mero Design project.
+ * Builds a full web-application design as a Hyperfeed Design project.
  *
  * Deliberately uses ONLY what the app supports today (rect / circle / text) so the
  * output is an honest picture of what can be produced right now. Every place a
@@ -200,7 +200,7 @@ const snapshot = {
   version: 1,
   exportedAt: NOW,
   boardName: 'Northwind Analytics',
-  boardDescription: 'Dashboard design built entirely inside Mero Design',
+  boardDescription: 'Dashboard design built entirely inside Hyperfeed Design',
   elements: els,
   comments: [
     {

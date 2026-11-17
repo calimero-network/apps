@@ -10,7 +10,7 @@ function app(appId: string, org: string | null, pkg: string, name = appId): AppI
 }
 
 /**
- * The account of the bug: in `overworld`, which holds only a Mero Blocks
+ * The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks
  * world, and in `team`, which holds a chat instance.
  */
 function fakeClient(opts: { role?: string; account?: string | null } = {}) {
@@ -75,7 +75,7 @@ describe("otherOrgs: the explicit connect choice", () => {
     const others = await otherOrgs(asClient(fakeClient()), CHAT);
     expect(others.map((o) => [o.orgId, o.label, o.canCreate])).toEqual([
       ["empty", "No apps yet", true],
-      ["overworld", "Mero Blocks: overworld", true],
+      ["overworld", "Hyperfeed Blocks: overworld", true],
     ]);
   });
 
@@ -118,7 +118,7 @@ describe("otherOrgs: labels from app teams (core#4890)", () => {
     expect(others.map((o) => [o.orgId, o.label, o.mode])).toEqual([
       ["empty", "Blocks, CRM (not yours)", "shared"],
       // A legacy org (no app teams) keeps the instance label.
-      ["overworld", "Mero Blocks: overworld", "legacy"],
+      ["overworld", "Hyperfeed Blocks: overworld", "legacy"],
     ]);
     expect(others[0]?.apps).toHaveLength(2);
   });
@@ -146,7 +146,7 @@ describe("otherOrgs: labels from app teams (core#4890)", () => {
     const others = await otherOrgs(client, CHAT);
     expect(others.map((o) => [o.orgId, o.label, o.apps, o.mode])).toEqual([
       ["empty", "No apps yet", null, null],
-      ["overworld", "Mero Blocks: overworld", null, null],
+      ["overworld", "Hyperfeed Blocks: overworld", null, null],
     ]);
   });
 
@@ -156,13 +156,13 @@ describe("otherOrgs: labels from app teams (core#4890)", () => {
       appTeamsLabel([
         { package: "com.calimero.mero-sheets", teamId: "t", name: "", join: "everyone", memberCount: 1, defaultCapabilities: 2, member: true, manages: true },
       ]),
-    ).toBe("Mero Sheets");
+    ).toBe("Hyperfeed Sheets");
   });
 });
 
 describe("labels", () => {
   it("names a package in words", () => {
-    expect(packageTitle("com.calimero.mero-blocks")).toBe("Mero Blocks");
+    expect(packageTitle("com.calimero.mero-blocks")).toBe("Hyperfeed Blocks");
     expect(packageTitle("com.calimero.chat")).toBe("Hyperfeed Chat");
     expect(packageTitle("com.calimero.kv-store")).toBe("KV Store");
   });
@@ -173,7 +173,7 @@ describe("labels", () => {
         { appId: "a", name: "overworld", package: "com.calimero.mero-blocks" },
         { appId: "b", name: "dev", package: null },
       ]),
-    ).toBe("Mero Blocks: overworld, dev");
+    ).toBe("Hyperfeed Blocks: overworld, dev");
   });
 
   it("myOrgs sorts by name and drops malformed rows", async () => {

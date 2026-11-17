@@ -1,5 +1,5 @@
 /**
- * Loads the Northwind design into the real Mero Design app (mocked node) and
+ * Loads the Northwind design into the real Hyperfeed Design app (mocked node) and
  * screenshots the actual Fabric canvas — so what you see is the app's renderer,
  * not a mockup of it.
  */

@@ -1,6 +1,6 @@
 [package]
 name = "mero-design"
-description = "MeroDesign — collaborative design tool on Calimero, on the component SDK"
+description = "Hyperfeed Design — collaborative design tool on Calimero, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -34,7 +34,7 @@ serde_json = "1"
 # keys `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-design"
-name = "MeroDesign"
+name = "Hyperfeed Design"
 description = "Collaborative design tool on Calimero. Figma-style canvas, shared by the members of your organization."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

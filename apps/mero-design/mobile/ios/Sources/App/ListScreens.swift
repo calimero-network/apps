@@ -18,7 +18,7 @@ struct TeamsScreen: View {
         _model = StateObject(wrappedValue: TeamsModel(backend: backend))
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
-                packageName: DesignFormat.packageName, appName: "Mero Design",
+                packageName: DesignFormat.packageName, appName: "Hyperfeed Design",
                 fetch: { [weak session] org in
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
@@ -51,7 +51,7 @@ struct TeamsScreen: View {
                     EmptyState(
                         icon: "person.3",
                         title: "No teams yet",
-                        message: "Create a team in Mero Design on the web, or open an invitation link someone sent you. It shows up here.")
+                        message: "Create a team in Hyperfeed Design on the web, or open an invitation link someone sent you. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -71,7 +71,7 @@ struct TeamsScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.ground)
-        .navigationTitle("Mero Design")
+        .navigationTitle("Hyperfeed Design")
         .alert(
             "Check the code", isPresented: codeCheck.isShown,
             actions: {
@@ -175,7 +175,7 @@ struct AccountSheet: View {
                     Button("Done") { dismiss() }.accessibilityIdentifier("sheet.done")
                 }
             }
-            .confirmationDialog("Sign out of Mero Design?", isPresented: $confirm, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Design?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     Task { await session.signOut() }
@@ -209,7 +209,7 @@ struct BoardsScreen: View {
                     EmptyState(
                         icon: "square.on.square",
                         title: "No boards in this team",
-                        message: "Boards are created in Mero Design on the web or desktop. Pull to refresh once one exists.")
+                        message: "Boards are created in Hyperfeed Design on the web or desktop. Pull to refresh once one exists.")
                     .plainRow()
                 } else {
                     Section {

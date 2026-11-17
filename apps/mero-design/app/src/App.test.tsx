@@ -224,7 +224,7 @@ describe("App", () => {
     hold({ token: "tok-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Mero Design");
+    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Hyperfeed Design");
     expect(invites.token()).toBe("tok-1");
     fireEvent.click(screen.getByTestId("accept-done"));
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
@@ -283,7 +283,7 @@ describe("App", () => {
       expect(await screen.findByTestId("invitation-page")).toBeTruthy();
       expect(screen.getByText("You're invited")).toBeTruthy();
       expect(screen.getByTestId("signin-desc").textContent).toContain(
-        "You've been invited to join the team in Mero Design.",
+        "You've been invited to join the team in Hyperfeed Design.",
       );
       expect(screen.getByTestId("signin-passkey")).toBeTruthy();
       expect(screen.getByTestId("signup-passkey")).toBeTruthy();
@@ -373,7 +373,7 @@ describe("App", () => {
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTitle("Invite people to Design team"));
     expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to Design team");
-    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Mero Design" });
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Hyperfeed Design" });
     expect(new URL(screen.getByTestId("invite-base").textContent ?? "").searchParams.get("org")).toBe("org-1");
     expect(JSON.parse(screen.getByTestId("invite-labels").textContent ?? "")).toEqual({ noun: "team" });
   });

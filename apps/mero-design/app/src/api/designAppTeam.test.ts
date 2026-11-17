@@ -1,5 +1,5 @@
 /**
- * Mero Design's own app team (core#4890), against the shared in-memory
+ * Hyperfeed Design's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's: a new team gets an open app team and
  * boards go on it; invites name it; the member list is its people; Remove and
@@ -64,7 +64,7 @@ async function team(people: Record<string, string> = {}) {
 
 afterEach(() => bindApi(null));
 
-describe("a new team gets Mero Design's own app team", () => {
+describe("a new team gets Hyperfeed Design's own app team", () => {
   it("open (made with `shared: false`), and a board goes on it", async () => {
     const { cluster, org } = await team();
     expect(cluster.modeOf(org)).toBe("standalone");
@@ -98,7 +98,7 @@ describe("invites and people", () => {
     expect((await listGroupMembers(org)).members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
-  it("apps kept apart: Mero Design only, and only its people", async () => {
+  it("apps kept apart: Hyperfeed Design only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
     expect(await teamInviteTeams(org)).toEqual({ teams: [cluster.teamOf(org, PKG)], appOnly: true });
@@ -117,14 +117,14 @@ describe("invites and people", () => {
 });
 
 describe("Remove and Leave", () => {
-  it("apps kept apart: Remove takes the person out of Mero Design, never the org", async () => {
+  it("apps kept apart: Remove takes the person out of Hyperfeed Design, never the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     cluster.keepAppsApart(org);
     expect(await removeTeamMember(org, "acct-bob")).toBe("app");
     expect(cluster.org(org).members["acct-bob"]).toBe("member");
   });
 
-  it("standalone: Remove takes the person off Mero Design's team, never out of the org", async () => {
+  it("standalone: Remove takes the person off Hyperfeed Design's team, never out of the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     expect(await removeTeamMember(org, "acct-bob")).toBe("app");
     expect(cluster.org(org).members["acct-bob"]).toBe("member");
@@ -139,7 +139,7 @@ describe("Remove and Leave", () => {
     expect(cluster.org(legacy).members["acct-bob"]).toBeUndefined();
   });
 
-  it("apps kept apart: Leave is Mero Design only; lastApp, then the org on request", async () => {
+  it("apps kept apart: Leave is Hyperfeed Design only; lastApp, then the org on request", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
     cluster.keepAppsApart(org);
     cluster.org(org).members["acct-me"] = "member";
@@ -149,7 +149,7 @@ describe("Remove and Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
   });
 
-  it("standalone: Leave is off Mero Design's team; the org is offered after", async () => {
+  it("standalone: Leave is off Hyperfeed Design's team; the org is offered after", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
     expect(await leaveTeam(org)).toEqual({ left: "app", lastApp: true });
     expect(cluster.org(org).members["acct-me"]).toBeDefined();
@@ -166,7 +166,7 @@ describe("Remove and Leave", () => {
 });
 
 describe("organization-wide changes from the app's frontend go through the consent page", () => {
-  /** A session bound to Mero Design's frontend, whose consent page is approved at once. */
+  /** A session bound to Hyperfeed Design's frontend, whose consent page is approved at once. */
   function boundSession() {
     const cluster = orgCluster();
     const openConsentPage = vi.fn(async (_request: unknown, options: { confirm: (s: { code: string }) => Promise<boolean> }) => {
@@ -215,7 +215,7 @@ describe("organization-wide changes from the app's frontend go through the conse
     expect(cluster.callsOf("removeMember")).toEqual([]);
   });
 
-  it("Remove and Leave where Mero Design has its team: the team, no consent page", async () => {
+  it("Remove and Leave where Hyperfeed Design has its team: the team, no consent page", async () => {
     const { cluster, openConsentPage } = boundSession();
     const org = cluster.addOrg({ mode: "standalone", app: PKG, members: { "acct-ana": "owner", "acct-bob": "member" } });
     expect(await removeTeamMember(org, "acct-bob")).toBe("app");
@@ -226,7 +226,7 @@ describe("organization-wide changes from the app's frontend go through the conse
   });
 });
 
-describe("adding Mero Design to an organization whose apps have teams", () => {
+describe("adding Hyperfeed Design to an organization whose apps have teams", () => {
   it("an admin: open in an open org, closed in one that keeps its apps apart", async () => {
     const cluster = signedIn();
     const open = cluster.addOrg({ mode: "standalone", role: "admin" });
@@ -240,7 +240,7 @@ describe("adding Mero Design to an organization whose apps have teams", () => {
   it("a member is told only owners and admins can add it, and nothing is made", async () => {
     const cluster = signedIn();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
-    await expect(createBoard(org, "Moodboard")).rejects.toThrow(/owners and admins can add Mero Design/);
+    await expect(createBoard(org, "Moodboard")).rejects.toThrow(/owners and admins can add Hyperfeed Design/);
     expect(cluster.callsOf("createApp")).toEqual([]);
   });
 });

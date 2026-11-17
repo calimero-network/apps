@@ -88,7 +88,7 @@ fun TeamsScreen(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text("Mero Design", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Hyperfeed Design", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     IconButton(onClick = { showAccount = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
                 },
@@ -118,7 +118,7 @@ fun TeamsScreen(
                             EmptyState(
                                 Icons.Outlined.Groups,
                                 "No teams yet",
-                                "Create a team in Mero Design on the web, or open an invitation link someone sent you. It shows up here.",
+                                "Create a team in Hyperfeed Design on the web, or open an invitation link someone sent you. It shows up here.",
                             )
                         }
                     else -> {
@@ -198,7 +198,7 @@ private fun AccountSheet(
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Sign out of Mero Design?") },
+            title = { Text("Sign out of Hyperfeed Design?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
@@ -263,7 +263,7 @@ fun BoardsScreen(
                             EmptyState(
                                 Icons.Outlined.FilterNone,
                                 "No boards in this team",
-                                "Boards are created in Mero Design on the web or desktop. Pull to refresh once one exists.",
+                                "Boards are created in Hyperfeed Design on the web or desktop. Pull to refresh once one exists.",
                             )
                         }
                     else -> {

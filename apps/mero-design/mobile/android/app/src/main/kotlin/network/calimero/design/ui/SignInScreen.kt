@@ -39,7 +39,7 @@ fun SignInScreen(
     Box(Modifier.fillMaxSize().background(DesignTheme.ground).safeDrawingPadding()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 16.dp)) {
             AppMark(64.dp)
-            Text("Mero Design", style = DesignTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
+            Text("Hyperfeed Design", style = DesignTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
             Text(
                 "Your team's boards, on your phone. View designs, present screens and leave comments.",
                 style = DesignTheme.body(17, color = DesignTheme.muted),

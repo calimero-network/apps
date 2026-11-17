@@ -214,7 +214,7 @@ export default function DesignShell() {
     setLeavingTeam(false);
     if (!teamId) return;
     try {
-      // In an org that keeps its apps apart this leaves Mero Design only;
+      // In an org that keeps its apps apart this leaves Hyperfeed Design only;
       // when it was the last app there, the organization is offered too.
       const left = await teams.leaveTeam(teamId);
       if (
@@ -273,7 +273,7 @@ export default function DesignShell() {
           )}
           <span className={styles.brand}>
             <Logo size={28} />
-            <span className={styles.brandText}>Mero Design</span>
+            <span className={styles.brandText}>Hyperfeed Design</span>
           </span>
           <span className={styles.sep} aria-hidden="true" />
           <TeamSwitcher currentName={teamName} />

@@ -48,7 +48,7 @@ function renderMenu() {
   fireEvent.click(screen.getByTestId("user-menu"));
 }
 
-describe("Mero Design's account menu", () => {
+describe("Hyperfeed Design's account menu", () => {
   it("links a team's admin to its organization in Calimero Home", async () => {
     signedIn("admin", "standalone");
     renderMenu();

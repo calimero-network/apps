@@ -1,4 +1,4 @@
-# Mero Design — fix plan
+# Hyperfeed Design — fix plan
 
 Every item in `IMPORTANT.md`, expanded into one shippable PR each, with the root cause traced to a
 line and the e2e tests that prove it on **web and in Tauri**.

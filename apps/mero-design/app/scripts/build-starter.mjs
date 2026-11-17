@@ -452,7 +452,7 @@ const snapshot = {
   version: 1,
   exportedAt: NOW,
   boardName: 'Northwind — starter project',
-  boardDescription: 'Five screens and a design system, built entirely in Mero Design.',
+  boardDescription: 'Five screens and a design system, built entirely in Hyperfeed Design.',
   elements: els,
   comments: [
     { id: 'starter-note-1', x: 1720, y: 262, content: 'KPI cards want an 8px corner radius once that lands.', author: '', createdAt: NOW, replies: [] },

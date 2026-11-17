@@ -14,7 +14,7 @@ export default function Logo({ size = 28 }: Props) {
   // paint with whichever definition the browser found first.
   const gradient = useId();
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Mero Design">
+    <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Hyperfeed Design">
       <defs>
         <linearGradient id={gradient} x1="14" y1="48" x2="50" y2="16" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#93e60c" />

@@ -49,14 +49,14 @@ import type { Element } from "../types";
  * `@calimero-apps/connect`'s org-app module: a new team's is open (everyone in
  * the org has the app), boards use team access on it, invites name it, and
  * the member list is its people. Once an admin keeps the org's apps apart in
- * Calimero Home (`shared`), an invite gives Mero Design only, and Remove and
- * Leave take someone out of Mero Design, not out of the org (leaving the last
+ * Calimero Home (`shared`), an invite gives Hyperfeed Design only, and Remove and
+ * Leave take someone out of Hyperfeed Design, not out of the org (leaving the last
  * app offers the org too). An org without one (made before app teams, a node
  * without them, a raw dev bundle) is legacy, as before.
  */
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Design";
+export const PRODUCT_NAME = "Hyperfeed Design";
 
 // ── Contract calls ───────────────────────────────────────────────────────────
 //
@@ -217,7 +217,7 @@ export interface TeamEntry {
 
 /**
  * The teams: the orgs this account is in that hold a board or were made for
- * Mero Design. An org made for another app (a Mero Blocks world) is not one,
+ * Hyperfeed Design. An org made for another app (a Hyperfeed Blocks world) is not one,
  * and is never entered on its own: it is offered under "Connect to an
  * existing organization" ({@link listOtherTeams}).
  */
@@ -241,7 +241,7 @@ export async function listOtherTeams(): Promise<OtherOrg[]> {
   }
 }
 
-/** The board created in an org the account connects to Mero Design. */
+/** The board created in an org the account connects to Hyperfeed Design. */
 export const CONNECTED_BOARD_NAME = "Untitled board";
 
 /** The caller's role in `org` (any org it is in), or null when not in it. */
@@ -304,7 +304,7 @@ export async function deleteTeam(org: string): Promise<void> {
   }
 }
 
-/** How `org` keeps Mero Design's people: apart (`shared`), on its app team, or org-wide (legacy). */
+/** How `org` keeps Hyperfeed Design's people: apart (`shared`), on its app team, or org-wide (legacy). */
 async function teamKind(org: string): Promise<"apart" | "appTeam" | "org"> {
   const team = await readTeam(org).catch(() => null);
   if (!team) return "org";
@@ -314,8 +314,8 @@ async function teamKind(org: string): Promise<"apart" | "appTeam" | "org"> {
 
 /**
  * Leave a team (a passkey step-up). In an org that keeps its apps apart that
- * is Mero Design only, with `lastApp` set when it was your last app there
- * (offer {@link leaveTeamOrg}). Where Mero Design has its app team, off that
+ * is Hyperfeed Design only, with `lastApp` set when it was your last app there
+ * (offer {@link leaveTeamOrg}). Where Hyperfeed Design has its app team, off that
  * team, and `lastApp` offers the organization too. A legacy org: the
  * organization, on the node's consent page from the app's frontend.
  */
@@ -347,7 +347,7 @@ export async function leaveTeamOrg(org: string): Promise<void> {
 
 /**
  * The app team an invitation into `org` names (`appInviteTeams`), for the
- * shared invite dialog: it gives Mero Design only in an org that keeps its apps
+ * shared invite dialog: it gives Hyperfeed Design only in an org that keeps its apps
  * apart. Org-wide (no team) in a legacy org.
  */
 export async function teamInviteTeams(org: string): Promise<{ teams: string[]; appOnly: boolean }> {
@@ -368,11 +368,11 @@ export interface TeamRecord {
   roles: Map<string, string>;
   /** account -> the name they set for the team, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Design in the team, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Design in the team, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Design has its team: invites, Remove and Leave are its only. */
+  /** The org keeps its apps apart and Hyperfeed Design has its team: invites, Remove and Leave are its only. */
   appOnly: boolean;
-  /** Mero Design's app team in the org, when it has one. */
+  /** Hyperfeed Design's app team in the org, when it has one. */
   appTeam: string | null;
 }
 
@@ -424,7 +424,7 @@ export interface GroupMemberInfo {
   name?: string;
 }
 
-/** The team's members (who has Mero Design in it), by account, with the screen's two roles. */
+/** The team's members (who has Hyperfeed Design in it), by account, with the screen's two roles. */
 export async function listGroupMembers(org: string): Promise<{ members: GroupMemberInfo[]; appOnly: boolean }> {
   const team = await readTeam(org);
   const members = team.people.map((identity) => [identity, team.roles.get(identity) ?? "member"] as const).map(([identity, role]) => ({
@@ -452,7 +452,7 @@ export async function updateMemberRole(org: string, account: string, role: "Admi
 }
 
 /**
- * Take someone out of the team (a passkey step-up): out of Mero Design only
+ * Take someone out of the team (a passkey step-up): out of Hyperfeed Design only
  * wherever it has its app team (in an org that keeps its apps apart, through
  * `removeFromApp`), never out of the org. A legacy org: out of the
  * organization, on the node's consent page from the app's frontend.

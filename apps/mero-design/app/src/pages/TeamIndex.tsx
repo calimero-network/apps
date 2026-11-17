@@ -88,7 +88,7 @@ export default function TeamIndex() {
               Create a team
             </button>
             <NewTeamDialog open={creating} onClose={() => setCreating(false)} onCreated={created} />
-            <ConnectExistingOrg appName="Mero Design" load={listOtherTeams} onConnect={connectOrg} />
+            <ConnectExistingOrg appName="Hyperfeed Design" load={listOtherTeams} onConnect={connectOrg} />
           </div>
         </section>
       </div>
