@@ -485,7 +485,11 @@
   gap: 4px;
   padding: 2px 6px 8px 8px;
 }
-.railActions button {
+.railActions button,
+.railActions a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
   height: 26px;
   padding: 0 10px;
   border: none;
@@ -498,7 +502,8 @@
   font-weight: 600;
   cursor: pointer;
 }
-.railActions button:hover { background: var(--glass-sunken); }
+.railActions button:hover,
+.railActions a:hover { background: var(--glass-sunken); }
 .railActions .danger { color: var(--glass-bad-ink); }
 .railActions .danger:hover { background: var(--glass-bad-bg); }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import SettingsSection from "./SettingsSection";
 import { IconClose } from "./HomeIcons";
 import type { Project } from "../types";
-import type { SettingsSection as Section } from "./shell/shellContext";
+import { useOptionalShell, type SettingsSection as Section } from "./shell/shellContext";
 import styles from "./SettingsPanel.module.css";
 
 interface Props {
@@ -55,6 +55,8 @@ export default function SettingsPanel({
   // The board's creator (its app instance's owner) may delete it too.
   const isBoardAdmin = !!board?.owner && board.owner === account;
   const canDeleteBoard = isTeamAdmin === true || isBoardAdmin === true;
+  // On a session opened on the app's own page the delete is Calimero Home's.
+  const deleteInHome = useOptionalShell()?.deleteInHome;
   const shown: Section = section === "board" && hasBoard ? "board" : "team";
 
   useEffect(() => {
@@ -150,9 +152,15 @@ export default function SettingsPanel({
                   <strong>Delete board</strong>
                   <span>Everyone in the team loses it. This cannot be undone.</span>
                 </div>
-                <button type="button" className={styles.dangerBtn} onClick={() => onDeleteBoard(board)} data-testid="delete-board-btn">
-                  Delete
-                </button>
+                {deleteInHome === undefined ? (
+                  <button type="button" className={styles.dangerBtn} onClick={() => onDeleteBoard(board)} data-testid="delete-board-btn">
+                    Delete
+                  </button>
+                ) : deleteInHome ? (
+                  <a className={styles.dangerBtn} href={deleteInHome} target="_blank" rel="noopener noreferrer" data-testid="delete-board-in-home">
+                    Delete in Calimero Home ↗
+                  </a>
+                ) : null}
               </div>
             )}
           </>

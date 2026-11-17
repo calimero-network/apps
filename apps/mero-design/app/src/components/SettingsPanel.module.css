@@ -134,6 +134,9 @@
 .danger strong { display: block; font-size: 13px; color: var(--glass-bad-ink); }
 .danger span { display: block; font-size: 12px; color: var(--glass-ink-2); margin-top: 2px; }
 .dangerBtn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
   flex-shrink: 0;
   height: 30px;
   padding: 0 14px;

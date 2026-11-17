@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { InstallAppIconButton } from "@calimero-apps/install";
-import { useAuth } from "../../sessionContext";
+import { useAuth, useSessionApi } from "../../sessionContext";
+import { ManageInHomeError, isFrontendBound, refusedOnFrontend } from "@calimero-apps/connect";
+import { useHomeLink } from "@calimero-apps/passkey";
 import { PRODUCT_NAME, getNodeIdentity, teamInviteTeams } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";
@@ -94,6 +96,18 @@ export default function DesignShell() {
   }, []);
 
   const isTeamAdmin = useIsGroupAdmin(teamId, account);
+  const { api: sessionApi } = useSessionApi();
+  const sessionClient = sessionApi.session.status === "signed-in" ? sessionApi.session.client : null;
+  const [bound, setBound] = useState(false);
+  useEffect(() => {
+    setBound(false);
+    if (!sessionClient) return;
+    let live = true;
+    void isFrontendBound(sessionClient).then((b) => { if (live) setBound(b); }, () => undefined);
+    return () => { live = false; };
+  }, [sessionClient]);
+  const homeHref = useHomeLink(sessionApi.session, bound ? teamId : null);
+  const deleteInHome = bound ? homeHref : undefined;
 
   // Going somewhere closes the drawer; so does widening past it.
   useEffect(() => setDrawerOpen(false), [location.pathname, narrow]);
@@ -170,7 +184,11 @@ export default function DesignShell() {
     } catch (err) {
       // The board stays listed: a refusal (e.g. a token without
       // `context:delete` answering 403) must not look like a delete.
-      showToast(extractErrorMessage(err, "Could not delete board."));
+      showToast(
+        refusedOnFrontend(err)
+          ? new ManageInHomeError("deleteApp", "Deleting a board").message
+          : extractErrorMessage(err, "Could not delete board."),
+      );
       return;
     }
     if (teamId) forgetBoard(nodeUrl, teamId, board.contextId);
@@ -229,8 +247,8 @@ export default function DesignShell() {
   }
 
   const value = useMemo<ShellValue>(
-    () => ({ teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot }),
-    [teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot],
+    () => ({ teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot, deleteInHome }),
+    [teamId, projectId, teams, boards, isTeamAdmin, openTeam, openBoard, openInvite, openSettings, boardSlot, deleteInHome],
   );
 
   const rail = <BoardRail onNavigate={() => setDrawerOpen(false)} onDelete={setDeleting} />;
