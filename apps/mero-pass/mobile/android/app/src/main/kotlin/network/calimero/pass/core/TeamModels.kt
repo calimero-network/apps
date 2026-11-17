@@ -243,12 +243,12 @@ class InvitationModel(
     var invitation: PassInvitation? = null
         private set
 
-    /** Read a link or a pasted code. False (and a failed stage) when it is not a Mero Pass invitation. */
+    /** Read a link or a pasted code. False (and a failed stage) when it is not a Hyperfeed Pass invitation. */
     fun open(raw: String): Boolean {
         val parsed = PassInvitation.parse(raw)
         invitation = parsed
         if (parsed == null) {
-            _stage.value = Stage.Failed("This isn't a Mero Pass invitation. Check the link and try again.")
+            _stage.value = Stage.Failed("This isn't a Hyperfeed Pass invitation. Check the link and try again.")
             return false
         }
         _stage.value = Stage.Confirm(parsed.title, parsed.kind == PassInvitation.Kind.VAULT, parsed.teamName ?: "the team")

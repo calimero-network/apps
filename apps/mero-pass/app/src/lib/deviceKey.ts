@@ -133,11 +133,11 @@ export const webAuthnPasskeys: PasskeyProvider = {
     const cred = (await navigator.credentials.create({
       publicKey: {
         challenge: randomBytes(32),
-        rp: { name: 'Mero Pass' },
+        rp: { name: 'Hyperfeed Pass' },
         user: {
           id: randomBytes(16),
-          name: 'Mero Pass device key',
-          displayName: 'Mero Pass device key',
+          name: 'Hyperfeed Pass device key',
+          displayName: 'Hyperfeed Pass device key',
         },
         pubKeyCredParams: [
           { type: 'public-key', alg: -7 },

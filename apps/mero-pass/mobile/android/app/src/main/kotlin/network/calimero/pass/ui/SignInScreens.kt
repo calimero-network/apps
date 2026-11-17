@@ -68,7 +68,7 @@ import network.calimero.pass.core.InvitationDestination
 import network.calimero.pass.core.InvitationModel
 import network.calimero.pass.core.PassErrorText
 
-/** The front door: what Mero Pass is, and one way in. */
+/** The front door: what Hyperfeed Pass is, and one way in. */
 @Composable
 fun SignInScreen(
     vm: PassViewModel,
@@ -88,7 +88,7 @@ fun SignInScreen(
         Spacer(Modifier.height(32.dp))
         HeroIcon(Icons.Filled.Key, 84)
         Spacer(Modifier.height(20.dp))
-        Text("Mero Pass", fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
+        Text("Hyperfeed Pass", fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
         Spacer(Modifier.height(10.dp))
         Text(
             "Passwords shared with your team, encrypted on your phone before they leave it.",
@@ -214,7 +214,7 @@ fun LockScreen(
         HeroIcon(Icons.Filled.Lock, 76)
         Spacer(Modifier.height(18.dp))
         Text(
-            if (hasKey) "Mero Pass is locked" else "Protect this phone's key",
+            if (hasKey) "Hyperfeed Pass is locked" else "Protect this phone's key",
             fontWeight = FontWeight.SemiBold,
             fontSize = 26.sp,
             color = Palette.Ink,
@@ -400,7 +400,7 @@ fun JoinSheet(
         ) {
             InputField("Invitation link or code", text, { text = it }, placeholder = "https://links.calimero.network/…", multiline = true)
             SecondaryButton("Paste", { Clipboard.paste(context)?.let { text = it } }, compact = true, icon = Icons.Outlined.ContentPaste)
-            Text("Ask someone in the team to invite you from their Mero Pass.", fontSize = 14.sp, color = Palette.Muted)
+            Text("Ask someone in the team to invite you from their Hyperfeed Pass.", fontSize = 14.sp, color = Palette.Muted)
         }
     }
 }

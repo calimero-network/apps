@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Pass app.
+# XcodeGen spec for the native iOS Hyperfeed Pass app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroPass.xcodeproj (not committed)
@@ -33,11 +33,11 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Pass
+        CFBundleDisplayName: Hyperfeed Pass
         UILaunchScreen: {}
         UIUserInterfaceStyle: Light
         # Unlocking the device key asks for Face ID (or Touch ID / the passcode).
-        NSFaceIDUsageDescription: Mero Pass uses Face ID to unlock your vaults on this phone.
+        NSFaceIDUsageDescription: Hyperfeed Pass uses Face ID to unlock your vaults on this phone.
         CFBundleURLTypes:
           # The node's consent page returns here (`mero-pass://consent?request_id=…&result=…`).
           - CFBundleURLName: network.calimero.pass.consent

@@ -1,6 +1,6 @@
 import { MARK_FROM, MARK_TO } from '../lib/brandMark';
 /**
- * The Mero Pass mark: a padlock.
+ * The Hyperfeed Pass mark: a padlock.
  *
  * ⚠️ THE SAME GEOMETRY AS `public/favicon.svg`, and that is the point. The app
  * bar used to render the character `●` — a bullet — while the favicon, the

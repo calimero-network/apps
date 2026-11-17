@@ -57,7 +57,7 @@ export function ProtectStep({
         <h2 className={gate.title}>Protect this browser</h2>
         <p className={gate.hint}>
           {fresh
-            ? 'Mero Pass keeps a key in this browser that opens your vaults. Seal it under a passkey or a passphrase, so nothing usable is stored on this computer.'
+            ? 'Hyperfeed Pass keeps a key in this browser that opens your vaults. Seal it under a passkey or a passphrase, so nothing usable is stored on this computer.'
             : "This browser's key is stored unprotected: anyone at this computer can open your vaults. Seal it under a passkey or a passphrase to continue. Your vault keys move to the sealed key."}
         </p>
         {error && <p className={shell.error}>{error}</p>}

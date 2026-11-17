@@ -242,7 +242,7 @@
       "fragment": "v=2&iv=AA&d=AA",
       "passphrase": null,
       "now": 1800000000000,
-      "error": "This is not a Mero Pass share link."
+      "error": "This is not a Hyperfeed Pass share link."
     }
   ],
   "totp": [

@@ -120,7 +120,7 @@ export async function openShareFragment(
 ): Promise<SharedSecret> {
   const q = new URLSearchParams(fragment.replace(/^#/, ''));
   if (q.get('v') !== '1')
-    throw new ShareError('This is not a Mero Pass share link.');
+    throw new ShareError('This is not a Hyperfeed Pass share link.');
   const iv = q.get('iv');
   const data = q.get('d');
   if (!iv || !data) throw new ShareError('This link is incomplete.');

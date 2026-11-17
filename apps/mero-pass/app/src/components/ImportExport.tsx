@@ -42,7 +42,7 @@ export default function ImportExport({
     const text = await file.text();
     if (text.trimStart().startsWith('{')) {
       setPending(text);
-      setSource('Mero Pass export');
+      setSource('Hyperfeed Pass export');
       return;
     }
     const res = importCsv(text);
@@ -129,7 +129,7 @@ export default function ImportExport({
           Choose a file…
         </button>
         <span className={shell.rowSub}>
-          Bitwarden, 1Password or Chrome/Edge CSV, or a Mero Pass encrypted
+          Bitwarden, 1Password or Chrome/Edge CSV, or a Hyperfeed Pass encrypted
           export.
         </span>
       </div>

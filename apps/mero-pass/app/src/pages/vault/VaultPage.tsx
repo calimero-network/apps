@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useInstanceRelease } from '@calimero-apps/passkey';
 import { useCalimero } from '../../calimero';
 import { useMemberNames } from '../../lib/names';
@@ -159,6 +159,7 @@ function VaultBody() {
   const [minting, setMinting] = useState(false);
   const [invite, setInvite] = useState<PassInvite | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!calimero || !contextId) return;
@@ -167,28 +168,47 @@ function VaultBody() {
     Promise.all([findVaultByContext(conn, contextId), listTeams(conn)])
       .then(([v, teams]) => {
         if (cancelled) return;
-        const f: Found | null = v
-          ? {
-              namespaceId: v.namespaceId,
-              vaultId: v.vaultId,
-              vaultName: v.name,
-              teamName:
-                teams.find((t) => t.namespaceId === v.namespaceId)?.name ?? '',
-              personal: v.personal,
-              restricted: v.restricted,
-              team: v.team,
-            }
-          : null;
-        setFound(f);
+        // Not a vault this account reaches (removed from it, or a stale
+        // link): back to the teams rather than retrying it.
+        if (!v) {
+          navigate('/teams', { replace: true });
+          return;
+        }
+        setFound({
+          namespaceId: v.namespaceId,
+          vaultId: v.vaultId,
+          vaultName: v.name,
+          teamName:
+            teams.find((t) => t.namespaceId === v.namespaceId)?.name ?? '',
+          personal: v.personal,
+          restricted: v.restricted,
+          team: v.team,
+        });
         // Where you were last (`lib/lastVisit`): only a vault this node found
         // in one of its teams, so a stale link is never resumed into.
-        if (f) rememberVault(nodeUrl, f.namespaceId, contextId);
+        rememberVault(nodeUrl, v.namespaceId, contextId);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [calimero, source, contextId, nodeUrl]);
+  }, [calimero, source, contextId, nodeUrl, navigate]);
+
+  // A read of the open vault failed: if access to it was lost (removed from
+  // the team or the vault), close it and go back to the teams instead of
+  // failing on every event and poll.
+  useEffect(() => {
+    if (!sessionError || !calimero || !contextId) return;
+    let cancelled = false;
+    findVaultByContext({ client: calimero, source }, contextId)
+      .then((v) => {
+        if (!cancelled && !v) navigate('/teams', { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionError, calimero, source, contextId, navigate]);
 
   const tool = view.type === 'tool' ? view.tool : null;
 

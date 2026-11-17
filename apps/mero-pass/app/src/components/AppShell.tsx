@@ -94,7 +94,7 @@ export default function AppShell({
     <ShellNavContext.Provider value={nav}>
       <div className={frame.frame}>
         {!narrow && (
-          <aside className={frame.rail} aria-label="Mero Pass">
+          <aside className={frame.rail} aria-label="Hyperfeed Pass">
             <Rail slotRef={setSlot} />
           </aside>
         )}
@@ -129,7 +129,7 @@ export default function AppShell({
                 {crumb}
               </span>
             ) : (
-              narrow && <span className={frame.crumb}>Mero Pass</span>
+              narrow && <span className={frame.crumb}>Hyperfeed Pass</span>
             )}
             <div className={frame.topbarEnd}>
               <NodeShield compactBelow={720} />
@@ -216,7 +216,7 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
           className={frame.brandMark}
         />
         <span className={frame.brandText}>
-          <span className={frame.brandName}>Mero Pass</span>
+          <span className={frame.brandName}>Hyperfeed Pass</span>
           <span className={frame.brandBy}>by Calimero</span>
         </span>
       </button>

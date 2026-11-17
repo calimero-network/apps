@@ -1,11 +1,11 @@
-# Mero Pass: web app
+# Hyperfeed Pass: web app
 
-The React 19 + TypeScript frontend of Mero Pass, built with Vite. It talks to
+The React 19 + TypeScript frontend of Hyperfeed Pass, built with Vite. It talks to
 Calimero through mero-js's `CalimeroClient` (`@calimero-apps/connect`): the
 `merod local` nodes under `vite`, the Calimero Cloud cluster named by
 `VITE_CALIMERO_CLUSTER` in a production build. Every secret is encrypted and
 decrypted in the browser. What the app does, and how vaults, teams and
-encryption map onto Calimero, is in [Mero Pass's README](../README.md); this
+encryption map onto Calimero, is in [Hyperfeed Pass's README](../README.md); this
 page covers working on the frontend.
 
 ## Scripts

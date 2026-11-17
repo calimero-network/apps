@@ -2,7 +2,7 @@
   "name": "mero-pass",
   "private": true,
   "version": "1.0.0",
-  "description": "Mero Pass — an end-to-end encrypted secret manager on Calimero",
+  "description": "Hyperfeed Pass — an end-to-end encrypted secret manager on Calimero",
   "keywords": [
     "calimero",
     "secrets",

@@ -13,13 +13,13 @@
 // | Admin / Member + capability bits on the namespace | org roles `owner`/`admin`/`member`/`guest` + org capability bits |
 // | joining a context, waiting for sync | nothing: an instance is reachable as soon as the org lets you in |
 //
-// Mero Pass has its own **app team** in the org (core#4890), through
+// Hyperfeed Pass has its own **app team** in the org (core#4890), through
 // `@calimero-apps/connect`'s org-app module: a new team (org) gets it, open
-// (everyone in the org has Mero Pass); open vaults use team access on it, so
-// "open" now means "everyone in Mero Pass here"; invites name it; the member
+// (everyone in the org has Hyperfeed Pass); open vaults use team access on it, so
+// "open" now means "everyone in Hyperfeed Pass here"; invites name it; the member
 // list and an open vault's key audience are its people. Once an admin keeps
-// the org's apps apart in Calimero Home (`shared`), an invite gives Mero Pass
-// only and Remove takes someone out of Mero Pass (its team and the
+// the org's apps apart in Calimero Home (`shared`), an invite gives Hyperfeed Pass
+// only and Remove takes someone out of Hyperfeed Pass (its team and the
 // invite-only vault teams the remover may change), not out of the org. An
 // invite-only vault keeps its own top-level team: core lets only an app team's
 // leads create teams below it. An org without an app team (made before app
@@ -43,6 +43,8 @@ import {
   orgInstanceOptions,
   orgsWithApp,
   removeFromApp,
+  removeFromAppTeam,
+  removeFromPrivateTeam,
   sourcePackage,
   type AppOrgView,
   type AppSource,
@@ -57,6 +59,7 @@ import {
 import { MeroPassClient } from '../generated/client';
 import { vaultApiFor } from './vaultApi';
 import { type TeamRole, normaliseRole } from './roles';
+import { askRoleConsent, orgConsentOptions } from './orgConsent';
 
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
@@ -132,17 +135,17 @@ export async function readOrg(
   };
 }
 
-/** The name Mero Pass is added to an organization under, in what an owner or admin is told. */
-export const PRODUCT_NAME = 'Mero Pass';
+/** The name Hyperfeed Pass is added to an organization under, in what an owner or admin is told. */
+export const PRODUCT_NAME = 'Hyperfeed Pass';
 
-/** Who has Mero Pass in `view`: its app team, else everyone in the org (no guest once it has app teams). */
+/** Who has Hyperfeed Pass in `view`: its app team, else everyone in the org (no guest once it has app teams). */
 export function passPeople(view: OrgView, source: AppSource | null): string[] {
   return appPeople(view as unknown as AppOrgView, sourcePackage(source));
 }
 
 /**
  * An instance's team as a vault's own: `null` for an open vault, which is on
- * Mero Pass's app team (or org access); the invite-only vault's team otherwise.
+ * Hyperfeed Pass's app team (or org access); the invite-only vault's team otherwise.
  */
 function vaultTeam(view: OrgView | null, source: AppSource | null, team: string | null): string | null {
   if (!team || !view) return team;
@@ -184,7 +187,7 @@ export async function listInstances(
 
 /**
  * The teams: the orgs this account is in that hold a vault or were made for
- * Mero Pass, with their vault and member counts. An org made for another app
+ * Hyperfeed Pass, with their vault and member counts. An org made for another app
  * is offered under "Connect to an existing organization" instead.
  */
 export async function listTeams(
@@ -225,7 +228,7 @@ export const MEMBER_DEFAULTS =
 /**
  * What follows a team the node approved: its mark, the member defaults (a
  * passkey step-up, skipped on a session bound to the app; refused, the team
- * stays and `warning` says what it means), Mero Pass's own team, open, and
+ * stays and `warning` says what it means), Hyperfeed Pass's own team, open, and
  * your name in it.
  */
 export async function finishTeam(
@@ -343,7 +346,7 @@ export async function createVault(
       access = { kind: 'team', team };
     }
     onStatus('Creating the vault…');
-    // An open vault is on Mero Pass's team (made first, by an owner or admin,
+    // An open vault is on Hyperfeed Pass's team (made first, by an owner or admin,
     // in an org whose other apps have teams), or org access in a legacy org.
     const contextId = (await conn.client.apps.create({ name: opts.name, ...appTarget(conn.source), ...(access
         ? { org: opts.namespaceId, access }
@@ -356,7 +359,7 @@ export async function createVault(
   }
 }
 
-/** The vault created in an org the account connects to Mero Pass ("Connect to an existing organization"). */
+/** The vault created in an org the account connects to Hyperfeed Pass ("Connect to an existing organization"). */
 export const CONNECTED_VAULT_NAME = 'Shared';
 
 /** Your private vault in an org the node approved: marked personal, with one vault named `name`. */
@@ -416,7 +419,7 @@ export async function vaultAudience(
   try {
     const view = await readOrg(conn.client, opts.namespaceId);
     const team = vaultTeam(view, conn.source, await teamOf(conn.client, opts.vaultId));
-    // An open vault: everyone in Mero Pass here (its app team, else the org).
+    // An open vault: everyone in Hyperfeed Pass here (its app team, else the org).
     if (!team) return new Set(passPeople(view, conn.source));
     const app = (await listInstances(conn)).find(
       (a) => a.appId === opts.vaultId,
@@ -433,7 +436,7 @@ export async function vaultAudience(
 // ── Invitations ──────────────────────────────────────────────────────────────
 
 /**
- * The teams an invite names: Mero Pass's app team (`appInviteTeams`), and
+ * The teams an invite names: Hyperfeed Pass's app team (`appInviteTeams`), and
  * `vaultTeam` for an invite-only vault.
  */
 export async function inviteTeams(
@@ -483,7 +486,7 @@ export function memberName(view: OrgView, account: string): string {
 }
 
 /**
- * The people of the team: who has Mero Pass in the org (its app team, else
+ * The people of the team: who has Hyperfeed Pass in the org (its app team, else
  * every member, no guest once the org has app teams).
  */
 export async function listTeamMembers(
@@ -529,48 +532,78 @@ export async function myCapabilities(
   return capabilitiesOf(await readOrg(conn.client, namespaceId), accountId);
 }
 
-/** Make `account` an org admin or member (a passkey step-up). */
+/**
+ * Make `account` an org admin or member (a passkey step-up). On a session
+ * bound to Hyperfeed Pass's frontend the node refuses an org role, so it is the
+ * consent page's: answers `consent` once the page is opening.
+ */
 export async function setMemberRole(
   conn: Conn,
-  opts: { namespaceId: string; accountId: string; role: TeamRole },
-): Promise<void> {
+  opts: { namespaceId: string; accountId: string; role: TeamRole; name?: string },
+): Promise<'done' | 'consent'> {
   try {
+    const intent = {
+      kind: 'setMemberRole' as const,
+      org: opts.namespaceId,
+      account: opts.accountId,
+      role: opts.role,
+      name: opts.name ?? '',
+    };
+    if (await askRoleConsent(conn.client, intent)) return 'consent';
     await conn.client.orgs.setMember(
       { org: opts.namespaceId, account: opts.accountId, role: opts.role },
       { confirm: passkeyConfirm(conn.passkey()) },
     );
+    return 'done';
   } finally {
     conn.after?.();
   }
 }
 
 /**
- * Remove `account` from the team (`removeFromApp`, a passkey step-up). In an
- * org that keeps its apps apart that is Mero Pass only: off its app team and
- * off the invite-only vaults' teams the remover may change, never out of the
- * org. Elsewhere it is out of the org, as before.
+ * Remove `account` from Hyperfeed Pass in the team (a passkey step-up), leaving
+ * them in the organization wherever Hyperfeed Pass has its app team there: off
+ * that team (every open vault) and off the invite-only vaults' teams the
+ * remover may change, which a session bound to Hyperfeed Pass's frontend may do
+ * itself. Only an org without the app team (legacy) takes them out of the
+ * organization, on the consent page when the session is bound
+ * (`removeFromApp`, which then never settles).
  */
 export async function removeTeamMember(
   conn: Conn,
-  opts: { namespaceId: string; accountId: string },
+  opts: { namespaceId: string; accountId: string; name?: string },
 ): Promise<'app' | 'org'> {
   try {
+    const pkg = sourcePackage(conn.source);
+    const view = (await conn.client.orgs.get({ org: opts.namespaceId })) as AppOrgView;
+    const appTeam = appTeamIdIn(view, pkg);
     const vaultTeams = new Set<string>();
-    if (isAppOnly((await conn.client.orgs.get({ org: opts.namespaceId })) as AppOrgView, sourcePackage(conn.source))) {
+    if (appTeam) {
       for (const app of (await listInstances(conn)).filter((a) => a.org === opts.namespaceId)) {
         const team = await teamOf(conn.client, app.appId);
-        if (team) vaultTeams.add(team);
+        if (team && team !== appTeam) vaultTeams.add(team);
       }
+    }
+    if (appTeam && !isAppOnly(view, pkg)) {
+      await removeFromAppTeam(conn.client, opts.namespaceId, conn.source, opts.accountId, conn.passkey);
+      for (const team of vaultTeams) {
+        if (!(opts.accountId in (view.teams?.[team]?.members ?? {}))) continue;
+        await removeFromPrivateTeam(conn.client, opts.namespaceId, team, opts.accountId, conn.passkey).catch(
+          (e: unknown) => console.warn(`removeTeamMember: ${team} still lists ${opts.accountId}`, e),
+        );
+      }
+      return 'app';
     }
     return await removeFromApp(conn.client, opts.namespaceId, conn.source, opts.accountId, conn.passkey, {
       privateTeams: () => [...vaultTeams],
+      consent: orgConsentOptions(opts.name ?? ''),
     });
   } finally {
     conn.after?.();
   }
 }
 
-/** Whether the org keeps its apps apart and Mero Pass has its team there (invites and Remove are Mero Pass's only). */
+/** Whether the org keeps its apps apart and Hyperfeed Pass has its team there (invites and Remove are Hyperfeed Pass's only). */
 export async function passOnly(conn: Pick<Conn, 'client' | 'source'>, namespaceId: string): Promise<boolean> {
   return isAppOnly((await conn.client.orgs.get({ org: namespaceId })) as AppOrgView, sourcePackage(conn.source));
 }

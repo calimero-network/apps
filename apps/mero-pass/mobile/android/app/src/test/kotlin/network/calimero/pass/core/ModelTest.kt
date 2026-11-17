@@ -141,7 +141,7 @@ class ModelTest {
     fun `a non-invitation is refused in words`() {
         val model = InvitationModel()
         assertFalse(model.open("https://example.com/nothing"))
-        assertEquals(InvitationModel.Stage.Failed("This isn't a Mero Pass invitation. Check the link and try again."), model.stage.value)
+        assertEquals(InvitationModel.Stage.Failed("This isn't a Hyperfeed Pass invitation. Check the link and try again."), model.stage.value)
     }
 
     // ── Vault ─────────────────────────────────────────────────────────────────────────────────

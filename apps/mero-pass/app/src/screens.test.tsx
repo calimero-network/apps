@@ -233,7 +233,7 @@ describe('TeamsPage', () => {
     expect(shown).toMatchObject({
       org: 'org1',
       teams: [],
-      appName: 'Mero Pass',
+      appName: 'Hyperfeed Pass',
       title: 'Invite to Acme',
       noun: 'team',
       uses: 1,
@@ -258,7 +258,7 @@ describe('InvitationPrompt', () => {
     const page = await screen.findByTestId('invitation-page');
     expect(page).toHaveTextContent("You're invited");
     expect(page).toHaveTextContent(
-      "You've been invited to join the team in Mero Pass.",
+      "You've been invited to join the team in Hyperfeed Pass.",
     );
     expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
     expect(screen.queryByTestId('app-body')).not.toBeInTheDocument();
@@ -296,7 +296,7 @@ describe('InvitationPrompt', () => {
         </MemoryRouter>
       </CalimeroContext.Provider>,
     );
-    expect(await screen.findByTestId('accept-token')).toHaveTextContent('tok Mero Pass');
+    expect(await screen.findByTestId('accept-token')).toHaveTextContent('tok Hyperfeed Pass');
     fireEvent.click(screen.getByTestId('accept-join'));
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1'),
@@ -380,7 +380,7 @@ describe('SignInDialog', () => {
     );
     // The node-served copy: mdma's `app_host.app_url('com.calimero.mero-pass')`.
     expect(
-      screen.getByRole('link', { name: 'Open Mero Pass' }),
+      screen.getByRole('link', { name: 'Open Hyperfeed Pass' }),
     ).toHaveAttribute(
       'href',
       'https://cnnfhhpjf6fjrjmxlf76yeqjhfz43my7vfvzo2bpvod7hzokzlqa.apps.calimero.network/',

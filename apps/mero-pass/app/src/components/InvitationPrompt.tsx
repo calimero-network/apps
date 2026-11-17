@@ -99,7 +99,7 @@ export default function InvitationPrompt({
       passkey={passkey()}
       token={token}
       org={pending?.org ?? undefined}
-      appName="Mero Pass"
+      appName="Hyperfeed Pass"
       labels={{ noun: 'team' }}
       onClose={dismiss}
       onError={(e) => {

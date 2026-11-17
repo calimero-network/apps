@@ -273,12 +273,12 @@ public final class InvitationModel: ObservableObject {
     }
 
     /// Read a link or a pasted code. `false` (and a failed stage) when it is not
-    /// a Mero Pass invitation.
+    /// a Hyperfeed Pass invitation.
     @discardableResult
     public func open(_ raw: String) -> Bool {
         guard let parsed = PassInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero Pass invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed Pass invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

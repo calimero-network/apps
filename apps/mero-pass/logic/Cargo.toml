@@ -1,6 +1,6 @@
 [package]
 name = "mero-pass"
-description = "Mero Pass: one end-to-end encrypted vault, on the component SDK"
+description = "Hyperfeed Pass: one end-to-end encrypted vault, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -36,7 +36,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-pass"
-name = "MeroPass"
+name = "Hyperfeed Pass"
 description = "A secret manager for teams: vaults end-to-end encrypted in the browser, shared with your organization's members on attested Calimero nodes."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

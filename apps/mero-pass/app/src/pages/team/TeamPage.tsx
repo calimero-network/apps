@@ -11,6 +11,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
+import { isFrontendBound } from '@calimero-apps/connect';
 import { useCalimero } from '../../calimero';
 
 import AppShell from '../../components/AppShell';
@@ -94,6 +95,20 @@ export default function TeamPage() {
   const mayCreateVault = canCreateVault(capabilities);
   const mayInvite = canInvite(capabilities);
   const mayCreateInviteOnly = canCreateInviteOnlyVault(capabilities);
+  // An invite-only vault is made on a team of its own, and a session bound to
+  // Hyperfeed Pass's frontend may not create one (the node refuses it, and the
+  // consent page has no such request), so it is offered on an unbound
+  // session only.
+  const [bound, setBound] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    void isFrontendBound(client).then((b) => live && setBound(b));
+    return () => {
+      live = false;
+    };
+  }, [client]);
+  const offerInviteOnly = mayCreateInviteOnly && bound === false;
   const heading = useMemo(
     () => (teamId ? displayName([teamName], teamId, 'Team') : 'Team'),
     [teamName, teamId],
@@ -181,7 +196,7 @@ export default function TeamPage() {
     try {
       await createVault(
         conn,
-        { namespaceId: teamId, name, restricted },
+        { namespaceId: teamId, name, restricted: restricted && offerInviteOnly },
         setBusy,
       );
       setNewName('');
@@ -192,7 +207,7 @@ export default function TeamPage() {
     } finally {
       setBusy(null);
     }
-  }, [conn, teamId, newName, restricted, load]);
+  }, [conn, teamId, newName, restricted, offerInviteOnly, load]);
 
   // An instance is reachable as soon as the org lets you in: nothing to join.
   const open = useCallback(
@@ -445,7 +460,7 @@ export default function TeamPage() {
                       node's operation (`createGroupInvitation` has no account
                       form yet). An account would create a vault nobody else
                       could ever be let into. */}
-                  {mayCreateInviteOnly && (
+                  {offerInviteOnly && (
                     <label className={styles.check}>
                       <input
                         type="checkbox"

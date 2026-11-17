@@ -28,7 +28,7 @@ export default function SignInPanel() {
     <>
       <p className={shell.sectionHint}>
         {invited
-          ? "You've been invited to join the team in Mero Pass. "
+          ? "You've been invited to join the team in Hyperfeed Pass. "
           : ''}
         {api.where ? `Connected to ${api.where}. ` : 'Connecting… '}
         Your account is a passkey: nothing to remember, nothing to leak.

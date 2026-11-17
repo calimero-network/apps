@@ -216,7 +216,7 @@ fun SecurityScreen(
     }
     if (confirmSignOut) {
         ConfirmDialog(
-            "Sign out of Mero Pass?",
+            "Sign out of Hyperfeed Pass?",
             "Forgetting this phone deletes its device key: next time it has to be approved again, or restored with your recovery key.",
             "Sign out and forget this phone",
             dismiss = { confirmSignOut = false },

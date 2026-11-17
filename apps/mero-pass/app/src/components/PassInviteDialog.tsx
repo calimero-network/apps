@@ -11,7 +11,7 @@ export interface PassInvite {
   linkOrg?: string;
   title: string;
   subtitle: string;
-  /** The link gives Mero Pass only (an org that keeps its apps apart). */
+  /** The link gives Hyperfeed Pass only (an org that keeps its apps apart). */
   appOnly?: boolean;
 }
 
@@ -41,7 +41,7 @@ export default function PassInviteDialog({
       onClose={onClose}
       org={org}
       teams={invite?.teams}
-      appName="Mero Pass"
+      appName="Hyperfeed Pass"
       linkBase={inviteBase(invite?.linkOrg)}
       uses={1}
       ttlSecs={DEFAULT_TTL}
@@ -49,7 +49,7 @@ export default function PassInviteDialog({
       labels={{
         noun: 'team',
         ...(invite && { title: invite.title, subtitle: invite.subtitle }),
-        ...(invite?.appOnly && { note: appOnlyInviteNote('Mero Pass') }),
+        ...(invite?.appOnly && { note: appOnlyInviteNote('Hyperfeed Pass') }),
       }}
     />
   );

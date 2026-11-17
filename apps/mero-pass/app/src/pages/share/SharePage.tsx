@@ -53,10 +53,10 @@ export default function SharePage() {
   return (
     <div className={shell.root}>
       <main className={shell.main}>
-        <p className={shell.eyebrow}>Mero Pass</p>
+        <p className={shell.eyebrow}>Hyperfeed Pass</p>
         <h1 className={shell.title}>Shared with you</h1>
         <p className={shell.subtitle}>
-          Someone sent you a secret through Mero Pass. It was decrypted in this
+          Someone sent you a secret through Hyperfeed Pass. It was decrypted in this
           browser; nothing was fetched from a server.
         </p>
         {!fragment && <p className={shell.error}>This link is empty.</p>}
