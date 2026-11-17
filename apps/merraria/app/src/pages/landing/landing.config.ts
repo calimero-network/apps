@@ -25,7 +25,7 @@ export const CONFIG: LandingConfig = {
   playableOffline: true,
   trust: ["No game server", "Deterministic world", "Plays offline"],
   explainer: [
-    "A Terraria-style mining and building sandbox, seen from the side, shared with other players and hosted by nobody. Like Mero Blocks, the world is a Calimero context: a seed, the diff of every tile anyone has changed, and player presence.",
+    "A Terraria-style mining and building sandbox, seen from the side, shared with other players and hosted by nobody. Like Hyperfeed Blocks, the world is a Calimero context: a seed, the diff of every tile anyone has changed, and player presence.",
     "The terrain generator is deterministic, so the seed plus the edits reproduce the same world everywhere and only the edits have to travel. It also runs with no node at all if you want to dig alone.",
   ],
   features: [
@@ -61,7 +61,7 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "Same model as Mero Blocks, in two dimensions: a world is a seed plus the tiles somebody changed, which is why it needs no game server and fits in a context.",
+        "Same model as Hyperfeed Blocks, in two dimensions: a world is a seed plus the tiles somebody changed, which is why it needs no game server and fits in a context.",
       ],
       concepts: [
         { term: "Namespace", def: "A world you own. Invite people and they dig in the same one." },

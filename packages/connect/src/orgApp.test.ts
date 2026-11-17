@@ -142,7 +142,7 @@ describe("reading an org", () => {
     expect(appTeamIdIn({ teams: { c: { ...appTeam(PKG, "invite"), parent: "t" } } }, PKG)).toBeNull();
     expect(isAppOnly(shared(), PKG)).toBe(true);
     expect(isAppOnly(standalone(), PKG)).toBe(false);
-    expect(appOnlyInviteNote("Mero CRM")).toMatch(/^Invites to Mero CRM only/);
+    expect(appOnlyInviteNote("Hyperfeed CRM")).toMatch(/^Invites to Hyperfeed CRM only/);
   });
 
   it("appPeople: the team's, else the org's (no guest once the org has app teams)", () => {
@@ -221,32 +221,32 @@ describe("creating a workspace", () => {
 
 describe("adding the app to an org (orgWideAccess)", () => {
   it("the app's team where it has one; organization access in a legacy org or on an older node", async () => {
-    expect(await orgWideAccess(cluster(standalone(), "bob"), "org", SOURCE, passkey, "Mero CRM")).toEqual({
+    expect(await orgWideAccess(cluster(standalone(), "bob"), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({
       kind: "team",
       team: "team-crm",
     });
     const old = cluster(legacy());
-    expect(await orgWideAccess(old, "org", SOURCE, passkey, "Mero CRM")).toEqual({ kind: "org" });
-    expect(await orgWideAccess(cluster({ ...legacy(), mode: undefined }), "org", SOURCE, passkey, "Mero CRM")).toEqual({
+    expect(await orgWideAccess(old, "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({ kind: "org" });
+    expect(await orgWideAccess(cluster({ ...legacy(), mode: undefined }), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({
       kind: "org",
     });
-    expect(await orgWideAccess(cluster(standalone()), "org", "bundle-hash", passkey, "Mero CRM")).toEqual({ kind: "org" });
+    expect(await orgWideAccess(cluster(standalone()), "org", "bundle-hash", passkey, "Hyperfeed CRM")).toEqual({ kind: "org" });
     expect(old.orgs.appTeamsScope).not.toHaveBeenCalled();
   });
 
   it("an admin of an org whose other apps have teams: open in a standalone org, closed in a shared one", async () => {
     const open = cluster({ members: { me: "admin" }, mode: "standalone", teams: { c: appTeam("com.calimero.chat", "everyone") } });
-    expect(await orgWideAccess(open, "org", SOURCE, passkey, "Mero CRM")).toEqual({ kind: "team", team: "team-new" });
+    expect(await orgWideAccess(open, "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({ kind: "team", team: "team-new" });
     expect(open.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: false }, CONFIRMED);
     expect(open.view.teams.c!.join).toBe("everyone");
     const closed = cluster({ members: { me: "admin" }, mode: "shared", teams: { c: appTeam("com.calimero.chat", "invite") } });
-    await orgWideAccess(closed, "org", SOURCE, passkey, "Mero CRM");
+    await orgWideAccess(closed, "org", SOURCE, passkey, "Hyperfeed CRM");
     expect(closed.orgs.appTeamsScope).toHaveBeenCalledWith({ org: "org", apps: [{ package: PKG }], shared: true }, CONFIRMED);
   });
 
   it("orgInstanceOptions: `{ org }` alone for organization access, as before app teams", async () => {
-    expect(await orgInstanceOptions(cluster(legacy()), "org", SOURCE, passkey, "Mero CRM")).toEqual({ org: "org" });
-    expect(await orgInstanceOptions(cluster(standalone()), "org", SOURCE, passkey, "Mero CRM")).toEqual({
+    expect(await orgInstanceOptions(cluster(legacy()), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({ org: "org" });
+    expect(await orgInstanceOptions(cluster(standalone()), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({
       org: "org",
       access: { kind: "team", team: "team-crm" },
     });
@@ -254,9 +254,9 @@ describe("adding the app to an org (orgWideAccess)", () => {
 
   it("a member there is told only owners and admins may add it, and nothing is made", async () => {
     const c = cluster({ members: { me: "member" }, mode: "standalone", teams: { c: appTeam("com.calimero.chat", "everyone") } });
-    const err = await orgWideAccess(c, "org", SOURCE, passkey, "Mero CRM").catch((e: unknown) => e);
+    const err = await orgWideAccess(c, "org", SOURCE, passkey, "Hyperfeed CRM").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AppTeamAdminError);
-    expect((err as Error).message).toMatch(/owners and admins can add Mero CRM/);
+    expect((err as Error).message).toMatch(/owners and admins can add Hyperfeed CRM/);
     expect(c.orgs.appTeamsScope).not.toHaveBeenCalled();
   });
 });
