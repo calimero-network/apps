@@ -268,7 +268,7 @@ struct JoinSheet: View {
                     }
                     .buttonStyle(SecondaryButtonStyle(compact: true))
                 }
-                Text("An invite link from the Mero Vote app or the web app works here.")
+                Text("An invite link from the Hyperfeed Vote app or the web app works here.")
                     .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 if let error {
                     Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger)
@@ -284,7 +284,7 @@ struct JoinSheet: View {
 
     private func run() {
         guard VoteInvitation.parse(link) != nil else {
-            error = "This isn't a Mero Vote invitation. Check the link and try again."
+            error = "This isn't a Hyperfeed Vote invitation. Check the link and try again."
             Haptics.failure()
             return
         }

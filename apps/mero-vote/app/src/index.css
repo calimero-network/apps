@@ -1,6 +1,6 @@
 /* ── tokens ──────────────────────────────────────────────────────────────
    The fleet's light glass (@calimero-apps/glass, imported first in main.tsx):
-   these are Mero Vote's own token names, holding glass values, so every rule
+   these are Hyperfeed Vote's own token names, holding glass values, so every rule
    below moves with them. Light is the default; `<html data-theme="dark">`
    switches glass.css's tokens to smoked glass, and these follow.
 

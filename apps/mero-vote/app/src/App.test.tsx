@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
+import { NotFound, type AppInfo, type CalimeroSession } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createInviteStore,
@@ -181,7 +181,7 @@ function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { 
 describe("App", () => {
   it("shows the listing on a production copy no cluster serves", async () => {
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    const open = await screen.findByRole("link", { name: "Open Mero Vote" });
+    const open = await screen.findByRole("link", { name: "Open Hyperfeed Vote" });
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-vote")`.
     expect(open.getAttribute("href")).toBe("https://qpe2mqkuj625tmvqshuqe4n5mz5plntrdqnltdbahtprjk42hsta.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
@@ -251,11 +251,47 @@ describe("App", () => {
     await screen.findByText("Where is the offsite?");
     expect(client.useSession).toHaveBeenCalledWith(SESSION);
     expect(client.signIn).not.toHaveBeenCalled();
-    expect(client.events).toHaveBeenCalledWith("app-1", 0, expect.anything());
+    // From the log's head: what is committed is read, not replayed.
+    await waitFor(() => expect(client.events).toHaveBeenCalledWith("app-1", 2, expect.anything()));
 
     fireEvent.click(screen.getByLabelText("Change group"));
     await screen.findByText("Choose a voting group");
     await screen.findByText("Board");
+  });
+
+  it("closes a group that no longer admits the account, back to the picker", async () => {
+    const client = fakeClient([
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    client.events = vi.fn(() => ({
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new NotFound("not found")) }),
+    })) as unknown as typeof client.events;
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, ME), JSON.stringify({ appId: "app-1", name: "Board", org: "org-1" }));
+    render(<App deps={deps(client)} storage={storage} />);
+
+    await screen.findByText("You no longer have access to that voting group.");
+    await screen.findByText("Choose a voting group");
+    expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();
+  });
+
+  it("closes the group when its stream ends and the node then refuses a read", async () => {
+    const client = fakeClient([
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    // Taken out of the org: the stream just ends, and every read is refused.
+    client.view = vi.fn(async (_app: string, method: string) => {
+      if (method === "whoami") return { index: 1, result: VIEWS[method] ?? null };
+      throw new NotFound("no such app");
+    }) as unknown as typeof client.view;
+    const storage = new Memory();
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    storage.setItem(selectionKey(LOCAL, ME), JSON.stringify({ appId: "app-1", name: "Board", org: "org-1" }));
+    render(<App deps={deps(client)} storage={storage} />);
+
+    await screen.findByText("You no longer have access to that voting group.");
+    expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();
   });
 
   it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
@@ -265,7 +301,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join the voting group in Mero Vote.",
+      "You've been invited to join the voting group in Hyperfeed Vote.",
     );
     expect(screen.queryByText(/verifiable tallies/)).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();

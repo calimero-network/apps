@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-// Mero Vote's types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), kept by hand in step
+// Hyperfeed Vote's types on Calimero 1.0 (the component ABI, `logic/res/abi.json`), kept by hand in step
 // with the web app's adapter (`app/src/meroVote.ts`): answers keep their snake_case fields, and every
 // u64 (`created_at`, `cast_at`…) is a decimal string, read back into a number (`VoteWireDecoding`).
 // The calls are the generated `VoteClient` (`Generated/`, `scripts/mobile-codegen.sh` at the repo

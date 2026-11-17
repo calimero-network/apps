@@ -123,7 +123,7 @@ data class TrusteeKey(
                 runCatching { lenient.decodeFromString(serializer(), raw) }
                     .getOrNull()
                     ?.takeIf { it.v == 1 && it.secret.length == 64 && it.secret.all { c -> c in "0123456789abcdef" } }
-                    ?: throw VoteModelException("This isn't a Mero Vote trustee key.")
+                    ?: throw VoteModelException("This isn't a Hyperfeed Vote trustee key.")
             if (key.pollId != pollId) throw VoteModelException("This key is for a different poll.")
             if (key.account != account) throw VoteModelException("This key belongs to a different account.")
             if (key.contextId != contextId) throw VoteModelException("This key is for a different voting group.")

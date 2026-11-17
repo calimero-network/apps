@@ -271,7 +271,7 @@ private fun JoinSheet(
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Palette.Surface, dragHandle = null) {
         Column(Modifier.imePadding()) {
             SheetBar("Join with a link", "Continue", canAct = link.isNotBlank(), busy = false, cancel = dismiss, act = {
-                if (VoteInvitation.parse(link) == null) error = "This isn't a Mero Vote invitation. Check the link and try again." else join(link)
+                if (VoteInvitation.parse(link) == null) error = "This isn't a Hyperfeed Vote invitation. Check the link and try again." else join(link)
             })
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextField(
@@ -287,7 +287,7 @@ private fun JoinSheet(
                 if (clip != null && link.isEmpty()) {
                     SecondaryButton("Paste from clipboard", { link = clip }, compact = true, icon = Icons.Outlined.ContentPaste)
                 }
-                Text("An invite link from the Mero Vote app or the web app works here.", fontSize = 13.sp, color = Palette.Muted)
+                Text("An invite link from the Hyperfeed Vote app or the web app works here.", fontSize = 13.sp, color = Palette.Muted)
                 error?.let { Text(it, fontSize = 14.sp, color = Palette.Danger) }
                 Spacer(Modifier.height(24.dp))
             }

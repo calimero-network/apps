@@ -39,7 +39,7 @@ public struct VoteInvitation: Sendable {
     public static let webParam = "invite"
 
     /// Parse a link (https or `calimero://`), a bare code, a bare `inv_…` token or raw JSON.
-    /// `nil` when it holds no Mero Vote invitation, including another app's link.
+    /// `nil` when it holds no Hyperfeed Vote invitation, including another app's link.
     public static func parse(_ input: String) -> VoteInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -99,12 +99,12 @@ public final class InvitationModel: ObservableObject {
     }
 
     /// Read a link or a pasted code. `false` (and a failed stage) when it is
-    /// not a Mero Vote invitation.
+    /// not a Hyperfeed Vote invitation.
     @discardableResult
     public func open(_ raw: String) -> Bool {
         guard let parsed = VoteInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero Vote invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed Vote invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

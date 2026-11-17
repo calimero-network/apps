@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { NotFound } from "@calimero-network/mero-js";
 import {
   appSource,
   askAnOwnerCopy,
@@ -13,7 +13,7 @@ import { AppListing, NodeShield, PasskeySignIn, InvitationSignIn, usePendingInvi
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
-import { MeroVoteClient } from "./generated/client";
+import { MeroVoteClient, type AppTransport } from "./generated/client";
 import { PACKAGE } from "./meroVote";
 import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { instanceIn, invites as appInvites, listGroups, selectionKey } from "./groups";
@@ -52,19 +52,49 @@ function readSelection(storage: KeyValueStorage, key: string): OpenedGroup | nul
   return null;
 }
 
-/** Calls `onEvent` for each event of `app`, until the returned stop. */
-function subscribeTo(client: CalimeroClient, app: string) {
+/**
+ * Calls `onEvent` for each event of the group from the log's head (what is
+ * already committed is what the screens read, not replayed), until the
+ * returned stop. `onLost` runs once the node no longer admits the account.
+ */
+function subscribeTo(vote: MeroVoteClient, onLost: () => void) {
   return (onEvent: () => void) => {
     const abort = new AbortController();
     void (async () => {
       try {
-        for await (const _event of client.events(app, 0, abort.signal)) onEvent();
-      } catch {
-        // Stream closed (sign-out, group left, network): the poll timer still runs.
+        const from = (await vote.raw.whoami()).index + 1;
+        for await (const _event of vote.events(from, abort.signal)) onEvent();
+        // A stream that ends without a refusal (the node may just close it on a
+        // removal): read again, and a read the node refuses closes the group (`admitted`).
+        if (!abort.signal.aborted) onEvent();
+      } catch (e) {
+        // Not admitted any more: close it. Anything else (sign-out, network): the poll timer still runs.
+        if (!abort.signal.aborted && e instanceof NotFound) onLost();
       }
     })();
     return () => abort.abort();
   };
+}
+
+type Transport = AppTransport;
+
+/**
+ * `client` with `onLost` run when the node refuses a call because the group is
+ * not there for this account any more (`404` from the node, not the contract's
+ * own refusal): taken out of its organization, or it was deleted.
+ */
+function admitted(client: Transport, onLost: () => void): Transport {
+  const check = (e: unknown): never => {
+    if (e instanceof NotFound && typeof (e as { appCode?: unknown }).appCode !== "string") onLost();
+    throw e;
+  };
+  return {
+    apps: {
+      call: (args, options) => client.apps.call(args, options).catch(check),
+      view: (args, options) => client.apps.view(args, options).catch(check),
+    },
+    events: client.events.bind(client),
+  } as Transport;
 }
 
 export function App({
@@ -92,6 +122,8 @@ export function App({
   const [opened, setOpened] = useState<OpenedGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
+  // Said on the picker once the open group no longer admits this account.
+  const [lost, setLost] = useState(false);
 
   const client = session.status === "signed-in" ? session.client : null;
   // A group is an app instance, served the frontend of the release it runs.
@@ -109,6 +141,7 @@ export function App({
   const open = useCallback(
     (group: OpenedGroup | null) => {
       setOpened(group);
+      if (group) setLost(false);
       if (!key) return;
       try {
         if (group) storage.setItem(key, JSON.stringify({ appId: group.appId, name: group.name, org: group.org }));
@@ -155,13 +188,15 @@ export function App({
     })();
   }, [client, landing, source, key, storage, after, open]);
 
-  const group: VoteGroup | null = useMemo(
-    () =>
-      client && opened
-        ? { client: new MeroVoteClient(client, opened.appId, { after }), subscribe: subscribeTo(client, opened.appId) }
-        : null,
-    [client, opened, after],
-  );
+  const closeLost = useCallback(() => {
+    setLost(true);
+    open(null);
+  }, [open]);
+  const group: VoteGroup | null = useMemo(() => {
+    if (!client || !opened) return null;
+    const vote = new MeroVoteClient(admitted(client, closeLost), opened.appId, { after });
+    return { client: vote, subscribe: subscribeTo(vote, closeLost) };
+  }, [client, opened, after, closeLost]);
 
   const onLogout = () => void signOut(api.signOut, key, storage).then(() => setOpened(null));
   const signedIn = session.status === "signed-in";
@@ -175,7 +210,7 @@ export function App({
             <span className="brand-mark">
               <VoteIcon size={17} />
             </span>
-            <h1>Mero Vote</h1>
+            <h1>Hyperfeed Vote</h1>
           </div>
           {signedIn && (
             <nav className="crumbs" aria-label="Breadcrumb">
@@ -254,7 +289,7 @@ export function App({
             passkey={deps.passkey()}
             token={asking?.token ?? ""}
             org={asking?.org ?? undefined}
-            appName="Mero Vote"
+            appName="Hyperfeed Vote"
             labels={{ noun: "group" }}
             onError={invites.drop}
             onClose={() => {
@@ -274,6 +309,7 @@ export function App({
             {notice}
           </Callout>
         )}
+        {lost && !opened && <Callout tone="warning">You no longer have access to that voting group.</Callout>}
         {session.status === "connecting" ? (
           <div className="card center loading-card">
             <span className="spinner" aria-hidden="true" />

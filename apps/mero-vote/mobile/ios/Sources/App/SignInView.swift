@@ -2,7 +2,7 @@ import MeroKitUI
 import SwiftUI
 import VoteCore
 
-/// The front door: what Mero Vote is, and one way in.
+/// The front door: what Hyperfeed Vote is, and one way in.
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     var invited = false
@@ -16,7 +16,7 @@ struct SignInView: View {
                         .foregroundStyle(Palette.ink)
                         .frame(width: 76, height: 76)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Palette.lime))
-                    Text("Mero Vote").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Vote").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                     Text("Private polls with verifiable tallies.")
                         .font(.system(size: 19, weight: .medium))
                         .foregroundStyle(Palette.inkSoft)

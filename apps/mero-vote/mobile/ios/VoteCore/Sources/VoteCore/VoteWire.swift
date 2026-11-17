@@ -87,7 +87,7 @@ public struct TrusteeKey: Codable, Equatable, Sendable {
     public static func parse(_ raw: String, contextId: String, pollId: String, account: String) throws -> TrusteeKey {
         guard let key = try? JSONDecoder().decode(TrusteeKey.self, from: Data(raw.utf8)), key.v == 1,
             key.secret.count == 64, key.secret.allSatisfy({ "0123456789abcdef".contains($0) })
-        else { throw VoteModelError.message("This isn't a Mero Vote trustee key.") }
+        else { throw VoteModelError.message("This isn't a Hyperfeed Vote trustee key.") }
         if key.pollId != pollId { throw VoteModelError.message("This key is for a different poll.") }
         if key.account != account { throw VoteModelError.message("This key belongs to a different account.") }
         if key.contextId != contextId { throw VoteModelError.message("This key is for a different voting group.") }
