@@ -308,7 +308,7 @@ describe('App', () => {
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId('connect-existing-org'));
       const choice = await screen.findByTestId('connect-org-ow');
-      expect(choice.textContent).toContain('Mero Blocks: overworld');
+      expect(choice.textContent).toContain('Hyperfeed Blocks: overworld');
       fireEvent.click(choice);
       await waitFor(() =>
         expect(client.createApp).toHaveBeenCalledWith('Untitled Spreadsheet', 'bundle-hash', { org: 'ow' }),
