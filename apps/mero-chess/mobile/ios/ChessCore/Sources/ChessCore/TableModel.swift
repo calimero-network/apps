@@ -304,8 +304,8 @@ public enum ChessError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .noNamespace: return "This table's club is not known on this device yet. Open it from Tables and try again."
-        case .noApplication: return "Mero Chess is still being looked up in the app registry. Try again in a moment."
-        case .notAnInvitation: return "That is not a Mero Chess invitation link."
+        case .noApplication: return "Hyperfeed Chess is still being looked up in the app registry. Try again in a moment."
+        case .notAnInvitation: return "That is not a Hyperfeed Chess invitation link."
         case .noRelay: return "You're not connected to your cluster. Sign in again, or join a table from an invitation link."
         }
     }

@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
 import network.calimero.chess.app.ApprovalsModel
 
 /**
- * What waits for the person's approval (an update of Mero Chess, a node release): "Review" shows
+ * What waits for the person's approval (an update of Hyperfeed Chess, a node release): "Review" shows
  * the confirmation code, then opens the node's consent page in a Custom Tab. Nothing shows when
  * there is nothing to approve. (iOS `ApprovalsCard`.)
  */

@@ -32,7 +32,7 @@ public struct ChessInvitation: Sendable, Identifiable {
         try invitation.link(slug: ChessConstants.packageName)
     }
 
-    /// A pasted link, a deep link or a bare token; nil when it is not a Mero Chess invitation
+    /// A pasted link, a deep link or a bare token; nil when it is not a Hyperfeed Chess invitation
     /// (another app's link is refused: redeeming it would join that app's org).
     public static func parse(_ input: String) -> ChessInvitation? {
         guard let token = InviteLink.token(fromPasted: input, expectedSlug: ChessConstants.packageName),

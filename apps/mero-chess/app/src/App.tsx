@@ -117,9 +117,9 @@ function ConnectCard({
         <h1>{invited ? "You're invited" : "Sign in to play"}</h1>
         <p className="lede" data-testid="signin-desc">
           {invited
-            ? "You've been invited to join the table in Mero Chess. "
+            ? "You've been invited to join the table in Hyperfeed Chess. "
             : ""}
-          Mero Chess plays through a Calimero cluster ({where}): every move is a transaction its
+          Hyperfeed Chess plays through a Calimero cluster ({where}): every move is a transaction its
           log orders, refereed by the contract. Accounts are passkeys: nothing to remember, nothing
           to leak.
         </p>
@@ -276,7 +276,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         passkey={deps.passkey()}
         token={invite?.token ?? ""}
         org={invite?.org ?? undefined}
-        appName="Mero Chess"
+        appName="Hyperfeed Chess"
         labels={acceptLabels(inviter(invite))}
         onError={invites.drop}
         onClose={() => {
@@ -338,7 +338,7 @@ function AppShell({ children }: { children: ReactNode }) {
             onClick={() => navigate("/", { state: { fromApp: true } })}
           >
             <img src={`${basename()}favicon.svg`} alt="" width={28} height={28} />
-            <span>Mero Chess</span>
+            <span>Hyperfeed Chess</span>
           </button>
           {session.status === "signed-in" && (
             <div className="session">

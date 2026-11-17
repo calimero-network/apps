@@ -1,7 +1,7 @@
 import ChessCore
 import SwiftUI
 
-/// What waits for the person's approval (an update of Mero Chess, a node release): "Review"
+/// What waits for the person's approval (an update of Hyperfeed Chess, a node release): "Review"
 /// opens the node's consent page in the system browser. Nothing shows when there is nothing to
 /// approve.
 struct ApprovalsCard: View {

@@ -1,7 +1,7 @@
 # Writing a contract for a network that will not run it
 
 > **This describes the v1 contract** (`calimero-sdk`, a context replicated between the players'
-> own nodes), kept as a worked example for anyone still writing a v1 app. Mero Chess itself now runs
+> own nodes), kept as a worked example for anyone still writing a v1 app. Hyperfeed Chess itself now runs
 > on the 1.0 component runtime, where one leader applies every call in one log and every write runs
 > the contract, so the storage-level defences below became method checks: see
 > [`../README.md`](../README.md#trust) and the change table there. Code samples here are v1's.

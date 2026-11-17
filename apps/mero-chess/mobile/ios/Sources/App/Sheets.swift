@@ -155,7 +155,7 @@ struct JoinSheet: View {
                 AppMark(size: 48)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Join this table?").font(Theme.heading(22)).foregroundStyle(Theme.ink)
-                    Text("You've been invited to play Mero Chess.").font(Theme.body(14)).foregroundStyle(Theme.muted)
+                    Text("You've been invited to play Hyperfeed Chess.").font(Theme.body(14)).foregroundStyle(Theme.muted)
                 }
             }
             Text(
@@ -258,7 +258,7 @@ struct AccountSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .confirmationDialog("Sign out of Mero Chess?", isPresented: $confirming, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Chess?", isPresented: $confirming, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     onSignOut()

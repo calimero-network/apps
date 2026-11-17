@@ -19,7 +19,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Chess",
+  name: "Hyperfeed Chess",
   description: "Two-player chess with no game server.",
   package: PACKAGE,
   dir: "mero-chess",

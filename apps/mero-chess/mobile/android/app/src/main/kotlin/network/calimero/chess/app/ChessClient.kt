@@ -30,8 +30,8 @@ class ChessException(
         val message: String,
     ) {
         NO_NAMESPACE("This table's club is not known on this device yet. Open it from Tables and try again."),
-        NO_APPLICATION("Mero Chess is still being looked up in the app registry. Try again in a moment."),
-        NOT_AN_INVITATION("That is not a Mero Chess invitation link."),
+        NO_APPLICATION("Hyperfeed Chess is still being looked up in the app registry. Try again in a moment."),
+        NOT_AN_INVITATION("That is not a Hyperfeed Chess invitation link."),
         NO_RELAY("You're not connected to your cluster. Sign in again, or join a table from an invitation link."),
     }
 }

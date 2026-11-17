@@ -41,7 +41,7 @@ serde_json = "1"
 # followed by one.
 [package.metadata.calimero]
 package = "com.calimero.mero-chess"
-name = "Mero Chess"
+name = "Hyperfeed Chess"
 description = "Two-player chess with no game server. A table is a Calimero app instance: every move is a transaction the cluster orders in one log, and the rules — legal moves, check, mate, the draws — run inside the contract."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

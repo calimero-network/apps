@@ -1,5 +1,5 @@
 /**
- * Mero Chess — the real board, a move being played, and the move list that IS
+ * Hyperfeed Chess — the real board, a move being played, and the move list that IS
  * the game's stored state arriving on the other player's node.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.

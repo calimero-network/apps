@@ -1,6 +1,6 @@
-# Mero Chess — native mobile apps
+# Hyperfeed Chess — native mobile apps
 
-Native iOS and Android clients for Mero Chess, next to the web frontend (`../app`) and the contract
+Native iOS and Android clients for Hyperfeed Chess, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-chess`). Both apps have the same screens, copy, icons (SF
 Symbols ↔ Material Symbols) and flows.
 
@@ -36,7 +36,7 @@ over the sealed channel to an attested node:
 - **Invitations** are org invite links
   (`https://links.calimero.network/com.calimero.mero-chess/join?invitation=<base58(deflate({invitation: "inv_…", namespaceId, contextId}))>`,
   plus `calimero://`), redeemed with `POST /invites/{token}/redeem`. Pre-1.0 links are refused.
-- **Approvals**: newer Mero Chess releases and node releases that wait for the person show on the
+- **Approvals**: newer Hyperfeed Chess releases and node releases that wait for the person show on the
   Tables screen. "Review" first shows the node's confirmation code, then opens the node's consent
   page in the system browser (Custom Tab on Android); the page sends the person back to
   `mero-chess://consent`.

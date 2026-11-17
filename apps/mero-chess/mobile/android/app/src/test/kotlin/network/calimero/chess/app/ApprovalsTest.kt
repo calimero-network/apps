@@ -44,7 +44,7 @@ class ApprovalsTest {
 
     @Test
     fun `items keep this apps upgrades and actionable releases`() {
-        val items = ApprovalsModel.items(pending("org1"), "org1", ChessConstants.PACKAGE_NAME, "Mero Chess")
+        val items = ApprovalsModel.items(pending("org1"), "org1", ChessConstants.PACKAGE_NAME, "Hyperfeed Chess")
         assertEquals(
             listOf(ApprovalsModel.Item.Kind.Upgrade("app-1", "1.2.0"), ApprovalsModel.Item.Kind.Release("org1", "2.3.110")),
             items.map { it.kind },
@@ -55,13 +55,13 @@ class ApprovalsTest {
 
     @Test
     fun `operator held decisions are not offered`() {
-        assertTrue(ApprovalsModel.items(pending(null, actionable = false), null, ChessConstants.PACKAGE_NAME, "Mero Chess").isEmpty())
+        assertTrue(ApprovalsModel.items(pending(null, actionable = false), null, ChessConstants.PACKAGE_NAME, "Hyperfeed Chess").isEmpty())
     }
 
     private fun model(requested: MutableList<ConsentRequest>) =
         ApprovalsModel(
             packageName = ChessConstants.PACKAGE_NAME,
-            appName = "Mero Chess",
+            appName = "Hyperfeed Chess",
             returnTo = "mero-chess://consent",
             fetch = { org -> if (org == null) throw NotFound("no account report") else pending(org) },
             consent = { request, confirm ->
