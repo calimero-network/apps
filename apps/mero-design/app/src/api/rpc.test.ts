@@ -102,7 +102,7 @@ describe("teams and boards", () => {
       getOrg: vi.fn().mockResolvedValue({ members: { x: "owner" }, metadata: null }),
     }));
     expect(await listTeams()).toEqual([]);
-    expect((await listOtherTeams()).map((o) => [o.orgId, o.label])).toEqual([["ow", "Mero Blocks: overworld"]]);
+    expect((await listOtherTeams()).map((o) => [o.orgId, o.label])).toEqual([["ow", "Hyperfeed Blocks: overworld"]]);
   });
 
   it("lists a team made here before it holds a board", async () => {
