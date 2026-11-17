@@ -20,7 +20,7 @@ export default function BoardRail({
   onNavigate?: () => void;
   onDelete: (board: Project) => void;
 }) {
-  const { teamId, projectId, boards, isTeamAdmin, openBoard, openTeam, openSettings } = useShell();
+  const { teamId, projectId, boards, isTeamAdmin, openBoard, openTeam, openSettings, deleteInHome } = useShell();
   const { showToast } = useToast();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -214,7 +214,18 @@ export default function BoardRail({
                   >Settings</button>
                   {/* A team admin's: a board is deleted for everyone in the
                       team, through its subgroup, on a node and an account. */}
-                  {isTeamAdmin === true && (
+                  {isTeamAdmin === true && deleteInHome && (
+                    <a
+                      role="menuitem"
+                      className={styles.danger}
+                      href={deleteInHome}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setMenuFor(null)}
+                      data-testid={`board-delete-in-home-${b.contextId}`}
+                    >Delete in Calimero Home ↗</a>
+                  )}
+                  {isTeamAdmin === true && deleteInHome === undefined && (
                     <button
                       type="button"
                       role="menuitem"

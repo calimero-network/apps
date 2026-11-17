@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "Mero Design — collaborative design tool on Calimero (component SDK, CalimeroClient)",
+  "description": "Hyperfeed Design — collaborative design tool on Calimero (component SDK, CalimeroClient)",
   "type": "module",
   "scripts": {
     "dev": "vite",

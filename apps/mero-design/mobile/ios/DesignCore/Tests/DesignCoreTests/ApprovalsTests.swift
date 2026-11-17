@@ -32,7 +32,7 @@ final class ApprovalsTests: XCTestCase {
     func testItemsKeepThisAppsUpgradesAndActionableReleases() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: "org1"), org: "org1", packageName: DesignFormat.packageName,
-            appName: "Mero Design")
+            appName: "Hyperfeed Design")
         XCTAssertEqual(
             items.map(\.kind), [.upgrade(app: "app-1", version: "1.2.0"), .release(org: "org1", version: "2.3.110")])
         XCTAssertEqual(
@@ -46,14 +46,14 @@ final class ApprovalsTests: XCTestCase {
     func testOperatorHeldDecisionsAreNotOffered() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: nil, upgradesBy: "operator", releasesBy: "operator"), org: nil,
-            packageName: DesignFormat.packageName, appName: "Mero Design")
+            packageName: DesignFormat.packageName, appName: "Hyperfeed Design")
         XCTAssertTrue(items.isEmpty)
     }
 
     func testLoadSkipsUnreadableScopesAndApproveOpensConsent() async throws {
         var requested: [ConsentRequest] = []
         let model = ApprovalsModel(
-            packageName: DesignFormat.packageName, appName: "Mero Design",
+            packageName: DesignFormat.packageName, appName: "Hyperfeed Design",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)

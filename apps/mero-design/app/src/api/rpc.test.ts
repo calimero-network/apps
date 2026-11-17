@@ -93,7 +93,7 @@ describe("teams and boards", () => {
     expect(await listTeams()).toEqual([{ namespaceId: "org-1", name: "Design", role: "member" }]);
   });
 
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   it("leaves out an org made for another app, which only connecting offers", async () => {
     const blocks = { appId: "w1", name: "overworld", owner: "x", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks" };
     bind(withRoutes({

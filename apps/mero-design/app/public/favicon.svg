@@ -1,7 +1,7 @@
 <!-- Hand-kept in sync with scripts/gen-icons.mjs `mark()`, which generates every
      other icon here. Same geometry in the same 64×64 design space, in the
      Calimero palette the sibling apps share (mero-sheets, mero-issue-tracker). -->
-<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Design logo">
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hyperfeed Design logo">
   <defs>
     <linearGradient id="g" x1="14" y1="48" x2="50" y2="16" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#93e60c"/>

@@ -31,6 +31,13 @@ export interface ShellValue {
    * into it, so they sit in the one bar, next to Invite.
    */
   boardSlot: HTMLElement | null;
+  /**
+   * Where a board is deleted when this session cannot delete it: a session
+   * opened on the app's own page (core refuses an app's delete there, and the
+   * consent page has no kind for it). `undefined` on any other session, which
+   * deletes in place; `null` when no Calimero Home link applies.
+   */
+  deleteInHome: string | null | undefined;
 }
 
 export const ShellContext = createContext<ShellValue | null>(null);

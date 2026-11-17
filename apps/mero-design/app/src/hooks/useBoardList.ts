@@ -9,6 +9,7 @@ import {
 import { canCreateIn } from "@calimero-apps/connect";
 import { peekApi } from "../api/client";
 import type { Project } from "../types";
+import { visibleInterval } from "../utils/visibleInterval";
 
 export interface BoardList {
   boards: Project[];
@@ -86,8 +87,7 @@ export function useBoardList(teamId: string | null): BoardList {
   useEffect(() => {
     if (!teamId) return;
     void reload();
-    const id = setInterval(() => void reload(), 30_000);
-    return () => clearInterval(id);
+    return visibleInterval(() => void reload(), 30_000);
   }, [teamId, reload]);
 
   const createBoard = useCallback(async (rawName: string): Promise<Project> => {

@@ -17,7 +17,7 @@ afterEach(() => {
   unbind();
 });
 
-describe("Mero Design's account menu", () => {
+describe("Hyperfeed Design's account menu", () => {
   it("opens the node shield from its Connected to row", async () => {
     const client = {
       nodeUrl: "http://127.0.0.1:2528",

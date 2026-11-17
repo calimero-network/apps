@@ -27,7 +27,7 @@ struct SignInView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     AppMark(size: 64).padding(.top, 48)
-                    Text("Mero Design")
+                    Text("Hyperfeed Design")
                         .font(Theme.heading(34))
                         .foregroundStyle(Theme.ink)
                         .padding(.top, 24)

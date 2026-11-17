@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { peekApi } from "./client";
 import { readTeam, setTeamName } from "./rpc";
+import { visibleInterval } from "../utils/visibleInterval";
 
 /**
  * What to call people and teams: the name each person set once for the whole
@@ -74,8 +75,7 @@ function useDirectory(team: string | null | undefined): Entry | null {
   useEffect(() => {
     if (!team) return;
     load(team);
-    const id = setInterval(() => load(team), TTL_MS);
-    return () => clearInterval(id);
+    return visibleInterval(() => load(team), TTL_MS);
   }, [team]);
   return team ? entry(team) : null;
 }

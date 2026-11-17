@@ -1,7 +1,7 @@
-# Can a full web app be designed in Mero Design?
+# Can a full web app be designed in Hyperfeed Design?
 
 **Yes — but not until one two-line bug is fixed.** This is the write-up of an attempt to design a
-complete application screen in Mero Design the way you would in Figma, and of the blocker it turned up:
+complete application screen in Hyperfeed Design the way you would in Figma, and of the blocker it turned up:
 a dependency-semantics change that silently moves **every shape on the canvas by half its own size**.
 
 ## What was built

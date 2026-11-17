@@ -12,7 +12,7 @@ interface Props {
   teamName: string;
   /** The app team the invite names; empty for an org-wide invite (`teamInviteTeams`). */
   teams?: string[];
-  /** The invite gives Mero Design only (an org that keeps its apps apart). */
+  /** The invite gives Hyperfeed Design only (an org that keeps its apps apart). */
   appOnly?: boolean;
   open: boolean;
   onClose: () => void;

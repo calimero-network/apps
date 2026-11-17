@@ -1,6 +1,6 @@
 {
-  "name": "Mero Design",
-  "short_name": "Mero Design",
+  "name": "Hyperfeed Design",
+  "short_name": "Hyperfeed Design",
   "description": "Collaborative design tool on the Calimero p2p network. Figma-style canvas, your data on your nodes.",
   "display": "standalone",
   "background_color": "#ffffff",

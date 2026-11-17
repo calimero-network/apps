@@ -17,7 +17,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Design",
+  name: "Hyperfeed Design",
   description: "A Figma-style design canvas, shared by the members of your organization.",
   package: APP_PACKAGE,
   dir: "mero-design",

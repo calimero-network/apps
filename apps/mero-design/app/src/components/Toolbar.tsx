@@ -288,7 +288,7 @@ export default function Toolbar({
     try {
       parsed = JSON.parse(text);
     } catch {
-      showToast(`“${file.name}” is not a Mero Design project file`, "error");
+      showToast(`“${file.name}” is not a Hyperfeed Design project file`, "error");
       return;
     }
     if (!validateSnapshot(parsed)) {

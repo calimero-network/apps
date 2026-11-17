@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { peekApi } from "../api/client";
+import { accessLost } from "../utils/errorMessage";
 
 /** How long to wait before opening the stream again after it dropped. */
 const RETRY_MS = 2000;
@@ -21,17 +22,21 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * The stream starts after the entry a view of the board answered at, so it
  * replays nothing the page's own first read already has. A stream that drops
  * (the cluster restarted, the laptop slept) is opened again; every event from
- * the gap is lost, so `onReconnect` asks the page to re-read the board.
+ * the gap is lost, so `onReconnect` asks the page to re-read the board. A
+ * board this account no longer reaches is not retried: `onLost` closes it.
  */
 export function useSse(
   contextId: string | null,
   onEvent: (payload: unknown) => void,
   onReconnect?: () => void,
+  onLost?: () => void,
 ) {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
   const api = peekApi();
   const client = api?.client ?? null;
 
@@ -52,6 +57,10 @@ export function useSse(
           }
         } catch (err) {
           if (ctl.signal.aborted) return;
+          if (accessLost(err)) {
+            onLostRef.current?.();
+            return;
+          }
           console.warn("[MeroDesign] event stream dropped (will reconnect):", (err as Error)?.message ?? err);
         }
         await sleep(RETRY_MS, ctl.signal);

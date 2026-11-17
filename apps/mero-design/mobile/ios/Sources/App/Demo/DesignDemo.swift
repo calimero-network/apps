@@ -4,7 +4,7 @@ import Foundation
 import MeroKit
 import UIKit
 
-/// Mero Design's demo: three teams, their boards, and one fully drawn board
+/// Hyperfeed Design's demo: three teams, their boards, and one fully drawn board
 /// (a habit app's onboarding wireframes: phone frames, shapes, text, sticky
 /// notes, arrows and images), with members, comments and two people looking
 /// at it. The contract answers `get_elements`, `get_comments`, ... in the

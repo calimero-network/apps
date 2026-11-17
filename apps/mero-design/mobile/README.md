@@ -1,6 +1,6 @@
-# Mero Design: native mobile apps
+# Hyperfeed Design: native mobile apps
 
-Native iOS and Android viewers for Mero Design, next to the web editor (`../app`) and the
+Native iOS and Android viewers for Hyperfeed Design, next to the web editor (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-design`). They have the same screens, copy, icons
 (SF Symbols and the matching Material icons) and behaviour.
 
@@ -22,8 +22,8 @@ properties, layers) is too big for a phone. What both apps do:
 
 - **Sign in** with a passkey on a Calimero 1.0 cluster (`MeroAppSession`), or on a development
   node. The session is kept in the Keychain / Keystore and restored at launch.
-- **Teams**: the account's orgs running Mero Design. Pull to refresh. Anything waiting for the
-  person's approval (an update of Mero Design, a node release) shows on top; **Review** shows the
+- **Teams**: the account's orgs running Hyperfeed Design. Pull to refresh. Anything waiting for the
+  person's approval (an update of Hyperfeed Design, a node release) shows on top; **Review** shows the
   confirmation code, then opens the node's consent page in the system browser / a Custom Tab.
 - **Boards**: a team's boards (the app instances in its org, as the web app makes them), named by
   the board's own `getBoard`, with its description and layer count. Swipe a board to share its
@@ -78,7 +78,7 @@ verified). `MeroAppSession` gives a `MeroAppBackend` (the SDK's `CalimeroAppBack
 | What | Wire |
 | --- | --- |
 | Sign in / create account / restore | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh` |
-| Teams | the account's orgs running Mero Design (`GET /auth/me`) |
+| Teams | the account's orgs running Hyperfeed Design (`GET /auth/me`) |
 | Boards | the app instances in the org (`GET /apps`), one per board |
 | Contract reads / writes | `POST /apps/{app}/views` / `POST /apps/{app}/intents` |
 | Live updates | `GET /apps/{app}/events` (sealed SSE), polling as a fallback |

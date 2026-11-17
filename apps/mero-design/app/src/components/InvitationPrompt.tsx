@@ -13,7 +13,7 @@ import { inviteDestination, invites, takeJoinedAtSignUp } from "../utils/inviteL
 const ACCEPT_LABELS = {
   noun: "team",
   title: "Join this team",
-  body: "You were invited to a team in Mero Design. Join it to see its boards.",
+  body: "You were invited to a team in Hyperfeed Design. Join it to see its boards.",
   join: "Join the team",
 };
 
@@ -93,7 +93,7 @@ export default function InvitationPrompt() {
       passkey={binding.passkey()}
       token={invite.token}
       org={invite.org ?? undefined}
-      appName="Mero Design"
+      appName="Hyperfeed Design"
       labels={ACCEPT_LABELS}
       onError={() => invites.drop()}
       onClose={() => {
