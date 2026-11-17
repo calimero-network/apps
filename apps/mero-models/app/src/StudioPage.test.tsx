@@ -244,7 +244,7 @@ describe("the studio's front door", () => {
     renderPage(fakeClient(), storage, invites);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join the studio in Mero Models.",
+      "You've been invited to join the studio in Hyperfeed Models.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.getByTestId("signup-passkey")).toBeTruthy();

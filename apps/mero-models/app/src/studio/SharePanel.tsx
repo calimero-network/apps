@@ -8,6 +8,7 @@ import type { Peer } from "../editor/viewport";
 import { InviteCard } from "../InviteCard";
 import { useScene } from "../scene";
 import { IconClose } from "../ui/icons";
+import { visibleInterval } from "../utils/visibleInterval";
 
 /**
  * Who is in this scene, and who may change it.
@@ -51,10 +52,10 @@ export function SharePanel({
     }
   }, [client]);
 
+  // The list is polled while the panel is open, not while the tab is hidden.
   useEffect(() => {
     void load();
-    const t = window.setInterval(() => void load(), 5_000);
-    return () => window.clearInterval(t);
+    return visibleInterval(() => void load(), 5_000);
   }, [load]);
 
   async function setEditor(member: MemberView, editor: boolean) {

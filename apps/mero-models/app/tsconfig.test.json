@@ -23,6 +23,7 @@
     "src/editor",
     "src/generated/*.ts",
     "src/studio",
-    "src/ui"
+    "src/ui",
+    "src/utils"
   ]
 }

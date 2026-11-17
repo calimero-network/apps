@@ -1,6 +1,6 @@
 [package]
 name = "mero-models"
-description = "Mero Models — a collaborative 3D modelling scene, on the component SDK"
+description = "Hyperfeed Models — a collaborative 3D modelling scene, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -37,7 +37,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-models"
-name = "Mero Models"
+name = "Hyperfeed Models"
 description = "Blender-style 3D modelling, shared. A scene is a Calimero app instance: objects, meshes and materials are edited by everyone in it at once, and the heavy data lives in the app's own blobs."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

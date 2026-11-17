@@ -112,7 +112,7 @@ fun StudiosScreen(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text("Mero Models", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Hyperfeed Models", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     IconButton(onClick = { showJoin = true }) { Icon(Icons.Outlined.AddLink, contentDescription = "Join with a link") }
                     IconButton(onClick = { showAccount = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
@@ -144,7 +144,7 @@ fun StudiosScreen(
                             EmptyState(
                                 Icons.Outlined.ViewInAr,
                                 "No studios yet",
-                                "Start a scene in Mero Models on the web or desktop, or join one with an invitation link.",
+                                "Start a scene in Hyperfeed Models on the web or desktop, or join one with an invitation link.",
                                 actionTitle = "Join with a link",
                                 action = { showJoin = true },
                             )
@@ -227,7 +227,7 @@ private fun JoinSheet(
                 }) { Text("Paste") }
             }
             Text(
-                "Paste the link someone shared from Mero Models. It opens their scene once you've joined.",
+                "Paste the link someone shared from Hyperfeed Models. It opens their scene once you've joined.",
                 style = ModelsTheme.body(15, color = ModelsTheme.muted),
             )
             Box(
@@ -303,7 +303,7 @@ private fun AccountSheet(
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Sign out of Mero Models?") },
+            title = { Text("Sign out of Hyperfeed Models?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
@@ -387,7 +387,7 @@ fun ScenesScreen(
                             EmptyState(
                                 Icons.Outlined.ViewInAr,
                                 "No scenes in this studio",
-                                "Scenes are made in Mero Models on the web or desktop. Pull to refresh once one exists.",
+                                "Scenes are made in Hyperfeed Models on the web or desktop. Pull to refresh once one exists.",
                             )
                         }
                     else -> {

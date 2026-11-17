@@ -80,7 +80,7 @@ fun SignInScreen(vm: ModelsAppViewModel) {
         ) {
             Spacer(Modifier.height(48.dp))
             AppMark(64.dp)
-            Text("Mero Models", style = ModelsTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
+            Text("Hyperfeed Models", style = ModelsTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
             Text(
                 "Your studio's 3D scenes, on your phone. Look around every model and see who is working on what.",
                 style = ModelsTheme.body(17, color = ModelsTheme.muted),

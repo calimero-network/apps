@@ -142,7 +142,7 @@ class FormatAndInvitationTest {
         val model = InvitationModel()
         assertFalse(model.open("https://example.com"))
         assertEquals(
-            InvitationModel.Stage.Failed("This isn't a Mero Models invitation. Check the link and try again."),
+            InvitationModel.Stage.Failed("This isn't a Hyperfeed Models invitation. Check the link and try again."),
             model.stage.value,
         )
     }

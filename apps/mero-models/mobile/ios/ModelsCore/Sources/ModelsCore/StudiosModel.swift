@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Studios
 
-/// A studio: an organization running Mero Models. Everyone invited to it can open
+/// A studio: an organization running Hyperfeed Models. Everyone invited to it can open
 /// every scene in it.
 public struct Studio: Identifiable, Equatable, Sendable {
     public let id: String

@@ -40,7 +40,7 @@ public struct ModelsInvitation: Sendable {
     }
 
     /// Parse a link (https or `calimero://`), a bare token or the raw JSON.
-    /// `nil` when it holds no Mero Models invitation, and for another app's link.
+    /// `nil` when it holds no Hyperfeed Models invitation, and for another app's link.
     public static func parse(_ input: String) -> ModelsInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -84,12 +84,12 @@ public final class InvitationModel: ObservableObject {
     }
 
     /// Read a link or a pasted code. `false` (and a failed stage) when it is not
-    /// a Mero Models invitation.
+    /// a Hyperfeed Models invitation.
     @discardableResult
     public func open(_ raw: String) -> Bool {
         guard let parsed = ModelsInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero Models invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed Models invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

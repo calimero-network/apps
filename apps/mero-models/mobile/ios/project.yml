@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Models app.
+# XcodeGen spec for the native iOS Hyperfeed Models app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroModels.xcodeproj (not committed)
@@ -41,7 +41,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Models
+        CFBundleDisplayName: Hyperfeed Models
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]

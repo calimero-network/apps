@@ -1,6 +1,6 @@
-# Mero Models: native mobile apps
+# Hyperfeed Models: native mobile apps
 
-Native iOS and Android viewers for Mero Models, next to the web studio (`../app`) and the contract
+Native iOS and Android viewers for Hyperfeed Models, next to the web studio (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-models`). They have the same screens, copy, icons (SF
 Symbols and the matching Material icons) and behaviour, and they draw the 3D viewport with the
 same code.
@@ -54,7 +54,7 @@ The phone is for looking at scenes, not modelling them. What both apps do:
 
 - **Sign in** with a Calimero account (`MeroAppSession`, see above). The session is kept in the
   Keychain / Keystore and restored at launch.
-- **Studios**: the account's organizations running Mero Models; one invitation opens every scene in
+- **Studios**: the account's organizations running Hyperfeed Models; one invitation opens every scene in
   one. Pull to refresh.
 - **Scenes**: a studio's scenes (app instances of the org, as the web's "New scene" makes them,
   plus any in its teams), named by each scene's own `getScene`, with object and member counts.

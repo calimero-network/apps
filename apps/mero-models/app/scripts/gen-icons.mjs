@@ -1,4 +1,4 @@
-// Generates Mero Models' icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Models' icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The mark — an isometric cube with one picked vertex — is kept in sync by

@@ -177,7 +177,7 @@ const CM = 100;
 const join = (name: string, cls: string) => `${name}\u0000\u0001${cls}`;
 
 /** Encode meshes as a binary FBX file. */
-export function writeFbx(meshes: FbxMesh[], creator = "Mero Models"): Uint8Array {
+export function writeFbx(meshes: FbxMesh[], creator = "Hyperfeed Models"): Uint8Array {
   let nextId = 1_000_000;
   const id = () => nextId++;
   const objects: Node[] = [];
