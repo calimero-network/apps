@@ -337,7 +337,7 @@ struct BlockView: View {
         case .divider:
             Rectangle().fill(Theme.lineStrong).frame(height: Theme.hairline).padding(.vertical, 14)
         case .unsupported:
-            Text("This block needs a newer version of Mero Docs.")
+            Text("This block needs a newer version of Hyperfeed Docs.")
                 .font(Theme.body(14))
                 .foregroundStyle(Theme.muted)
                 .padding(.horizontal, 16)

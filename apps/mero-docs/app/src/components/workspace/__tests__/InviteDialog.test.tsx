@@ -38,7 +38,7 @@ describe('InviteDialog', () => {
       client,
       org: 'org-1',
       teams: ['docs-team'],
-      appName: 'Mero Docs',
+      appName: 'Hyperfeed Docs',
       labels,
       open: true,
     });
@@ -63,7 +63,7 @@ describe('InviteDialog', () => {
 
     await screen.findByRole('dialog');
     expect(shared.props).toMatchObject({ inviterName: 'Ada', labels: { title: 'Invite to workspace' } });
-    expect((shared.props!.labels as { note: string }).note).toMatch(/^Invites to Mero Docs only/);
+    expect((shared.props!.labels as { note: string }).note).toMatch(/^Invites to Hyperfeed Docs only/);
   });
 
   it('looks nothing up while closed', () => {
@@ -73,12 +73,12 @@ describe('InviteDialog', () => {
   });
 
   it('says why and closes when the invite cannot be placed', async () => {
-    inviteTarget.mockRejectedValue(new Error('This organization has not set up Mero Docs yet.'));
+    inviteTarget.mockRejectedValue(new Error('This organization has not set up Hyperfeed Docs yet.'));
     const onClose = vi.fn();
     render(<InviteDialog groupId="org-1" labels={labels} open onClose={onClose} />);
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('has not set up Mero Docs'));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('has not set up Hyperfeed Docs'));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

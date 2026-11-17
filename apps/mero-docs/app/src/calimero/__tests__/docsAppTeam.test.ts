@@ -54,6 +54,26 @@ describe('a new workspace gets Docs\' own app team', () => {
     expect(foldersOf(await admin.org(org, true)).map((f) => f.id)).toEqual([groupId]);
   });
 
+  it('a top-level folder goes under Docs\' team, where a session on Docs\' page may make one, and lists at the top', async () => {
+    const { cluster, admin, org } = await workspace();
+    const { groupId } = await admin.createGroupInNamespace(org, { name: 'Eng', parentId: org });
+    const team = cluster.teamOf(org, PKG);
+    expect((await admin.org(org, true)).teams[groupId]!.parent).toBe(team);
+    expect(foldersOf(await admin.org(org, true)).find((f) => f.id === groupId)!.parent_id).toBeNull();
+    const { groupId: sub } = await admin.createGroupInNamespace(org, { name: 'Sub', parentId: groupId });
+    expect((await admin.org(org, true)).teams[sub]!.parent).toBe(groupId);
+    expect(foldersOf(await admin.org(org, true)).find((f) => f.id === sub)!.parent_id).toBe(groupId);
+    expect((await admin.listSubgroups(org)).map((g) => g.groupId)).toEqual([groupId]);
+  });
+
+  it('a legacy workspace makes top-level folders at the top, as before', async () => {
+    const { cluster, admin } = docs();
+    cluster.state.declined.add('scopeApps');
+    const org = await createNamespace({ cluster, admin });
+    const { groupId } = await admin.createGroupInNamespace(org, { name: 'Eng', parentId: org });
+    expect((await admin.org(org, true)).teams[groupId]!.parent ?? null).toBeNull();
+  });
+
   it('a declined team leaves a legacy workspace, whose registry uses organization access', async () => {
     const { cluster, admin } = docs();
     cluster.state.declined.add('scopeApps');
@@ -121,10 +141,16 @@ describe('Remove and Leave', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone and legacy: Remove is out of the organization, as before', async () => {
+  it('standalone: Remove takes the person off Docs\' team, and leaves them in the org', async () => {
     const { cluster, admin, org } = await workspace({ 'acct-bob': 'member' });
     await admin.removeGroupMembers(org, { members: ['acct-bob'] });
-    expect(cluster.org(org).members['acct-bob']).toBeUndefined();
+    expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
+    expect(cluster.org(org).members['acct-bob']).toBe('member');
+    expect(ids(await admin.listGroupMembers(org))).not.toContain('acct-bob');
+  });
+
+  it('legacy: Remove is out of the organization, as before', async () => {
+    const { cluster, admin } = docs();
     const legacy = cluster.addOrg({ mode: 'legacy', members: { 'acct-bob': 'member' } });
     await admin.removeGroupMembers(legacy, { members: ['acct-bob'] });
     expect(cluster.org(legacy).members['acct-bob']).toBeUndefined();
@@ -149,10 +175,19 @@ describe('Remove and Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBeUndefined();
   });
 
-  it('standalone: Leave is leaving the organization', async () => {
+  it('standalone: Leave is Docs\' team, with the organization offered too', async () => {
     const { cluster, admin, org } = await workspace({ 'acct-ana': 'owner' });
-    expect(await admin.leaveNamespace(org)).toEqual({ left: 'org', lastApp: false });
-    expect(cluster.org(org).members['acct-me']).toBeUndefined();
+    cluster.org(org).members['acct-me'] = 'member';
+    expect(await admin.leaveNamespace(org)).toEqual({ left: 'app', lastApp: true });
+    expect(cluster.org(org).members['acct-me']).toBe('member');
+  });
+
+  it('legacy: Leave is leaving the organization', async () => {
+    const { cluster, admin } = docs();
+    const legacy = cluster.addOrg({ mode: 'legacy', members: { 'acct-ana': 'owner' } });
+    cluster.org(legacy).members[cluster.state.me] = 'member';
+    expect(await admin.leaveNamespace(legacy)).toEqual({ left: 'org', lastApp: false });
+    expect(cluster.org(legacy).members[cluster.state.me]).toBeUndefined();
   });
 });
 
@@ -175,7 +210,7 @@ describe('adding Docs to an organization whose apps have teams', () => {
   it('a member is told only owners and admins can add it', async () => {
     const { cluster, admin } = docs();
     const org = cluster.addOrg({ mode: 'standalone', role: 'member' });
-    await expect(admin.createContext({ groupId: org, name: 'Registry' })).rejects.toThrow(/owners and admins can add Mero Docs/);
+    await expect(admin.createContext({ groupId: org, name: 'Registry' })).rejects.toThrow(/owners and admins can add Hyperfeed Docs/);
     expect(cluster.callsOf('createApp')).toEqual([]);
   });
 });

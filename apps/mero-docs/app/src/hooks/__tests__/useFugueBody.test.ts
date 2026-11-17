@@ -211,7 +211,8 @@ async function mount(client: FakeClient, editor: FakeEditor) {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  // The safety-net re-read ticks on the wall clock: start the clock well before its first tick.
+  vi.useFakeTimers({ now: 1_000 });
   deliver = null;
   connectHandlers.clear();
 });
@@ -248,6 +249,38 @@ describe('useFugueBody', () => {
     });
     await settle();
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes steady typing about once a second, not once per keystroke', async () => {
+    const client = fakeClient([row('blk-1', '')]);
+    let text = '';
+    client.applyDeltaOn.mockImplementation(async () => applied(text));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    // Twenty keystrokes, 100ms apart: two seconds of typing.
+    for (let i = 0; i < 20; i++) {
+      text += 'a';
+      editor.type('blk-1', text);
+      await settle(100);
+    }
+    await settle();
+    expect(client.applyDeltaOn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(client.applyDeltaOn.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it('does not re-read a block for the event of its own write', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn.mockResolvedValue(applied('The fox. ab'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'The fox. ab');
+    await settle();
+    const reads = client.getBlock.mock.calls.length + client.getDocument.mock.calls.length;
+
+    await act(async () => deliver?.({ ...peerEvent(DOC), own: true }));
+    await settle();
+    expect(client.getBlock.mock.calls.length + client.getDocument.mock.calls.length).toBe(reads);
   });
 
   // The node answers the same edit the same way every time: a 413 (the edit is

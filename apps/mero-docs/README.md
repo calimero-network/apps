@@ -1,4 +1,4 @@
-# Mero Docs
+# Hyperfeed Docs
 
 A document workspace: folders hold rich-text documents that the members of a
 workspace edit together, live. A component app on Calimero 1.0: the contract is

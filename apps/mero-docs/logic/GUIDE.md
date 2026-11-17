@@ -1,8 +1,8 @@
-# Mero Docs
+# Hyperfeed Docs
 
 ## Overview
 
-Mero Docs is a shared document workspace.
+Hyperfeed Docs is a shared document workspace.
 A workspace holds folders, and each folder holds rich-text documents.
 A document is a title plus an ordered list of blocks (paragraph, heading, bullet item, image), each with its own formatted text.
 

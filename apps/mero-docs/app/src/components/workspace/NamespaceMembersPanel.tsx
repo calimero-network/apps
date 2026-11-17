@@ -11,6 +11,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, UserPlus } from 'lucide-react';
+import { stayedInDocs } from '@/calimero/consent';
 import { useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -96,6 +97,7 @@ export function NamespaceMembersPanel() {
         );
       }
     } catch (e: unknown) {
+      if (stayedInDocs(e)) return;
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError(`Couldn't remove ${label}: ${err.message}`);
       // Refetch to make sure the UI reflects the node's state if

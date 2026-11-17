@@ -1,5 +1,5 @@
 /**
- * Mero Docs - the hero animation: the real Home screen, fed a fixture and scaled into the stage.
+ * Hyperfeed Docs - the hero animation: the real Home screen, fed a fixture and scaled into the stage.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  * The top bar and folder rows copy WorkspaceLayout and FolderTreeItem, which need a live workspace.

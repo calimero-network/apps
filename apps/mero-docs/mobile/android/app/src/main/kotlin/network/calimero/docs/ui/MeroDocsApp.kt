@@ -60,7 +60,7 @@ fun MeroDocsApp(vm: DocsAppViewModel) {
             AlertDialog(
                 onDismissRequest = { vm.dismissInvitation() },
                 title = { Text("Join this workspace?") },
-                text = { Text("You were invited to a Mero Docs workspace. Its folders and documents appear here once you join.") },
+                text = { Text("You were invited to a Hyperfeed Docs workspace. Its folders and documents appear here once you join.") },
                 confirmButton = {
                     TextButton(onClick = {
                         scope.launch {

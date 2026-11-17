@@ -254,7 +254,12 @@ describe('between Member-backed roles', () => {
     await act(async () => {
       await result.current.setRole(ACCOUNT, 'Manager', 0, 'Admin');
     });
-    expect(updateMemberRole.mock.calls[0][2]).toEqual({ role: 'Member' });
+    // The mask goes along with the role, for the consent page's path, where
+    // the role's request unloads the page before the mask is set.
+    expect(updateMemberRole.mock.calls[0][2]).toEqual({
+      role: 'Member',
+      thenCapabilities: WORKSPACE_ROLE_GRANTS.Manager.caps,
+    });
     expect(setMemberCapabilities.mock.calls[0][2]).toEqual({
       capabilities: WORKSPACE_ROLE_GRANTS.Manager.caps,
     });

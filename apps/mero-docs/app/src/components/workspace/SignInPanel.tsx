@@ -33,7 +33,7 @@ export function SignInPanel({
   const body = (
     <>
       {invite
-        ? `You've been invited to join a ${inviteScope(invite)}${named} in Mero Docs. `
+        ? `You've been invited to join a ${inviteScope(invite)}${named} in Hyperfeed Docs. `
         : ''}
       Accounts are passkeys: nothing to remember, nothing to leak.
       {where ? ` Connected to ${where}.` : ''}

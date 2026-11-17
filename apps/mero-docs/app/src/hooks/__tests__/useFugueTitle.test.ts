@@ -110,7 +110,8 @@ function mount(client: FakeClient, withPresence = false) {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  // The safety-net re-read ticks on the wall clock: start the clock well before its first tick.
+  vi.useFakeTimers({ now: 1_000 });
   publish.mockClear();
   deliver = null;
 });

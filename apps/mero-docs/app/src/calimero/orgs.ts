@@ -23,6 +23,11 @@
 // an invite, deleting or leaving a workspace) is a passkey step-up on 1.0, so
 // those calls prompt for the caller's passkey.
 //
+// On Docs' own frontend the session is bound to Docs, and the node refuses it
+// every organization-wide change (a role, org-wide capabilities, removing
+// someone from the org, leaving or deleting it): those go to the node's
+// consent page first (`askOrgConsent`, `./consent.ts`).
+//
 // Docs has its own **app team** in the org (core#4890), through
 // `@calimero-apps/connect`'s org-app module: a new workspace's team is open,
 // the registry instance uses team access on it, invites name it, and the
@@ -47,13 +52,16 @@ import {
   appInviteTeams,
   appPeople,
   appTarget,
+  appTeamIdIn,
   finishAppOrg,
+  isAppOnly,
   leaveApp,
   leaveOrg,
   listAppInfos,
   orgModeOf,
   orgWideAccess,
   removeFromApp,
+  removeFromAppTeam,
   removeFromPrivateTeam,
   sourcePackage,
   type AppOrgView,
@@ -61,6 +69,7 @@ import {
   type LeftApp,
 } from '@calimero-apps/connect';
 import { CAPABILITIES } from './capabilities';
+import { askOrgConsent } from './consent';
 
 export type GroupRoleName = 'Admin' | 'Member' | 'ReadOnly';
 
@@ -111,7 +120,7 @@ export interface OrgView {
 }
 
 /** The name Docs is added to an organization under, in what an owner or admin is told. */
-const PRODUCT_NAME = 'Mero Docs';
+const PRODUCT_NAME = 'Hyperfeed Docs';
 
 /** Whether `team` is an app's own team (Docs' or another app's): a top-level team marked `metadata.app`. */
 export function isAppTeam(team: Pick<TeamView, 'parent' | 'metadata'>): boolean {
@@ -428,9 +437,22 @@ export class OrgAdmin {
   async listSubgroups(groupId: string): Promise<Array<{ groupId: string }>> {
     const { org, team } = await this.locate(groupId);
     const view = await this.org(org);
+    // The workspace's top level is its own and Docs' team's: folders made from
+    // Docs' page live under that team ({@link folderRoot}).
+    const root = team ? null : appTeamIdIn(view as unknown as AppOrgView, sourcePackage(this.source));
     return Object.values(view.teams)
-      .filter((t) => t.parent === team && !isAppTeam(t))
+      .filter((t) => (t.parent === team || (root !== null && t.parent === root)) && !isAppTeam(t))
       .map((t) => ({ groupId: t.teamId }));
+  }
+
+  /**
+   * Where a top-level folder goes: under Docs' own team where the workspace
+   * has one, the one place a session opened on Docs' page may make a team
+   * (core refuses one at the organization's top there), else the top.
+   */
+  private async folderRoot(orgId: string): Promise<string | undefined> {
+    const view = await this.org(orgId);
+    return appTeamIdIn(view as unknown as AppOrgView, sourcePackage(this.source)) ?? undefined;
   }
 
   /** The app instance of a folder (its docs) or of a workspace (its registry). */
@@ -458,28 +480,55 @@ export class OrgAdmin {
   }
 
   async deleteNamespace(orgId: string): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'deleteOrg', org: orgId });
     await this.client.orgs.delete({ org: orgId }, { confirm: passkeyConfirm(this.passkey()) });
     this.changed(orgId);
   }
 
   /**
-   * Leaves Docs in `orgId` (`leaveApp`): in an org that keeps its apps apart,
-   * Docs' team only (`lastApp` when it was the account's last app there, for
-   * the caller to offer {@link leaveOrganization}); elsewhere the organization.
+   * How `account` is taken out of Docs in `orgId`: `shared`, an org that keeps
+   * its apps apart (connect's app path); `team`, off Docs' own team, which a
+   * session bound to Docs may do itself; `org`, an org without Docs' team
+   * (made before app teams), out of the organization.
+   */
+  private async exitPath(orgId: string): Promise<'shared' | 'team' | 'org'> {
+    const pkg = sourcePackage(this.source);
+    if (!pkg) return 'org';
+    const view = (await this.org(orgId, true)) as unknown as AppOrgView;
+    if (isAppOnly(view, pkg)) return 'shared';
+    return appTeamIdIn(view, pkg) ? 'team' : 'org';
+  }
+
+  /**
+   * Leaves Docs in `orgId`: in an org that keeps its apps apart, Docs' team
+   * only (`lastApp` when it was the account's last app there, for the caller
+   * to offer {@link leaveOrganization}); where Docs has its own team, off that
+   * team, with the organization offered too; elsewhere the organization.
    */
   async leaveNamespace(orgId: string): Promise<LeftApp> {
-    const left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    const path = await this.exitPath(orgId);
+    let left: LeftApp;
+    if (path === 'shared') left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    else if (path === 'team') {
+      await removeFromAppTeam(this.client, orgId, this.source, this.self, this.passkey);
+      left = { left: 'app', lastApp: true };
+    } else {
+      await askOrgConsent(this.client, { kind: 'leaveOrg', org: orgId });
+      left = await leaveApp(this.client, orgId, this.source, this.passkey);
+    }
     this.changed(orgId);
     return left;
   }
 
   /** Leaves the organization altogether: every app in it. */
   async leaveOrganization(orgId: string): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'leaveOrg', org: orgId });
     await leaveOrg(this.client, orgId, this.passkey);
     this.changed(orgId);
   }
 
   async setDefaultCapabilities(orgId: string, input: { defaultCapabilities: number }): Promise<void> {
+    await askOrgConsent(this.client, { kind: 'setCapabilities', org: orgId, capabilities: input.defaultCapabilities });
     await this.client.orgs.capabilities(
       { org: orgId, capabilities: input.defaultCapabilities },
       { confirm: passkeyConfirm(this.passkey()) },
@@ -511,7 +560,7 @@ export class OrgAdmin {
     input: { visibility?: string; parentId?: string | null; name?: string },
   ): Promise<{ groupId: string }> {
     const join = input.visibility === 'restricted' || input.visibility === 'Restricted' ? 'invite' : 'everyone';
-    const parent = input.parentId && input.parentId !== orgId ? input.parentId : undefined;
+    const parent = input.parentId && input.parentId !== orgId ? input.parentId : await this.folderRoot(orgId);
     const groupId = (await this.client.orgs.teamCreate({ org: orgId, name: input.name || 'New folder', join, parent }))
       .teamId;
     this.teamOrg.set(groupId, orgId);
@@ -522,7 +571,8 @@ export class OrgAdmin {
   async reparentGroup(groupId: string, input: { newParentId: string }): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) throw new Error('a workspace has no parent');
-    await this.client.orgs.teamUpdate({ org, team, parent: input.newParentId === org ? null : input.newParentId });
+    const parent = input.newParentId === org ? ((await this.folderRoot(org)) ?? null) : input.newParentId;
+    await this.client.orgs.teamUpdate({ org, team, parent });
     this.changed(org);
   }
 
@@ -596,14 +646,23 @@ export class OrgAdmin {
     account: string,
     role: GroupRoleName | undefined,
     capabilities: number | undefined,
+    thenCapabilities?: number,
   ): Promise<void> {
     const { org, team } = await this.locate(groupId);
     if (!team) {
       if (role) {
         const orgRole = role === 'Admin' ? 'admin' : role === 'ReadOnly' ? 'guest' : 'member';
+        // On the consent page's path this page unloads here: the permissions
+        // the caller sets next go along, asked for when the role comes back.
+        const then =
+          thenCapabilities === undefined
+            ? undefined
+            : { kind: 'setCapabilities' as const, org, account, capabilities: thenCapabilities };
+        await askOrgConsent(this.client, { kind: 'setMemberRole', org, account, role: orgRole, ...(then ? { then } : {}) });
         await this.client.orgs.setMember({ org, account, role: orgRole }, { confirm: passkeyConfirm(this.passkey()) });
       }
       if (capabilities !== undefined) {
+        await askOrgConsent(this.client, { kind: 'setCapabilities', org, account, capabilities });
         await this.client.orgs.capabilities({ org, capabilities, account }, { confirm: passkeyConfirm(this.passkey()) });
       }
     } else {
@@ -634,22 +693,42 @@ export class OrgAdmin {
   }
 
   /**
-   * Off a folder's team; or, for the workspace, out of Docs (`removeFromApp`):
-   * in an org that keeps its apps apart Docs' team only, never the org (the
-   * caller clears folder rows, `removeFromFolders`); elsewhere the org.
+   * Off a folder's team; or, for the workspace, out of Docs: in an org that
+   * keeps its apps apart Docs' team only (`removeFromApp`), never the org (the
+   * caller clears folder rows, `removeFromFolders`); where Docs has its own
+   * team, off that team; elsewhere the org.
    */
   async removeGroupMembers(groupId: string, input: { members: string[] }): Promise<void> {
     const { org, team } = await this.locate(groupId);
+    const path = team ? null : await this.exitPath(org);
     for (const account of input.members) {
       if (team) await removeFromPrivateTeam(this.client, org, team, account, this.passkey);
-      else await removeFromApp(this.client, org, this.source, account, this.passkey);
+      else if (path === 'team') await removeFromAppTeam(this.client, org, this.source, account, this.passkey);
+      else {
+        if (path === 'org') {
+          await askOrgConsent(
+            this.client,
+            account === this.self ? { kind: 'leaveOrg', org } : { kind: 'removeMember', org, account },
+          );
+        }
+        await removeFromApp(this.client, org, this.source, account, this.passkey);
+      }
     }
     this.changed(org);
   }
 
-  async updateMemberRole(groupId: string, account: string, input: { role: string }): Promise<void> {
+  /**
+   * `thenCapabilities`: the permissions the caller sets right after (the
+   * workspace role's), for the consent page's path, where the role's request
+   * unloads the page before the caller gets to them.
+   */
+  async updateMemberRole(
+    groupId: string,
+    account: string,
+    input: { role: string; thenCapabilities?: number },
+  ): Promise<void> {
     const role = (input.role === 'Admin' || input.role === 'ReadOnly' ? input.role : 'Member') as GroupRoleName;
-    await this.row(groupId, account, role, undefined);
+    await this.row(groupId, account, role, undefined, input.thenCapabilities);
   }
 
   async setMemberCapabilities(groupId: string, account: string, input: { capabilities: number }): Promise<void> {

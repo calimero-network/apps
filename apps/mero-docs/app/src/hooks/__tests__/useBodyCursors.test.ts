@@ -256,6 +256,14 @@ describe('useBodyCursors - publishing our own caret', () => {
     });
   });
 
+  it('mints one anchor for a caret, used for both ends', async () => {
+    await act(async () => {
+      mount(new Map(), fakeEditor(3, 3));
+    });
+    expect(client.anchorAt).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({ blockId: 'blk-1', anchor: 'anc-mine', head: 'anc-mine' });
+  });
+
   it('republishes once when the selection settles after moving', async () => {
     await act(async () => {
       mount(new Map(), fakeEditor());
@@ -292,7 +300,8 @@ describe('useBodyCursors - publishing our own caret', () => {
       });
       expect(publish).not.toHaveBeenCalledWith(expect.objectContaining({ anchor: 'anc-mine' }));
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(400 * 4);
+        // Six refusals, one anchor per attempt (a caret).
+        await vi.advanceTimersByTimeAsync(400 * 6);
       });
       expect(publish).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'anc-mine' }));
     } finally {
@@ -310,8 +319,8 @@ describe('useBodyCursors - publishing our own caret', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(400 * 30);
       });
-      // Two ends per attempt, ten attempts.
-      expect(client.anchorAt).toHaveBeenCalledTimes(20);
+      // One point per attempt (a caret), ten attempts.
+      expect(client.anchorAt).toHaveBeenCalledTimes(10);
     } finally {
       vi.useRealTimers();
     }

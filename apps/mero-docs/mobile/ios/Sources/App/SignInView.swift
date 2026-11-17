@@ -13,7 +13,7 @@ struct SignInView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
                 AppMark(size: 64)
-                Text("Mero Docs")
+                Text("Hyperfeed Docs")
                     .font(Theme.heading(34))
                     .foregroundStyle(Theme.ink)
                     .padding(.top, 24)

@@ -28,7 +28,7 @@ struct WorkspacesScreen: View {
                     EmptyState(
                         icon: "square.stack.3d.up",
                         title: "No workspaces yet",
-                        message: "Open an invitation link on this phone, or create a workspace in Mero Docs on the web. It shows up here.")
+                        message: "Open an invitation link on this phone, or create a workspace in Hyperfeed Docs on the web. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -46,7 +46,7 @@ struct WorkspacesScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.ground)
-        .navigationTitle("Mero Docs")
+        .navigationTitle("Hyperfeed Docs")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -146,7 +146,7 @@ struct AccountSheet: View {
                 }
             }
             .sheet(isPresented: $approvals) { ApprovalsSheet(style: .app).environmentObject(session) }
-            .confirmationDialog("Sign out of Mero Docs?", isPresented: $confirm, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Docs?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     Task { await session.signOut() }
@@ -202,7 +202,7 @@ struct WorkspaceScreen: View {
             EmptyState(
                 icon: "folder",
                 title: "No folders yet",
-                message: "Folders are created in Mero Docs on the web or desktop. Pull to refresh once one exists.")
+                message: "Folders are created in Hyperfeed Docs on the web or desktop. Pull to refresh once one exists.")
             .plainRow()
         } else {
             let recent = model.recent
@@ -225,7 +225,7 @@ struct WorkspaceScreen: View {
             let all = model.recentlyUpdated
             Section {
                 if all.isEmpty {
-                    Text("No documents yet. Documents are written in Mero Docs on the web or desktop.")
+                    Text("No documents yet. Documents are written in Hyperfeed Docs on the web or desktop.")
                         .font(Theme.body(14))
                         .foregroundStyle(Theme.muted)
                         .plainRow()
@@ -298,7 +298,7 @@ struct FolderScreen: View {
                         EmptyState(
                             icon: "doc.text",
                             title: "No documents here",
-                            message: "Documents are written in Mero Docs on the web or desktop. Pull to refresh once one exists.")
+                            message: "Documents are written in Hyperfeed Docs on the web or desktop. Pull to refresh once one exists.")
                         .plainRow()
                     }
                     ForEach(Array(docs.enumerated()), id: \.element.id) { index, row in

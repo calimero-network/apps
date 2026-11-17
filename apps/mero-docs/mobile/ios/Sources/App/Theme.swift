@@ -25,7 +25,7 @@ enum Theme {
     static let radius: CGFloat = 14
     static let hairline: CGFloat = 0.75
 
-    /// Headings: the system face, semibold (the Mero Docs web app ships no
+    /// Headings: the system face, semibold (the Hyperfeed Docs web app ships no
     /// Power Grotesk; it sets Inter).
     static func heading(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold) }
     static func body(_ size: CGFloat = 15, _ weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight) }
@@ -95,7 +95,7 @@ enum Haptics {
 }
 
 extension CloudStyle {
-    /// The sign-in and approvals views in Mero Docs' colours.
+    /// The sign-in and approvals views in Hyperfeed Docs' colours.
     static let app = CloudStyle(
         ink: Theme.ink, muted: Theme.muted, accent: Theme.lime, onAccent: Theme.ink, danger: Theme.danger,
         field: Theme.surface, hairline: Theme.lineStrong)

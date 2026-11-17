@@ -37,6 +37,70 @@ describe('EventHub', () => {
     off();
   });
 
+  it('reopens after the last `index:seq` it saw, not from where it started', async () => {
+    let opened = 0;
+    const events = vi.fn(async function* (_app: string, _from: number, signal?: AbortSignal) {
+      opened += 1;
+      if (opened === 1) {
+        yield { id: '12:0', kind: 'TextChanged', data: {} };
+        throw new Error('dropped');
+      }
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve()));
+    });
+    const client = withRoutes({
+      view: vi.fn(async () => ({ index: 7, result: [] })),
+      events,
+    }) as unknown as CalimeroClient;
+    vi.useFakeTimers();
+    try {
+      const hub = new EventHub(client);
+      const off = hub.subscribe('app-1', () => {});
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(events.mock.calls.map((c) => c[1])).toEqual([8, 13]);
+      off();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('marks the events of a tracked call as its own, holding those that beat its answer', async () => {
+    // A live stream: each pushed event is yielded as it comes.
+    const waiting: Array<(e: NodeEvent) => void> = [];
+    const pending: NodeEvent[] = [];
+    const push = (e: NodeEvent) => {
+      const take = waiting.shift();
+      if (take) take(e);
+      else pending.push(e);
+    };
+    const next = () =>
+      pending.length ? Promise.resolve(pending.shift()!) : new Promise<NodeEvent>((resolve) => waiting.push(resolve));
+    const events = vi.fn(async function* (_app: string, _from: number, signal?: AbortSignal) {
+      while (!signal?.aborted) yield await next();
+    });
+    const client = withRoutes({
+      view: vi.fn(async () => ({ index: 0, result: [] })),
+      events,
+    }) as unknown as CalimeroClient;
+    const hub = new EventHub(client);
+    const got: SubscriptionEventData[] = [];
+    const off = hub.subscribe('app-1', (e) => got.push(e));
+    await vi.waitFor(() => expect(events).toHaveBeenCalled());
+
+    let answer: (v: { index: number }) => void = () => {};
+    const call = hub.track('app-1', new Promise<{ index: number }>((resolve) => (answer = resolve)));
+    push({ id: '5:0', kind: 'TextChanged', data: {} }); // the call's own, before its answer
+    push({ id: '6:0', kind: 'TextChanged', data: {} }); // a peer's
+    await new Promise((r) => setTimeout(r, 10));
+    expect(got).toHaveLength(0);
+    answer({ index: 5 });
+    await call;
+    expect(got.map((e) => e.own ?? false)).toEqual([true, false]);
+    push({ id: '7:0', kind: 'TextChanged', data: {} });
+    await vi.waitFor(() => expect(got).toHaveLength(3));
+    expect(got[2]!.own).toBeUndefined();
+    off();
+  });
+
   it('keeps one stream per instance however many listen', async () => {
     const events = vi.fn((_app: string, _from: number, signal?: AbortSignal) => stream([], signal));
     const client = withRoutes({

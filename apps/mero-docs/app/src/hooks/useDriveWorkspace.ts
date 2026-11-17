@@ -53,6 +53,7 @@ import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
 import { foldersOf, type CoreFolder } from '@/lib/coreFolders';
 import { folderLabel } from '@/lib/folderLabel';
 import { restrictionOf } from '@/lib/folderRestriction';
+import { visibleInterval } from '@/utils/visibleInterval';
 
 /** Persisted-namespace localStorage key, holding `{ node, ns }`. Exported so
  *  other call sites (e.g. WorkspacePage's logout cleanup) can clear it. */
@@ -241,19 +242,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     () => (admin ? admin.onChange((changed) => changed === selectedNsId && void loadOrg()) : undefined),
     [admin, selectedNsId, loadOrg],
   );
+  // A safety net for what no event names (teams and members change on the
+  // org): skipped while the tab is hidden, run once on return.
   useEffect(() => {
     if (!selectedNsId) return;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadOrg();
-    };
-    const timer = setInterval(onVisible, FOLDER_TREE_REFRESH_MS);
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
-    };
+    return visibleInterval(() => void loadOrg(), FOLDER_TREE_REFRESH_MS);
   }, [selectedNsId, loadOrg]);
 
   const view = org && org.id === selectedNsId ? org.view : null;

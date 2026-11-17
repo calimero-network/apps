@@ -52,7 +52,7 @@ object DocsTheme {
     val hairline: Dp = 0.75.dp
     val cardShape = RoundedCornerShape(14.dp)
 
-    /** Headings: the system face, semibold (the Mero Docs web app ships no Power Grotesk; it sets Inter). */
+    /** Headings: the system face, semibold (the Hyperfeed Docs web app ships no Power Grotesk; it sets Inter). */
     fun heading(size: Int) = TextStyle(fontSize = size.sp, fontWeight = FontWeight.SemiBold, color = ink)
 
     fun body(

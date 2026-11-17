@@ -1,6 +1,6 @@
-# Mero Docs - Development Guide
+# Hyperfeed Docs - Development Guide
 
-Mero Docs is a component app on Calimero 1.0: a contract on core's component
+Hyperfeed Docs is a component app on Calimero 1.0: a contract on core's component
 SDK (`logic/`), developed against `merod local`, and a Vite + React frontend
 (`app/`) that talks to the cluster through mero-js's `CalimeroClient`
 (`@calimero-apps/connect`). The repo-wide guide is

@@ -458,7 +458,7 @@ private fun BlockView(
                     .dashed(10.dp)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                Text("This block needs a newer version of Mero Docs.", style = DocsTheme.body(14, color = DocsTheme.muted))
+                Text("This block needs a newer version of Hyperfeed Docs.", style = DocsTheme.body(14, color = DocsTheme.muted))
             }
     }
 }
@@ -645,5 +645,5 @@ private fun copyToClipboard(
     text: String,
 ) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("Mero Docs", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText("Hyperfeed Docs", text))
 }

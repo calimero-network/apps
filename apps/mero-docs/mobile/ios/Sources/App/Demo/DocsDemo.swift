@@ -405,7 +405,7 @@ private enum Fixtures {
             FolderSeed(name: "Marketing", docs: [
                 DocSeed(title: "Launch announcement draft", edited: 40, by: "Sofia Rossi", body: [
                     "## Headline",
-                    "Write anywhere. Mero Docs now works offline.",
+                    "Write anywhere. Hyperfeed Docs now works offline.",
                     "Field teams told us the same story again and again: a note started in a basement, lost in the elevator. Starting November 18, every edit you make offline syncs the moment you're back.",
                     "- Works on iOS and Android",
                     "- No settings to change",

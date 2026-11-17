@@ -107,7 +107,7 @@ fun WorkspacesScreen(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text("Mero Docs", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Hyperfeed Docs", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     IconButton(onClick = { showAccount = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
                 },
@@ -137,7 +137,7 @@ fun WorkspacesScreen(
                             EmptyState(
                                 Icons.Outlined.Layers,
                                 "No workspaces yet",
-                                "Open an invitation link on this phone, or create a workspace in Mero Docs on the web. It shows up here.",
+                                "Open an invitation link on this phone, or create a workspace in Hyperfeed Docs on the web. It shows up here.",
                             )
                         }
                     else -> {
@@ -230,7 +230,7 @@ private fun AccountSheet(
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Sign out of Mero Docs?") },
+            title = { Text("Sign out of Hyperfeed Docs?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
@@ -324,7 +324,7 @@ fun WorkspaceScreen(
                             EmptyState(
                                 Icons.Outlined.Folder,
                                 "No folders yet",
-                                "Folders are created in Mero Docs on the web or desktop. Pull to refresh once one exists.",
+                                "Folders are created in Hyperfeed Docs on the web or desktop. Pull to refresh once one exists.",
                             )
                         }
                     else -> {
@@ -342,7 +342,7 @@ fun WorkspaceScreen(
                         if (all.isEmpty()) {
                             item {
                                 Text(
-                                    "No documents yet. Documents are written in Mero Docs on the web or desktop.",
+                                    "No documents yet. Documents are written in Hyperfeed Docs on the web or desktop.",
                                     style = DocsTheme.body(14, color = DocsTheme.muted),
                                     modifier = Modifier.padding(vertical = 8.dp),
                                 )
@@ -420,7 +420,7 @@ fun FolderScreen(
                         EmptyState(
                             Icons.Outlined.Description,
                             "No documents here",
-                            "Documents are written in Mero Docs on the web or desktop. Pull to refresh once one exists.",
+                            "Documents are written in Hyperfeed Docs on the web or desktop. Pull to refresh once one exists.",
                         )
                     }
                 }

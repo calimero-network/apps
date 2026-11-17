@@ -20,7 +20,7 @@ public struct DocTarget: Equatable, Hashable, Sendable {
 
 /// What a link inside a document points at.
 public enum LinkTarget: Equatable, Sendable {
-    /// Another Mero Docs document: opened in the app.
+    /// Another Hyperfeed Docs document: opened in the app.
     case doc(DocTarget)
     /// A workspace member, as a mention writes it: shown, not followed.
     case member(account: String)

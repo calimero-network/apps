@@ -165,7 +165,7 @@ data class DocTarget(
 
 /** What a link inside a document points at. (Swift `LinkTarget`.) */
 sealed class LinkTarget {
-    /** Another Mero Docs document: opened in the app. */
+    /** Another Hyperfeed Docs document: opened in the app. */
     data class Doc(
         val target: DocTarget,
     ) : LinkTarget()

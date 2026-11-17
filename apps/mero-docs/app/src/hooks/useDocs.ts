@@ -17,12 +17,16 @@
 //   const forExistence = useDocs(folderId, { includeArchived: true });
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useJoinContext, useMero } from '@/calimero/react';
+import { useJoinContext, useMero, type SubscriptionEventData } from '@/calimero/react';
 import { type DocDto, type MeroDocsClient, toDocs, toDoc } from '@/lib/docsApi';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
 import { folderDocsContext } from '../lib/coreFolders';
+import { isBodyEdit } from '@/lib/rich/events';
+
+/** How long a list waits on a body edit: it changes only the doc's edit time. */
+export const BODY_EDIT_REFETCH_MS = 10_000;
 
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
@@ -371,15 +375,24 @@ export function useDocs(
   // doesn't tear down and re-establish the SSE connection on every
   // consumer re-render (each saveStatus update in DocumentEditor would
   // otherwise churn the subscription).
+  // A body edit (someone typing) changes only a row's edit time, so it waits
+  // longer: one list read per BODY_EDIT_REFETCH_MS while typing goes on.
   const sseRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sseRefetchDueRef = useRef(0);
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
-  const onDocsEvent = useCallback(() => {
-    if (sseRefetchTimerRef.current) return;
+  const onDocsEvent = useCallback((_contextId?: string, event?: SubscriptionEventData) => {
+    const wait = event && isBodyEdit(event.data) ? BODY_EDIT_REFETCH_MS : 1000;
+    const due = Date.now() + wait;
+    if (sseRefetchTimerRef.current) {
+      if (sseRefetchDueRef.current <= due) return;
+      clearTimeout(sseRefetchTimerRef.current);
+    }
+    sseRefetchDueRef.current = due;
     sseRefetchTimerRef.current = setTimeout(() => {
       sseRefetchTimerRef.current = null;
       void refetchRef.current();
-    }, 1000);
+    }, wait);
   }, []);
   // eslint-disable-next-line deprecation/deprecation -- this app's own alias, which its tests mock; not a mero-js call
   useDocEvents(contextId, onDocsEvent);

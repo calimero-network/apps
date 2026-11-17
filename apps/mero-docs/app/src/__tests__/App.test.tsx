@@ -367,7 +367,7 @@ describe('App on Calimero 1.0', () => {
       expect(await screen.findByTestId('invitation-page', {}, BOOT)).toBeTruthy();
       expect(screen.getByText("You're invited")).toBeTruthy();
       expect(screen.getByTestId('signin-desc').textContent).toContain(
-        "You've been invited to join a workspace “Beta” in Mero Docs.",
+        "You've been invited to join a workspace “Beta” in Hyperfeed Docs.",
       );
       expect(screen.getByTestId('signin-passkey')).toBeTruthy();
       expect(screen.getByTestId('signup-passkey')).toBeTruthy();

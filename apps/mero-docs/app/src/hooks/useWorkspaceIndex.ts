@@ -2,7 +2,7 @@
 // and search never depend on which folders are expanded in the tree.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useJoinContext, useMero } from '@/calimero/react';
+import { useJoinContext, useMero, type SubscriptionEventData } from '@/calimero/react';
 import { MeroDocsClient, type DocDto } from '@/lib/docsApi';
 import {
   nsToMs,
@@ -10,7 +10,8 @@ import {
   type IndexRow,
 } from '@/lib/workspaceIndex/types';
 import { useContextEvents } from './useContextEvents';
-import { listDocsJoining, subscribeDocsRefetch } from './useDocs';
+import { BODY_EDIT_REFETCH_MS, listDocsJoining, subscribeDocsRefetch } from './useDocs';
+import { isBodyEdit } from '@/lib/rich/events';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 const EVENT_REFETCH_MS = 1_000; // a writer's autosave dings every edit, so read once a burst settles
@@ -222,16 +223,23 @@ export function useWorkspaceIndex(): WorkspaceIndex {
     return () => timers.forEach(clearTimeout);
   }, []);
   const onEvent = useCallback(
-    (contextId?: string) => {
+    (contextId?: string, event?: SubscriptionEventData) => {
+      // Someone typing changes only a row's edit time: one read per
+      // BODY_EDIT_REFETCH_MS while it goes on, not one per pause.
+      const bodyEdit = !!event && isBodyEdit(event.data);
       for (const [folderId, binding] of bindingsRef.current) {
         if (contextId && binding.contextId !== contextId) continue;
+        if (bodyEdit && timersRef.current.has(folderId)) continue;
         clearTimeout(timersRef.current.get(folderId));
         timersRef.current.set(
           folderId,
-          setTimeout(() => {
-            timersRef.current.delete(folderId);
-            read(folderId);
-          }, EVENT_REFETCH_MS),
+          setTimeout(
+            () => {
+              timersRef.current.delete(folderId);
+              read(folderId);
+            },
+            bodyEdit ? BODY_EDIT_REFETCH_MS : EVENT_REFETCH_MS,
+          ),
         );
       }
     },

@@ -27,7 +27,7 @@ export const APP = 'mero-docs';
 
 /** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: 'Mero Docs',
+  name: 'Hyperfeed Docs',
   description: 'A document workspace organized by folders: rich-text documents your organization edits together.',
   package: PACKAGE_NAME,
   dir: 'mero-docs',

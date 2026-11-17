@@ -8,12 +8,13 @@
 // solely so the existing `useDocs` caller compiles without a rename
 // cascade; remove in a follow-up once `useDocs` migrates.
 
+import type { SubscriptionEventData } from '@/calimero/react';
 import { useContextEvents } from './useContextEvents';
 
 /** @deprecated Use {@link useContextEvents} instead. */
 export function useDocEvents(
   docsContextId: string | null,
-  onChange: () => void,
+  onChange: (contextId?: string, event?: SubscriptionEventData) => void,
 ): void {
   useContextEvents(docsContextId, onChange, { strict: true });
 }

@@ -11,7 +11,7 @@ import { useLive } from '@/calimero/react';
 import { useSession } from '@/calimero/session';
 import { inviteLinkBase } from '@/hooks/useNamespaceInvitation';
 
-const APP_NAME = 'Mero Docs';
+const APP_NAME = 'Hyperfeed Docs';
 
 interface Props {
   /** The workspace (org) or the folder (team) people are invited to. */

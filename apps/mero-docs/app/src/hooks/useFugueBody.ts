@@ -50,10 +50,12 @@ import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
 import { useStreamReconnect } from './useStreamReconnect';
+import { visibleInterval } from '@/utils/visibleInterval';
 
-const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
+export const FLUSH_DEBOUNCE_MS = 300; // a typing burst per write; correctness does not depend on it
+export const FLUSH_MAX_WAIT_MS = 1000; // steady typing still reaches peers this often
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
-const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+export const RECONCILE_MS = 30_000; // an event lost while the node restarted still lands
 const FRESH_PARAGRAPH_ATTRS = fromBlockNote([
   {
     id: '',
@@ -228,6 +230,8 @@ export function useFugueBody({
   const editorRef = useRef<BodyEditor | null>(editor);
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When the oldest edit still waiting for the flush was made.
+  const unsentSinceRef = useRef<number | null>(null);
   // Set when the node refused an edit: resending at once only loops. Cleared by
   // the user's next edit, or by the backoff retry when the answer may change.
   const heldRef = useRef(false);
@@ -747,14 +751,14 @@ export function useFugueBody({
 
   // A node restart drops the event stream, so an edit made while it was away
   // arrives on no event; an idle re-read is what closes that window.
+  // Skipped while the tab is hidden: the stream's reconnect re-reads anyway.
   useEffect(() => {
     if (!client || !docId) return;
-    const timer = setInterval(() => {
+    return visibleInterval(() => {
       if (dirtyRef.current || inFlightRef.current) return;
       staleRef.current = true;
       void drainRef.current?.();
     }, RECONCILE_MS);
-    return () => clearInterval(timer);
   }, [client, docId]);
 
   useEffect(
@@ -765,31 +769,49 @@ export function useFugueBody({
     [],
   );
 
-  // Closing the editor inside the debounce window still sends the last edit.
-  useEffect(
-    () => () => {
+  // Closing the editor inside the debounce window still sends the last edit,
+  // and so does leaving the tab.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState !== 'hidden' || !flushTimerRef.current) return;
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+      unsentSinceRef.current = null;
+      void drain();
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
       if (flushTimerRef.current) void drain();
-    },
-    [drain],
-  );
+    };
+  }, [drain]);
 
   const onContentChange = useCallback(
     (_serialized: string) => {
       dirtyRef.current = true;
       heldRef.current = false;
       setStatus('unsaved');
+      // One write per typing burst, and at least one a second while it lasts.
+      const now = Date.now();
+      const since = unsentSinceRef.current ?? now;
+      unsentSinceRef.current = since;
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = setTimeout(() => {
-        flushTimerRef.current = null;
-        void drain();
-      }, FLUSH_DEBOUNCE_MS);
+      flushTimerRef.current = setTimeout(
+        () => {
+          flushTimerRef.current = null;
+          unsentSinceRef.current = null;
+          void drain();
+        },
+        Math.max(0, Math.min(FLUSH_DEBOUNCE_MS, since + FLUSH_MAX_WAIT_MS - now)),
+      );
     },
     [drain],
   );
 
   const handleEvent = useCallback(
     (event: SubscriptionEventData) => {
-      if (!isContextEvent(event) || !docId) return;
+      // This tab's own write: its answer already rebased the editor.
+      if (!isContextEvent(event) || !docId || event.own) return;
       let touched = false;
       for (const parsed of parseRichEvents(event.data)) {
         if (parsed.kind === 'TitleChanged' || parsed.doc !== docId) continue;

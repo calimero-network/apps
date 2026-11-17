@@ -28,7 +28,7 @@ function appUrl(href: string, origin: string): URL | null {
   return known ? url : null;
 }
 
-/** The doc an href points at, if it is a Mero Docs doc URL; relative hrefs resolve on `origin`. */
+/** The doc an href points at, if it is a Hyperfeed Docs doc URL; relative hrefs resolve on `origin`. */
 export function parseDocHref(
   href: string,
   origin: string,
