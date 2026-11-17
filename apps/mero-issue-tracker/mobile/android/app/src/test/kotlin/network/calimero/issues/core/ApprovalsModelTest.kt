@@ -37,9 +37,9 @@ class ApprovalsModelTest {
     )
 
     @Test fun `items keep this app's upgrades and actionable releases`() {
-        val items = ApprovalsModel.items(pending("org1"), "org1", Tracker.PACKAGE_NAME, "Mero Issue Tracker")
+        val items = ApprovalsModel.items(pending("org1"), "org1", Tracker.PACKAGE_NAME, "Hyperfeed Issue Tracker")
         assertEquals(listOf("upgrade:app-1:1.2.0", "release:org1:2.3.110"), items.map { it.id })
-        assertEquals("Mero Issue Tracker 1.2.0 is available", items[0].title)
+        assertEquals("Hyperfeed Issue Tracker 1.2.0 is available", items[0].title)
         assertEquals(upgradeConsent("app-1", "1.2.0", "mero-issues://consent"), items[0].request("mero-issues://consent"))
         assertTrue(ApprovalsModel.items(pending(null, actionable = false), null, Tracker.PACKAGE_NAME, "x").isEmpty())
     }
@@ -51,7 +51,7 @@ class ApprovalsModelTest {
             val model =
                 ApprovalsModel(
                     Tracker.PACKAGE_NAME,
-                    "Mero Issue Tracker",
+                    "Hyperfeed Issue Tracker",
                     fetch = { org -> if (org == null) throw NotFound("no account report") else pending(org) },
                     consent = { build, confirm ->
                         requested += build("mero-issues://consent")

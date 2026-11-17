@@ -112,7 +112,7 @@ struct WorkspaceScreen: View {
                 await workspace.load()
                 if DemoMode.backend == nil { await approvals.load(orgs: orgIds) }
             }
-            .confirmationDialog("Sign out of Mero Issue Tracker?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Issue Tracker?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive, action: signOut)
             }
             .alert("Confirmation code", isPresented: showingCode, presenting: approvals.confirmationCode) { _ in

@@ -443,7 +443,7 @@ fun JoinInvitationSheet(
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    "You were invited to a workspace on Mero Issue Tracker. Joining lets you see and triage its issues.",
+                    "You were invited to a workspace on Hyperfeed Issue Tracker. Joining lets you see and triage its issues.",
                     fontSize = 15.sp,
                     color = Palette.text2,
                     textAlign = TextAlign.Center,

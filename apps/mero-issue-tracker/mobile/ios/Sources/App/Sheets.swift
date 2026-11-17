@@ -439,7 +439,7 @@ struct JoinInvitationSheet: View {
             if let invitation {
                 Text("Join \(invitation.workspaceName ?? "this workspace")?").font(Theme.heading(22)).foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
-                Text("You were invited to a workspace on Mero Issue Tracker. Joining lets you see and triage its issues.")
+                Text("You were invited to a workspace on Hyperfeed Issue Tracker. Joining lets you see and triage its issues.")
                     .font(.system(size: 15)).foregroundStyle(Theme.text2).multilineTextAlignment(.center)
             } else {
                 Text("This invitation cannot be read").font(Theme.heading(20)).foregroundStyle(Theme.ink)

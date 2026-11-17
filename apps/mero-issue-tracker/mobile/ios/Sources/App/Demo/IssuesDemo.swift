@@ -3,7 +3,7 @@ import Foundation
 import IssueTrackerCore
 import MeroKit
 
-/// Mero Issue Tracker's demo: three team workspaces, their repositories, and
+/// Hyperfeed Issue Tracker's demo: three team workspaces, their repositories, and
 /// a few weeks of issues and comments, answered in the generated client's wire
 /// shape (`list_issues`, `get_issue`, `get_repo_info`, ...). Writes change the
 /// fixtures, so the tour can move, file and comment on issues.

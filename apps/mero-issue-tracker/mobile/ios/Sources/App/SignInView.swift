@@ -44,7 +44,7 @@ private struct SignInForm: View {
                         .foregroundStyle(Theme.ink)
                         .frame(width: 76, height: 76)
                         .background(Theme.lime, in: RoundedRectangle(cornerRadius: 22))
-                    Text("Mero Issue Tracker").font(Theme.heading(28)).foregroundStyle(Theme.ink)
+                    Text("Hyperfeed Issue Tracker").font(Theme.heading(28)).foregroundStyle(Theme.ink)
                     Text("A private, real-time issue board for a small engineering team. Create, triage and discuss issues together.")
                         .font(.system(size: 16)).foregroundStyle(Theme.text2).multilineTextAlignment(.center)
                 }

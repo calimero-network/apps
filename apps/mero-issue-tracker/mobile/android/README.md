@@ -1,4 +1,4 @@
-# Mero Issue Tracker for Android
+# Hyperfeed Issue Tracker for Android
 
 Jetpack Compose + Material3, minSdk 26. See [`../README.md`](../README.md) for the screens,
 the Calimero 1.0 model, sign-in, invitations and approvals.
