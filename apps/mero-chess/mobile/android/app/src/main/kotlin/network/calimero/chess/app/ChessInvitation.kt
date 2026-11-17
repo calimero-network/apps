@@ -40,7 +40,7 @@ data class ChessInvitation(
         ): ChessInvitation = ChessInvitation(minted.copy(namespaceId = namespaceId, contextId = contextId), namespaceId, contextId)
 
         /**
-         * A pasted link, a deep link or a bare token; null when it is not a Mero Chess invitation
+         * A pasted link, a deep link or a bare token; null when it is not a Hyperfeed Chess invitation
          * (another app's link is refused: redeeming it would join that app's org).
          */
         fun parse(input: String): ChessInvitation? {

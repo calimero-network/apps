@@ -108,11 +108,11 @@ class ChessAppViewModel(
     /** Bumped when the consent page sent the person back: the approvals card re-reads. */
     val consentReturned: StateFlow<Int> = _consentReturned.asStateFlow()
 
-    /** What waits for the person's approval (updates of Mero Chess, node releases). */
+    /** What waits for the person's approval (updates of Hyperfeed Chess, node releases). */
     val approvals =
         ApprovalsModel(
             packageName = ChessConstants.PACKAGE_NAME,
-            appName = "Mero Chess",
+            appName = "Hyperfeed Chess",
             returnTo = BuildConfig.CONSENT_CALLBACK_URL,
             fetch = { org ->
                 val s =

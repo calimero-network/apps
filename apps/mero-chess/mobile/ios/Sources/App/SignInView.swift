@@ -27,7 +27,7 @@ struct SignInView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     AppMark(size: 64).padding(.top, 48)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Mero Chess").font(Theme.heading(34)).foregroundStyle(Theme.ink)
+                        Text("Hyperfeed Chess").font(Theme.heading(34)).foregroundStyle(Theme.ink)
                         Text(
                             "Two-player chess where the rules run in the contract, on your Calimero cluster, not on a game server."
                         )

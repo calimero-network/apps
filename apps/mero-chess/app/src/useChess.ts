@@ -10,6 +10,7 @@ import {
   type TableView,
 } from "./chess";
 import { MeroChessClient } from "./generated/client";
+import { visibleInterval } from "./utils/visibleInterval";
 import { type ClientRoutes } from "@calimero-apps/connect";
 
 /** Where a player's chosen display name lives between visits. */
@@ -90,26 +91,32 @@ export interface ChessTable {
  * Events are the fast path, but a poll is still needed for presence, which
  * EXPIRES (nobody emits "I went away"), and for an event stream that was
  * reconnecting. Six seconds keeps the online dots honest against the
- * contract's thirty-second TTL.
+ * contract's thirty-second TTL. Skipped while the tab is hidden, and run once
+ * on return.
  */
 const POLL_MS = 6_000;
 
 /**
  * Calls `onEvent` for each event the table emits from log index `from` on,
  * until the returned stop. Every event is a nudge to read `table` again.
+ * `onOpen` says whether the stream is open.
  */
 function subscribeEvents(
   client: TableConn["client"],
   appId: string,
   from: number,
   onEvent: () => void,
+  onOpen: (open: boolean) => void = () => {},
 ): () => void {
   const abort = new AbortController();
   void (async () => {
+    onOpen(true);
     try {
       for await (const _event of client.events(appId, from, abort.signal)) onEvent();
     } catch {
       // Stream closed (sign-out, table left, network): the poll still runs.
+    } finally {
+      onOpen(false);
     }
   })();
   return () => abort.abort();
@@ -162,21 +169,28 @@ export function useChessTable(conn: TableConn): ChessTable {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
+    return visibleInterval(() => void refresh(), POLL_MS);
   }, [refresh]);
 
   // Live events from just after the first read: from index 0 the stream would
   // replay every event the table has ever emitted. An event is a NUDGE, not
   // the truth: nothing is read out of the payload.
   const loaded = view !== null;
+  const streaming = useRef(false);
   useEffect(() => {
     if (!loaded) return;
-    return subscribeEvents(raw, appId, client.index() + 1, () => void refresh());
+    return subscribeEvents(
+      raw,
+      appId,
+      client.index() + 1,
+      () => void refresh(),
+      (open) => (streaming.current = open),
+    );
   }, [raw, appId, client, refresh, loaded]);
 
   /**
-   * Run one contract call, then re-read.
+   * Run one contract call, then re-read, unless the open event stream will
+   * nudge that read (a call that went through emits an event).
    *
    * There is no optimistic update anywhere in this app. A move is only a move
    * once the contract has taken it.
@@ -186,15 +200,17 @@ export function useChessTable(conn: TableConn): ChessTable {
       setBusy(true);
       setError(null);
       readFailed.current = false;
+      let refused = false;
       try {
         await fn(client.chess);
       } catch (e) {
+        refused = true;
         setError(messageOf(e));
       } finally {
         setBusy(false);
         // Outside the catch: a refused call still moves the player's picture
         // of the table forward (it is not your turn *because* someone moved).
-        await refresh();
+        if (refused || !streaming.current) await refresh();
       }
     },
     [client, refresh],

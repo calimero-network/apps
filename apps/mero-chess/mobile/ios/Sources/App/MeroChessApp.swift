@@ -36,7 +36,7 @@ struct RootView: View {
         self.client = client
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
-                packageName: ChessConstants.packageName, appName: "Mero Chess",
+                packageName: ChessConstants.packageName, appName: "Hyperfeed Chess",
                 fetch: { [weak session] org in
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)

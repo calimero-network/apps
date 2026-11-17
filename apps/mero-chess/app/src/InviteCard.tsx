@@ -55,7 +55,7 @@ export function InviteCard({
             open={open}
             onClose={() => setOpen(false)}
             org={org}
-            appName="Mero Chess"
+            appName="Hyperfeed Chess"
             labels={LABELS}
             inviterName={from ?? undefined}
             linkBase={tableInviteBase(table.appId, org, from)}

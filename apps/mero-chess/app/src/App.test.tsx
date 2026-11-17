@@ -178,7 +178,7 @@ describe("App", () => {
   it("shows the listing on a production copy no cluster serves", async () => {
     at("/play");
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    const open = await screen.findByRole("link", { name: "Open Mero Chess" });
+    const open = await screen.findByRole("link", { name: "Open Hyperfeed Chess" });
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-chess")`.
     expect(open.getAttribute("href")).toBe("https://3ivxhznpoikah6ubhlzsco4mvjdbfckcjcotgzps3fokcpjpynjq.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
@@ -475,7 +475,7 @@ describe("App", () => {
       expect(window.location.pathname).toBe("/play");
       expect(screen.getByText("You're invited")).toBeTruthy();
       expect(screen.getByTestId("signin-desc").textContent).toContain(
-        "You've been invited to join the table in Mero Chess.",
+        "You've been invited to join the table in Hyperfeed Chess.",
       );
       expect(screen.getByTestId("signin-passkey")).toBeTruthy();
       expect(screen.getByTestId("signup-passkey")).toBeTruthy();

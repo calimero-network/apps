@@ -1,4 +1,4 @@
-// Generates Mero Chess's icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Chess's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The mark — a pawn standing on a checkered tile — is kept in sync by hand with

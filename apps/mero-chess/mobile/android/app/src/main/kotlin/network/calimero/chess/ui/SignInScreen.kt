@@ -90,7 +90,7 @@ fun SignInScreen(
     ) {
         Column(Modifier.padding(top = 48.dp)) { AppMark(64.dp) }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mero Chess", style = Type.heading(34))
+            Text("Hyperfeed Chess", style = Type.heading(34))
             Text(
                 "Two-player chess where the rules run in the contract, on your Calimero cluster, not on a game server.",
                 style = Type.body(16, color = ChessColors.Ink2),

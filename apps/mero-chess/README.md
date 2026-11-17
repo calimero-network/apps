@@ -1,4 +1,4 @@
-# Mero Chess
+# Hyperfeed Chess
 
 Two-player chess with the referee in the contract.
 
