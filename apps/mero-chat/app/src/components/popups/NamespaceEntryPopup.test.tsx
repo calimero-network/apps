@@ -102,7 +102,7 @@ beforeEach(() => {
       name: "overworld",
       role: "owner",
       holds: [{ appId: "b1", name: "overworld", package: "com.calimero.mero-blocks" }],
-      label: "Mero Blocks: overworld",
+      label: "Hyperfeed Blocks: overworld",
       canCreate: true,
     },
   ]);
@@ -225,7 +225,7 @@ describe("NamespaceEntryPopup", () => {
       fireEvent.click(await screen.findByTestId("connect-existing-org"));
       const choice = await screen.findByTestId("connect-org-ow");
       expect(choice).toHaveTextContent("overworld");
-      expect(choice).toHaveTextContent("Mero Blocks: overworld");
+      expect(choice).toHaveTextContent("Hyperfeed Blocks: overworld");
       fireEvent.click(choice);
       await waitFor(() => expect(h.createChannel).toHaveBeenCalledWith("ow", "general", true));
       expect(await screen.findByText("Join overworld")).toBeInTheDocument();
