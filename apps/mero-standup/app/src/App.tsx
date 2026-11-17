@@ -202,7 +202,7 @@ export function App({
       passkey={deps.passkey()}
       token={asking?.token ?? ""}
       org={asking?.org ?? undefined}
-      appName="Mero Standup"
+      appName="Hyperfeed Standup"
       labels={{ noun: "team" }}
       onError={invites.drop}
       onClose={() => {
@@ -277,6 +277,10 @@ export function App({
         theme={theme}
         setTheme={setTheme}
         onSwitchTeam={() => open(null)}
+        onLost={() => {
+          setNotice("You no longer have access to that team.");
+          open(null);
+        }}
         onLogout={signOut}
       />
     </>
@@ -287,7 +291,7 @@ export function App({
 function SignIn({ api, where }: { api: SessionApi; where: string }) {
   return (
     <section className="hero card">
-      <h1>Mero Standup</h1>
+      <h1>Hyperfeed Standup</h1>
       <p className="lede">
         Async standups and a decision log for your team. Post what you did, what is next and what is in your
         way; record what you decided and why.
@@ -338,6 +342,7 @@ function TeamView({
   theme,
   setTheme,
   onSwitchTeam,
+  onLost,
   onLogout,
 }: {
   transport: TeamTransport;
@@ -350,9 +355,11 @@ function TeamView({
   theme: Theme;
   setTheme: (t: Theme) => void;
   onSwitchTeam: () => void;
+  /** The team no longer admits this account: closed, back to the picker. */
+  onLost: () => void;
   onLogout: () => void;
 }) {
-  const team = useTeam(transport, opened.appId, after);
+  const team = useTeam(transport, opened.appId, after, onLost);
   const [tab, setTab] = useState<Tab>("standup");
   const [decisionDraft, setDecisionDraft] = useState<DecisionDraft | null>(null);
   // Read once from the contract: it is the same string every view's `author`

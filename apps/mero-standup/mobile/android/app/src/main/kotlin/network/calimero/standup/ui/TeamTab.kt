@@ -109,7 +109,7 @@ fun TeamTab(
                     link?.let { l ->
                         Text(l, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Palette.ink2)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SecondaryButton("Share", onClick = { platform.share("Join ${team.title} on Mero Standup", l) }, icon = Icons.Outlined.Share)
+                            SecondaryButton("Share", onClick = { platform.share("Join ${team.title} on Hyperfeed Standup", l) }, icon = Icons.Outlined.Share)
                             SecondaryButton("Copy", onClick = { platform.copy("Invitation link", l) }, icon = Icons.Outlined.ContentCopy)
                         }
                     }

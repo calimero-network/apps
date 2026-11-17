@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CalimeroClient } from "@calimero-network/mero-js";
+import { NotFound, type CalimeroClient } from "@calimero-network/mero-js";
 import { describeError, type ClientRoutes } from "@calimero-apps/connect";
 import { MeroStandupClient } from "./generated/client";
+import { visibleInterval } from "./lib/visibleInterval";
 
 /**
  * Re-read on a timer too, not only on events. An event is a nudge, and a
@@ -9,6 +10,12 @@ import { MeroStandupClient } from "./generated/client";
  * board stale with nothing on screen saying so.
  */
 const POLL_MS = 30_000;
+
+/**
+ * After a write of yours, how long the event stream has to deliver it before
+ * the team is re-read anyway.
+ */
+export const SETTLE_MS = 1_500;
 
 /** The slice of the client the team needs: methods, and the app's event stream. */
 export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps: "call" | "view" }>;
@@ -19,50 +26,80 @@ export type TeamTransport = Pick<CalimeroClient, "events"> & ClientRoutes<{ apps
  * bumps whenever the team's state may have changed: a local write, or an event
  * from the app's stream (a teammate's write). Views re-read when it moves.
  *
+ * The stream starts at the log's head: what is already committed is what the
+ * views read, not replayed. A write of yours comes back on it like anyone
+ * else's, so it is not re-read twice. The safety-net poll skips ticks while
+ * the tab is hidden. `onLost` runs once the node no longer admits this
+ * account to the team (taken out of its organization, or it was deleted).
+ *
  * There is no optimistic update anywhere. An update or a decision is shown
  * once the contract has taken it, which is the only point at which it is true.
  */
-export function useTeam(transport: TeamTransport, appId: string, after: () => void = () => {}) {
-  const client = useMemo(() => new MeroStandupClient(transport, appId, { after }), [transport, appId, after]);
+export function useTeam(transport: TeamTransport, appId: string, after: () => void = () => {}, onLost?: () => void) {
+  const lost = useRef(onLost);
+  lost.current = onLost;
+  const client = useMemo(
+    () => new MeroStandupClient(admitted(transport, () => lost.current?.()), appId, { after }),
+    [transport, appId, after],
+  );
 
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
-  useEffect(() => {
-    const timer = window.setInterval(bump, POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [bump]);
+  useEffect(() => visibleInterval(bump, POLL_MS), [bump]);
 
   // Coalesced: one teammate's post can arrive as several events.
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streaming = useRef(false);
   useEffect(() => {
     const abort = new AbortController();
     void (async () => {
+      let ended = false;
       try {
-        for await (const _event of transport.events(appId, 0, abort.signal)) {
+        const from = (await client.raw.whoami()).index + 1;
+        streaming.current = true;
+        for await (const _event of client.events(from, abort.signal)) {
+          if (settle.current) clearTimeout(settle.current);
+          settle.current = null;
           if (pending.current) clearTimeout(pending.current);
           pending.current = setTimeout(() => {
             pending.current = null;
             bump();
           }, 250);
         }
-      } catch {
-        // Stream closed (sign-out, team left, network): the poll still runs.
+        ended = true;
+      } catch (e) {
+        // Not admitted any more: close it. Anything else (sign-out, network): the poll still runs.
+        if (!abort.signal.aborted && e instanceof NotFound) lost.current?.();
+      } finally {
+        streaming.current = false;
       }
+      // A stream that ends without a refusal (the node may just close it on a
+      // removal): read again, and a read the node refuses closes the team (`admitted`).
+      if (ended && !abort.signal.aborted) bump();
     })();
     return () => {
       abort.abort();
       if (pending.current) clearTimeout(pending.current);
+      if (settle.current) clearTimeout(settle.current);
     };
-  }, [transport, appId, bump]);
+  }, [client, bump]);
 
-  /** Run one contract call, then re-read everything. */
+  /** Run one contract call; its event re-reads, or a re-read follows if none comes. */
   const act = useCallback(
     async <T,>(fn: (c: MeroStandupClient) => Promise<T>): Promise<T> => {
       try {
         return await fn(client);
       } finally {
-        bump();
+        if (!streaming.current) bump();
+        else {
+          if (settle.current) clearTimeout(settle.current);
+          settle.current = setTimeout(() => {
+            settle.current = null;
+            bump();
+          }, SETTLE_MS);
+        }
       }
     },
     [client, bump],
@@ -72,6 +109,25 @@ export function useTeam(transport: TeamTransport, appId: string, after: () => vo
 }
 
 export type Team = ReturnType<typeof useTeam>;
+
+/**
+ * `transport` with `onLost` run when the node refuses a call because the team
+ * is not there for this account any more (`404` from the node, not a contract's
+ * own refusal): taken out of its organization, or it was deleted.
+ */
+function admitted(transport: TeamTransport, onLost: () => void): TeamTransport {
+  const check = (e: unknown): never => {
+    if (e instanceof NotFound && typeof (e as { appCode?: unknown }).appCode !== "string") onLost();
+    throw e;
+  };
+  return {
+    apps: {
+      call: (args, options) => transport.apps.call(args, options).catch(check),
+      view: (args, options) => transport.apps.view(args, options).catch(check),
+    },
+    events: transport.events.bind(transport),
+  } as TeamTransport;
+}
 
 /**
  * Read `load` whenever `version` (or anything in `deps`) moves. Keeps the last

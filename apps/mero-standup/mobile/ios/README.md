@@ -1,4 +1,4 @@
-# Mero Standup for iOS
+# Hyperfeed Standup for iOS
 
 SwiftUI, iOS 16+. See [../README.md](../README.md) for what the app does. This iOS app runs
 on **Calimero 1.0** (below), as does its Android twin (`../android`).
@@ -23,12 +23,12 @@ verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 
 | What | SDK | Wire |
 | --- | --- | --- |
 | Sign in / create account / restore / sign out | `MeroAppSession.connect(nodeURL:allowMock:)`, `signIn()` / `signUp(name:)` / `restore()` / `signOut()` | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh`; session in the Keychain (`network.calimero.standup`) |
-| Teams | `listNamespaces()` + `listContexts(groupId:)` | the account's **orgs** running Mero Standup, and their **app instances** (one per team) |
+| Teams | `listNamespaces()` + `listContexts(groupId:)` | the account's **orgs** running Hyperfeed Standup, and their **app instances** (one per team) |
 | Start a team | `foundNamespace(name:)` + `createContext(…)` | `POST /orgs` + org metadata, then `POST /apps {package, org}` |
 | Invite / join | `createInvitation` / `joinNamespace` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
 | Read / write | `StandupClient` (component ABI: camelCase, u64 as decimal strings) over `contract.bound(to:)` | `POST /apps/{app}/views` / `POST /apps/{app}/intents` |
 | Live updates | `events(contextId:)`, polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
-| Approvals (an update of Mero Standup, a node release) | `session.pendingApprovals(org:)` + `session.requestConsent(_:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals (an update of Hyperfeed Standup, a node release) | `session.pendingApprovals(org:)` + `session.requestConsent(_:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 ### Sign-in
 
@@ -89,7 +89,7 @@ Info.plist keys set in `project.yml`:
 | --- | --- |
 | `CalimeroClusterURL` | empty: the sign-in screen asks for the cluster's name or a node URL |
 | `DefaultNodeURL` | `http://localhost:2501`, the development node the sign-in screen prefills |
-| `MeroPackageVersion` | empty: new teams run the latest Mero Standup |
+| `MeroPackageVersion` | empty: new teams run the latest Hyperfeed Standup |
 | `StandupCallbackScheme` | `mero-standup` (the consent page returns to `mero-standup://consent`) |
 | `StandupCallbackHost` / `StandupCallbackPath` | unset: set a host to use a verified https return |
 

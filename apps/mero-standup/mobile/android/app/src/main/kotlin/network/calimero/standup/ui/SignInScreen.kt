@@ -77,7 +77,7 @@ fun SignInScreen(
         Spacer(Modifier.height(40.dp))
         AppMark()
         Spacer(Modifier.height(20.dp))
-        Text("Mero Standup", fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+        Text("Hyperfeed Standup", fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Text(
             "Async standups and a decision log for your team. Post what you did, what is next and what is in your way; record what you decided and why.",

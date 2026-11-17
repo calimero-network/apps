@@ -68,7 +68,7 @@ struct TeamsView: View {
                 await model.load()
                 if approvals == nil, !DemoMode.isOn {
                     approvals = ApprovalsModel(
-                        packageName: AppConfig.packageName, appName: "Mero Standup",
+                        packageName: AppConfig.packageName, appName: "Hyperfeed Standup",
                         fetch: { [weak session] org in
                             guard let session else { throw CancellationError() }
                             return try await session.pendingApprovals(org: org)

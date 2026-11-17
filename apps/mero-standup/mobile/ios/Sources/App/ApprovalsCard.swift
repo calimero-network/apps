@@ -1,7 +1,7 @@
 import StandupCore
 import SwiftUI
 
-/// What waits for the person's approval (an update of Mero Standup, a node
+/// What waits for the person's approval (an update of Hyperfeed Standup, a node
 /// release): "Review" shows the confirmation code first, then opens the
 /// node's consent page in the system browser, where the same code shows.
 /// Nothing shows when there is nothing to approve.

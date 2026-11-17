@@ -43,7 +43,7 @@ class StandupInvitation(
         /** The registry package, which is also the links' slug (`APP_SLUG`). */
         const val PACKAGE_NAME = "com.calimero.mero-standup"
 
-        /** Read a link (https or `calimero://`) or a bare token. Null when it is not a Mero Standup invitation. */
+        /** Read a link (https or `calimero://`) or a bare token. Null when it is not a Hyperfeed Standup invitation. */
         fun parse(input: String): StandupInvitation? {
             val token = InviteLink.tokenFromPasted(input.trim(), PACKAGE_NAME) ?: return null
             val json = InviteCodec.decode(token) ?: return null

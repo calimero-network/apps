@@ -1,4 +1,4 @@
-# Mero Standup
+# Hyperfeed Standup
 
 Async standups and a decision log for a small team. Each member posts what they
 did, what is next and what blocks them; the team records what it decided and

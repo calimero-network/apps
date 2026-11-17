@@ -38,7 +38,7 @@ public struct StandupInvitation: Sendable {
     }
 
     /// Read a link (https or `calimero://`) or a bare token. Nil when it is not
-    /// a Mero Standup invitation, including another app's link.
+    /// a Hyperfeed Standup invitation, including another app's link.
     public static func parse(_ input: String) -> StandupInvitation? {
         guard let token = InviteLink.token(fromPasted: input, expectedSlug: packageName),
             let json = InviteCodec.decode(token: token)

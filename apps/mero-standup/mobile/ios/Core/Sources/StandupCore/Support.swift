@@ -40,7 +40,7 @@ public enum ErrorText {
         case let error as URLError:
             return "Your cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
         case is DecodingError:
-            return "The team answered in a shape this app does not read. It may run a different version of Mero Standup."
+            return "The team answered in a shape this app does not read. It may run a different version of Hyperfeed Standup."
         case let error as LocalizedError:
             // MeroKitUI's `PasskeyRequired` (a member or invite change made without the passkey at hand).
             if String(describing: type(of: error)) == "PasskeyRequired" {

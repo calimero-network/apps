@@ -41,7 +41,7 @@ export function InviteCard({
             open={open}
             onClose={() => setOpen(false)}
             org={org}
-            appName="Mero Standup"
+            appName="Hyperfeed Standup"
             labels={LABELS}
             linkBase={inviteBase(org)}
             onInvited={after}

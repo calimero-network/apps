@@ -149,8 +149,8 @@ public enum StandupError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .noApplication: return "Mero Standup is not installed for your account yet. Try again in a moment."
-        case .notAnInvitation: return "That is not a Mero Standup invitation link."
+        case .noApplication: return "Hyperfeed Standup is not installed for your account yet. Try again in a moment."
+        case .notAnInvitation: return "That is not a Hyperfeed Standup invitation link."
         }
     }
 }
