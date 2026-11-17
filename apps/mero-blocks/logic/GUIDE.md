@@ -1,8 +1,8 @@
-# Mero Blocks
+# Hyperfeed Blocks
 
 ## Overview
 
-Mero Blocks is a multiplayer voxel sandbox with no game server: a world is a Calimero app instance.
+Hyperfeed Blocks is a multiplayer voxel sandbox with no game server: a world is a Calimero app instance.
 A world is 128 x 64 x 128 blocks: x and z in [0, 128), y in [0, 64), y is up.
 The contract never stores terrain.
 Every client generates identical terrain from the world's seed; the contract stores only the edits made on top of it.

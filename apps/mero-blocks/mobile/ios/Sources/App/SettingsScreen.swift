@@ -62,7 +62,7 @@ struct SettingsScreen: View {
         .background(Theme.ground)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Sign out of Mero Blocks?", isPresented: $confirming, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of Hyperfeed Blocks?", isPresented: $confirming, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { onSignOut() }
         }
     }

@@ -2,7 +2,7 @@
 // blurred in the background (ui/panorama.ts); in front there is only the
 // logo, the title, and the play card. The card follows the session:
 //  1. listing      → a copy no cluster serves (a static host): the shared
-//                    listing card, "Open Mero Blocks" where Calimero Cloud
+//                    listing card, "Open Hyperfeed Blocks" where Calimero Cloud
 //                    serves it. unconfigured → a build that cannot connect
 //                    otherwise says why.
 //  2. signed out   → sign in with a passkey, or create an account. Local
@@ -376,7 +376,7 @@ export class Landing {
   // state 1: a copy no cluster serves (its listing page): open it where Calimero Cloud serves it
   private renderListing(): void {
     renderListing(this.playCardEl(), {
-      name: "Mero Blocks",
+      name: "Hyperfeed Blocks",
       description: "Minecraft-style multiplayer voxel sandbox, with no game server.",
       package: PACKAGE,
       dir: "mero-blocks",
@@ -403,7 +403,7 @@ export class Landing {
     // An invite the node refuses at sign-up is dropped: the card stops offering it.
     let invited = this.invites.token() !== null;
     el.innerHTML = `
-      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
+      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Hyperfeed Blocks. Sign in or create an account to accept.</div>` : ""}
       <div class="mbl-note" data-testid="signin-switched" role="status" hidden></div>
       <div data-testid="sign-in-actions">
         <div data-testid="sign-in-group">
@@ -580,7 +580,7 @@ export class Landing {
     this.stopUpgrades ??= watchUpgrades({
       client: phase.client,
       package: PACKAGE,
-      appName: "Mero Blocks",
+      appName: "Hyperfeed Blocks",
       accountId: phase.accountId,
       ...(this.deps.storage ? { storage: this.deps.storage } : {}),
     });

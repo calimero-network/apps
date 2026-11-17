@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Blocks app.
+# XcodeGen spec for the native iOS Hyperfeed Blocks app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroBlocks.xcodeproj (not committed)
@@ -38,7 +38,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Blocks
+        CFBundleDisplayName: Hyperfeed Blocks
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         # The shell is portrait; the game switches to landscape while it is on screen

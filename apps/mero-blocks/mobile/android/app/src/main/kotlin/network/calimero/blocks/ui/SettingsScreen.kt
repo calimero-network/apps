@@ -119,7 +119,7 @@ fun SettingsScreen(
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text("Sign out of Mero Blocks?") },
+            title = { Text("Sign out of Hyperfeed Blocks?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = false

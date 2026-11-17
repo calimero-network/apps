@@ -1,4 +1,4 @@
-// Mero Blocks, game only, for the iOS and Android apps.
+// Hyperfeed Blocks, game only, for the iOS and Android apps.
 //
 // The app hosts this page in a WebView from files bundled into the app (nothing is fetched at
 // run time). It reuses the web app's engine as it is: terrain, lighting, mesher, physics,

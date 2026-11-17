@@ -1,6 +1,6 @@
 {
-  "name": "Mero Blocks",
-  "short_name": "MeroBlocks",
+  "name": "Hyperfeed Blocks",
+  "short_name": "Hyperfeed Blocks",
   "description": "A Minecraft-style multiplayer sandbox with no game server — worlds live as peer-to-peer CRDT state on Calimero nodes.",
   "display": "standalone",
   "background_color": "#0b0e14",

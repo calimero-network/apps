@@ -34,7 +34,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-blocks"
-name = "Mero Blocks"
+name = "Hyperfeed Blocks"
 description = "Minecraft-style multiplayer voxel sandbox. A world is a Calimero app instance: seed + block-edit diff + player presence, no game server."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

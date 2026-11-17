@@ -127,7 +127,7 @@ export class MeroBridge {
 
   private call<T>(op: CallOp, method: string, args: Record<string, unknown>): Promise<T> {
     const host = this.host;
-    if (!host) return Promise.reject(new Error("Mero Blocks runs inside the app"));
+    if (!host) return Promise.reject(new Error("Hyperfeed Blocks runs inside the app"));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {

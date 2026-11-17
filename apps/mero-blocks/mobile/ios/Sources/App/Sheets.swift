@@ -163,7 +163,7 @@ struct JoinSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Join \(invitation.name ?? "this world")?").font(Theme.heading(22)).foregroundStyle(Theme.ink)
                         .lineLimit(2)
-                    Text("You've been invited to build in Mero Blocks.").font(Theme.body(14)).foregroundStyle(Theme.muted)
+                    Text("You've been invited to build in Hyperfeed Blocks.").font(Theme.body(14)).foregroundStyle(Theme.muted)
                 }
             }
             Text("Joining adds your account to this world and opens it. Everyone in it sees what you build.")

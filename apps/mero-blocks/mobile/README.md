@@ -1,6 +1,6 @@
-# Mero Blocks — native mobile apps
+# Hyperfeed Blocks — native mobile apps
 
-Native iOS and Android apps for Mero Blocks, next to the web frontend (`../app`) and the contract
+Native iOS and Android apps for Hyperfeed Blocks, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-blocks`). The shell (sign-in, worlds, invitations, settings,
 the pause menu) is native; the game itself is the web app's three.js engine, bundled into the app
 and run in a WebView in a game-only mode, with its contract calls going through the native session.

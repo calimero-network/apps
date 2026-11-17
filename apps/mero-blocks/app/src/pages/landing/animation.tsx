@@ -1,12 +1,12 @@
 /**
- * Mero Blocks — the hero animation: an isometric voxel island being edited.
+ * Hyperfeed Blocks — the hero animation: an isometric voxel island being edited.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
  * ⚠️ WHAT WAS WRONG BEFORE
  * The previous version drew a terrace of rounded grey squares. Flat, no cube
  * faces, no block colours — it read as a bar chart, and nothing in it said
- * "voxel sandbox". Mero Blocks is a Minecraft-style game and this frame is the
+ * "voxel sandbox". Hyperfeed Blocks is a Minecraft-style game and this frame is the
  * only picture most visitors will ever see of it, so it has to look like the
  * game: real cubes, real terrain, real block colours, someone building.
  *

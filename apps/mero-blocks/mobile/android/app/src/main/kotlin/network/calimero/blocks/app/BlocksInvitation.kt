@@ -47,7 +47,7 @@ class BlocksInvitation(
 
     companion object {
         /**
-         * A pasted link, a deep link or a bare token; null when it is not a Mero Blocks invitation
+         * A pasted link, a deep link or a bare token; null when it is not a Hyperfeed Blocks invitation
          * (another app's link is refused: redeeming it would join that app's organization).
          */
         fun parse(input: String): BlocksInvitation? {
