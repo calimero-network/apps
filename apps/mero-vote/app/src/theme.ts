@@ -3,7 +3,7 @@
 // Light is the default for everyone; dark is the fleet's "smoked glass", switched
 // by `data-theme="dark"` on <html> (glass.css and index.css both key their dark
 // values off it). The choice is remembered under THEME_STORAGE_KEY, which is
-// Mero Vote's own: another app on the same origin keeps its own choice.
+// Hyperfeed Vote's own: another app on the same origin keeps its own choice.
 //
 // public/theme-init.js carries a copy of `readStoredTheme` + `applyTheme` so a
 // saved dark theme is on <html> before the first paint and a reload never

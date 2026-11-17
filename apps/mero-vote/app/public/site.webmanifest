@@ -1,6 +1,6 @@
 {
-  "name": "Mero Vote",
-  "short_name": "Mero Vote",
+  "name": "Hyperfeed Vote",
+  "short_name": "Hyperfeed Vote",
   "description": "Private polls with verifiable tallies: ballots encrypted in the browser, proven in zero knowledge, counted by every member.",
   "display": "standalone",
   "background_color": "#f6f7fb",

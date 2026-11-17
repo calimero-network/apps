@@ -19,7 +19,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Vote",
+  name: "Hyperfeed Vote",
   description: "Private polls with verifiable tallies.",
   package: PACKAGE,
   dir: "mero-vote",
@@ -33,7 +33,7 @@ export const ONBOARDING: {
   listing: ListingProps;
   classNames: OnboardingClassNames;
 } = {
-  appName: "Mero Vote",
+  appName: "Hyperfeed Vote",
   joining: "the voting group",
   listing: LISTING,
   classNames: { root: "card", text: "hint", control: "signin-control", error: "err", actions: "row", secondary: "ghost" },

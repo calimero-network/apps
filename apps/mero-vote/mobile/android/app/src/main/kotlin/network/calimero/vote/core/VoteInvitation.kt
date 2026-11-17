@@ -42,7 +42,7 @@ data class VoteInvitation(
 
         /**
          * Parse a link (https or `calimero://`), a bare code, a bare `inv_…` token or raw JSON. Null
-         * when it holds no Mero Vote invitation, including another app's link.
+         * when it holds no Hyperfeed Vote invitation, including another app's link.
          */
         fun parse(input: String): VoteInvitation? {
             val trimmed = input.trim()
@@ -114,12 +114,12 @@ class InvitationModel(
     var invitation: VoteInvitation? = null
         private set
 
-    /** Read a link or a pasted code. False (and a failed stage) when it is not a Mero Vote invitation. */
+    /** Read a link or a pasted code. False (and a failed stage) when it is not a Hyperfeed Vote invitation. */
     fun open(raw: String): Boolean {
         val parsed = VoteInvitation.parse(raw)
         invitation = parsed
         if (parsed == null) {
-            _stage.value = Stage.Failed("This isn't a Mero Vote invitation. Check the link and try again.")
+            _stage.value = Stage.Failed("This isn't a Hyperfeed Vote invitation. Check the link and try again.")
             return false
         }
         _stage.value = Stage.Confirm

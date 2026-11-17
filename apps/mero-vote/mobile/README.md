@@ -1,6 +1,6 @@
-# Mero Vote: native mobile apps
+# Hyperfeed Vote: native mobile apps
 
-Native iOS and Android clients for Mero Vote, next to the web frontend (`../app`) and the contract
+Native iOS and Android clients for Hyperfeed Vote, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-vote`). Both apps have the same screens, copy, icons (SF
 Symbols on iOS, Material Icons on Android) and flows, and both build ballots byte for byte as the
 web client does.
@@ -106,7 +106,7 @@ Chaum–Pedersen proofs) and publish proven partial decryptions. See `../README.
 
 ## Screens
 
-1. **Sign in**: what Mero Vote is (encrypted here, shared key, audited by everyone); a Calimero
+1. **Sign in**: what Hyperfeed Vote is (encrypted here, shared key, audited by everyone); a Calimero
    Cloud passkey (sign in or create an account) or a development node. An invitation that arrived
    while signed out is named here.
 2. **Voting groups**: each workspace with its voting groups (newest poll's question, poll count,

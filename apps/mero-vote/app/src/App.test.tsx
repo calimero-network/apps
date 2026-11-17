@@ -181,7 +181,7 @@ function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { 
 describe("App", () => {
   it("shows the listing on a production copy no cluster serves", async () => {
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    const open = await screen.findByRole("link", { name: "Open Mero Vote" });
+    const open = await screen.findByRole("link", { name: "Open Hyperfeed Vote" });
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-vote")`.
     expect(open.getAttribute("href")).toBe("https://qpe2mqkuj625tmvqshuqe4n5mz5plntrdqnltdbahtprjk42hsta.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
@@ -301,7 +301,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join the voting group in Mero Vote.",
+      "You've been invited to join the voting group in Hyperfeed Vote.",
     );
     expect(screen.queryByText(/verifiable tallies/)).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();

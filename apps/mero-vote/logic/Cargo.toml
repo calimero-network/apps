@@ -38,7 +38,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-vote"
-name = "Mero Vote"
+name = "Hyperfeed Vote"
 description = "Private polls with verifiable tallies. Ballots are encrypted in the browser, proven well-formed in zero knowledge, and tallied from the same sealed ballot box by anyone who audits — no host sees a vote, and no one has to trust the count."
 author = "Calimero"
 slug = "com.calimero.mero-vote"

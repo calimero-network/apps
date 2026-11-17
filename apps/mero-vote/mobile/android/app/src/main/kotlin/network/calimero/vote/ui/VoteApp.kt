@@ -174,7 +174,7 @@ private fun Stack(
     }
 }
 
-/** The front door: what Mero Vote is, and one way in. */
+/** The front door: what Hyperfeed Vote is, and one way in. */
 @Composable
 private fun SignInScreen(
     vm: VoteViewModel,
@@ -197,7 +197,7 @@ private fun SignInScreen(
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Filled.HowToVote, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(38.dp)) }
         Spacer(Modifier.height(20.dp))
-        Text("Mero Vote", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
+        Text("Hyperfeed Vote", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
         Spacer(Modifier.height(10.dp))
         Text("Private polls with verifiable tallies.", fontSize = 17.sp, color = Palette.Muted, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))

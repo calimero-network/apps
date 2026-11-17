@@ -1,4 +1,4 @@
-// Generates Mero Vote's icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Vote's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The mark — a ballot with a check going into a box — is kept in sync by hand

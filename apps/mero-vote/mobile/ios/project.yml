@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Vote app.
+# XcodeGen spec for the native iOS Hyperfeed Vote app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroVote.xcodeproj (not committed)
@@ -35,7 +35,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Vote
+        CFBundleDisplayName: Hyperfeed Vote
         # Power Grotesk, the fleet's display face (converted from the web's WOFF2).
         UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
         UILaunchScreen: {}

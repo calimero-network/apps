@@ -210,7 +210,7 @@ export function App({
             <span className="brand-mark">
               <VoteIcon size={17} />
             </span>
-            <h1>Mero Vote</h1>
+            <h1>Hyperfeed Vote</h1>
           </div>
           {signedIn && (
             <nav className="crumbs" aria-label="Breadcrumb">
@@ -289,7 +289,7 @@ export function App({
             passkey={deps.passkey()}
             token={asking?.token ?? ""}
             org={asking?.org ?? undefined}
-            appName="Mero Vote"
+            appName="Hyperfeed Vote"
             labels={{ noun: "group" }}
             onError={invites.drop}
             onClose={() => {

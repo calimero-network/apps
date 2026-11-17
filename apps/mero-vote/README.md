@@ -1,4 +1,4 @@
-# Mero Vote
+# Hyperfeed Vote
 
 **Private polls with verifiable tallies.** A voting group is one app instance in an organization.
 Ballots are encrypted in the voter's browser, proven well-formed in zero knowledge, and tallied
@@ -8,7 +8,7 @@ trust the count: any member's browser re-verifies it.
 > A vote nobody can audit is a survey. A vote the host can see is not secret.
 
 Comparable products: Slido (live polls, where the host sees everything) and Snapshot (auditable,
-but every vote is public). Mero Vote aims for both properties at once: secret like a ballot box and
+but every vote is public). Hyperfeed Vote aims for both properties at once: secret like a ballot box and
 auditable like Snapshot, with no trusted server.
 
 Runs on Calimero 1.0: the contract is a `calimero:app` component on core's component SDK
