@@ -135,7 +135,7 @@ export default function MembersPage(): React.ReactElement {
 
   // The owner keeps the workspace (core refuses the owner's own removal);
   // anyone else may leave it. In an org that keeps its apps apart that is
-  // Mero Issue Tracker only, and the organization is offered once it was
+  // Hyperfeed Issue Tracker only, and the organization is offered once it was
   // their last app.
   const canLeave = !!selfAccount && !!ws.activeNs && roles.orgRoles.get(selfAccount) !== 'owner';
   const leave = () => {

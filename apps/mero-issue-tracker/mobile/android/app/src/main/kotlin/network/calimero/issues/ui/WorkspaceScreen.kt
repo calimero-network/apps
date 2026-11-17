@@ -193,7 +193,7 @@ fun WorkspaceScreen(
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out of Mero Issue Tracker?") },
+            title = { Text("Sign out of Hyperfeed Issue Tracker?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSignOut = false

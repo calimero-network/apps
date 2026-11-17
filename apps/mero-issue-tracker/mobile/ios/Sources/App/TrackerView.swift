@@ -32,7 +32,7 @@ struct TrackerView: View {
         // Reviewing opens the node's consent page in the system browser.
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
-                packageName: Tracker.packageName, appName: "Mero Issue Tracker",
+                packageName: Tracker.packageName, appName: "Hyperfeed Issue Tracker",
                 fetch: { [weak session] org in
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)

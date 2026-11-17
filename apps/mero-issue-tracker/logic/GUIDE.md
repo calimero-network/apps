@@ -1,8 +1,8 @@
-# Mero Issue Tracker
+# Hyperfeed Issue Tracker
 
 ## Overview
 
-Mero Issue Tracker is a private issue board for a small engineering team.
+Hyperfeed Issue Tracker is a private issue board for a small engineering team.
 Issues use a structured format built for handing a bug to a coding agent:
 
 - `summary`: what is wrong, in one or two sentences.

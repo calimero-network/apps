@@ -1,6 +1,6 @@
-# Mero Issue Tracker: native mobile apps
+# Hyperfeed Issue Tracker: native mobile apps
 
-Native iOS (SwiftUI) and Android (Jetpack Compose) clients for Mero Issue Tracker, next to the web
+Native iOS (SwiftUI) and Android (Jetpack Compose) clients for Hyperfeed Issue Tracker, next to the web
 frontend (`../app`) and the contract (`../logic`, package `com.calimero.mero-issue-tracker`). The two
 apps have the same screens, in the same order, with the same copy, icons (SF Symbols / Material
 Symbols, mapped one to one) and flows.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Mero Issue Tracker's own app team (core#4890), against the shared in-memory
+ * Hyperfeed Issue Tracker's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's: a new workspace gets an open team, a
  * repository goes on it, an invite names it, the member list is its people,
@@ -58,7 +58,7 @@ async function removeWithHook(cluster: ReturnType<typeof orgCluster>, org: strin
   return result.current;
 }
 
-describe('a new workspace gets Mero Issue Tracker\'s own app team', () => {
+describe('a new workspace gets Hyperfeed Issue Tracker\'s own app team', () => {
   it('open (standalone), made with `shared: false`, and the first repository is on it', async () => {
     const { cluster, org } = await workspace();
     const team = cluster.teamOf(org, PKG)!;
@@ -92,7 +92,7 @@ describe('invites name the app team', () => {
     expect(read.appOnly).toBe(false);
   });
 
-  it('apps kept apart: the same team, and the invite gives Mero Issue Tracker only', async () => {
+  it('apps kept apart: the same team, and the invite gives Hyperfeed Issue Tracker only', async () => {
     const { cluster, org } = await workspace();
     cluster.keepAppsApart(org);
     const read = await readMembers(cluster.client, org, SOURCE);
@@ -117,7 +117,7 @@ describe('the member list is the app team', () => {
     expect(read.appOnly).toBe(false);
   });
 
-  it('apps kept apart: only the people in Mero Issue Tracker; roles still cover the org', async () => {
+  it('apps kept apart: only the people in Hyperfeed Issue Tracker; roles still cover the org', async () => {
     const { cluster, org } = await workspace(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ['acct-me', 'acct-bob'] });
     const read = await readMembers(cluster.client, org, SOURCE);
@@ -134,7 +134,7 @@ describe('the member list is the app team', () => {
 });
 
 describe('Remove', () => {
-  it('apps kept apart: out of Mero Issue Tracker (its team), never out of the organization', async () => {
+  it('apps kept apart: out of Hyperfeed Issue Tracker (its team), never out of the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     cluster.keepAppsApart(org);
     const roles = await removeWithHook(cluster, org, 'acct-bob');
@@ -144,7 +144,7 @@ describe('Remove', () => {
     expect(cluster.org(org).members['acct-bob']).toBe('member');
   });
 
-  it('standalone: off Mero Issue Tracker\'s team (a call the app\'s own session may make); they stay in the organization', async () => {
+  it('standalone: off Hyperfeed Issue Tracker\'s team (a call the app\'s own session may make); they stay in the organization', async () => {
     const { cluster, org } = await workspace({ 'acct-bob': 'member' });
     await removeWithHook(cluster, org, 'acct-bob');
     expect(cluster.callsOf('removeTeamMember')[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), 'acct-bob']);
@@ -161,7 +161,7 @@ describe('Remove', () => {
   });
 });
 
-describe('adding Mero Issue Tracker to an organization whose apps have teams', () => {
+describe('adding Hyperfeed Issue Tracker to an organization whose apps have teams', () => {
   it('an admin of an open org: the team is made open, the other app\'s left open', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', role: 'admin' });
@@ -183,7 +183,7 @@ describe('adding Mero Issue Tracker to an organization whose apps have teams', (
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', role: 'member' });
     await expect(addRepo(cluster.client, SOURCE, org, 'Main', '', passkey)).rejects.toThrow(
-      /owners and admins can add Mero Issue Tracker/,
+      /owners and admins can add Hyperfeed Issue Tracker/,
     );
     expect(cluster.callsOf('scopeApps')).toEqual([]);
     expect(cluster.callsOf('createApp')).toEqual([]);
@@ -199,7 +199,7 @@ describe('adding Mero Issue Tracker to an organization whose apps have teams', (
 });
 
 describe('Leave', () => {
-  it('apps kept apart: off Mero Issue Tracker\'s team only; the organization is offered when it was the last app', async () => {
+  it('apps kept apart: off Hyperfeed Issue Tracker\'s team only; the organization is offered when it was the last app', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'shared', app: PKG, role: 'member', members: { 'acct-own': 'owner' } });
     const left = await leaveWorkspace(cluster.client, org, SOURCE, passkey);
@@ -220,7 +220,7 @@ describe('Leave', () => {
     expect(cluster.org(org).members['acct-me']).toBe('member');
   });
 
-  it('standalone: off Mero Issue Tracker\'s team; still in the organization', async () => {
+  it('standalone: off Hyperfeed Issue Tracker\'s team; still in the organization', async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: 'standalone', app: PKG, role: 'member' });
     expect(await leaveWorkspace(cluster.client, org, SOURCE, passkey)).toEqual({ left: 'app', lastApp: false });

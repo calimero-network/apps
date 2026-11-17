@@ -19,7 +19,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Issue Tracker",
+  name: "Hyperfeed Issue Tracker",
   description: "A private, real-time issue board for a small engineering team.",
   package: APP_PACKAGE,
   dir: "mero-issue-tracker",
@@ -68,7 +68,7 @@ export const ONBOARDING: {
   classNames: OnboardingClassNames;
   titleAs: "h1" | "h2" | "h3" | "div";
 } = {
-  appName: "Mero Issue Tracker",
+  appName: "Hyperfeed Issue Tracker",
   joining: "the workspace",
   listing: LISTING,
   classNames: { text: "sub", error: "sub" },

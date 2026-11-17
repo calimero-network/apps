@@ -45,7 +45,7 @@ apps are built, run and tested in this repo.
 | **member names** | org member metadata `{ name }` (Members -> Set my alias) |
 | **roles** | the org's: owner and admins hold every capability; members get the workspace default (add repos, invite), which admins change per member |
 
-### Mero Issue Tracker's app team
+### Hyperfeed Issue Tracker's app team
 
 An organization can hold several apps, each with its own **app team**
 (core#4890; see Calimero Home's README). This app reaches its organization
@@ -57,13 +57,13 @@ only through `@calimero-apps/connect`'s org-app module
   on it, invites name it (`appInvite`), and the member list is its people
   (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Issue Tracker only (the dialog says so), the member list shows its
-  people, and **Remove** takes someone out of Mero Issue Tracker (its team), never out of
+  invite gives Hyperfeed Issue Tracker only (the dialog says so), the member list shows its
+  people, and **Remove** takes someone out of Hyperfeed Issue Tracker (its team), never out of
   the organization. **Leave workspace** (Members page, anyone but the owner)
-  leaves Mero Issue Tracker only, and offers to leave the organization too when it was
+  leaves Hyperfeed Issue Tracker only, and offers to leave the organization too when it was
   your last app there. In standalone and legacy orgs Remove and Leave are out
   of the org, as before.
-- Adding Mero Issue Tracker to an organization whose apps have teams makes its team
+- Adding Hyperfeed Issue Tracker to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization

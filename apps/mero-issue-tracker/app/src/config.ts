@@ -12,7 +12,7 @@ export const APP_PACKAGE = 'com.calimero.mero-issue-tracker';
 export const APP_NAME = 'mero-issue-tracker';
 /** Where the tracker lives inside the router. */
 export const APP_ROUTE = '/issue-tracker';
-export const PRODUCT_NAME = 'Mero Issue Tracker';
+export const PRODUCT_NAME = 'Hyperfeed Issue Tracker';
 export const APP_DESCRIPTION =
   'A private, real-time issue board for a small engineering team - create, triage, and discuss issues together';
 export const THEME = {

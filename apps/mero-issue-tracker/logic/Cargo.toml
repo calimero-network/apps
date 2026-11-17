@@ -38,7 +38,7 @@ serde_json = "1"
 # package (or the bundle in dev), not from a named service.
 [package.metadata.calimero]
 package = "com.calimero.mero-issue-tracker"
-name = "Mero Issue Tracker"
+name = "Hyperfeed Issue Tracker"
 description = "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together"
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

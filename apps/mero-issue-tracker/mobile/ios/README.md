@@ -1,4 +1,4 @@
-# Mero Issue Tracker for iOS
+# Hyperfeed Issue Tracker for iOS
 
 SwiftUI, iOS 16+. See [`../README.md`](../README.md) for the screens, features and SDK notes.
 

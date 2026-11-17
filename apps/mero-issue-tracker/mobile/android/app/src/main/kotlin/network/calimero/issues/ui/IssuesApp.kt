@@ -158,7 +158,7 @@ fun SignInScreen(
             Icon(Icons.Outlined.Checklist, contentDescription = null, tint = Palette.ink, modifier = Modifier.size(38.dp))
         }
         Spacer(Modifier.height(18.dp))
-        Text("Mero Issue Tracker", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
+        Text("Hyperfeed Issue Tracker", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
         Spacer(Modifier.height(18.dp))
         Text(
             "A private, real-time issue board for a small engineering team. Create, triage and discuss issues together.",
@@ -247,7 +247,7 @@ fun TrackerScreen(
         remember(backend) {
             ApprovalsModel(
                 Tracker.PACKAGE_NAME,
-                "Mero Issue Tracker",
+                "Hyperfeed Issue Tracker",
                 fetch = { org -> vm.pendingApprovals(org) },
                 consent = { request, confirm -> vm.requestConsent(activity, request, confirm) },
             )
