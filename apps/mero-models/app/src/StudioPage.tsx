@@ -182,7 +182,7 @@ export function StudioPage({
       passkey={deps.passkey()}
       token={asking?.token ?? ""}
       org={asking?.org ?? undefined}
-      appName="Mero Models"
+      appName="Hyperfeed Models"
       labels={{ noun: "studio" }}
       onError={invites.drop}
       onClose={() => {
@@ -259,7 +259,7 @@ function TopBar({ onHome, onLogout }: { onHome: () => void; onLogout?: () => voi
       <div className="topbar-inner">
         <button type="button" className="brand" onClick={onHome}>
           <img src={`${base()}favicon.svg`} alt="" width={26} height={26} />
-          <span>Mero Models</span>
+          <span>Hyperfeed Models</span>
         </button>
         {onLogout && (
           <div className="session">

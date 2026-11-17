@@ -592,7 +592,7 @@ private fun AboutSheet(
                     info?.myRole?.let { RoleBadge(it) }
                 }
                 Text(
-                    "This app shows scenes; modelling, check-outs and roles are in Mero Models on the web or desktop.",
+                    "This app shows scenes; modelling, check-outs and roles are in Hyperfeed Models on the web or desktop.",
                     style = ModelsTheme.body(14, color = ModelsTheme.muted),
                 )
             }

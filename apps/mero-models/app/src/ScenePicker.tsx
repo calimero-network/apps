@@ -143,7 +143,7 @@ export function ScenePicker({
           <p className="eyebrow">Scenes</p>
           <h1>Model together, in one shared scene</h1>
           <p className="lede">
-            A scene is one instance of Mero Models. Everyone in its studio sees every change as it lands, and the
+            A scene is one instance of Hyperfeed Models. Everyone in its studio sees every change as it lands, and the
             meshes and textures live in the scene&apos;s own blobs.
           </p>
           <div className="new-scene">

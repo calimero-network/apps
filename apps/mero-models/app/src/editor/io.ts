@@ -72,7 +72,7 @@ export async function importFile(file: File, takenNames: string[]): Promise<Impo
     const gltf = await new GLTFLoader().parseAsync(await file.arrayBuffer(), "");
     return fromObject3D(gltf.scene, stem, takenNames, "gltf");
   }
-  throw new Error(`Cannot import .${ext} files — use OBJ, STL, glTF/GLB or a Mero Models scene (.json).`);
+  throw new Error(`Cannot import .${ext} files — use OBJ, STL, glTF/GLB or a Hyperfeed Models scene (.json).`);
 }
 
 type SourceMaterial = THREE.Material & {
@@ -253,11 +253,11 @@ function fromBase64(text: string): Uint8Array {
   return out;
 }
 
-/** A Mero Models scene file, with fresh ids so it can be imported into any scene, even its own. */
+/** A Hyperfeed Models scene file, with fresh ids so it can be imported into any scene, even its own. */
 export function importSceneFile(data: unknown, takenNames: string[]): Imported {
   const file = data as Partial<SceneFile>;
   if (file?.format !== "mero-models" || !Array.isArray(file.objects)) {
-    throw new Error("That JSON file is not a Mero Models scene.");
+    throw new Error("That JSON file is not a Hyperfeed Models scene.");
   }
   const remap = new Map(file.objects.map((o) => [o.id, newId()]));
   const texRemap = new Map((file.textures ?? []).map((t) => [t.id, newId()]));
@@ -389,7 +389,7 @@ export async function exportScene(
  * triangles. Normals are left to the importer, as most DCCs recompute them.
  */
 function toObj(scene: THREE.Scene, objects: Map<string, SceneObject>, meshes: Map<string, StoredMesh>): string {
-  const out: string[] = ["# Mero Models"];
+  const out: string[] = ["# Hyperfeed Models"];
   let vBase = 1;
   let tBase = 1;
   const v = new THREE.Vector3();

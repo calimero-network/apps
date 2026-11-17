@@ -34,7 +34,7 @@ struct StudiosScreen: View {
                     EmptyState(
                         icon: "cube.transparent",
                         title: "No studios yet",
-                        message: "Start a scene in Mero Models on the web, or join a studio with an invitation link.",
+                        message: "Start a scene in Hyperfeed Models on the web, or join a studio with an invitation link.",
                         action: ("Join with a link", { showJoin = true }))
                     .plainRow()
                 } else {
@@ -54,7 +54,7 @@ struct StudiosScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.ground)
-        .navigationTitle("Mero Models")
+        .navigationTitle("Hyperfeed Models")
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
@@ -135,7 +135,7 @@ struct JoinSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Paste the link someone shared from Mero Models. It opens their scene once you've joined.")
+                Text("Paste the link someone shared from Hyperfeed Models. It opens their scene once you've joined.")
                     .font(Theme.body(15))
                     .foregroundStyle(Theme.muted)
                 TextField("https://links.calimero.network/…", text: $text, axis: .vertical)
@@ -216,7 +216,7 @@ struct AccountSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
             }
-            .confirmationDialog("Sign out of Mero Models?", isPresented: $confirm, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Models?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     Task { await session.signOut() }
@@ -253,7 +253,7 @@ struct ScenesScreen: View {
                     EmptyState(
                         icon: "cube",
                         title: "No scenes in this studio",
-                        message: "Scenes are made in Mero Models on the web or desktop. Pull to refresh once one exists.")
+                        message: "Scenes are made in Hyperfeed Models on the web or desktop. Pull to refresh once one exists.")
                     .plainRow()
                 } else {
                     Section {

@@ -19,7 +19,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Models",
+  name: "Hyperfeed Models",
   description: "Blender-style 3D modelling, shared.",
   package: PACKAGE,
   dir: "mero-models",
@@ -33,7 +33,7 @@ export const ONBOARDING: {
   listing: ListingProps;
   classNames: OnboardingClassNames;
 } = {
-  appName: "Mero Models",
+  appName: "Hyperfeed Models",
   joining: "the studio",
   listing: LISTING,
   classNames: { root: "card", text: "hint", control: "signin-control", error: "err", actions: "row", secondary: "ghost" },

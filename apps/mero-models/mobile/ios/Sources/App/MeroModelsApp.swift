@@ -35,7 +35,7 @@ final class Router: ObservableObject {
 }
 
 /// Restoring → a splash. Signed out → sign in (passkey). Signed in → studios
-/// (the account's organizations running Mero Models).
+/// (the account's organizations running Hyperfeed Models).
 struct RootView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var router: Router

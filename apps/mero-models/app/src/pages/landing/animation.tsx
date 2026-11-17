@@ -1,5 +1,5 @@
 /**
- * Mero Models — the studio as the app draws it: a dark viewport with a grid, a
+ * Hyperfeed Models — the studio as the app draws it: a dark viewport with a grid, a
  * cube being dragged along its gizmo's X arrow, a collaborator's selection
  * outlined in their colour, and the outliner beside it picking up the move
  * with a "replicated" tick — the claim the app exists to make.

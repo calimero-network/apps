@@ -103,6 +103,6 @@ final class FormatAndInvitationTests: XCTestCase {
     func testABadLinkFails() {
         let model = InvitationModel()
         XCTAssertFalse(model.open("https://example.com"))
-        XCTAssertEqual(model.stage, .failed("This isn't a Mero Models invitation. Check the link and try again."))
+        XCTAssertEqual(model.stage, .failed("This isn't a Hyperfeed Models invitation. Check the link and try again."))
     }
 }

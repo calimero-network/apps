@@ -165,7 +165,7 @@ function decompose(m: THREE.Matrix4): Pick<FbxMesh, "translation" | "rotation" |
 const extension = (mime: string) => (mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png");
 
 function report(plan: PlannedMesh[], checks: Check[], opts: GameExportOptions): string {
-  const lines = [`Mero Models game export · ${ENGINES.find((e) => e.key === opts.engine)!.label} · ${opts.format.toUpperCase()}`, ""];
+  const lines = [`Hyperfeed Models game export · ${ENGINES.find((e) => e.key === opts.engine)!.label} · ${opts.format.toUpperCase()}`, ""];
   for (const p of plan) {
     lines.push(`${p.object.name}`);
     for (const l of p.lods) lines.push(`  ${l.name}: ${(l.shape.indices.length / 3).toLocaleString()} triangles`);

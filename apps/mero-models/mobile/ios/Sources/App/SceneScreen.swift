@@ -463,7 +463,7 @@ private struct AboutSheet: View {
                             Spacer()
                             if let role = model.role { RoleBadge(role: role) }
                         }
-                        Text("This app shows scenes; modelling, check-outs and roles are in Mero Models on the web or desktop.")
+                        Text("This app shows scenes; modelling, check-outs and roles are in Hyperfeed Models on the web or desktop.")
                             .font(Theme.body(14)).foregroundStyle(Theme.muted)
                     }
                     .card()

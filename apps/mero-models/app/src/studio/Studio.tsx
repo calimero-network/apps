@@ -166,7 +166,7 @@ export function Studio({ contextId }: { contextId: string }) {
             { label: "glTF binary (.glb)", onSelect: () => void onExport("glb") },
             { label: "Wavefront (.obj)", onSelect: () => void onExport("obj") },
             { label: "STL (.stl)", onSelect: () => void onExport("stl") },
-            { label: "Mero Models scene (.json)", onSelect: () => void onExport("json") },
+            { label: "Hyperfeed Models scene (.json)", onSelect: () => void onExport("json") },
           ],
         },
         { label: "Game export…", onSelect: () => setGameExportOpen(true) },

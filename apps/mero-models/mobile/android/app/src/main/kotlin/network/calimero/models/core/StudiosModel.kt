@@ -37,7 +37,7 @@ internal inline fun <T> attempt(block: () -> T): Result<T> =
         Result.failure(e)
     }
 
-/** A studio: a namespace running Mero Models. Everyone invited to it can open every scene in it. */
+/** A studio: a namespace running Hyperfeed Models. Everyone invited to it can open every scene in it. */
 data class Studio(
     val id: String,
     val name: String,

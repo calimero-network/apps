@@ -1,6 +1,6 @@
 {
-  "name": "Mero Models",
-  "short_name": "Mero Models",
+  "name": "Hyperfeed Models",
+  "short_name": "Hyperfeed Models",
   "description": "Blender-style 3D modelling with no server. A scene is a Calimero context: objects, meshes and materials replicate peer to peer.",
   "display": "standalone",
   "background_color": "#17181c",

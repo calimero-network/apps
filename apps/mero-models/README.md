@@ -1,4 +1,4 @@
-# Mero Models
+# Hyperfeed Models
 
 A Blender-style 3D modeller where the scene belongs to the people building it.
 
