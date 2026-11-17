@@ -9,7 +9,7 @@ const overworld: OtherOrg = {
   name: "overworld",
   role: "owner",
   holds: [{ appId: "b1", name: "overworld", package: "com.calimero.mero-blocks" }],
-  label: "Mero Blocks: overworld",
+  label: "Hyperfeed Blocks: overworld",
   canCreate: true,
 };
 
@@ -22,7 +22,7 @@ describe("ConnectExistingOrg", () => {
     fireEvent.click(screen.getByTestId("connect-existing-org"));
     const choice = await screen.findByTestId("connect-org-ow");
     expect(choice.textContent).toContain("overworld");
-    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    expect(choice.textContent).toContain("Hyperfeed Blocks: overworld");
   });
 
   it("creates the instance in the chosen organization", async () => {

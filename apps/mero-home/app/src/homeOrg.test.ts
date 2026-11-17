@@ -32,7 +32,7 @@ describe("loadOrg", () => {
     expect(v.apps.map((a) => [a.name, a.team?.teamId ?? null])).toEqual([
       ["Blocks", "t-blocks"],
       ["Chat", "t-chat"],
-      ["Mero Crm", null],
+      ["Hyperfeed Crm", null],
     ]);
     expect(v.apps.find((a) => a.package === CRM)?.instances.map((i) => i.appId)).toEqual(["crm-1"]);
   });
