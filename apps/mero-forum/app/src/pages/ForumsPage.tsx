@@ -79,7 +79,7 @@ export default function ForumsPage() {
    */
   const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
-  /** Who has Mero Forum in the space, and whether Remove is this app's only (apps kept apart). */
+  /** Who has Hyperfeed Forum in the space, and whether Remove is this app's only (apps kept apart). */
   const [people, setPeople] = useState<{ rows: SpacePerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);

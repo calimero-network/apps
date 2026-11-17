@@ -298,7 +298,7 @@ describe("App", () => {
     hold({ token: "tok-1", forum: "forum-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1|Mero Forum|undefined|space");
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-1|Hyperfeed Forum|undefined|space");
     fireEvent.click(screen.getByTestId("accept-done"));
     await screen.findByText("Namespaces vs contexts");
     expect(invites.token()).toBeNull();
@@ -323,7 +323,7 @@ describe("App", () => {
       fireEvent.click(await screen.findByLabelText("More options"));
       fireEvent.click(await screen.findByTestId("invite-btn"));
       expect((await screen.findByTestId("invite-labels")).textContent).toBe(
-        "space|Invites to Mero Forum only: this organization's other apps are managed in Calimero Home.",
+        "space|Invites to Hyperfeed Forum only: this organization's other apps are managed in Calimero Home.",
       );
       cleanup();
       teamsAnswer.appOnly = false;
@@ -342,7 +342,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByLabelText("More options"));
     fireEvent.click(await screen.findByTestId("invite-btn"));
     const props = JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "null");
-    expect(props).toMatchObject({ org: "org-1", teams: [], appName: "Mero Forum" });
+    expect(props).toMatchObject({ org: "org-1", teams: [], appName: "Hyperfeed Forum" });
     expect(props.linkBase).toMatch(/\?org=org-1$/);
   });
 
@@ -350,7 +350,7 @@ describe("App", () => {
     hold({ token: "tok-1", forum: null });
     render(<App deps={deps(fakeClient())} />);
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join the space in Mero Forum/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the space in Hyperfeed Forum/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     // A page, not a dialog over the landing page.
     expect(screen.queryByText("Connect")).toBeNull();
@@ -404,7 +404,7 @@ describe("App", () => {
     hold({ token: "tok-own", forum: null, org: "org-1" });
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-own|Mero Forum|org-1|space");
+    expect((await screen.findByTestId("accept-token")).textContent).toBe("tok-own|Hyperfeed Forum|org-1|space");
     expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 

@@ -216,7 +216,7 @@ private fun Stack(
 private enum class SignInForm { SIGN_IN, CREATE, DEVELOPMENT }
 
 /**
- * The front door: what Mero Forum is, then sign-in to a Calimero 1.0 cluster. (iOS `SignInView`.)
+ * The front door: what Hyperfeed Forum is, then sign-in to a Calimero 1.0 cluster. (iOS `SignInView`.)
  *
  * - Calimero Cloud: the cluster by name (`eu-shared-1`, its nodes read from the Cloud directory)
  *   or by a node URL from the console, then the device's passkey. "Create an account" registers a
@@ -259,7 +259,7 @@ private fun SignInScreen(
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Filled.Forum, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(38.dp)) }
         Spacer(Modifier.height(20.dp))
-        Text("Mero Forum", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
+        Text("Hyperfeed Forum", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Palette.Ink)
         Spacer(Modifier.height(10.dp))
         Text(
             "Discussions for your community, on your own Calimero cluster. Sign in with a passkey.",

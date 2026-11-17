@@ -35,12 +35,12 @@ public final class InvitationModel: ObservableObject {
     }
 
     /// Read a link or a pasted code. `false` (and a failed stage) when it is
-    /// not a Mero Forum invitation.
+    /// not a Hyperfeed Forum invitation.
     @discardableResult
     public func open(_ raw: String) -> Bool {
         guard let parsed = ForumInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero Forum invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed Forum invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

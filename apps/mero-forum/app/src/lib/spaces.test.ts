@@ -128,7 +128,7 @@ describe("the remembered forum", () => {
 });
 
 describe("an org made for another app", () => {
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   function client(metadata: Record<string, unknown> = {}) {
     const blocks = { appId: "w1", name: "overworld", owner: "ana", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null };
     return withRoutes({

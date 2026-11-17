@@ -48,12 +48,12 @@ class InvitationModel(
     var invitation: ForumInvitation? = null
         private set
 
-    /** Read a link or a pasted code. False (and a failed stage) when it is not a Mero Forum invitation. */
+    /** Read a link or a pasted code. False (and a failed stage) when it is not a Hyperfeed Forum invitation. */
     fun open(raw: String): Boolean {
         val parsed = ForumInvitation.parse(raw)
         invitation = parsed
         if (parsed == null) {
-            _stage.value = Stage.Failed("This isn't a Mero Forum invitation. Check the link and try again.")
+            _stage.value = Stage.Failed("This isn't a Hyperfeed Forum invitation. Check the link and try again.")
             return false
         }
         _stage.value = Stage.Confirm(parsed.title, parsed.kind == ForumInvitation.Kind.FORUM)

@@ -32,7 +32,7 @@ final class ApprovalsTests: XCTestCase {
     func testItemsKeepThisAppsUpgradesAndActionableReleases() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: "org1"), org: "org1", packageName: ForumConstants.packageName,
-            appName: "Mero Forum")
+            appName: "Hyperfeed Forum")
         XCTAssertEqual(
             items.map(\.kind), [.upgrade(app: "app-1", version: "1.2.0"), .release(org: "org1", version: "2.3.110")])
         XCTAssertEqual(
@@ -46,7 +46,7 @@ final class ApprovalsTests: XCTestCase {
     func testOperatorHeldDecisionsAreNotOffered() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: nil, upgradesBy: "operator", releasesBy: "operator"), org: nil,
-            packageName: ForumConstants.packageName, appName: "Mero Forum")
+            packageName: ForumConstants.packageName, appName: "Hyperfeed Forum")
         XCTAssertTrue(items.isEmpty)
     }
 
@@ -56,7 +56,7 @@ final class ApprovalsTests: XCTestCase {
 
     private func model(requested: @escaping (ConsentRequest) -> Void) -> ApprovalsModel {
         ApprovalsModel(
-            packageName: ForumConstants.packageName, appName: "Mero Forum",
+            packageName: ForumConstants.packageName, appName: "Hyperfeed Forum",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)

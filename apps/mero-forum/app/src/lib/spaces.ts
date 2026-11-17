@@ -51,14 +51,14 @@ import { askOrgConsent } from "./orgConsent";
  * `@calimero-apps/connect`'s org-app module: a new space's team is open
  * (everyone in the org has the app), forums use team access on it, invites
  * name it, and the member count is its people. Once an admin keeps the org's
- * apps apart in Calimero Home (`shared`), an invite gives Mero Forum only and
- * Leave leaves Mero Forum only (offering the org when it was the last app).
+ * apps apart in Calimero Home (`shared`), an invite gives Hyperfeed Forum only and
+ * Leave leaves Hyperfeed Forum only (offering the org when it was the last app).
  * An org without one (made before app teams, a node without them, a raw dev
  * bundle) is legacy: organization access, as before.
  */
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Forum";
+export const PRODUCT_NAME = "Hyperfeed Forum";
 
 /** A space this account is in. Field names are what the screens called them. */
 export interface NamespaceRow {
@@ -175,7 +175,7 @@ export async function deleteSpace(
   await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
 }
 
-/** `getOrg` for `org`, and Mero Forum's own team there (`null` without one, or under a raw bundle). */
+/** `getOrg` for `org`, and Hyperfeed Forum's own team there (`null` without one, or under a raw bundle). */
 async function forumTeam(
   client: ClientRoutes<{ orgs: "get" }>,
   org: string,
@@ -188,11 +188,11 @@ async function forumTeam(
 }
 
 /**
- * Leaves the space, which is leaving Mero Forum. In an org that keeps its
+ * Leaves the space, which is leaving Hyperfeed Forum. In an org that keeps its
  * apps apart, its team only, with `lastApp` set when it was the caller's last
  * app there (offer {@link leaveSpaceOrg}). Elsewhere, where the org has Mero
  * Forum's team, off that team (a team call, which a session on the app's own
- * frontend may make); Mero Forum is the org's app there, so `lastApp` is set
+ * frontend may make); Hyperfeed Forum is the org's app there, so `lastApp` is set
  * too. A space without that team leaves the org (on the node's consent page
  * from the app's frontend).
  */
@@ -224,7 +224,7 @@ export function leaveSpaceOrg(
 
 /**
  * Takes `account` out of the space (the space's owners and admins), which is
- * taking them out of Mero Forum: off its team wherever the org has one (a
+ * taking them out of Hyperfeed Forum: off its team wherever the org has one (a
  * team call; a passkey step-up), and they stay in the organization. A space
  * without that team removes them from the org (`removeFromApp`: on the node's
  * consent page from the app's frontend). Answers which it was.
@@ -277,9 +277,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the space, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Forum in the org, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Forum in the org, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Mero Forum's only. */
+  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Hyperfeed Forum's only. */
   appOnly: boolean;
 }
 

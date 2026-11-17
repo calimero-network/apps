@@ -232,7 +232,7 @@ export default function SpacesPage() {
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve leaving with your passkey…");
         const left = await leaveSpace(client, ns.namespaceId, source, passkey);
-        // An org that keeps its apps apart: Mero Forum only. When it was the
+        // An org that keeps its apps apart: Hyperfeed Forum only. When it was the
         // last app there, the organization itself is offered too.
         if (
           left.left === "app" &&
@@ -344,7 +344,7 @@ export default function SpacesPage() {
         )}
 
         <div style={{ margin: "8px 0 16px" }}>
-          <ConnectExistingOrg appName="Mero Forum" load={loadOtherOrgs} onConnect={connectOrg} />
+          <ConnectExistingOrg appName="Hyperfeed Forum" load={loadOtherOrgs} onConnect={connectOrg} />
         </div>
 
         {listing ? (

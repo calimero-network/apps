@@ -44,7 +44,7 @@ class ApprovalsTest {
 
     @Test
     fun `items keep this apps upgrades and actionable releases`() {
-        val items = ApprovalsModel.items(pending("org1"), "org1", ForumConstants.PACKAGE_NAME, "Mero Forum")
+        val items = ApprovalsModel.items(pending("org1"), "org1", ForumConstants.PACKAGE_NAME, "Hyperfeed Forum")
         assertEquals(
             listOf(ApprovalsModel.Item.Kind.Upgrade("app-1", "1.2.0"), ApprovalsModel.Item.Kind.Release("org1", "2.3.110")),
             items.map { it.kind },
@@ -55,13 +55,13 @@ class ApprovalsTest {
 
     @Test
     fun `operator held decisions are not offered`() {
-        assertTrue(ApprovalsModel.items(pending(null, actionable = false), null, ForumConstants.PACKAGE_NAME, "Mero Forum").isEmpty())
+        assertTrue(ApprovalsModel.items(pending(null, actionable = false), null, ForumConstants.PACKAGE_NAME, "Hyperfeed Forum").isEmpty())
     }
 
     private fun model(requested: MutableList<ConsentRequest>) =
         ApprovalsModel(
             packageName = ForumConstants.PACKAGE_NAME,
-            appName = "Mero Forum",
+            appName = "Hyperfeed Forum",
             returnTo = "mero-forum://consent",
             fetch = { org -> if (org == null) throw NotFound("no account report") else pending(org) },
             consent = { request, confirm ->

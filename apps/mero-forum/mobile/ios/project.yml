@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Forum app.
+# XcodeGen spec for the native iOS Hyperfeed Forum app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroForum.xcodeproj (not committed)
@@ -17,7 +17,7 @@
 # Invitation links carry the SDK's OrgInvitation payload
 # (`{"invitation":"inv_…","namespaceId","contextId"?,"name"?}` plus the
 # forum's kind/forumId/forumName), the token redeemed at
-# `POST /invites/{token}/redeem`. Pending approvals (an update of Mero Forum,
+# `POST /invites/{token}/redeem`. Pending approvals (an update of Hyperfeed Forum,
 # a node release) show on Spaces; "Review" opens the node's consent page in
 # the system browser, which returns to `mero-forum://consent`.
 name: MeroForum
@@ -46,7 +46,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Forum
+        CFBundleDisplayName: Hyperfeed Forum
         # Power Grotesk, the web app's display face (app/public/fonts/powerGrotesk).
         UIAppFonts: [PowerGrotesk-Regular.otf, PowerGrotesk-Bold.otf]
         UILaunchScreen: {}
@@ -66,7 +66,7 @@ targets:
         CalimeroClusterURL: ""
         # The development cluster (`merod local`) the sign-in screen prefills.
         DefaultNodeURL: "http://localhost:2501"
-        # The Mero Forum version new forums run. Empty: the latest.
+        # The Hyperfeed Forum version new forums run. Empty: the latest.
         MeroPackageVersion: ""
         NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
         # Plain http only to a node on the local network (merod local --dev);

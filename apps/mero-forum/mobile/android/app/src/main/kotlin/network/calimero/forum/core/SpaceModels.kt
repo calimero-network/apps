@@ -73,7 +73,7 @@ class SpacesModel(
 }
 
 /**
- * One forum in a space: an app instance of Mero Forum in the space's org (the web app's
+ * One forum in a space: an app instance of Hyperfeed Forum in the space's org (the web app's
  * `createApp(name, source, { org })`). Its id is the app instance id.
  */
 data class ForumRow(
@@ -119,7 +119,7 @@ class ForumsModel(
         }
     }
 
-    /** Create a forum: an app instance of Mero Forum directly in the space's org, whose `init` takes no arguments. */
+    /** Create a forum: an app instance of Hyperfeed Forum directly in the space's org, whose `init` takes no arguments. */
     suspend fun create(name: String): ForumRef {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) throw ForumModelException("Give the forum a name.")

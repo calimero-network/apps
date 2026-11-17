@@ -1,7 +1,7 @@
 import ForumCore
 import SwiftUI
 
-/// What waits for the person's approval (an update of Mero Forum, a node
+/// What waits for the person's approval (an update of Hyperfeed Forum, a node
 /// release): "Review" opens the node's consent page in the system browser.
 /// Nothing shows when there is nothing to approve.
 struct ApprovalsCard: View {

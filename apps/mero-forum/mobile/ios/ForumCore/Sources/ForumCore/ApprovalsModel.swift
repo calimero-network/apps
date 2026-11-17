@@ -6,7 +6,7 @@ import Combine
 #endif
 
 /// What waits for the signed-in person's approval on a Calimero 1.0
-/// cluster: a newer release of Mero Forum for one of their app instances,
+/// cluster: a newer release of Hyperfeed Forum for one of their app instances,
 /// or a node release their org (or account) has to approve. Approving opens
 /// the node's consent page in the system browser; an app's own session can't
 /// approve anything.

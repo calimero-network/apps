@@ -1,5 +1,5 @@
 /**
- * Mero Forum's own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Forum's own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's: a new space gets an open team and its forums go on it; invites
  * name it; the member count is its people; Remove and Leave in an org that
@@ -145,7 +145,7 @@ describe("adding Forum to an organization whose apps have teams", () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
     await expect(createForum(cluster.client, SOURCE, org, "General", passkey)).rejects.toThrow(
-      /owners and admins can add Mero Forum/,
+      /owners and admins can add Hyperfeed Forum/,
     );
     expect(cluster.callsOf("createApp")).toEqual([]);
   });

@@ -3,7 +3,7 @@ import ForumCore
 import Foundation
 import MeroKit
 
-/// Mero Forum's demo: a few spaces and forums, people, posts, replies and
+/// Hyperfeed Forum's demo: a few spaces and forums, people, posts, replies and
 /// votes, and a contract that answers `list_posts`, `get_post`,
 /// `list_comments`, ... from them in the generated client's wire shape.
 /// Writes change the fixtures, so the tour can post, reply and vote.

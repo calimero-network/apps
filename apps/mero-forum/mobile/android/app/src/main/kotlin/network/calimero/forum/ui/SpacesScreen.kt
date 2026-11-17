@@ -370,7 +370,7 @@ private fun JoinSheet(
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Palette.Surface, dragHandle = null) {
         Column(Modifier.imePadding()) {
             SheetBar("Join with a link", "Continue", canAct = link.isNotBlank(), busy = false, cancel = dismiss, act = {
-                if (ForumInvitation.parse(link) == null) error = "This isn't a Mero Forum invitation. Check the link and try again." else join(link)
+                if (ForumInvitation.parse(link) == null) error = "This isn't a Hyperfeed Forum invitation. Check the link and try again." else join(link)
             })
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextField(

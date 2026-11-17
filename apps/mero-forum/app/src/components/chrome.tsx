@@ -22,7 +22,7 @@ export function Brand() {
       <span className="ui-brandMark" aria-hidden="true">
         <MessageIcon size={16} />
       </span>
-      <span className="ui-brandName">Mero Forum</span>
+      <span className="ui-brandName">Hyperfeed Forum</span>
     </span>
   );
 }
