@@ -36,6 +36,8 @@ export interface NodeFeed {
   recent: (appKey: string, applicationId: string) => (RawEvent & { contextId: string })[];
   /** A host to run a lens against one app instance, for a preview. */
   hostFor: (contextId: string) => LensHost | null;
+  /** Hand the collector the feed's lenses, as `useFeed` read them: it reads none of its own. */
+  setLenses: (all: LensView[]) => void;
 }
 
 /** Events kept per app version for a preview. */
@@ -207,32 +209,12 @@ export function useNodeFeed(appId: string): NodeFeed {
     orgs.current = new Map((apps ?? []).map((a) => [a.appId, a.org]));
   }, [apps]);
 
-  // The approved lenses, read again whenever the feed changes (a lens approved
-  // on another device arrives as a feed event like anything else).
+  // The approved lenses, from the feed's own read (`useFeed`, again on every
+  // feed event): a lens approved on another device arrives as one.
   const lenses = useRef(new Map<string, LensSpec>());
-  useEffect(() => {
-    if (!backend) return;
-    let on = true;
-    backend
-      .lenses()
-      .then((all: LensView[]) => {
-        if (!on) return;
-        const approved = new Map<string, LensSpec>();
-        for (const l of all) {
-          if (l.status !== "approved") continue;
-          try {
-            approved.set(`${l.app}@${l.application_id}`, parseLens(l.spec));
-          } catch (e) {
-            console.warn("[hyperfeed] an approved lens does not parse", l.app, e);
-          }
-        }
-        lenses.current = approved;
-      })
-      .catch(() => undefined);
-    return () => {
-      on = false;
-    };
-  }, [backend, nudge]);
+  const setLenses = useCallback((all: LensView[]) => {
+    lenses.current = approvedLenses(all);
+  }, []);
 
   const hosts = useMemo(
     () => (client ? clusterLensHosts(otherApps(client), client, account, (app) => orgs.current.get(app) ?? null) : null),
@@ -306,7 +288,22 @@ export function useNodeFeed(appId: string): NodeFeed {
     watchError: appsError ?? watchError,
     recent: useCallback((appKey: string, bundle: string) => recentEvents.current.get(`${appKey}@${bundle}`) ?? [], []),
     hostFor: useCallback((app: string) => (hosts ? hosts(app) : null), [hosts]),
+    setLenses,
   };
+}
+
+/** The approved lenses that parse, by `app@application_id`. */
+export function approvedLenses(all: LensView[]): Map<string, LensSpec> {
+  const approved = new Map<string, LensSpec>();
+  for (const l of all) {
+    if (l.status !== "approved") continue;
+    try {
+      approved.set(`${l.app}@${l.application_id}`, parseLens(l.spec));
+    } catch (e) {
+      console.warn("[hyperfeed] an approved lens does not parse", l.app, e);
+    }
+  }
+  return approved;
 }
 
 /**

@@ -13,7 +13,7 @@ import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
-import { useNewFeed, useOpenFeed } from "./newFeed";
+import { closeFeed, useNewFeed, useOpenFeed } from "./newFeed";
 import { describeTarget, useSessionApi } from "./session";
 import { appHome, appLink, linkNamer } from "./links";
 import type { FeedItem } from "./hyperfeedTypes";
@@ -109,7 +109,10 @@ function NodeFeedApp({
 }) {
   const node = useNodeFeed(contextId);
   const newFeed = useNewFeed();
-  const base = useFeed(node.backend, node.nudge);
+  // A feed deleted, or taken away from you, closes: back to picking one.
+  const base = useFeed(node.backend, node.nudge, closeFeed);
+  const { setLenses } = node;
+  useEffect(() => setLenses(base.lenses), [setLenses, base.lenses]);
   // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own app.
   const nameLink = useMemo(() => linkNamer(node.hostFor), [node.hostFor]);
   // A person by name, read as a lens reads one: from organization member metadata.

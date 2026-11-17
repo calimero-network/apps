@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { boundApp, describeError } from "@calimero-apps/connect";
 import { feedSource, openFeed, signedIn, useNewFeed } from "./newFeed";
 import { HyperfeedClient } from "./generated/client";
 import { u64 } from "./backend";
@@ -183,6 +183,17 @@ function useDeleteFeed(onDeleted: () => void) {
   const client = useClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  // A session opened on the app's own page (as Calimero Cloud serves it) may
+  // not delete an app instance: the node refuses it there. `null` until known.
+  const [bound, setBound] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    void boundApp(client).then((app) => live && setBound(app !== null));
+    return () => {
+      live = false;
+    };
+  }, [client]);
   const remove = useCallback(
     async (id: string) => {
       if (!client) return;
@@ -199,7 +210,7 @@ function useDeleteFeed(onDeleted: () => void) {
     },
     [client, onDeleted],
   );
-  return { remove, busy, failed, ready: Boolean(client) };
+  return { remove, busy, failed, ready: Boolean(client) && bound === false, bound: bound === true };
 }
 
 /**
@@ -361,6 +372,11 @@ export function FeedSwitcher({ current }: { current: string }) {
             ),
           )}
           {del.failed && <pre className="err">{del.failed}</pre>}
+          {del.bound && ids.length > 1 && (
+            <p className="muted switcher-note" data-testid="delete-feed-note">
+              To delete a feed, open your cluster&apos;s own page.
+            </p>
+          )}
           <hr />
           <button type="button" role="menuitem" disabled={busy || !ready} onClick={() => void create()}>
             Create a new feed

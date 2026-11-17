@@ -3008,6 +3008,12 @@ body {
   font-size: 11px;
 }
 
+.switcher-note {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .switcher-menu button {
   display: flex;
   align-items: center;

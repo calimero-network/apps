@@ -29,9 +29,24 @@ function remembered(key: string | null): string | null {
 }
 
 /** The feed you opened in this tab, once you switch; until then, the remembered one. */
-let opened: { key: string; id: string } | null = null;
+let opened: { key: string; id: string | null } | null = null;
 const listeners = new Set<() => void>();
 let currentKey: string | null = null;
+
+/**
+ * Close the open feed and go back to picking one: it was deleted, or your
+ * access to it was taken away. Forgotten too, so the next visit does not open it.
+ */
+export function closeFeed() {
+  if (!currentKey) return;
+  try {
+    localStorage.removeItem(currentKey);
+  } catch {
+    // Private mode: nothing was remembered.
+  }
+  opened = { key: currentKey, id: null };
+  listeners.forEach((l) => l());
+}
 
 /**
  * Open a feed, in place: remembered for your next visit, and shown now without

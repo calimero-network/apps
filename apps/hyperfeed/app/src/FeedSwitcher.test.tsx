@@ -176,4 +176,22 @@ describe("Switching feeds", () => {
     expect(metadata["feed-bbbb-2222"]).toEqual({ name: "Side project" });
     await waitFor(() => expect(screen.getAllByRole("menuitemradio")[1]).toHaveTextContent(/^Side project · feed-bbb/));
   });
+
+  it("does not offer to delete a feed on a session bound to the app's page, which the node refuses", async () => {
+    const bound = withRoutes({
+      listApps: vi.fn(async () => apps),
+      getApp: vi.fn(async (id: string) => ({ appId: id, metadata: metadata[id] ?? null })),
+      view: vi.fn(async (app: string) => ({ index: 1, result: pages[app] ?? { counts: { all: 0, archived: 0 }, items: [] } })),
+      me: vi.fn(async () => ({ accountId: "me", app: "com.calimero.hyperfeed" })),
+    });
+    const boundApi: SessionApi = { ...api, session: { ...(api.session as Extract<SessionApi["session"], { status: "signed-in" }>), client: bound } };
+    render(
+      <SessionContext.Provider value={boundApi}>
+        <FeedSwitcher current="feed-aaaa-1111" />
+      </SessionContext.Provider>,
+    );
+    fireEvent.click(screen.getByTitle("Switch feed"));
+    expect(await screen.findByTestId("delete-feed-note")).toHaveTextContent(/cluster's own page/);
+    expect(screen.queryByRole("menuitem", { name: /^Delete feed/ })).toBeNull();
+  });
 });
