@@ -77,7 +77,7 @@ export default function AudiencesPage() {
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
-  /** Who has Mero Updates in the company, and whether Remove is this app's only (apps kept apart). */
+  /** Who has Hyperfeed Updates in the company, and whether Remove is this app's only (apps kept apart). */
   const [people, setPeople] = useState<{ rows: CompanyPerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   const [name, setName] = useState("");
 

@@ -18,7 +18,7 @@ struct SignInView: View {
                 Spacer(minLength: 40)
                 IconTile(icon: "tray.full", accent: true, size: 64)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Mero Updates").font(Typeface.display(34)).foregroundStyle(Palette.ink)
+                    Text("Hyperfeed Updates").font(Typeface.display(34)).foregroundStyle(Palette.ink)
                     Text("Investor updates and investor relations, peer to peer.")
                         .font(.body).foregroundStyle(Palette.ink2)
                 }

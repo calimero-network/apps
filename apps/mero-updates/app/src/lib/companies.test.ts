@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { finishCompany, listCompanies } from "./companies";
 import { withRoutes } from "@calimero-apps/connect/testing";
 
-// The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+// The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
 function client() {
   const meta: Record<string, unknown> = {};
   const apps = [

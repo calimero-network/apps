@@ -450,7 +450,7 @@ extension View {
 }
 
 extension CloudStyle {
-    /// The sign-in and approvals views in Mero Updates' colours.
+    /// The sign-in and approvals views in Hyperfeed Updates' colours.
     static let app = CloudStyle(
         ink: Palette.ink, muted: Palette.ink2, accent: Palette.lime, onAccent: Palette.ink, danger: Palette.danger,
         field: Palette.surface, hairline: Palette.hairline)

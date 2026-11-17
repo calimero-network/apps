@@ -84,7 +84,7 @@ export function SignInBody({
           </h2>
           <p className={styles.scope}>
             {invited
-              ? "You've been invited to join the company in Mero Updates. "
+              ? "You've been invited to join the company in Hyperfeed Updates. "
               : ""}
             Accounts are passkeys: nothing to remember, nothing to leak.
             {where ? ` Connected to ${where}.` : ""}

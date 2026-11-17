@@ -180,7 +180,7 @@ function ShellBody() {
         <aside className="sidebar" id="audience-nav" data-testid="mobile-nav" aria-label="Audience">
           <div className="sideBrand">
             <BrandMark />
-            <span className="brandName">Mero Updates</span>
+            <span className="brandName">Hyperfeed Updates</span>
             <button
               type="button"
               className="iconBtn sideClose"

@@ -14,7 +14,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Updates",
+  name: "Hyperfeed Updates",
   description: "Investor updates without the platform, between a company's team and its investors.",
   package: APP_PACKAGE,
   dir: "mero-updates",

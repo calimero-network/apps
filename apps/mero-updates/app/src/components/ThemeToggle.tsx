@@ -1,7 +1,7 @@
 import { useTheme } from "../theme";
 import { MoonIcon, SunIcon } from "./icons";
 
-/** Sun / moon button in the top bar: flips Mero Updates between light and dark. */
+/** Sun / moon button in the top bar: flips Hyperfeed Updates between light and dark. */
 export default function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   const label = theme === "dark" ? "Use light theme" : "Use dark theme";

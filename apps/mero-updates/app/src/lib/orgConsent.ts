@@ -1,5 +1,5 @@
 /**
- * Organization-wide changes from a session bound to Mero Updates' frontend,
+ * Organization-wide changes from a session bound to Hyperfeed Updates' frontend,
  * done on the node's consent page.
  *
  * Served from its own origin, a passkey session is bound to the app's package
@@ -33,9 +33,9 @@ import { nodeBasename } from "@calimero-apps/node-served";
 import { APP_NAME } from "./config";
 
 /** The app as the handoff dialog names it. */
-const PRODUCT_NAME = "Mero Updates";
+const PRODUCT_NAME = "Hyperfeed Updates";
 
-/** What Mero Updates asked the consent page for, beyond connect's own kinds. */
+/** What Hyperfeed Updates asked the consent page for, beyond connect's own kinds. */
 export type OrgConsentIntent = { kind: "deleteOrg"; org: string; name: string };
 
 /** Its request to the consent page (core#5018's organization kinds, not typed by mero-js yet). */

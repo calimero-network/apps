@@ -40,7 +40,7 @@ export default function AppHeader({ crumbs, right }: { crumbs: Crumb[]; right?: 
       <div className="appHeaderInner">
         <span className="brand">
           <BrandMark />
-          <span className="brandName">Mero Updates</span>
+          <span className="brandName">Hyperfeed Updates</span>
         </span>
         {crumbs.length > 0 && (
           <nav className="crumbs" aria-label="Breadcrumb">

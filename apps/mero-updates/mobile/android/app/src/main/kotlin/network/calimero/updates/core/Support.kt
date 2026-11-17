@@ -59,7 +59,7 @@ object ErrorText {
             is AppError -> appError(error.appCode, (error.fields["message"] as? JsonPrimitive)?.contentOrNull.orEmpty())
             is CalimeroError -> error.nodeMessage.ifBlank { "The node refused this (${error.code})." }
             is SerializationException ->
-                "The audience answered in a shape this app does not read. It may run a different version of Mero Updates."
+                "The audience answered in a shape this app does not read. It may run a different version of Hyperfeed Updates."
             is IOException -> "The cluster can't be reached. Check your connection and try again."
             else -> error.message ?: error.toString()
         }
@@ -78,7 +78,7 @@ object ErrorText {
             "NotFound" -> "That is no longer here. It may have been deleted."
             "Forbidden" -> "Only the company's team can do that."
             "Invalid" -> "Check what you entered and try again."
-            else -> "Mero Updates refused that ($code)."
+            else -> "Hyperfeed Updates refused that ($code)."
         }
     }
 }
@@ -86,9 +86,9 @@ object ErrorText {
 sealed class UpdatesException(
     message: String,
 ) : Exception(message) {
-    class NoApplication : UpdatesException("Mero Updates is not installed for your account yet. Try again in a moment.")
+    class NoApplication : UpdatesException("Hyperfeed Updates is not installed for your account yet. Try again in a moment.")
 
-    class NotAnInvitation : UpdatesException("That is not a Mero Updates invitation link.")
+    class NotAnInvitation : UpdatesException("That is not a Hyperfeed Updates invitation link.")
 
     class NoAudienceContext(
         name: String,

@@ -307,7 +307,7 @@ describe("the company pages", () => {
     fireEvent.click(await screen.findByTestId("space-menu"));
     fireEvent.click(screen.getByTestId("invite-btn"));
     const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
-    expect(shown).toMatchObject({ org: "org-1", teams: [], appName: "Mero Updates", title: "Invite people to Acme", noun: "company" });
+    expect(shown).toMatchObject({ org: "org-1", teams: [], appName: "Hyperfeed Updates", title: "Invite people to Acme", noun: "company" });
     expect(shown.note).toBeUndefined();
     expect(Object.fromEntries(new URL(shown.linkBase).searchParams)).toEqual({ org: "org-1" });
   });
@@ -382,7 +382,7 @@ describe("the company pages", () => {
     try {
       await openAudienceInvite();
       const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
-      expect(shown).toMatchObject({ org: "org-1", teams: ["team-1"], appName: "Mero Updates", title: "Invite to All investors" });
+      expect(shown).toMatchObject({ org: "org-1", teams: ["team-1"], appName: "Hyperfeed Updates", title: "Invite to All investors" });
       expect(Object.fromEntries(new URL(shown.linkBase).searchParams)).toEqual({ org: "org-1", audience: "app-1" });
     } finally {
       h.session.source = "bundle-1";
@@ -395,7 +395,7 @@ describe("the company pages", () => {
     try {
       await openAudienceInvite();
       const shown = JSON.parse((await screen.findByTestId("invite-dialog")).textContent ?? "");
-      expect(shown.note).toMatch(/^Invites to Mero Updates only/);
+      expect(shown.note).toMatch(/^Invites to Hyperfeed Updates only/);
     } finally {
       h.session.source = "bundle-1";
     }

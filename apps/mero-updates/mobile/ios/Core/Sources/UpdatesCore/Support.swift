@@ -47,7 +47,7 @@ public enum ErrorText {
         case let error as CalimeroError:
             return error.message.isEmpty ? "The node refused this (\(error.code))." : error.message
         case is DecodingError:
-            return "The audience answered in a shape this app does not read. It may run a different version of Mero Updates."
+            return "The audience answered in a shape this app does not read. It may run a different version of Hyperfeed Updates."
         case let error as LocalizedError:
             // MeroKitUI's step-up guard (no passkey to approve a member or invite change).
             if String(describing: type(of: error)) == "PasskeyRequired" {
@@ -71,7 +71,7 @@ public enum ErrorText {
         case "NotFound": return "That is no longer here. It may have been deleted."
         case "Forbidden": return "Only the company's team can do that."
         case "Invalid": return "Check what you entered and try again."
-        default: return "Mero Updates refused that (\(code))."
+        default: return "Hyperfeed Updates refused that (\(code))."
         }
     }
 }
@@ -84,9 +84,9 @@ public enum UpdatesError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .noApplication:
-            return "Mero Updates is not installed for your account yet. Try again in a moment."
+            return "Hyperfeed Updates is not installed for your account yet. Try again in a moment."
         case .notAnInvitation:
-            return "That is not a Mero Updates invitation link."
+            return "That is not a Hyperfeed Updates invitation link."
         case .noAudienceContext(let name):
             return "“\(name)” has no audience context yet. It may still be syncing — refresh in a moment."
         }
