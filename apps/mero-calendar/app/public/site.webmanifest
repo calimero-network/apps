@@ -1,6 +1,6 @@
 {
-  "name": "Mero Calendar",
-  "short_name": "Mero Calendar",
+  "name": "Hyperfeed Calendar",
+  "short_name": "Hyperfeed Calendar",
   "description": "A collaborative, peer-to-peer calendar on the Calimero network. Shared team calendars and private events — your schedule on your own nodes.",
   "display": "standalone",
   "background_color": "#f6f7fb",

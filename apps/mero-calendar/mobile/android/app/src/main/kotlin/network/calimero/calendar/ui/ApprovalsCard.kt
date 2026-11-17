@@ -24,7 +24,7 @@ import network.calimero.calendar.app.ApprovalItem
 import network.calimero.calendar.app.ApprovalsModel
 
 /**
- * What waits for the person's approval (an update of Mero Calendar, a node release): "Review"
+ * What waits for the person's approval (an update of Hyperfeed Calendar, a node release): "Review"
  * shows the confirmation code first, then opens the node's consent page in a Custom Tab, where the
  * same code shows. Nothing shows when there is nothing to approve. (iOS `ApprovalsCard`.)
  */

@@ -1,6 +1,6 @@
 [package]
 name = "mero-calendar"
-description = "Mero Calendar: shared team calendars, private events and booking links, on the component SDK"
+description = "Hyperfeed Calendar: shared team calendars, private events and booking links, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -37,7 +37,7 @@ sha2 = { version = "0.10", default-features = false }
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-calendar"
-name = "Mero Calendar"
+name = "Hyperfeed Calendar"
 description = "Shared team calendars, private events and booking links on Calimero."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

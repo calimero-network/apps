@@ -1,10 +1,10 @@
-# Mero Calendar: web app
+# Hyperfeed Calendar: web app
 
-The React frontend of Mero Calendar, built with Vite. It talks to the cluster
+The React frontend of Hyperfeed Calendar, built with Vite. It talks to the cluster
 through mero-js's `CalimeroClient` via `@calimero-apps/connect`: the local nodes
 of `merod local` in development, a Calimero Cloud cluster in a production build.
 What the app does, and how the frontend and the contract fit together, is in
-[Mero Calendar's README](../README.md); this page covers working on the frontend.
+[Hyperfeed Calendar's README](../README.md); this page covers working on the frontend.
 
 ## Scripts
 

@@ -9,7 +9,7 @@ import network.calimero.calendar.data.ErrorText
 import network.calimero.calendar.data.LocalNames
 import network.calimero.calendar.data.TeamInvites
 
-/** A team: a Calimero org running Mero Calendar. */
+/** A team: a Calimero org running Hyperfeed Calendar. */
 data class Team(
     val id: String,
     val name: String,
@@ -105,7 +105,7 @@ class TeamsModel(
 
     companion object {
         const val MAX_NAME = 64
-        const val NOT_AN_INVITATION = "That isn't a Mero Calendar invitation link."
+        const val NOT_AN_INVITATION = "That isn't a Hyperfeed Calendar invitation link."
 
         fun teamPlaceholder(id: String) = "Team ${id.take(6)}"
     }

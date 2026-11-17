@@ -8,7 +8,9 @@ import type { Owner } from "../../api/booking";
 import { readOrg, setMyTeamName } from "../../api/teams";
 import { useSignedIn } from "../../api/sessionContext";
 import { TeamScopeContext } from "../../api/teamScope";
-import { rememberCalendar } from "../../utils/lastVisit";
+import { forgetCalendar, rememberCalendar } from "../../utils/lastVisit";
+import { useToast } from "../../contexts/ToastContext";
+import { changedBy, type Changed } from "../../hooks/useAppEvents";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
@@ -49,6 +51,7 @@ export default function CalendarPage() {
   useInstanceRelease(client, contextId);
   const { getEvents, getMembers } = useActions();
   const { openErrorModal } = useModal();
+  const { showToast } = useToast();
   const [ready, setReady] = useState(false);
   const [showBookingLinks, setShowBookingLinks] = useState(false);
   const [skipped, setSkipped] = useState(false);
@@ -115,20 +118,45 @@ export default function CalendarPage() {
     })();
   }, [contextId, teamId, client, accountId, after, navigate, getEvents, getMembers, openErrorModal]);
 
-  // Every event only means "read again": coalesce a burst into one read.
+  // Every event only means "read again" what it changed (the events, the
+  // members): a burst is coalesced into one read of each that changed.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshCalendar = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      getEvents();
-      getMembers();
-    }, COALESCE_MS);
-  }, [getEvents, getMembers]);
+  const stale = useRef<Changed>({ events: false, members: false });
+  const refresh = useCallback(
+    (kind: string | null) => {
+      const changed = changedBy(kind);
+      stale.current = {
+        events: stale.current.events || changed.events,
+        members: stale.current.members || changed.members,
+      };
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        const { events, members } = stale.current;
+        stale.current = { events: false, members: false };
+        if (events) getEvents();
+        if (members) getMembers();
+      }, COALESCE_MS);
+    },
+    [getEvents, getMembers],
+  );
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
-  useAppEvents(client, contextId ?? null, refreshCalendar, refreshCalendar);
+  // Access lost (taken out of the team, the calendar deleted): close it and
+  // go back to the team's calendars, rather than retrying for good.
+  const closeLost = useCallback(() => {
+    if (teamId && contextId) forgetCalendar(targetKey, teamId, contextId);
+    showToast("You no longer have access to this calendar.");
+    navigate(teamId ? `/teams/${teamId}` : "/teams", { replace: true });
+  }, [teamId, contextId, targetKey, showToast, navigate]);
+  useAppEvents(
+    client,
+    contextId ?? null,
+    (kind) => refresh(kind),
+    () => refresh(null),
+    closeLost,
+  );
 
   // Your name is the team's, asked once for the team, never per calendar.
   const myTeamName = teamNames.get(accountId) ?? "";
@@ -169,8 +197,9 @@ export default function CalendarPage() {
     // Silent: only into the calendar that is open, never into none.
     if (!contextId || getBinding().app !== contextId) return;
     setRosterName(use);
-    void new ClientApiDataSource().setUsername(use).then(() => getMembers());
-  }, [use, rosterName, contextId, getMembers]);
+    // The rename's `MemberUsernameUpdated` re-reads the members.
+    void new ClientApiDataSource().setUsername(use);
+  }, [use, rosterName, contextId]);
 
   const askUsername = decision.kind === "ask" && !skipped;
   const defaultName =

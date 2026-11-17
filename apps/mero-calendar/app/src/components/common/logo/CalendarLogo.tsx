@@ -4,7 +4,7 @@ interface Props {
 }
 
 /**
- * Mero Calendar mark — a calendar page with a marked day. `color` tints the
+ * Hyperfeed Calendar mark — a calendar page with a marked day. `color` tints the
  * outline; the marked day always uses the brand accent so the mark reads on
  * both light and dark surfaces.
  */
@@ -16,7 +16,7 @@ export default function CalendarLogo({ size = 28, color = "var(--mc-text)" }: Pr
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="Mero Calendar"
+      aria-label="Hyperfeed Calendar"
     >
       {/* page */}
       <rect x="5" y="6" width="22" height="21" rx="3" stroke={color} strokeWidth="2" fill="none" />

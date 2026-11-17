@@ -8,6 +8,7 @@ import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
 import CalendarPage from "./pages/calendar";
 import BookPage from "./pages/book/BookPage";
 import { ToastProvider } from "./contexts/ToastContext";
+import ConsentReturn from "./components/common/consent-return/ConsentReturn";
 import InvitationPrompt from "./components/common/invitation-prompt/InvitationPrompt";
 import SignInModal from "./components/common/modals/sign-in-modal/SignInModal";
 import InvitationPage from "./components/common/invitation-page/InvitationPage";
@@ -99,6 +100,8 @@ function FrontDoor({ bounce }: { bounce: boolean }) {
 export default function App() {
   return (
     <ToastProvider>
+      {/* Back from the node's consent page: finishes a team's role, removal, leave or deletion. */}
+      <ConsentReturn />
       {/* Above the routes: an invitation link can open this app on any page. */}
       <InvitationPrompt />
       <Routes>

@@ -1,6 +1,6 @@
-# Mero Calendar — native mobile apps
+# Hyperfeed Calendar — native mobile apps
 
-Native iOS and Android clients for Mero Calendar, next to the web frontend
+Native iOS and Android clients for Hyperfeed Calendar, next to the web frontend
 (`../app`) and the contract (`../logic`, package `com.calimero.mero-calendar`).
 Both have the same screens, copy, icons and flows.
 

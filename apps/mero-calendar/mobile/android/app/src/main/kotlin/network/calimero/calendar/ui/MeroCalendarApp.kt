@@ -70,7 +70,7 @@ private fun SignedIn(
         remember(backend) {
             ApprovalsModel(
                 packageName = CalendarConstants.PACKAGE_NAME,
-                appName = "Mero Calendar",
+                appName = "Hyperfeed Calendar",
                 fetch = { org -> checkNotNull(session).client.pendingApprovals(org) },
                 consent = { request, confirm -> vm.requestConsent(request, confirm) },
                 returnTo = BuildConfig.CONSENT_CALLBACK_URL,
@@ -135,7 +135,7 @@ private fun SignedIn(
         AlertDialog(
             onDismissRequest = { if (!busy) session?.dismissPendingInvitation() },
             title = { Text(if (name != null) "Join $name?" else "Join this team?") },
-            text = { Text(error ?: "You were invited to a team on Mero Calendar.") },
+            text = { Text(error ?: "You were invited to a team on Hyperfeed Calendar.") },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     busy = true

@@ -1,7 +1,7 @@
 import CalendarCore
 import SwiftUI
 
-/// What waits for the person's approval (an update of Mero Calendar, a node
+/// What waits for the person's approval (an update of Hyperfeed Calendar, a node
 /// release): "Review" shows the confirmation code first, then opens the
 /// node's consent page in the system browser, where the same code shows.
 /// Nothing shows when there is nothing to approve.

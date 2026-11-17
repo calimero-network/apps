@@ -35,13 +35,13 @@ class ApprovalsModelTest {
 
     @Test
     fun `keeps this app's upgrades and actionable releases`() {
-        val items = ApprovalsModel.items(pending(), "org1", CalendarConstants.PACKAGE_NAME, "Mero Calendar")
+        val items = ApprovalsModel.items(pending(), "org1", CalendarConstants.PACKAGE_NAME, "Hyperfeed Calendar")
         assertEquals(
             listOf(ApprovalItem.Kind.Upgrade("app-1", "1.2.0"), ApprovalItem.Kind.Release("org1", "2.3.110")),
             items.map { it.kind },
         )
         assertEquals(ConsentRequest.Upgrade("app-1", "1.2.0", "x://y"), items[0].request("x://y"))
-        assertTrue(ApprovalsModel.items(pending(actionable = false), null, CalendarConstants.PACKAGE_NAME, "Mero Calendar").isEmpty())
+        assertTrue(ApprovalsModel.items(pending(actionable = false), null, CalendarConstants.PACKAGE_NAME, "Hyperfeed Calendar").isEmpty())
     }
 
     @Test
@@ -51,7 +51,7 @@ class ApprovalsModelTest {
             val model =
                 ApprovalsModel(
                     CalendarConstants.PACKAGE_NAME,
-                    "Mero Calendar",
+                    "Hyperfeed Calendar",
                     fetch = { pending() },
                     consent = { _, confirm ->
                         if (confirm(ConsentStarted("r1", "https://node/consent/r1", 1, "ABC-DEF"))) opened = true

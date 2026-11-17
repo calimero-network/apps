@@ -18,9 +18,9 @@ All notable changes to this project will be documented in this file.
 - **Removed**: merobox workflows and scripts, the Makefile, v1 Playwright suites,
   mero-react, the desktop SSO hand-off and the v1 invitation codec.
 
-## [Unreleased] — Mero Calendar
+## [Unreleased] — Hyperfeed Calendar
 
-Major rebrand and rewrite of the former "plantr" template into **Mero Calendar**.
+Major rebrand and rewrite of the former "plantr" template into **Hyperfeed Calendar**.
 
 ### 🚀 Features
 

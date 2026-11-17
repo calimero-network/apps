@@ -14,7 +14,7 @@ export default function SignInPanel({ invited, titleId }: { invited: boolean; ti
   return (
     <SharedSignInPanel
       api={api}
-      appName="Mero Calendar"
+      appName="Hyperfeed Calendar"
       joining="the team"
       invited={invited}
       listing={LISTING}

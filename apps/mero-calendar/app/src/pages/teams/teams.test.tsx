@@ -179,7 +179,7 @@ describe("TeamsPage", () => {
     expect(JSON.parse(screen.getByTestId("create-release").textContent ?? "null")).toEqual({ package: "com.calimero.mero-calendar" });
   });
 
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   it("does not list an org made for another app; connects it on request with a calendar", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] });
     client.listApps.mockImplementation(async (f?: { bundle?: string }) =>
@@ -207,12 +207,12 @@ describe("TeamsPage", () => {
     fireEvent.click(await screen.findByTestId("team-menu-org-a"));
     fireEvent.click(screen.getByText("Invite"));
     expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to this team");
-    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-a", appName: "Mero Calendar", teams: [] });
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-a", appName: "Hyperfeed Calendar", teams: [] });
     expect(new URL(screen.getByTestId("invite-base").textContent ?? "").searchParams.get("org")).toBe("org-a");
     expect(screen.queryByTestId("invite-dialog")).toBeTruthy();
   });
 
-  it("names Mero Calendar's own team in an org that has app teams", async () => {
+  it("names Hyperfeed Calendar's own team in an org that has app teams", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
     client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", package: PKG }]);
     client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: PKG, teamId: "team-cal" }] });
@@ -232,7 +232,7 @@ describe("TeamsPage", () => {
     fireEvent.click(await screen.findByTestId("team-menu-org-a"));
     fireEvent.click(screen.getByText("Invite"));
     const labels = JSON.parse((await screen.findByTestId("invite-labels")).textContent ?? "");
-    expect(labels).toEqual({ noun: "team", note: appOnlyInviteNote("Mero Calendar") });
+    expect(labels).toEqual({ noun: "team", note: appOnlyInviteNote("Hyperfeed Calendar") });
   });
 
   it("adds no app-only note outside a shared org", async () => {
@@ -245,7 +245,7 @@ describe("TeamsPage", () => {
     expect(labels).toEqual({ noun: "team" });
   });
 
-  it("opens no dialog, and says why, when the org has app teams but none for Mero Calendar", async () => {
+  it("opens no dialog, and says why, when the org has app teams but none for Hyperfeed Calendar", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "org-a", name: "Alpha", role: "owner" }] });
     client.listApps.mockResolvedValue([{ appId: "c1", name: "A", owner: ME, org: "org-a", package: PKG }]);
     client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: "com.calimero.other", teamId: "team-x" }] });

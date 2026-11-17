@@ -125,7 +125,7 @@ describe("an invitation link opened while signed out", () => {
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
     expect(screen.getByText("You're invited")).toBeTruthy();
     expect(screen.getByTestId("signin-desc").textContent).toContain(
-      "You've been invited to join the team in Mero Calendar.",
+      "You've been invited to join the team in Hyperfeed Calendar.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.getByTestId("signup-passkey")).toBeTruthy();
@@ -139,7 +139,7 @@ describe("an invitation link opened while signed out", () => {
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
-    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Mero Calendar");
+    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Hyperfeed Calendar");
     expect(invites.token()).toBe("tok-1");
     fireEvent.click(screen.getByTestId("accept-done"));
     const input = (await screen.findByTestId("username-input")) as HTMLInputElement;

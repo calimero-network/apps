@@ -1,5 +1,5 @@
 /**
- * Mero Calendar — the hero animation: the app's own week view.
+ * Hyperfeed Calendar — the hero animation: the app's own week view.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
@@ -11,7 +11,7 @@
  *   • the labels were SIBLINGS of the chips rather than children, so nothing
  *     clipped them — "Design review" ran out of its own box and across the next
  *     day's column;
- *   • it did not look like Mero Calendar. The app is a Google-Calendar-shaped
+ *   • it did not look like Hyperfeed Calendar. The app is a Google-Calendar-shaped
  *     week view and the hero showed something with no hours, no dates and no
  *     grid, which is the one thing a calendar cannot be missing.
  *
