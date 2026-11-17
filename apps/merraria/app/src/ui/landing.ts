@@ -90,7 +90,7 @@ const css = `
 /* The hero: the logo and the game's NAME, at the size a title screen wants.
    This replaces a 34px logo in a top-left nav bar plus a sentence-case h1 that
    was the pitch rather than the title — the launcher never actually said what
-   the game is called. Mirrors the Mero Blocks title screen. */
+   the game is called. Mirrors the Hyperfeed Blocks title screen. */
 .mtl-hero { display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding-top: 8px; }
 .mtl-logo { width: 78px; height: 78px; display: grid; place-items: center;

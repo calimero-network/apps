@@ -15,6 +15,7 @@ import { GameClient, type WorldMeta } from "./net/client";
 import { PACKAGE } from "./net/merraria";
 import { connect, type Connection } from "./net/session";
 import { CURRENT_WORLD, basename, invites, migrateStoredInvite, writeCurrentWorld } from "./net/worlds";
+import { worldPresence } from "./net/presence";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
@@ -241,10 +242,17 @@ async function boot(): Promise<void> {
   myId = await client.resolveIdentity();
   // In the apps the identity is learnt from `join`, which may land after this.
   const nativeClient = client instanceof NativeGameClient ? client : null;
-  sync = new SyncEngine(client.world, world, () => myId ?? nativeClient?.identity ?? null, {
-    onPlayers,
-    onToast: (msg) => hud.toast(msg),
-  });
+  sync = new SyncEngine(
+    client.world,
+    world,
+    () => myId ?? nativeClient?.identity ?? null,
+    {
+      onPlayers,
+      onToast: (msg) => hud.toast(msg),
+    },
+    // Positions over the world's presence channel: walking is not a contract call.
+    conn ? worldPresence(conn.client, worldId) : null,
+  );
   void client.subscribe(
     (ev) => sync?.handleEvent(ev),
     // Back from a dropped stream: pull the world and roster again, push
