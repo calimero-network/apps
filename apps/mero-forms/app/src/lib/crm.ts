@@ -2,7 +2,7 @@ import type { CrmLink, FormView, ResponseView } from "../formsApi";
 import type { ContactView } from "../crmApi";
 import { answerText, valueOf } from "./fields";
 
-/** Mero CRM's own limits: names and titles, and a note's body. */
+/** Hyperfeed CRM's own limits: names and titles, and a note's body. */
 const CRM_NAME = 120;
 const CRM_TEXT = 10_000;
 
@@ -23,7 +23,7 @@ export const NO_LINK: CrmLink = {
   title_field: "",
 };
 
-/** What one response becomes in Mero CRM: a contact, a deal for them, and a note with every answer. */
+/** What one response becomes in Hyperfeed CRM: a contact, a deal for them, and a note with every answer. */
 export interface CrmPayload {
   contact: { name: string; email: string; phone: string; organization: string; job_title: string };
   deal: { title: string; organization: string; stage_id: string; source: string };
@@ -59,7 +59,7 @@ export function crmPayload(form: Pick<FormView, "title" | "crm">, response: Resp
       title: clip(title, CRM_NAME),
       organization: clip(organization, CRM_NAME),
       stage_id: link.stage_id,
-      source: clip(`Mero Forms · ${form.title}`, CRM_NAME),
+      source: clip(`Hyperfeed Forms · ${form.title}`, CRM_NAME),
     },
     note: clip(`From the form "${form.title}":\n\n${lines.join("\n")}`, CRM_TEXT),
   };

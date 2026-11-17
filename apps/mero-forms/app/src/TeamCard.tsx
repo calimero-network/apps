@@ -35,7 +35,7 @@ export function TeamCard({
   const [error, setError] = useState<string | null>(null);
 
   const onTeam = new Set((team.data ?? []).map((m) => m.account));
-  // Who has Mero Forms in the org (its app team, else the org): only they reach the workspace.
+  // Who has Hyperfeed Forms in the org (its app team, else the org): only they reach the workspace.
   const candidates = members ? members.people.filter((a) => !onTeam.has(a)).sort() : null;
 
   function run(account: string, fn: () => Promise<unknown>) {

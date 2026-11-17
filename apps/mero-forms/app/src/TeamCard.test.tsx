@@ -41,14 +41,14 @@ describe("the invite card", () => {
     expect(screen.queryByTestId("invite-dialog")).toBeNull();
     fireEvent.click(screen.getByText("Create invite link"));
     expect((await screen.findByTestId("invite-title")).textContent).toBe("Invite to this workspace");
-    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Mero Forms" });
+    expect(JSON.parse(screen.getByTestId("invite-props").textContent ?? "")).toEqual({ org: "org-1", teams: [], appName: "Hyperfeed Forms" });
     const base = new URL(screen.getByTestId("invite-base").textContent ?? "");
     expect(base.searchParams.get("org")).toBe("org-1");
     expect(base.searchParams.get("workspace")).toBe("app-1");
     expect(screen.getByTestId("invite-note").textContent).toBe("");
   });
 
-  it("names Mero Forms' own team in an org that has app teams", async () => {
+  it("names Hyperfeed Forms' own team in an org that has app teams", async () => {
     signedIn.source = { package: PKG };
     client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: PKG, teamId: "team-forms" }] });
     render(<InviteCard org="org-1" appId="app-1" />);
@@ -57,7 +57,7 @@ describe("the invite card", () => {
     expect((await screen.findByTestId("invite-note")).textContent).toBe(appOnlyInviteNote(PRODUCT_NAME));
   });
 
-  it("opens no dialog, and says why, when the org has app teams but none for Mero Forms", async () => {
+  it("opens no dialog, and says why, when the org has app teams but none for Hyperfeed Forms", async () => {
     signedIn.source = { package: PKG };
     client.listAppTeams.mockResolvedValue({ mode: "shared", appTeams: [{ package: "com.calimero.other", teamId: "team-x" }] });
     render(<InviteCard org="org-1" appId="app-1" />);

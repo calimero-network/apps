@@ -26,7 +26,7 @@ export function FormFill({ form, workspace }: { form: FormView; workspace: Works
     setBusy(true);
     setError(null);
     workspace
-      .act((c) => c.submitResponse({ formId: form.id, answers: fromAnswers(toAnswers(form, draft)), source: source.trim() || "entered in Mero Forms" }))
+      .act((c) => c.submitResponse({ formId: form.id, answers: fromAnswers(toAnswers(form, draft)), source: source.trim() || "entered in Hyperfeed Forms" }))
       .then(() => {
         setSent(true);
         setDraft({});

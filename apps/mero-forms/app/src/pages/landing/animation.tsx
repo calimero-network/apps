@@ -1,11 +1,11 @@
 /**
- * Mero Forms — a minimal mock of the app itself.
+ * Hyperfeed Forms — a minimal mock of the app itself.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
  * The real thing in three beats: a form being answered on the left, the
  * response arriving at the top of the list on the right, and one response
- * going on to Mero CRM. Real labels, because "Name / Email / Topic" says what
+ * going on to Hyperfeed CRM. Real labels, because "Name / Email / Topic" says what
  * the app is for and a grey rectangle does not.
  *
  * Coordinates are literal pixels against a 495x341 box — see STAGE_DESIGN_W in

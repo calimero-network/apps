@@ -2,7 +2,7 @@
   "name": "mero-forms",
   "private": true,
   "version": "0.1.0",
-  "description": "Mero Forms — build forms, collect responses, send them to Mero CRM, on Calimero (component SDK, CalimeroClient)",
+  "description": "Hyperfeed Forms — build forms, collect responses, send them to Hyperfeed CRM, on Calimero (component SDK, CalimeroClient)",
   "type": "module",
   "scripts": {
     "dev": "vite",

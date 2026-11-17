@@ -40,7 +40,7 @@ export interface Field {
 }
 
 export interface CrmLink {
-  /** The Mero CRM app instance (v1: context) the deals go to. */
+  /** The Hyperfeed CRM app instance (v1: context) the deals go to. */
   context_id: string;
   stage_id: string;
   name_field: string;

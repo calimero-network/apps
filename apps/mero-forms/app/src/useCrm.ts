@@ -9,15 +9,15 @@ import { listAppInfos } from "@calimero-apps/connect";
 
 export type { Pipeline } from "./lib/pipelines";
 
-/** Mero CRM's package id: how its instances (pipelines) are told apart from other apps. */
+/** Hyperfeed CRM's package id: how its instances (pipelines) are told apart from other apps. */
 export const CRM_PACKAGE = "com.calimero.mero-crm";
 
 /**
- * The Mero CRM pipelines the signed-in account reaches, with their stages,
+ * The Hyperfeed CRM pipelines the signed-in account reaches, with their stages,
  * plus any pipeline ids passed in `extra` (the form's linked one, and one
  * pasted by hand) that answer as a pipeline.
  *
- * v1 asked the node which Mero CRM contexts it had joined, or every Calimero
+ * v1 asked the node which Hyperfeed CRM contexts it had joined, or every Calimero
  * Cloud relay an account session knew. On Calimero 1.0 the account reaches
  * every instance of every org it is in, so this is one `listApps` by package.
  */

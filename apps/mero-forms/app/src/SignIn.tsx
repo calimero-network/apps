@@ -35,7 +35,7 @@ function SignInPanel({ titleId }: { titleId: string }) {
   return (
     <SharedSignInPanel
       api={api}
-      appName="Mero Forms"
+      appName="Hyperfeed Forms"
       joining="the workspace"
       invited={invites.token() !== null}
       listing={LISTING}
@@ -74,7 +74,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
 
 const ACCEPT_LABELS = {
   title: "Join this workspace",
-  body: "You were invited to a workspace in Mero Forms. Join it to reach its forms.",
+  body: "You were invited to a workspace in Hyperfeed Forms. Join it to reach its forms.",
   join: "Join the workspace",
 };
 
@@ -154,7 +154,7 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
         passkey={signedIn.passkey()}
         token={invite.token}
         org={invite.org ?? undefined}
-        appName="Mero Forms"
+        appName="Hyperfeed Forms"
         labels={ACCEPT_LABELS}
         onError={() => invites.drop()}
         onClose={() => {

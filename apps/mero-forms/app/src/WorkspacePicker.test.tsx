@@ -111,7 +111,7 @@ describe("the workspace picker", () => {
     expect(options).toEqual(["In a new organization", "In Acme"]);
   });
 
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   it("does not offer an org made for another app in the start form; connects it on request", async () => {
     const blocks = { appId: "w1", name: "overworld", owner: "o", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null };
     client.me.mockImplementation(async () => ({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] }));
@@ -123,7 +123,7 @@ describe("the workspace picker", () => {
     expect(screen.queryByLabelText("organization")).toBeNull();
     fireEvent.click(screen.getByTestId("connect-existing-org"));
     const choice = await screen.findByTestId("connect-org-ow");
-    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    expect(choice.textContent).toContain("Hyperfeed Blocks: overworld");
     fireEvent.click(choice);
     await waitFor(() => expect(onOpen).toHaveBeenCalledWith({ appId: "app-2", org: "ow" }));
     expect(client.createApp).toHaveBeenCalledWith("overworld", "bundle-hash", { org: "ow" });

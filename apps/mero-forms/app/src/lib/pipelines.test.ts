@@ -4,7 +4,7 @@ import { findPipelines, parsePipelineId } from "./pipelines";
 const stage = (id: string) => ({ id, name: id, probability: 10, position: 0 });
 
 describe("an account's pipelines", () => {
-  it("keeps the listed Mero CRM instances that answer, and tries ids named directly", async () => {
+  it("keeps the listed Hyperfeed CRM instances that answer, and tries ids named directly", async () => {
     const stagesOf = vi.fn(async (id: string) => {
       if (id === "broken") throw new Error("NOT_FOUND");
       return [stage(`stage-of-${id}`)];

@@ -27,7 +27,7 @@ const MAPPED: [keyof CrmLink, string, string][] = [
 ];
 
 /**
- * Link a form to a Mero CRM pipeline: which pipeline, the stage a new deal
+ * Link a form to a Hyperfeed CRM pipeline: which pipeline, the stage a new deal
  * starts in, and which question fills which CRM field. Sending is then one
  * click on a response, or all new ones at once. Stored on the form, so the
  * whole team sends to the same place.
@@ -77,7 +77,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
 
   return (
     <section className="card" data-testid="crm-settings">
-      <h2>Send responses to Mero CRM</h2>
+      <h2>Send responses to Hyperfeed CRM</h2>
       <p className="empty">
         Each response becomes a contact and a deal in a pipeline, with every answer in a note on
         the deal. They are written as you, so your account has to reach the pipeline: be a member
@@ -88,8 +88,8 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
       {pipelines === null && !listError && <p className="empty">Looking for your pipelines…</p>}
       {pipelines !== null && pipelines.length === 0 && (
         <p className="note">
-          Your account does not reach any Mero CRM pipeline.{" "}
-          Create a pipeline in Mero CRM or join one from its invite link, then{" "}
+          Your account does not reach any Hyperfeed CRM pipeline.{" "}
+          Create a pipeline in Hyperfeed CRM or join one from its invite link, then{" "}
           <button className="link" onClick={reload}>
             look again
           </button>
@@ -166,7 +166,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
         <input
           aria-label="pipeline id"
           className="mono"
-          placeholder="Or paste a pipeline id (the Mero CRM app id)"
+          placeholder="Or paste a pipeline id (the Hyperfeed CRM app id)"
           value={pasted}
           onChange={(e) => setPasted(e.target.value)}
         />

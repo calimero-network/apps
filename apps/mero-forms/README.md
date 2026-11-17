@@ -1,7 +1,7 @@
-# Mero Forms
+# Hyperfeed Forms
 
 Forms with the questions you choose, the responses they collect, and a one-click
-hand-off of any response to [Mero CRM](../mero-crm). A **component app** on
+hand-off of any response to [Hyperfeed CRM](../mero-crm). A **component app** on
 Calimero 1.0: the contract runs on core's component SDK (`calimero-sdk`,
 `wasm32-wasip2`), the frontend talks to the cluster through mero-js
 `CalimeroClient` (`@calimero-apps/connect`), and local development runs on
@@ -25,7 +25,7 @@ What using it looks like:
   instead of storing junk.
 - **Read them**: a summary of every choice question, a searchable table
   (New, All, In CRM, Archived), one response in full, CSV export.
-- **Send to CRM**: link a form to a Mero CRM pipeline once, map which question
+- **Send to CRM**: link a form to a Hyperfeed CRM pipeline once, map which question
   is the contact's name, email, phone and organization, then send a response
   (or all new ones). Each becomes a contact (reused when the email matches), a
   deal in the stage you chose, and a note on the deal with every answer.
@@ -84,7 +84,7 @@ visitor opens `…/f#a=<workspace>&t=<token>` and sees the form alone
 (`app/src/PublicForm.tsx`).
 
 **A link is an API key, not a member's key.** Making one does two things, as
-Mero Calendar's booking links do:
+Hyperfeed Calendar's booking links do:
 
 1. the teammate's client creates an API key of their account limited to this
    workspace and to `linkForm` and `submitViaLink` (a passkey step-up);
@@ -119,16 +119,16 @@ belongs to.
   its API key when you made it. A link a teammate made keeps a key on their
   account that opens nothing, until they revoke it.
 
-## Sending to Mero CRM
+## Sending to Hyperfeed CRM
 
 The hand-off runs in the browser of the teammate who clicks it
 (`app/src/useCrm.ts`), against the pipeline's own app instance, as that
 person, through the same `CalimeroClient`. So they have to reach the
-pipeline: be a member of its organization (join from Mero CRM's invite link).
+pipeline: be a member of its organization (join from Hyperfeed CRM's invite link).
 Keep it out of the forms workspace's organization if people who should not
 see deals are in it.
 
-The Connect tab lists the Mero CRM instances the account reaches (by the
+The Connect tab lists the Hyperfeed CRM instances the account reaches (by the
 `com.calimero.mero-crm` package). A pipeline's instance id can also be pasted
 there; it is tried directly. Instances made from a dev bundle carry no
 package, so on `merod local` paste the id.
@@ -142,7 +142,7 @@ deal exists and the error says so, and sending again makes a second deal.
 same response at the same moment can still both create a deal in the CRM, but
 only the first is recorded here.
 
-The hand-off speaks to Mero CRM's component contract (camelCase methods). A
+The hand-off speaks to Hyperfeed CRM's component contract (camelCase methods). A
 pipeline still on the v1 runtime cannot be reached from a 1.0 client.
 
 ## The contract
@@ -172,7 +172,7 @@ Events carry ids only, never answers. Errors are `Invalid`, `NotFound`,
 | --- | --- | --- |
 | `createForm(title, description)` / `updateForm(formId, title, description, fields)` | team | Make a form, replace its questions |
 | `setFormOpen(formId, open)` / `deleteForm(formId)` | team | Close or reopen; delete one with no responses |
-| `setCrmLink(formId, link)` | team | Where its responses go in Mero CRM |
+| `setCrmLink(formId, link)` | team | Where its responses go in Hyperfeed CRM |
 | `getForm(formId)` | anyone in the org, a form key | One form, so a website may read what it answers |
 | `listForms()` / `fieldKinds()` | team / anyone | Forms with response counts; the kinds of question |
 | `submitResponse(formId, answers, source)` | anyone in the org, a form key | Store a checked response; returns its id |
@@ -206,28 +206,28 @@ Events carry ids only, never answers. Errors are `Invalid`, `NotFound`,
 | Captcha: `turnstile` (node asks Cloudflare) and team keys sealed to a TEE | `env::http_request`, `env::seal_outbound_secret` | **not supported**: the component SDK at 1.0.0-rc.7 has neither outbound HTTP nor sealed secrets (outbound HTTP lands in core after rc.7). `setCaptchaKey(…, "turnstile")` and `setCaptchaSecret` answer `Unsupported`; `captchaSettings` says no TEE is available; `captchaToken` is ignored |
 | Lists | every entry | at most 1,000 per read (`listResponses`, `listLinks`, `listFormKeys`, `listTeam`) |
 | Errors | strings | `Invalid` / `NotFound` / `Forbidden` / `Refused` / `Unsupported` with v1's message |
-| CRM hand-off | node or Cloud relay transports, the registry's application id | the same `CalimeroClient`, Mero CRM instances by package, camelCase CRM methods |
+| CRM hand-off | node or Cloud relay transports, the registry's application id | the same `CalimeroClient`, Hyperfeed CRM instances by package, camelCase CRM methods |
 | Sign-in | node login, Calimero Cloud account, desktop SSO | a passkey (sign in or sign up) |
 | Tests | `TestHost` + merobox two-node workflow + Playwright journey | `TestApp` harness (`tests/harness.rs`) + `scenarios/*.json` in the harness and on `merod local` |
 
 
-## Mero Forms's app team
+## Hyperfeed Forms's app team
 
 An organization can hold several apps, each with its own **app team**
-(core#4890; see Calimero Home's README). Mero Forms reaches its organization only
+(core#4890; see Calimero Home's README). Hyperfeed Forms reaches its organization only
 through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
-- A new organization made here gets Mero Forms's team at once, **open**
+- A new organization made here gets Hyperfeed Forms's team at once, **open**
   (`standalone`: everyone in the org has the app). New workspaces use
   `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
-  invite gives Mero Forms only (the dialog says so) and only its people are shown.
+  invite gives Hyperfeed Forms only (the dialog says so) and only its people are shown.
   Forms has no organization-level Remove or Leave: its team (who builds forms
-  and reads responses) is the contract's, and only people in Mero Forms are
+  and reads responses) is the contract's, and only people in Hyperfeed Forms are
   offered for it.
-- Adding Mero Forms to an organization whose apps have teams makes its team
+- Adding Hyperfeed Forms to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.
 - An organization from before app teams stays **legacy** (organization
@@ -262,7 +262,7 @@ logic/scenarios/            neutral steps: run by cargo test and on merod local
 app/src/generated/          MeroFormsClient: `meroctl app codegen` from logic/res/abi.json (`pnpm -F mero-forms codegen`)
 app/src/formsApi.ts         the screens' shapes (`to*` / `from*`) and formsTransport (refusals as v1's Error)
 app/src/client.test.ts      the generated client against the committed ABI
-app/src/crmApi.ts           the Mero CRM calls the hand-off makes
+app/src/crmApi.ts           the Hyperfeed CRM calls the hand-off makes
 app/src/FormsHome.tsx       templates and the form list
 app/src/FormView.tsx        one form: Responses, Edit, Preview, Connect
 app/src/FormBuilder.tsx     the question editor

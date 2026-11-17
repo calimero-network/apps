@@ -2,7 +2,7 @@ import { asError, int } from "./formsApi";
 import type { AppCallTransport as Transport } from "./generated/client";
 
 /**
- * The few Mero CRM methods the hand-off uses, on a Mero CRM app instance (a
+ * The few Hyperfeed CRM methods the hand-off uses, on a Hyperfeed CRM app instance (a
  * pipeline), through the same signed-in client: the person sending is the
  * person who writes the deal. Method and argument names are the component
  * contract's (camelCase); the answers read here are single-word fields.

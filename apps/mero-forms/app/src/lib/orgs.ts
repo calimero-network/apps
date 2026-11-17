@@ -34,12 +34,12 @@ import { nodeBasename } from "@calimero-apps/node-served";
  * (everyone in the org has the app), workspaces use team access on it,
  * invites name it, and the people offered for the team are its people. Once
  * an admin keeps the org's apps apart in Calimero Home (`shared`), an invite
- * gives Mero Forms only. An org without one (made before app teams, a node
+ * gives Hyperfeed Forms only. An org without one (made before app teams, a node
  * without them, a raw dev bundle) is legacy: organization access, as before.
  */
 
 /** The app's name where an owner or admin is told who may add it to an org. */
-export const PRODUCT_NAME = "Mero Forms";
+export const PRODUCT_NAME = "Hyperfeed Forms";
 
 /** An org this account is in. */
 export interface OrgRow {
@@ -128,7 +128,7 @@ export interface OrgMembers {
   names: Map<string, string>;
   /** Who has this app in the org, in org order: its app team's people, else the org's (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and this one has its team: an invite gives Mero Forms only. */
+  /** The org keeps its apps apart and this one has its team: an invite gives Hyperfeed Forms only. */
   appOnly: boolean;
 }
 
