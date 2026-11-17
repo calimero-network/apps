@@ -10,7 +10,6 @@ import {
   CONNECTED_PROJECT,
   createProject,
   finishTeam,
-  leaveTeam as leaveOrgTeam,
   leaveTeamOrg,
   listTeams,
   PRODUCT_NAME,
@@ -26,7 +25,8 @@ import { legacyUsername } from "../utils/projectName";
 import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume } from "../utils/lastVisit";
 import { InstallAppIconButton } from "@calimero-apps/install";
 import styles from "./TeamsPage.module.css";
-import { passkeyConfirm } from "@calimero-network/mero-js";
+import { visibleInterval } from "../utils/visibleInterval";
+import { deleteTeam as deleteOrgTeam, leaveAppTeam } from "../api/orgConsent";
 
 const CREATE_LABELS = {
   title: "New team",
@@ -72,8 +72,7 @@ export default function TeamsPage() {
 
   useEffect(() => {
     void loadTeams();
-    const id = setInterval(loadTeams, 30_000);
-    return () => clearInterval(id);
+    return visibleInterval(() => void loadTeams(), 30_000);
   }, [loadTeams]);
 
   // Resume the team open last (utils/lastVisit) when this is the default
@@ -138,11 +137,11 @@ export default function TeamsPage() {
     }
   }
 
-  /** The team's owner deletes it (a passkey step-up), with its projects. */
+  /** The team's owner deletes it (a passkey step-up, or the node's consent page), with its projects. */
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await client.orgs.delete({ org: teamId }, { confirm: passkeyConfirm(passkey()) });
+      await deleteOrgTeam(client, teamId, passkey);
     } catch (err) {
       showToast(`Could not delete team: ${messageOf(err)}`);
       return;
@@ -154,14 +153,14 @@ export default function TeamsPage() {
   }
 
   /**
-   * Anyone else leaves it (a passkey step-up). In an org that keeps its apps
-   * apart that is Mero Pixart only; when it was the last app there, the
-   * organization itself is offered too.
+   * Anyone else leaves it (a passkey step-up): Hyperfeed Pixart's own team where
+   * the org has one; when it was the last app there, the organization itself
+   * is offered too (the node's consent page on the app's own origin).
    */
   async function leaveTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      const left = await leaveOrgTeam(client, teamId, source, passkey, accountId);
+      const left = await leaveAppTeam(client, teamId, source, passkey, accountId);
       if (
         left.left === "app" &&
         left.lastApp &&
@@ -190,7 +189,7 @@ export default function TeamsPage() {
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}><Logo size={24} /> Mero PixArt</span>
+        <span className={styles.logo}><Logo size={24} /> Hyperfeed PixArt</span>
         <div className={styles.headerRight}>
           <InstallAppIconButton />
           <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
@@ -217,7 +216,7 @@ export default function TeamsPage() {
           onCreated={teamCreated}
           labels={CREATE_LABELS}
         />
-        <ConnectExistingOrg appName="Mero PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
+        <ConnectExistingOrg appName="Hyperfeed PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (
           <p className={styles.empty}>Loading…</p>

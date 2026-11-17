@@ -65,12 +65,12 @@ public final class InvitationModel: ObservableObject {
 
     public init() {}
 
-    /// Read a link. `false` (and a failed stage) when it is not a Mero PixArt invitation.
+    /// Read a link. `false` (and a failed stage) when it is not a Hyperfeed PixArt invitation.
     @discardableResult
     public func open(_ raw: String) -> Bool {
         guard let parsed = PixartInvitation.parse(raw) else {
             invitation = nil
-            stage = .failed("This isn't a Mero PixArt invitation. Check the link and try again.")
+            stage = .failed("This isn't a Hyperfeed PixArt invitation. Check the link and try again.")
             return false
         }
         invitation = parsed

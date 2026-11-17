@@ -7,6 +7,8 @@ import type { UpdateLayerArgs } from "../generated/client";
 import { resetMethodSupport, rpcWithFallback } from "../api/compat";
 import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
+import { useCursorPresence } from "../hooks/useCursorPresence";
+import { ALL_READS, lostAccess, readsFor, type Read } from "../utils/eventReads";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
 import { useSignedIn } from "../api/sessionContext";
@@ -28,7 +30,7 @@ import { invertSelection, selectionPathLocal } from "../utils/geometry";
 import { bakeTransform, unionBounds } from "../utils/transform";
 import { commonParentId, nextGroupName, topmostSelected } from "../utils/layerTree";
 import {
-  NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
+  NEUTRAL_ADJUSTMENTS, type Adjustments, type DocumentInfo,
   type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
 } from "../types";
 import { buildShowcase } from "../showcase/build";
@@ -117,12 +119,12 @@ export default function EditorPage() {
   // Your name in the team: one per team, shared by every project in it.
   const myName = useMyName(teamId, team);
   const loadedBlobs = useRef<Set<string>>(new Set());
-  const lastCursor = useRef(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adjTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [members, setMembers] = useState<Member[]>([]);
-  const [cursors, setCursors] = useState<CursorState[]>([]);
+  // Everyone else's cursors, over presence: never a contract write.
+  const { cursors, moveCursor } = useCursorPresence(api.client, ctxId || null, api.accountId);
   const [needName, setNeedName] = useState(false);
   const [nameSuggestion, setNameSuggestion] = useState("");
   // Whether this account is on this project's roster: null until known.
@@ -211,20 +213,29 @@ export default function EditorPage() {
     scheduleRender();
   }, [ctxId, scheduleRender, adminGetBlob]);
 
-  const refetch = useCallback(async () => {
+  // Reads again what the document's events changed (`utils/eventReads`). A
+  // project this account can no longer read is closed, back to the projects.
+  const closed = useRef(false);
+  const refetch = useCallback(async (reads: Iterable<Read>) => {
+    const want = new Set(reads);
     try {
-      const [d, ls, ms, cs] = await Promise.all([
-        pix.getDocument(),
-        (pix.getLayers() as Promise<Layer[]>),
-        pix.getMembers(),
-        pix.getCursors(),
+      const [d, ls, ms, role] = await Promise.all([
+        want.has("document") ? pix.getDocument() : null,
+        want.has("layers") ? (pix.getLayers() as Promise<Layer[]>) : null,
+        want.has("members") ? pix.getMembers() : null,
+        want.has("role") ? (pix.myRole() as Promise<Role>) : null,
       ]);
       if (d) setDoc(d);
       if (Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); }
       if (Array.isArray(ms)) setMembers(ms);
-      if (Array.isArray(cs)) setCursors(cs);
-    } catch { /* transient */ }
-  }, [setDoc, setLayers, loadBlobs, pix]);
+      if (role) setRole(role);
+    } catch (e) {
+      if (!lostAccess(e) || closed.current) return; // transient: the next event reads again
+      closed.current = true;
+      showToast("You no longer have access to this project.", "info");
+      navigate(`/teams/${teamId}/projects`, { replace: true });
+    }
+  }, [setDoc, setLayers, setRole, loadBlobs, pix, showToast, navigate, teamId]);
 
   // ── Init ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -247,7 +258,7 @@ export default function EditorPage() {
     loadedBlobs.current = new Set();
     setReady(false);
     setMembers([]);
-    setCursors([]);
+    closed.current = false;
 
     let cancelled = false;
     (async () => {
@@ -280,9 +291,6 @@ export default function EditorPage() {
         setOnProject(alreadyMember);
       }
 
-      const cs = await pix.getCursors().catch((): CursorState[] => []);
-      if (!cancelled && Array.isArray(cs)) setCursors(cs);
-
       if (!cancelled) { setReady(true); clearHistory(); }
     })();
     return () => { cancelled = true; };
@@ -309,14 +317,26 @@ export default function EditorPage() {
     };
   }, []);
 
-  // ── SSE: debounced refetch on any contract event ──────────────────────────
-  // A reconnect refetches too: whatever changed while the stream was down
-  // arrives as no event at all.
-  const scheduleRefetch = () => {
+  // ── Events: debounced re-read of what they changed ─────────────────────────
+  // A burst (the history at open is one) is read once, and only the parts its
+  // events touched. A reconnect reads all of it: whatever changed while the
+  // stream was down arrives as no event at all.
+  const pendingReads = useRef<Set<Read>>(new Set());
+  const scheduleRefetch = (reads: readonly Read[]) => {
+    if (reads.length === 0) return;
+    for (const r of reads) pendingReads.current.add(r);
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
-    refetchTimer.current = setTimeout(() => { refetch(); }, 300);
+    refetchTimer.current = setTimeout(() => {
+      const due = pendingReads.current;
+      pendingReads.current = new Set();
+      void refetch(due);
+    }, 300);
   };
-  useSse(ctxId || null, scheduleRefetch, scheduleRefetch);
+  useSse(
+    ctxId || null,
+    (kind, data) => scheduleRefetch(readsFor(kind, data, api.accountId)),
+    () => scheduleRefetch(ALL_READS),
+  );
 
   // ── Join / username ───────────────────────────────────────────────────────
   // Puts you on this project's roster under `username` (the team's name for you).
@@ -329,15 +349,15 @@ export default function EditorPage() {
     try {
       await pix.join({ username, avatar: null, timestamp: i64(ts()) });
       setOnProject(true);
+      // The roster arrives with the join's own event (`MemberJoined`).
       const role = await (pix.myRole() as Promise<Role>).catch(() => "viewer" as Role);
       setRole(role);
-      refetch();
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally {
       joining.current = false;
     }
-  }, [setRole, refetch, showToast, pix]);
+  }, [setRole, showToast, pix]);
 
   // The name asked for once for the whole team (only for a team made before
   // names were asked on create/join): the team keeps it, then the roster.
@@ -1262,13 +1282,8 @@ export default function EditorPage() {
     a.click();
   }, [doc]);
 
-  // ── Cursor broadcast ───────────────────────────────────────────────────────
-  const onCursorMove = useCallback((x: number, y: number) => {
-    const now = Date.now();
-    if (now - lastCursor.current < 1500) return;
-    lastCursor.current = now;
-    pix.updateCursor({ x: i64(Math.round(x)), y: i64(Math.round(y)), updatedAt: i64(now) }).catch(() => {});
-  }, [pix]);
+  // ── Cursor broadcast (presence, see hooks/useCursorPresence) ───────────────
+  const onCursorMove = moveCursor;
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {

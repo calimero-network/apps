@@ -67,7 +67,7 @@ fun SignInScreen(vm: PixartAppViewModel) {
         Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 16.dp)) {
             Spacer(Modifier.weight(1f))
             AppMark(64.dp)
-            Text("Mero PixArt", style = PixartTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
+            Text("Hyperfeed PixArt", style = PixartTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
             Text(
                 "Your team's artwork, on your phone. Look closely, check layers and share the image.",
                 style = PixartTheme.body(17, color = PixartTheme.muted),

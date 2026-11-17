@@ -1,6 +1,6 @@
 {
-  "name": "Mero PixArt",
-  "short_name": "Mero PixArt",
+  "name": "Hyperfeed PixArt",
+  "short_name": "Hyperfeed PixArt",
   "description": "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments — your pixels on your nodes.",
   "display": "standalone",
   "background_color": "#0f1419",

@@ -142,7 +142,7 @@ describe("TeamsPage", () => {
     await waitFor(() => expect(screen.queryByText("Beta")).toBeNull());
   });
 
-  // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+  // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
   it("does not list an org made for another app; connects it on request with a project", async () => {
     client.me.mockResolvedValue({ orgs: [{ orgId: "ow", name: "overworld", role: "owner" }] });
     client.listApps.mockImplementation(async (f?: { bundle?: string }) =>
@@ -262,7 +262,7 @@ describe("ProjectsPage", () => {
     expect(screen.queryByTestId("invite-dialog")).toBeNull();
     fireEvent.click(screen.getByTestId("generate-invite"));
     const props = JSON.parse((await screen.findByTestId("invite-props")).textContent ?? "null");
-    expect(props).toMatchObject({ org: "org-a", teams: [], appName: "Mero Pixart" });
+    expect(props).toMatchObject({ org: "org-a", teams: [], appName: "Hyperfeed Pixart" });
     expect(props.linkBase).toMatch(/\?org=org-a$/);
   });
 

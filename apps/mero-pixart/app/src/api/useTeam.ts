@@ -15,9 +15,9 @@ export interface TeamInfo {
   ready: boolean;
   /** account -> role (`owner` | `admin` | `member` | `guest`), the whole org. */
   roles: Map<string, string>;
-  /** Who has Mero Pixart in the team: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Pixart in the team: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Pixart has its team: Remove and invites are its only. */
+  /** The org keeps its apps apart and Hyperfeed Pixart has its team: Remove and invites are its only. */
   appOnly: boolean;
   /** The name a member set on the team, or "". */
   nameOf: (account: string) => string;

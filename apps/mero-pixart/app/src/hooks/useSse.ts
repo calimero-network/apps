@@ -14,19 +14,19 @@ const RECONNECT_MS = 2_000;
  *
  * The node answers the committed events first, then live ones; a reconnect
  * resumes after the last one seen (its `id` is its log index). Callers coalesce
- * bursts (the history at open is one): every event only means "read again".
+ * bursts (the history at open is one): an event's kind says what to read again.
  */
 export function useSse(
   contextId: string | null,
-  onEvent: (payload: unknown) => void,
+  onEvent: (kind: string, data: unknown) => void,
   onReconnect?: () => void,
 ) {
   const { client } = useSignedIn();
-  useAppEvents(client, contextId, (_kind, data) => onEvent(data), onReconnect);
+  useAppEvents(client, contextId, onEvent, onReconnect);
 }
 
 export function useAppEvents(
-  client: Pick<CalimeroClient, "events"> | null,
+  client: Pick<CalimeroClient, "events" | "apps"> | null,
   app: string | null,
   onEvent: (kind: string, data: unknown) => void,
   onReconnect?: () => void,
@@ -46,8 +46,15 @@ export function useAppEvents(
       while (!abort.signal.aborted) {
         try {
           if (dropped) onReconnectRef.current?.();
+          // Where the log is now: the stream starts after it rather than
+          // replaying every event since the project began.
+          if (from === undefined) {
+            const { index } = await client.apps.view({ app, method: "canEdit", args: {} }, { signal: abort.signal });
+            if (typeof index === "number") from = index + 1;
+          }
           for await (const event of client.events(app, from, abort.signal)) {
-            const index = Number(event.id);
+            // Ids are "<index>:<seq>": the part before the colon is the log index.
+            const index = Number.parseInt(String(event.id).split(":")[0] ?? "", 10);
             if (Number.isFinite(index)) from = index + 1;
             onEventRef.current(event.kind, event.data);
           }

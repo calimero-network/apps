@@ -31,7 +31,7 @@ struct TeamsScreen: View {
                     EmptyState(
                         icon: "person.3",
                         title: "No teams yet",
-                        message: "Create a team in Mero PixArt on the web, or open an invitation link on this phone. It shows up here.")
+                        message: "Create a team in Hyperfeed PixArt on the web, or open an invitation link on this phone. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -50,7 +50,7 @@ struct TeamsScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.ground)
-        .navigationTitle("Mero PixArt")
+        .navigationTitle("Hyperfeed PixArt")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -149,7 +149,7 @@ struct AccountSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
             }
-            .confirmationDialog("Sign out of Mero PixArt?", isPresented: $confirm, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed PixArt?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     dismiss()
                     Task { await session.signOut() }
@@ -188,7 +188,7 @@ struct ProjectsScreen: View {
                     EmptyState(
                         icon: "photo.on.rectangle.angled",
                         title: "No projects in this team",
-                        message: "Projects are created in Mero PixArt on the web or desktop. Pull to refresh once one exists.")
+                        message: "Projects are created in Hyperfeed PixArt on the web or desktop. Pull to refresh once one exists.")
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionLabel(PixartFormat.count(model.projects.count, "project", "projects"))
@@ -243,7 +243,7 @@ struct ProjectsScreen: View {
         defer { inviting = false }
         do {
             let link = try await model.inviteLink(teamName: teamName)
-            invite = ShareItem(items: ["Join \(teamName) on Mero PixArt", URL(string: link) ?? link])
+            invite = ShareItem(items: ["Join \(teamName) on Hyperfeed PixArt", URL(string: link) ?? link])
         } catch {
             Haptics.error()
             inviteError = PixartFormat.errorText(error)

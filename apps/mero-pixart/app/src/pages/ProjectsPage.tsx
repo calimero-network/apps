@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
-import { ManageInHomeLink } from "@calimero-apps/passkey";
+import { ManageInHomeLink, useHomeLink } from "@calimero-apps/passkey";
 import { InstallAppIconButton } from "@calimero-apps/install";
 import { useSessionApi, useSignedIn } from "../api/sessionContext";
-import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
+import { ManageInHomeError, askAnOwnerCopy, canCreateIn, isFrontendBound, refusedOnFrontend } from "@calimero-apps/connect";
 import { createProject as createInstance, isAdmin, listProjects } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
@@ -17,6 +17,7 @@ import { clearLastVisit, forgetProject, pickRemembered, readLastVisit, rememberT
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
+import { visibleInterval } from "../utils/visibleInterval";
 
 type Tab = "projects" | "invitations";
 
@@ -51,6 +52,16 @@ export default function ProjectsPage() {
   const team = useTeam(teamId);
   const teamTitle = teamId ? teamLabel(teamId, team.name) : "Team";
   const myTeamRole = team.roles.get(accountId);
+  // A session opened on this app's own page cannot delete a project (core
+  // refuses an app's delete there and the consent page has no kind for it):
+  // the menu then links to Calimero Home, where an owner or admin deletes it.
+  const [bound, setBound] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void isFrontendBound(client).then((b) => { if (live) setBound(b); }, () => undefined);
+    return () => { live = false; };
+  }, [client]);
+  const homeHref = useHomeLink(sessionApi.session, bound ? teamId : null);
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
@@ -123,8 +134,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     void loadProjects();
-    const id = setInterval(loadProjects, 30_000);
-    return () => clearInterval(id);
+    return visibleInterval(() => void loadProjects(), 30_000);
   }, [loadProjects]);
 
   // Remember this team for the next open (utils/lastVisit). Every read checks
@@ -243,7 +253,11 @@ export default function ProjectsPage() {
     try {
       await client.apps.delete({ app: project.contextId });
     } catch (err) {
-      showToast(`Could not delete project: ${messageOf(err)}`);
+      showToast(
+        refusedOnFrontend(err)
+          ? new ManageInHomeError("deleteApp", "Deleting a project").message
+          : `Could not delete project: ${messageOf(err)}`,
+      );
       return;
     } finally {
       after();
@@ -266,7 +280,7 @@ export default function ProjectsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
+        <span className={styles.logo}><Logo size={22} /> Hyperfeed PixArt</span>
         <div className={styles.headerRight}>
           <ManageInHomeLink session={sessionApi.session} org={teamId} className={styles.homeLink} />
           <InstallAppIconButton />
@@ -362,10 +376,22 @@ export default function ProjectsPage() {
                         <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
-                        {(p.canDelete || isAdmin(myTeamRole)) && (
+                        {(p.canDelete || isAdmin(myTeamRole)) && !bound && (
                           <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p)}>
                             Delete
                           </button>
+                        )}
+                        {bound && homeHref && (
+                          <a
+                            className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                            href={homeHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid={`delete-in-home-${p.contextId}`}
+                            onClick={() => setMenuOpenId(null)}
+                          >
+                            Delete in Calimero Home ↗
+                          </a>
                         )}
                       </div>
                     )}

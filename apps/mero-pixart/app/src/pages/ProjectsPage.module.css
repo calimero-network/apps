@@ -164,7 +164,8 @@
   padding: 4px;
 }
 .dropdownItem {
-  display: block; width: 100%;
+  display: block; width: 100%; box-sizing: border-box;
+  text-decoration: none;
   text-align: left;
   padding: 8px 12px;
   font-size: 13px;

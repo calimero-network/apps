@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "Mero PixArt: collaborative image editor on Calimero (component SDK)",
+  "description": "Hyperfeed PixArt: collaborative image editor on Calimero (component SDK)",
   "type": "module",
   "scripts": {
     "dev": "vite",

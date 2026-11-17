@@ -18,7 +18,7 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero PixArt",
+  name: "Hyperfeed PixArt",
   description: "A collaborative image editor with Photoshop-style layers, masks and adjustments.",
   package: PACKAGE,
   dir: "mero-pixart",
@@ -46,7 +46,7 @@ export const ONBOARDING: {
   classNames: OnboardingClassNames;
   titleAs: "h1" | "h2" | "h3" | "div";
 } = {
-  appName: "Mero PixArt",
+  appName: "Hyperfeed PixArt",
   joining: "the team",
   listing: LISTING,
   classNames: { text: "sub", error: "sub" },

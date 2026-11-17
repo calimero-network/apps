@@ -59,7 +59,7 @@ internal inline fun <T> attempt(block: () -> T): Result<T> =
 
 // region Teams
 
-/** A team: a namespace running Mero PixArt. */
+/** A team: a namespace running Hyperfeed PixArt. */
 data class Team(
     val id: String,
     val name: String,
