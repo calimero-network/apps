@@ -107,7 +107,7 @@ struct SignedInView: View {
                 didJoin: { [weak session] in await session?.didJoinNamespace() }))
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
-                packageName: CalendarConstants.packageName, appName: "Mero Calendar",
+                packageName: CalendarConstants.packageName, appName: "Hyperfeed Calendar",
                 fetch: { [weak session] org in
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
@@ -143,7 +143,7 @@ struct SignedInView: View {
                 Button("Join") { Task { await joinPending() } }
                 Button("Not now", role: .cancel) { session.dismissPendingInvitation() }
             },
-            message: { Text("You were invited to a team on Mero Calendar.") }
+            message: { Text("You were invited to a team on Hyperfeed Calendar.") }
         )
         .alert(
             "Couldn't join", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } }),

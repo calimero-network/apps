@@ -12,7 +12,7 @@ import UsernameModal from "../modals/username-modal/UsernameModal";
 const ACCEPT_LABELS = {
   noun: "team",
   title: "Join the team",
-  body: "You were invited to a team in Mero Calendar. Joining it, you will see its calendars.",
+  body: "You were invited to a team in Hyperfeed Calendar. Joining it, you will see its calendars.",
   join: "Join the team",
 };
 
@@ -86,7 +86,7 @@ export default function InvitationPrompt() {
       passkey={deps.passkey()}
       token={asking.token}
       org={asking.org ?? undefined}
-      appName="Mero Calendar"
+      appName="Hyperfeed Calendar"
       labels={ACCEPT_LABELS}
       onError={dropInvite}
       onClose={() => {

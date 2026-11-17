@@ -1,6 +1,6 @@
-# Mero Calendar for iOS
+# Hyperfeed Calendar for iOS
 
-A native SwiftUI client for [Mero Calendar](../../) on the same contract as the
+A native SwiftUI client for [Hyperfeed Calendar](../../) on the same contract as the
 web app (`com.calimero.mero-calendar`, [`logic/`](../../logic)), built on the
 swift-sdk's `MeroAppSession` (MeroKit / MeroKitUI). Its Android twin is
 [`../android`](../android); both have the same screens, copy and flows.
@@ -15,7 +15,7 @@ maps the app layer onto the 1.0 API:
 | What | SDK | Wire |
 | --- | --- | --- |
 | Sign in / create account / restore / sign out | `MeroAppSession.connect(nodeURL:allowMock:)`, `signIn()` / `signUp(name:)` / `restore()` / `signOut()` | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh`; session in the Keychain (`network.calimero.calendar`) |
-| Teams | `MeroAppBackend.listNamespaces()` | the account's **orgs** running Mero Calendar (`GET /auth/me`) |
+| Teams | `MeroAppBackend.listNamespaces()` | the account's **orgs** running Hyperfeed Calendar (`GET /auth/me`) |
 | Create a team | `foundNamespace(name:)` | `POST /orgs` + org metadata `{name, package}` |
 | Calendars in a team | `listSubgroups(namespaceId:)` + `listContexts(groupId:)` | the org's **teams** (`GET /orgs/{org}`), one **app instance** per calendar, plus any instance straight in the org |
 | Create a calendar | `createSubgroup(…, isPublic: true)` + `createContext(…, initArgs: {})` | `POST /orgs/{org}/teams {join: everyone}` + `POST /apps {package, org, access: team}` |
@@ -24,10 +24,10 @@ maps the app layer onto the 1.0 API:
 | Read events / members | `CalendarClient` over `contract.bound(to:)` → `query` | `POST /apps/{app}/views` |
 | Create / edit / delete events, set your name | `CalendarClient` → `execute` | `POST /apps/{app}/intents` |
 | Live updates | `events(contextId:)`; 10 s polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
-| Approvals (an update of Mero Calendar, a node release) | `session.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals (an update of Hyperfeed Calendar, a node release) | `session.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 In the app's words a **team** is a Calimero org, a **calendar** is a team in
-that org with one app instance of Mero Calendar.
+that org with one app instance of Hyperfeed Calendar.
 
 ### Sign-in
 
@@ -56,7 +56,7 @@ bearer secret: anyone holding the link can join until it expires. Pre-1.0 links
 
 Releases of the node and upgrades of an app instance are approved only on the
 node's own consent page. **Your Teams** shows what waits for the signed-in
-person (upgrades of Mero Calendar, node releases their org approves); **Review**
+person (upgrades of Hyperfeed Calendar, node releases their org approves); **Review**
 opens the page in the system browser, which returns to
 `mero-calendar://consent`.
 

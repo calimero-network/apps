@@ -190,7 +190,7 @@ export default function TeamsPage() {
 
   /**
    * Anyone else leaves it (a passkey step-up). In an org that keeps its apps
-   * apart that is Mero Calendar only; when it was the last app there, the
+   * apart that is Hyperfeed Calendar only; when it was the last app there, the
    * organization itself is offered too.
    */
   async function leaveTeam(teamId: string) {
@@ -239,7 +239,7 @@ export default function TeamsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <span className={styles.logo}>
-          <CalendarLogo size={24} color="var(--accent)" /> Mero Calendar
+          <CalendarLogo size={24} color="var(--accent)" /> Hyperfeed Calendar
         </span>
         <div className={styles.headerRight}>
           <InstallAppIconButton className="mc-theme-toggle" />
@@ -285,7 +285,7 @@ export default function TeamsPage() {
             linkBase={inviteFor ? inviteLinkBase(inviteFor.org, { href: new URL(appRoot(), window.location.origin).href }) : undefined}
           />
         )}
-        <ConnectExistingOrg appName="Mero Calendar" load={loadOtherOrgs} onConnect={connectOrg} />
+        <ConnectExistingOrg appName="Hyperfeed Calendar" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (
           <p className={styles.empty}>Loading…</p>

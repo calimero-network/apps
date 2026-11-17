@@ -100,7 +100,7 @@ public enum CalendarError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidInvitation: return "That isn't a Mero Calendar invitation link."
+        case .invalidInvitation: return "That isn't a Hyperfeed Calendar invitation link."
         case .noApplication: return "Still connecting. Try again in a moment."
         case .calendarUnavailable: return "This calendar isn't available to you yet. Try again in a moment."
         }

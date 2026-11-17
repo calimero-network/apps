@@ -1,5 +1,5 @@
 /**
- * Mero Calendar's own app team (core#4890), against the shared in-memory
+ * Hyperfeed Calendar's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's: a new team gets an open app team and
  * calendars go on it; invites name it; the member list is its people; Remove
@@ -50,7 +50,7 @@ async function team(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-describe("a new team gets Mero Calendar's own app team", () => {
+describe("a new team gets Hyperfeed Calendar's own app team", () => {
   it("open (made with `shared: false`), and a calendar goes on it", async () => {
     const { cluster, org } = await team();
     expect(cluster.modeOf(org)).toBe("standalone");
@@ -84,7 +84,7 @@ describe("invites and people", () => {
     expect((await readOrg(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
-  it("apps kept apart: Mero Calendar only, and only its people", async () => {
+  it("apps kept apart: Hyperfeed Calendar only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
     expect((await appInviteTeams(cluster.client, org, SOURCE)).appOnly).toBe(true);
@@ -103,7 +103,7 @@ describe("invites and people", () => {
 });
 
 describe("Remove and Leave", () => {
-  it("apps kept apart: Remove takes the person out of Mero Calendar, never the org", async () => {
+  it("apps kept apart: Remove takes the person out of Hyperfeed Calendar, never the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     cluster.keepAppsApart(org);
     expect(await removeTeamMember(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
@@ -111,7 +111,7 @@ describe("Remove and Leave", () => {
     expect((await readOrg(cluster.client, org, SOURCE)).people).not.toContain("acct-bob");
   });
 
-  it("standalone: Remove takes the person off Mero Calendar's team; they stay in the org", async () => {
+  it("standalone: Remove takes the person off Hyperfeed Calendar's team; they stay in the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     expect(await removeTeamMember(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
     expect(cluster.org(org).members["acct-bob"]).toBe("member");
@@ -126,7 +126,7 @@ describe("Remove and Leave", () => {
     expect(cluster.org(legacy).members["acct-bob"]).toBeUndefined();
   });
 
-  it("apps kept apart: Leave is Mero Calendar only; lastApp, then the org on request", async () => {
+  it("apps kept apart: Leave is Hyperfeed Calendar only; lastApp, then the org on request", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
     cluster.keepAppsApart(org);
     cluster.org(org).members["acct-me"] = "member";
@@ -136,7 +136,7 @@ describe("Remove and Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
   });
 
-  it("standalone: Leave is off Mero Calendar's team, and offers the org", async () => {
+  it("standalone: Leave is off Hyperfeed Calendar's team, and offers the org", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
     cluster.org(org).members["acct-me"] = "member";
     expect(await leaveTeam(cluster.client, org, SOURCE, passkey)).toEqual({ left: "app", lastApp: true });
@@ -153,7 +153,7 @@ describe("Remove and Leave", () => {
 });
 
 describe("from the app's own frontend (a bound session)", () => {
-  /** The cluster's client as a session opened on Mero Calendar's frontend sees it. */
+  /** The cluster's client as a session opened on Hyperfeed Calendar's frontend sees it. */
   function bound(cluster: ReturnType<typeof orgCluster>) {
     const openConsentPage = vi.fn(async (request: ConsentRequest, options?: unknown) => {
       const confirm = (options as { confirm?: (s: { requestId: string; code: string }) => Promise<boolean> })?.confirm;
@@ -172,7 +172,7 @@ describe("from the app's own frontend (a bound session)", () => {
 
   beforeEach(() => sessionStorage.clear());
 
-  it("Remove and Leave in an org with Mero Calendar's team are its own: no consent page", async () => {
+  it("Remove and Leave in an org with Hyperfeed Calendar's team are its own: no consent page", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     const { client, openConsentPage } = bound(cluster);
     expect(await removeTeamMember(client, org, SOURCE, "acct-bob", passkey, "Bob")).toBe("app");
@@ -226,7 +226,7 @@ describe("from the app's own frontend (a bound session)", () => {
   });
 });
 
-describe("adding Mero Calendar to an organization whose apps have teams", () => {
+describe("adding Hyperfeed Calendar to an organization whose apps have teams", () => {
   it("an admin: open in an open org, closed in one that keeps its apps apart", async () => {
     const cluster = orgCluster();
     const open = cluster.addOrg({ mode: "standalone", role: "admin" });
@@ -240,7 +240,7 @@ describe("adding Mero Calendar to an organization whose apps have teams", () => 
   it("a member is told only owners and admins can add it, and nothing is made", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
-    await expect(add(cluster, org)).rejects.toThrow(/owners and admins can add Mero Calendar/);
+    await expect(add(cluster, org)).rejects.toThrow(/owners and admins can add Hyperfeed Calendar/);
     expect(cluster.callsOf("createApp")).toEqual([]);
   });
 });

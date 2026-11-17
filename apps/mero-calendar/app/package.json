@@ -2,7 +2,7 @@
   "name": "mero-calendar",
   "version": "0.1.0",
   "private": true,
-  "description": "Mero Calendar: shared team calendars, private events and booking links on Calimero (component SDK)",
+  "description": "Hyperfeed Calendar: shared team calendars, private events and booking links on Calimero (component SDK)",
   "type": "module",
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",

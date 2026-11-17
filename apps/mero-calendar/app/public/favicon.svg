@@ -1,7 +1,7 @@
 <!-- Hand-written twin of scripts/gen-icons.mjs `mark()`. Keep the two in sync:
      the raster set is generated, this one is not. Colours are the app's own
      tokens from src/styles/theme.css. -->
-<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Calendar logo">
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hyperfeed Calendar logo">
   <rect width="64" height="64" rx="14" fill="#1d2433"/>
   <!-- binding rings, drawn first so the page body overlaps their lower halves -->
   <circle cx="23" cy="12.5" r="3.4" fill="#97a0b0"/>

@@ -160,7 +160,7 @@ export default function TeamCalendarsPage() {
       setNewName("");
       navigate(`/teams/${teamId}/calendar/${contextId}`);
     } catch (err) {
-      // Adding Mero Calendar to this organization is an admin's step in
+      // Adding Hyperfeed Calendar to this organization is an admin's step in
       // Calimero Home (the header links there): say so as it is.
       showToast(err instanceof ManageInHomeError ? err.message : `Could not create calendar: ${messageOf(err)}`);
     } finally {
@@ -195,7 +195,7 @@ export default function TeamCalendarsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <span className={styles.logo}>
-          <CalendarLogo size={24} color="var(--accent)" /> Mero Calendar
+          <CalendarLogo size={24} color="var(--accent)" /> Hyperfeed Calendar
         </span>
         <div className={styles.headerRight}>
           <InstallAppIconButton className="mc-theme-toggle" />

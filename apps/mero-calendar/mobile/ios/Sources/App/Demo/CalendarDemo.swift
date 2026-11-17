@@ -3,7 +3,7 @@ import CalendarCore
 import Foundation
 import MeroKit
 
-/// Mero Calendar's demo: three teams, their calendars and members, and a
+/// Hyperfeed Calendar's demo: three teams, their calendars and members, and a
 /// design studio's real-looking month of meetings, client work and time off,
 /// placed around today. The contract answers `getEvents`, `getPrivateEvents`,
 /// `getMembers`, `createEvent`, ... from them in the component ABI's wire

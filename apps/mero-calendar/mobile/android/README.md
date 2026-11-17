@@ -1,6 +1,6 @@
-# Mero Calendar for Android
+# Hyperfeed Calendar for Android
 
-A native Jetpack Compose (Material 3) client for Mero Calendar, the `com.calimero.mero-calendar`
+A native Jetpack Compose (Material 3) client for Hyperfeed Calendar, the `com.calimero.mero-calendar`
 app in [`../../logic`](../../logic). It calls the same component contract as the web frontend in
 [`../../app`](../../app), so people on Android, iOS and the web share the same teams, calendars and
 events. It is built on the Calimero Kotlin SDK's 1.0 app session (`MeroAppSession`,
@@ -14,7 +14,7 @@ events. It is built on the Calimero Kotlin SDK's 1.0 app session (`MeroAppSessio
 | Sign in (Cloud) | A cluster by name (node directory) or a node URL, every node attested (`CloudPolicy.production`), then the device's passkey (Credential Manager). "Create an account" registers a new one | `CalimeroClient.connect`, `MeroAppSession.signIn` / `signUp` |
 | Sign in (development) | A `merod local` URL (`http://10.0.2.2:2501` from the emulator), mock attestation, a software passkey kept on the device for that node | `CloudPolicy.development`, `SoftPasskey` |
 | Session | Kept encrypted with the cluster's nodes, restored on launch | `EncryptedSessionStore`, `restore` |
-| Teams | Orgs running Mero Calendar | `listNamespaces`, `foundNamespace` |
+| Teams | Orgs running Hyperfeed Calendar | `listNamespaces`, `foundNamespace` |
 | Calendars | A team in the org holding one app instance | `listSubgroups`, `createSubgroup`, `createContext` |
 | Events, members, your name | The typed contract client over the bound app instance (views / intents) | `contract.bound(appId)` |
 | Invite / join | Org invite links (`OrgInvitation`, the team's name in `name`), redeemed at `POST /invites/{token}/redeem`; minting is a passkey step-up | `createInvitation`, `joinNamespace` |

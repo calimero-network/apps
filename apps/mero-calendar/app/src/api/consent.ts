@@ -1,5 +1,5 @@
 /**
- * What a session opened on Mero Calendar's frontend may not do itself, done on
+ * What a session opened on Hyperfeed Calendar's frontend may not do itself, done on
  * the node's consent page instead.
  *
  * On Calimero Cloud the app is served from its package's frontend origin, and
@@ -31,7 +31,7 @@ import { confirmConsentHandoff } from "@calimero-apps/passkey";
 
 import { APP } from "./session";
 
-const PRODUCT_NAME = "Mero Calendar";
+const PRODUCT_NAME = "Hyperfeed Calendar";
 
 /** The two roles the members panel moves people between. */
 export type TeamRoleName = "admin" | "member";

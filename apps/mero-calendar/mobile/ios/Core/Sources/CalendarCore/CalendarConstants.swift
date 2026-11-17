@@ -3,7 +3,7 @@
 @_exported import CalendarContract
 import Foundation
 
-/// The names Mero Calendar is known by on the wire.
+/// The names Hyperfeed Calendar is known by on the wire.
 public enum CalendarConstants {
     /// The registry package and invitation-link slug (`logic/Cargo.toml`,
     /// `app/src/utils/invitation.ts` `APP_SLUG`).

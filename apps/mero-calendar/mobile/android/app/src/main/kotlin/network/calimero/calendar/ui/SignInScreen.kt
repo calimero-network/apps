@@ -79,7 +79,7 @@ fun SignInScreen(
             Spacer(Modifier.height(56.dp))
             IconTile(size = 64.dp)
             Spacer(Modifier.height(20.dp))
-            Text("Mero Calendar", style = Tokens.title)
+            Text("Hyperfeed Calendar", style = Tokens.title)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Shared team calendars and truly private events.",

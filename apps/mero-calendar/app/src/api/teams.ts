@@ -53,9 +53,9 @@ import { APP } from "./session";
  * `@calimero-apps/connect`'s org-app module: a new team's is open (everyone in
  * the org has the app), calendars use team access on it, invites name it, and
  * the member list is its people, and Remove and Leave take someone off it, out
- * of Mero Calendar, not out of the org (leaving offers the org too). Once an
+ * of Hyperfeed Calendar, not out of the org (leaving offers the org too). Once an
  * admin keeps the org's apps apart in Calimero Home (`shared`), an invite
- * gives Mero Calendar only. An org without one (made before app teams, a node
+ * gives Hyperfeed Calendar only. An org without one (made before app teams, a node
  * without them, a raw dev bundle) is legacy, as before.
  *
  * The organization-wide changes (roles, removing from or leaving the org,
@@ -83,7 +83,7 @@ export interface CalendarEntry {
 
 /**
  * The teams: the orgs this account is in that hold calendars or were made for
- * this app. An org made for another app (a Mero Blocks world) is not listed:
+ * this app. An org made for another app (a Hyperfeed Blocks world) is not listed:
  * it is offered under "Connect to an existing organization" ({@link
  * otherOrgs} in `@calimero-apps/connect`) and joins the list once it holds
  * one.
@@ -131,9 +131,9 @@ export async function finishTeam(
 }
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Calendar";
+export const PRODUCT_NAME = "Hyperfeed Calendar";
 
-/** Where no passkey was handed over: asked for only to add Mero Calendar's team to an org. */
+/** Where no passkey was handed over: asked for only to add Hyperfeed Calendar's team to an org. */
 const noPasskey = (): PasskeyProvider => {
   throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
 };
@@ -141,7 +141,7 @@ const noPasskey = (): PasskeyProvider => {
 /** A client for the team's organization-wide changes: it says who it is and opens the consent page. */
 type OrgClient = Pick<CalimeroClient, "session" | "openConsentPage"> & MaybeMe;
 
-/** Mero Calendar's own team in `org` (the org read once), or `null`: a legacy org, a raw bundle. */
+/** Hyperfeed Calendar's own team in `org` (the org read once), or `null`: a legacy org, a raw bundle. */
 async function calendarTeamIn(
   client: ClientRoutes<{ orgs: "get" }>,
   org: string,
@@ -155,7 +155,7 @@ async function calendarTeamIn(
 }
 
 /**
- * Leaves the team. Where the org has Mero Calendar's own team, that is off
+ * Leaves the team. Where the org has Hyperfeed Calendar's own team, that is off
  * the team only, which this app may do itself (`lastApp` set when it was the
  * caller's last app there: offer {@link leaveTeamOrg}). An org without it (a
  * legacy one) is left altogether: on the node's consent page from the app's
@@ -193,7 +193,7 @@ export async function leaveTeamOrg(
 }
 
 /**
- * Removes `account` from the team. Where the org has Mero Calendar's own team,
+ * Removes `account` from the team. Where the org has Hyperfeed Calendar's own team,
  * off that team only: they stay in the organization and its other apps. An
  * org without it (a legacy one) removes them from the organization: on the
  * node's consent page from the app's frontend, else directly. `name` is what
@@ -286,9 +286,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> its display name in the org, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Calendar in the org, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Calendar in the org, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Calendar has its team: invites, Remove and Leave are its only. */
+  /** The org keeps its apps apart and Hyperfeed Calendar has its team: invites, Remove and Leave are its only. */
   appOnly: boolean;
 }
 

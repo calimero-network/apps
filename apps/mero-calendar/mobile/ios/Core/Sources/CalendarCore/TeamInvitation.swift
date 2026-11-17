@@ -35,7 +35,7 @@ public struct TeamInvitation: Sendable {
     }
 
     /// Read a pasted link, a deep link or a bare token; `nil` when it is no
-    /// Mero Calendar invitation (another app's link is refused).
+    /// Hyperfeed Calendar invitation (another app's link is refused).
     public static func parse(_ input: String) -> TeamInvitation? {
         guard let token = InviteLink.token(fromPasted: input, expectedSlug: CalendarConstants.packageName),
             let json = InviteCodec.decode(token: token)

@@ -27,7 +27,7 @@ struct SignInView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 14) {
                         AppMark(size: 64)
-                        Text("Mero Calendar").font(Theme.heading(34)).foregroundStyle(Theme.ink)
+                        Text("Hyperfeed Calendar").font(Theme.heading(34)).foregroundStyle(Theme.ink)
                         Text("Shared team calendars and truly private events.")
                             .font(Theme.body(17)).foregroundStyle(Theme.muted)
                     }

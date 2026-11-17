@@ -186,7 +186,7 @@ fun InviteSheet(
                         },
                         modifier = Modifier.weight(1f),
                     )
-                    SecondaryButton("Share…", onClick = { onShare("Join $teamName on Mero Calendar", current) }, icon = Icons.Filled.Share, modifier = Modifier.weight(1f))
+                    SecondaryButton("Share…", onClick = { onShare("Join $teamName on Hyperfeed Calendar", current) }, icon = Icons.Filled.Share, modifier = Modifier.weight(1f))
                 }
             }
         }

@@ -67,7 +67,7 @@ public struct CalendarPerson: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A team: a Calimero org running Mero Calendar.
+/// A team: a Calimero org running Hyperfeed Calendar.
 public struct Team: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String

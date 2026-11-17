@@ -5,7 +5,7 @@ import MeroKit
 import Combine
 #endif
 
-/// The teams list: the account's orgs running Mero Calendar, founding
+/// The teams list: the account's orgs running Hyperfeed Calendar, founding
 /// one, inviting to one and joining one. (`app/src/pages/teams/TeamsPage.tsx`.)
 @MainActor
 public final class TeamsModel: ObservableObject {

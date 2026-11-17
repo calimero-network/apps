@@ -1,4 +1,4 @@
-// Generates Mero Calendar's icon set into app/public/ with zero dependencies:
+// Generates Hyperfeed Calendar's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
 // The rasteriser is shared with mero-pixart's app/scripts/gen-icons.mjs; only

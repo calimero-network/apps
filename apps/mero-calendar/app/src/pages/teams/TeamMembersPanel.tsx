@@ -59,7 +59,7 @@ export default function TeamMembersPanel({ teamId, onClose, onChanged }: Props) 
     try {
       const org = await readOrg(client, teamId, source);
       setRows(
-        // Who has Mero Calendar in the team (its app team, else the org), with their org role.
+        // Who has Hyperfeed Calendar in the team (its app team, else the org), with their org role.
         org.people
           .map((account) => ({ account, role: org.roles.get(account) ?? "member", name: org.names.get(account) ?? "" }))
           .sort((a, b) => (a.account === me ? -1 : b.account === me ? 1 : a.account.localeCompare(b.account))),
