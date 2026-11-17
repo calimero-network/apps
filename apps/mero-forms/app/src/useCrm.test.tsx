@@ -6,7 +6,7 @@ import { withRoutes } from "@calimero-apps/connect/testing";
 
 /**
  * The hand-off with a mocked CalimeroClient: the signed-in account reaches a
- * Mero CRM instance (a pipeline) and writes to it as itself.
+ * Hyperfeed CRM instance (a pipeline) and writes to it as itself.
  */
 
 const PIPELINE = "crm-app-1";
@@ -105,8 +105,8 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("the hand-off to Mero CRM", () => {
-  it("finds the account's Mero CRM pipelines by package", async () => {
+describe("the hand-off to Hyperfeed CRM", () => {
+  it("finds the account's Hyperfeed CRM pipelines by package", async () => {
     const { result } = renderHook(() => usePipelines(true));
     await waitFor(() => expect(result.current.pipelines).not.toBeNull());
     expect(result.current.pipelines).toEqual([
@@ -130,7 +130,7 @@ describe("the hand-off to Mero CRM", () => {
       stageId: "stage-lead",
       owner: null,
       expectedClose: null,
-      source: "Mero Forms · Contact us",
+      source: "Hyperfeed Forms · Contact us",
     });
     expect(recorded).toEqual([{ id: "r1", crmContext: PIPELINE, crmDeal: "deal-1" }]);
   });

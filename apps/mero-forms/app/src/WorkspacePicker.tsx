@@ -202,7 +202,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
           </p>
         )}
         {error && <pre className="err">{error}</pre>}
-        <ConnectExistingOrg appName="Mero Forms" load={loadOtherOrgs} onConnect={connect} />
+        <ConnectExistingOrg appName="Hyperfeed Forms" load={loadOtherOrgs} onConnect={connect} />
       </form>
       <CreateWorkspaceDialog
         client={client}

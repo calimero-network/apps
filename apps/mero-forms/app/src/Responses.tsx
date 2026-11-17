@@ -315,7 +315,7 @@ function ResponsePanel({
         <div className="panel-crm">
           {response.crm_deal ? (
             <p className="ok" data-testid="sent-to-crm">
-              <Icon name="check" size={14} /> In Mero CRM as deal <code>{response.crm_deal}</code>, sent{" "}
+              <Icon name="check" size={14} /> In Hyperfeed CRM as deal <code>{response.crm_deal}</code>, sent{" "}
               {ago(response.crm_sent_at)} by <PersonName account={response.crm_sent_by} />.
             </p>
           ) : linked ? (
@@ -324,7 +324,7 @@ function ResponsePanel({
             </button>
           ) : (
             <p className="meta">
-              Connect this form to a Mero CRM pipeline to send responses there.{" "}
+              Connect this form to a Hyperfeed CRM pipeline to send responses there.{" "}
               <button className="link" onClick={onConnect}>
                 Set it up
               </button>

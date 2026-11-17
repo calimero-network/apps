@@ -35,7 +35,7 @@ export async function createFormKey(
 ): Promise<IssuedKey> {
   const created = await client.auth.apikeyCreate(
     {
-      label: `Mero Forms key: ${label}`.slice(0, 128),
+      label: `Hyperfeed Forms key: ${label}`.slice(0, 128),
       apps: [appId],
       methods: [...FORM_KEY_METHODS],
       ttlSecs: MAX_KEY_SECS,

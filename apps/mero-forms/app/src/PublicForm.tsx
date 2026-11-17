@@ -55,7 +55,7 @@ export function PublicForm() {
       setForms(f);
       setLinkId(link);
       setForm(view);
-      document.title = `${view.title} · Mero Forms`;
+      document.title = `${view.title} · Hyperfeed Forms`;
       if (view.captcha && view.accepting) {
         const key = (await fetchCaptchaConfig()).siteKey;
         if (live) setSiteKey(key);
@@ -197,7 +197,7 @@ export function PublicForm() {
           </>
         )}
         <p className="public-foot">
-          <img src="./favicon.svg" alt="" width={16} height={16} /> Made with Mero Forms
+          <img src="./favicon.svg" alt="" width={16} height={16} /> Made with Hyperfeed Forms
         </p>
       </div>
     </div>

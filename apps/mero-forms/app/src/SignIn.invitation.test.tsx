@@ -134,7 +134,7 @@ describe("an invite link", () => {
     renderHost(fakeClient());
 
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join the workspace in Mero Forms/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the workspace in Hyperfeed Forms/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.queryByText("the landing page")).toBeNull();
   });
@@ -188,7 +188,7 @@ describe("an invite link", () => {
 
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     await waitFor(() => expect(client.signIn).toHaveBeenCalled());
-    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Mero Forms");
+    expect((await screen.findByTestId("accept-props")).textContent).toBe("tok-1 Hyperfeed Forms");
     expect(invites.token()).toBe("tok-1");
     fireEvent.click(screen.getByTestId("accept-done"));
     await waitFor(() => expect(onJoined).toHaveBeenCalled());

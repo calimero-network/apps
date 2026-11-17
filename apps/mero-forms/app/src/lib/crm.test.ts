@@ -49,7 +49,7 @@ describe("the CRM hand-off", () => {
       title: "Ada Lovelace · Analytical Engines",
       organization: "Analytical Engines",
       stage_id: "stage-lead",
-      source: "Mero Forms · Contact us",
+      source: "Hyperfeed Forms · Contact us",
     });
     expect(p.note).toContain("Topic: Cloud, SDK");
     expect(p.note).toContain("Sent from: /contact/");

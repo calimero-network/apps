@@ -1,6 +1,6 @@
 [package]
 name = "mero-forms"
-description = "Forms a team designs, the responses they collect, and a hand-off to Mero CRM, on the component SDK"
+description = "Forms a team designs, the responses they collect, and a hand-off to Hyperfeed CRM, on the component SDK"
 # NOT the release version: the release workflow takes the next appVersion from
 # the registry and passes it to `meroctl app pack --app-version`. Cargo
 # requires the field; bundling locally without --app-version uses it.
@@ -42,8 +42,8 @@ hex = "0.4"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-forms"
-name = "Mero Forms"
-description = "Build forms with the fields you need, collect responses from your website, a public link or by hand, and send any response to Mero CRM. A website answers with a key that can answer one form and nothing else."
+name = "Hyperfeed Forms"
+description = "Build forms with the fields you need, collect responses from your website, a public link or by hand, and send any response to Hyperfeed CRM. A website answers with a key that can answer one form and nothing else."
 author = "Calimero"
 # The slug IS the package id: a deep link resolves by `Application.package`.
 slug = "com.calimero.mero-forms"

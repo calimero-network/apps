@@ -23,7 +23,7 @@ const STEP_TEXT: Record<Step, string> = {
 
 /**
  * Where a form's responses come from and go to: the website keys that may
- * answer it, its public links, and the Mero CRM pipeline they are sent on to.
+ * answer it, its public links, and the Hyperfeed CRM pipeline they are sent on to.
  *
  * Issuing a website key is two steps, from this admin's session:
  *

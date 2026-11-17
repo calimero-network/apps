@@ -14,7 +14,7 @@ import { passkeyConfirm } from "@calimero-network/mero-js";
  * A form's public links: anyone with one answers the form in their browser,
  * signed in or not.
  *
- * Making a link is two things done together, as Mero Calendar's booking links
+ * Making a link is two things done together, as Hyperfeed Calendar's booking links
  * are: a core API key of this teammate's account, limited to this workspace
  * and to `linkForm` and `submitViaLink` (a passkey step-up), and a contract
  * record keyed by the SHA-256 of the key. The visitor's browser calls the
@@ -80,7 +80,7 @@ export function PublicLinks({
       const name = label.trim();
       const key = await client.auth.apikeyCreate(
         {
-          label: (name ? `Mero Forms link · ${name}` : "Mero Forms link").slice(0, 128),
+          label: (name ? `Hyperfeed Forms link · ${name}` : "Hyperfeed Forms link").slice(0, 128),
           apps: [appId],
           methods: [...LINK_METHODS],
         },

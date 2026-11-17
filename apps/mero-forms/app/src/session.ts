@@ -20,8 +20,8 @@ export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
 
 /** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
-  name: "Mero Forms",
-  description: "Build forms, collect responses from your website or a public link, and send them to Mero CRM.",
+  name: "Hyperfeed Forms",
+  description: "Build forms, collect responses from your website or a public link, and send them to Hyperfeed CRM.",
   package: APP_PACKAGE,
   dir: "mero-forms",
   dev: import.meta.env.DEV,

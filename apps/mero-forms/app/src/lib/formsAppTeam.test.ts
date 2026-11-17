@@ -1,5 +1,5 @@
 /**
- * Mero Forms' own app team (core#4890), against the shared in-memory cluster
+ * Hyperfeed Forms' own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
  * pins Chat's. Forms has no org-level Remove or Leave (its team is the
  * contract's), so what is pinned: a new org gets an open team and the
@@ -57,7 +57,7 @@ describe("invites and people", () => {
     expect((await readMembers(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob"]);
   });
 
-  it("apps kept apart: the invite gives Mero Forms only; only its people are offered", async () => {
+  it("apps kept apart: the invite gives Hyperfeed Forms only; only its people are offered", async () => {
     const cluster = orgCluster();
     const { org } = await createWorkspace(cluster.client, SOURCE, "Sales", null, passkey);
     Object.assign(cluster.org(org).members, { "acct-bob": "member", "acct-cy": "member" });
@@ -96,7 +96,7 @@ describe("adding Forms to an organization whose apps have teams", () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
     await expect(createWorkspace(cluster.client, SOURCE, "Sales", org, passkey)).rejects.toThrow(
-      /owners and admins can add Mero Forms/,
+      /owners and admins can add Hyperfeed Forms/,
     );
     expect(cluster.callsOf("createApp")).toEqual([]);
   });
