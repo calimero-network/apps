@@ -26,7 +26,7 @@ export interface UseOrgMembers {
   myName: string;
   /** Publish this account's workspace name. */
   setMyName: (name: string) => Promise<void>;
-  /** The org keeps its apps apart and Mero Sheets has its team: Remove and Leave are its only. */
+  /** The org keeps its apps apart and Hyperfeed Sheets has its team: Remove and Leave are its only. */
   appOnly: boolean;
   /** True once the roster has been read (or failed to be) at least once. */
   loaded: boolean;
@@ -83,7 +83,7 @@ export function useOrgMembers(org: string | null): UseOrgMembers {
   );
 
   return {
-    // Who has Mero Sheets in the workspace (its app team, else the org), with their org role.
+    // Who has Hyperfeed Sheets in the workspace (its app team, else the org), with their org role.
     people: members.people.map((identity) => ({ identity, role: members.roles.get(identity) ?? 'member' })),
     nameOf,
     displayName,

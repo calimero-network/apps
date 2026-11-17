@@ -1,4 +1,4 @@
-# Mero Sheets for Android
+# Hyperfeed Sheets for Android
 
 Jetpack Compose + Material3, minSdk 26. See [`../README.md`](../README.md) for the screens,
 features and SDK notes.

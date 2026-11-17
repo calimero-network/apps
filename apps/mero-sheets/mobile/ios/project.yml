@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Sheets.
+# XcodeGen spec for the native iOS Hyperfeed Sheets.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroSheets.xcodeproj (not committed)

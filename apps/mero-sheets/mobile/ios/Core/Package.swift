@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// Mero Sheets' non-UI layer: the generated contract client, the models
+// Hyperfeed Sheets' non-UI layer: the generated contract client, the models
 // behind every screen, and their tests. A SwiftPM package so `swift test` runs
 // it on macOS with no simulator; project.yml links it into the iOS app.
 import PackageDescription

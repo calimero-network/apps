@@ -156,7 +156,7 @@ fun WorkspaceScreen(
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out of Mero Sheets?") },
+            title = { Text("Sign out of Hyperfeed Sheets?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSignOut = false

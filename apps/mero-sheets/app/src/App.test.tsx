@@ -39,7 +39,7 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
             createElement('pre', { 'data-testid': 'create-release' }, JSON.stringify(p.release)),
             createElement(
               'button',
-              { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Mero Sheets', selfName: 'Alice' }) },
+              { 'data-testid': 'create-done', onClick: () => p.onCreated({ orgId: 'org-new', name: 'Hyperfeed Sheets', selfName: 'Alice' }) },
               'done',
             ),
           )
@@ -274,7 +274,7 @@ describe('App', () => {
   });
 
   describe('an org made for another app', () => {
-    // The account of the bug: in `overworld`, which holds only a Mero Blocks world.
+    // The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world.
     const OVERWORLD = [{ orgId: 'ow', name: 'overworld', role: 'owner' }];
     const BLOCKS: AppInfo = {
       appId: 'blocks-1',
@@ -291,7 +291,7 @@ describe('App', () => {
       const client = fakeClient(OVERWORLD, { foreign: [BLOCKS], sheets: [] });
       render(<App deps={deps(client)} />);
       const name = await screen.findByTestId('field-name');
-      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Mero Sheets');
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Hyperfeed Sheets');
       expect(screen.queryByTestId('connect-org-ow')).toBeNull();
       fireEvent.change(name, { target: { value: 'Forecast' } });
       await waitFor(() => expect((screen.getByTestId('action-init_project') as HTMLButtonElement).disabled).toBe(false));
@@ -333,7 +333,7 @@ describe('App', () => {
     hold(JSON.stringify({ token: 'tok-1', sheet: 'sheet-1' }));
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect((await screen.findByTestId('accept-token')).textContent).toMatch(/^tok-1 Mero Sheets undefined$/);
+    expect((await screen.findByTestId('accept-token')).textContent).toMatch(/^tok-1 Hyperfeed Sheets undefined$/);
     fireEvent.click(screen.getByTestId('accept-join'));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
     expect(invites.token()).toBeNull();
@@ -441,7 +441,7 @@ describe('App', () => {
     remember();
     hold(JSON.stringify({ token: 'tok-1', sheet: null, org: 'org-1' }));
     render(<App deps={deps(fakeClient())} />);
-    expect((await screen.findByTestId('accept-token')).textContent).toBe('tok-1 Mero Sheets org-1');
+    expect((await screen.findByTestId('accept-token')).textContent).toBe('tok-1 Hyperfeed Sheets org-1');
   });
 
   it('a member who continues drops the invite and opens the workspace', async () => {
@@ -497,7 +497,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByText('Q3 Budget'));
     fireEvent.click(await screen.findByLabelText('Invite collaborators'));
     const shown = JSON.parse((await screen.findByTestId('invite-dialog')).textContent ?? '');
-    expect(shown).toMatchObject({ org: 'org-1', teams: ['team-1'], appName: 'Mero Sheets', uses: 1 });
+    expect(shown).toMatchObject({ org: 'org-1', teams: ['team-1'], appName: 'Hyperfeed Sheets', uses: 1 });
     expect(shown.note).toBeUndefined();
     expect(screen.getByTestId('invite-extra').querySelector('svg')).not.toBeNull();
     expect(new URL(shown.linkBase).searchParams.get('sheet')).toBe('sheet-1');
@@ -511,7 +511,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByText('Q3 Budget'));
     fireEvent.click(await screen.findByLabelText('Invite collaborators'));
     const shown = JSON.parse((await screen.findByTestId('invite-dialog')).textContent ?? '');
-    expect(shown.note).toBe("Invites to Mero Sheets only: this organization's other apps are managed in Calimero Home.");
+    expect(shown.note).toBe("Invites to Hyperfeed Sheets only: this organization's other apps are managed in Calimero Home.");
   });
 
   it('an org with app teams but none for this app: Invite says so and opens no dialog', async () => {

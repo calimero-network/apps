@@ -1,6 +1,6 @@
 {
-  "name": "Mero Sheets",
-  "short_name": "Mero Sheets",
+  "name": "Hyperfeed Sheets",
+  "short_name": "Hyperfeed Sheets",
   "description": "A peer-to-peer spreadsheet on Calimero — collaborative cells, formulas and cursors with no central server.",
   "display": "standalone",
   "background_color": "#f6f7fb",

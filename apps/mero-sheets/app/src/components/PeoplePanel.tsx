@@ -12,6 +12,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
+import { ConsentNotStarted } from '@calimero-apps/connect';
 import { APP_DISPLAY_NAME } from '../config';
 import { C } from '../theme';
 import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
@@ -99,7 +100,13 @@ export default function PeoplePanel(props: PeoplePanelProps) {
 
   const run = async (fn: () => Promise<void>) => {
     setError(null);
-    try { await fn(); } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    try {
+      await fn();
+    } catch (err) {
+      // They chose not to go to the approval page: nothing changed, nothing to say.
+      if (err instanceof ConsentNotStarted) return;
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (

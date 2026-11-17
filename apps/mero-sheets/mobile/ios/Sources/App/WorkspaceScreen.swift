@@ -86,7 +86,7 @@ struct WorkspaceScreen: View {
             .sheet(isPresented: $approvals) {
                 ApprovalsSheet(style: .app, orgs: workspace.workspaces.map { ($0.id, WorkspaceModel.displayName($0)) })
             }
-            .confirmationDialog("Sign out of Mero Sheets?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            .confirmationDialog("Sign out of Hyperfeed Sheets?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive, action: signOut)
             }
         }

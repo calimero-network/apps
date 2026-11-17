@@ -14,15 +14,16 @@
  *    retires confirmed overlay entries.
  *  - Cell writes (setCell/clearCell/setCellFormat/applyCellOps) paint optimistically
  *    through the pending overlay and rely on the subscription refresh to reconcile —
- *    they do NOT call refresh() directly. Sheet-level ops (initProject/createSheet/
- *    renameSheet/deleteSheet) still call refresh() directly after the write.
+ *    they do NOT call refresh() directly. initProject/createSheet still call refresh()
+ *    after the write (the caller opens the new sheet); renameSheet/deleteSheet rely on
+ *    their events too, and refresh only while the stream is down.
  *  - The node stores cells by row and column id, and formulas with references by
  *    id (see logic/crates/recalc/src/layout.rs). This hook is the boundary: callers
  *    see positions and formulas as typed, and it places cells and converts
  *    formulas through the engine, which holds every sheet's layout.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAppEvents } from './useAppEvents';
+import { accessLost, useAppEvents } from './useAppEvents';
 import { useMaybeSignedIn } from '../sessionContext';
 import { read, u64, workbook } from '../api/spreadsheet/workbook';
 import type {
@@ -179,6 +180,8 @@ export interface UseSpreadsheetReturn {
   sync: SyncInfo | null;
   /** Whether the workbook's event stream is up. */
   connected: boolean;
+  /** The node no longer lets this account reach the workbook: close it. */
+  lost: boolean;
   /** Alerts that name this user, newest last, until dismissed. */
   alerts: Alert[];
   dismissAlert: (index: number) => void;
@@ -308,6 +311,11 @@ export function useSpreadsheet({
   // other's write. Chaining every mutation through one promise guarantees they
   // apply strictly one at a time. Reads (refresh) stay off the queue.
   const mutationQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // A write the node refuses because this account no longer reaches the
+  // workbook (taken out of the app): the open event stream does not end on
+  // its own then, it only stops delivering, so the refusal is what tells.
+  const [writeLost, setWriteLost] = useState(false);
+  useEffect(() => setWriteLost(false), [contextId]);
   const enqueue = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
     setPendingMutations((n) => n + 1);
     const next = mutationQueue.current.then(op, op);
@@ -317,7 +325,10 @@ export function useSpreadsheet({
     );
     next.then(
       () => setPendingMutations((n) => n - 1),
-      () => setPendingMutations((n) => n - 1),
+      (err: unknown) => {
+        setPendingMutations((n) => n - 1);
+        if (accessLost(err)) setWriteLost(true);
+      },
     );
     return next;
   }, []);
@@ -587,7 +598,7 @@ export function useSpreadsheet({
   selfIdRef.current = selfId;
   // Every app event re-reads what it changed; after the stream comes back, a
   // full read covers whatever happened while it was down.
-  const { connected } = useAppEvents(calimero, contextId, (event) => {
+  const { connected, lost: streamLost } = useAppEvents(calimero, contextId, (event) => {
     schedule(planFor(event));
     const me = selfIdRef.current;
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
@@ -627,16 +638,21 @@ export function useSpreadsheet({
     return id;
   }, [client, refresh, enqueue]);
 
+  // A rename or a delete comes back on the event stream, which re-reads the
+  // sheet list (and a deleted sheet's cells) only: no whole-workbook read
+  // here unless the stream is down.
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
   const renameSheet = useCallback(async (sheetId: string, newName: string) => {
     if (!client) return;
     await enqueue(() => client.renameSheet({ sheetId, newName }));
-    await refresh();
+    if (!connectedRef.current) await refresh();
   }, [client, refresh, enqueue]);
 
   const deleteSheet = useCallback(async (sheetId: string) => {
     if (!client) return;
     await enqueue(() => client.deleteSheet({ sheetId }));
-    await refresh();
+    if (!connectedRef.current) await refresh();
   }, [client, refresh, enqueue]);
 
   // ── Undo ──────────────────────────────────────────────────────────────
@@ -1437,6 +1453,7 @@ export function useSpreadsheet({
     dismissAlert,
     sync,
     connected,
+    lost: streamLost || writeLost,
     attachments,
     attachFile,
     removeAttachment,

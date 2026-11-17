@@ -123,7 +123,7 @@ fun SignInScreen(vm: SheetsAppViewModel) {
             Icon(Icons.Outlined.TableChart, contentDescription = null, tint = Palette.ink, modifier = Modifier.size(38.dp))
         }
         Spacer(Modifier.height(18.dp))
-        Text("Mero Sheets", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
+        Text("Hyperfeed Sheets", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
         Spacer(Modifier.height(18.dp))
         Text(
             "Collaborative spreadsheets for your team. Open your team’s sheets, read the numbers and charts, and update a value on the go.",

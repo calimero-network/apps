@@ -57,7 +57,7 @@ public final class WorkspaceModel: ObservableObject {
     /// A workspace's name as people see it (`namespaceLabel`).
     public static func displayName(_ ns: AppNamespace) -> String {
         let name = ns.name?.trimmingCharacters(in: .whitespaces) ?? ""
-        return name.isEmpty ? "Mero Sheets · \(ns.id.prefix(6))" : name
+        return name.isEmpty ? "Hyperfeed Sheets · \(ns.id.prefix(6))" : name
     }
 
     /// A spreadsheet whose own name has not resolved yet (`spreadsheetFallbackLabel`).
