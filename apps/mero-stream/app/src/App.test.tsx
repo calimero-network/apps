@@ -317,7 +317,7 @@ describe("App", () => {
     expect(screen.queryByTestId("connect-org-ow")).toBeNull();
     fireEvent.click(screen.getByTestId("connect-existing-org"));
     const choice = await screen.findByTestId("connect-org-ow");
-    expect(choice.textContent).toContain("Mero Blocks: overworld");
+    expect(choice.textContent).toContain("Hyperfeed Blocks: overworld");
     fireEvent.click(choice);
     await waitFor(() =>
       expect(client.createApp).toHaveBeenCalledWith("General", "b", { org: "ow", initArgs: { name: "General" } }),
