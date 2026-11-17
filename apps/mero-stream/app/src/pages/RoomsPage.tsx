@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { visibleInterval } from "../lib/visibleInterval";
 import { useNavigate, useParams } from "react-router-dom";
 import { appInviteTeams, appOnlyInviteNote, askAnOwnerCopy, canCreateIn, describeError, isNotFound } from "@calimero-apps/connect";
 import { InviteDialog } from "@calimero-network/mero-react";
@@ -39,6 +40,9 @@ import {
   VideoIcon,
 } from "../components/icons";
 import styles from "./Manage.module.css";
+
+/** How often the rooms list is read again while the page is shown. */
+const ROOMS_POLL_MS = 30_000;
 
 /**
  * The rooms of one stream.
@@ -133,6 +137,18 @@ export default function RoomsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Rooms someone else adds: the list again every 30 s while the page is
+  // shown (no organization-wide event says one was made), rooms only.
+  useEffect(() => {
+    if (!conn || !orgId) return;
+    return visibleInterval(() => {
+      listRooms(conn.client, conn.source, orgId).then(
+        (list) => setRooms(list),
+        () => undefined,
+      );
+    }, ROOMS_POLL_MS);
+  }, [conn, orgId]);
 
   // Back from the node's consent page with "Members can create rooms": say how it went.
   const client = conn?.client ?? null;
